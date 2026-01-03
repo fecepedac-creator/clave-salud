@@ -1,0 +1,173 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
+    }
+
+    function userExists() {
+      return signedIn() && userDoc() != null && userDoc().exists();
+    }
+
+    function roles() {
+      return userExists() && (userDoc().data.roles is list) ? userDoc().data.roles : [];
+    }
+
+    function centers() {
+      return userExists() && (userDoc().data.centros is list) ? userDoc().data.centros : [];
+    }
+
+    function authEmailLower() {
+      return signedIn() && (request.auth.token.email is string)
+        ? request.auth.token.email.toLowerCase()
+        : "";
+    }
+
+    function isSuperAdmin() {
+      // Compat: custom claim OR roles array variants
+      return signedIn() && (
+        (request.auth.token.superadmin == true) ||
+        (request.auth.token.super_admin == true) ||
+        (request.auth.token.role == "super_admin") ||
+        ("super_admin" in roles()) ||
+        ("superadmin" in roles()) ||
+        ("SuperAdmin" in roles()) ||
+        ("SUPERADMIN" in roles())
+      );
+    }
+
+    function isCenterAdmin() {
+      return userExists() && (
+        ("center_admin" in roles()) ||
+        ("admin" in roles()) ||
+        ("Admin" in roles()) ||
+        ("Administrador" in roles())
+      );
+    }
+
+    function canAccessCenter(centerId) {
+      return isSuperAdmin() || (userExists() && (centerId in centers()));
+    }
+
+    // ---------------- USERS ----------------
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow create: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow update: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    // ---------------- CENTERS ----------------
+    match /centers/{centerId} {
+      allow read: if canAccessCenter(centerId);
+      // Crear/editar centros: solo superadmin (facturación, licencias, módulos)
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // ---------------- INVITES (Google-only onboarding) ----------------
+    // Document shape recommended:
+    // { emailLower, centerId, role, status: "pending"|"claimed"|"revoked",
+    //   createdAt, createdByUid, claimedAt, claimedByUid }
+    match /invites/{inviteId} {
+
+      // SuperAdmin y CenterAdmin pueden leer invites de centros que administran
+      allow read: if isSuperAdmin()
+        || (isCenterAdmin() && resource.data.centerId is string && canAccessCenter(resource.data.centerId))
+        || (signedIn() && resource.data.emailLower is string && resource.data.emailLower == authEmailLower());
+
+      // Crear invite: superadmin o admin del centro (del centro especificado)
+      allow create: if userExists()
+        && request.resource.data.centerId is string
+        && canAccessCenter(request.resource.data.centerId)
+        && (isSuperAdmin() || isCenterAdmin())
+        && request.resource.data.emailLower is string
+        && request.resource.data.status == "pending";
+
+      // Claim por el dueño del correo (solo pending -> claimed)
+      allow update: if signedIn()
+        && resource.data.emailLower is string
+        && resource.data.emailLower == authEmailLower()
+        && resource.data.status == "pending"
+        && request.resource.data.status == "claimed"
+        && request.resource.data.centerId == resource.data.centerId
+        && request.resource.data.emailLower == resource.data.emailLower;
+
+      // Revocar/borrar: solo admins
+      allow delete: if isSuperAdmin()
+        || (isCenterAdmin() && resource.data.centerId is string && canAccessCenter(resource.data.centerId));
+    }
+
+    // ---------------- PATIENTS ----------------
+    match /patients/{patientId} {
+      allow read: if canAccessCenter(resource.data.centerId);
+
+      allow create: if userExists()
+        && request.resource.data.centerId is string
+        && canAccessCenter(request.resource.data.centerId);
+
+      allow update: if userExists()
+        && request.resource.data.centerId is string
+        && resource.data.centerId == request.resource.data.centerId
+        && canAccessCenter(request.resource.data.centerId);
+
+      allow delete: if isSuperAdmin() || isCenterAdmin();
+    }
+
+    // ---------------- DOCTORS / PROFESSIONALS ----------------
+    match /doctors/{doctorId} {
+      allow read: if canAccessCenter(resource.data.centerId);
+
+      allow create: if userExists()
+        && request.resource.data.centerId is string
+        && canAccessCenter(request.resource.data.centerId)
+        && (isSuperAdmin() || isCenterAdmin());
+
+      allow update: if userExists()
+        && request.resource.data.centerId is string
+        && resource.data.centerId == request.resource.data.centerId
+        && canAccessCenter(request.resource.data.centerId)
+        && (
+          isSuperAdmin() || isCenterAdmin()
+          // Compat: si doctorId == uid o si el doc tiene un campo uid
+          || request.auth.uid == doctorId
+          || (resource.data.uid is string && resource.data.uid == request.auth.uid)
+        );
+
+      allow delete: if isSuperAdmin() || isCenterAdmin();
+    }
+
+    // ---------------- APPOINTMENTS ----------------
+    match /appointments/{appointmentId} {
+      allow read: if canAccessCenter(resource.data.centerId);
+      allow create: if userExists()
+        && request.resource.data.centerId is string
+        && canAccessCenter(request.resource.data.centerId);
+      allow update: if userExists()
+        && request.resource.data.centerId is string
+        && resource.data.centerId == request.resource.data.centerId
+        && canAccessCenter(request.resource.data.centerId);
+      allow delete: if isSuperAdmin() || isCenterAdmin();
+    }
+
+    // ---------------- LOGS / AUDIT ----------------
+    match /logs/{logId} {
+      allow read: if canAccessCenter(resource.data.centerId);
+      allow create: if userExists()
+        && request.resource.data.centerId is string
+        && canAccessCenter(request.resource.data.centerId);
+      allow update, delete: if isSuperAdmin(); // logs no se editan en operación normal
+    }
+
+    // Default: deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

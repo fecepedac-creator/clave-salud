@@ -1,53 +1,44 @@
-# To learn more about how to use Nix to configure your environment
-# see: https://developers.google.com/idx/guides/customize-idx-env
+
 { pkgs, ... }: {
-  # Which nixpkgs channel to use.
-  channel = "stable-24.05"; # or "unstable"
-  # Use https://search.nixos.org/packages to find packages
+  # El canal de Nixpkgs determina qué versiones de paquetes están disponibles.
+  channel = "stable-23.11";
+
+  # Lista de paquetes para instalar desde el canal especificado.
   packages = [
-    # pkgs.go
-    # pkgs.python311
-    # pkgs.python311Packages.pip
-    # pkgs.nodejs_20
-    # pkgs.nodePackages.nodemon
+    pkgs.nodejs_20  # Entorno de ejecución de Node.js, versión 20.
   ];
-  # Sets environment variables in the workspace
-  env = {};
+
+  # Configuraciones específicas del editor IDX.
   idx = {
-    # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
+    # Lista de extensiones de VS Code para instalar desde el Open VSX Registry.
     extensions = [
-      # "vscodevim.vim"
-      "google.gemini-cli-vscode-ide-companion"
+      "dbaeumer.vscode-eslint"  # Linter para JavaScript y TypeScript.
+      "esbenp.prettier-vscode"    # Formateador de código.
+      "bradlc.vscode-tailwindcss" # Soporte para Tailwind CSS.
     ];
-    # Enable previews
+
+    # Comandos que se ejecutan en diferentes momentos del ciclo de vida del espacio de trabajo.
+    workspace = {
+      # Se ejecuta cuando el espacio de trabajo se crea por primera vez.
+      onCreate = {
+        install-deps = "npm install"; # Instala las dependencias del proyecto.
+      };
+      # Se ejecuta cada vez que el espacio de trabajo se inicia o reinicia.
+      onStart = {
+        run-dev-server = "npm run dev"; # Inicia el servidor de desarrollo.
+      };
+    };
+
+    # Configura la vista previa de la aplicación web.
     previews = {
       enable = true;
       previews = {
-        # web = {
-        #   # Example: run "npm run dev" with PORT set to IDX's defined port for previews,
-        #   # and show it in IDX's web preview panel
-        #   command = ["npm" "run" "dev"];
-        #   manager = "web";
-        #   env = {
-        #     # Environment variables to set for your server
-        #     PORT = "$PORT";
-        #   };
-        # };
-      };
-    };
-    # Workspace lifecycle hooks
-    workspace = {
-      # Runs when a workspace is first created
-      onCreate = {
-        # Example: install JS dependencies from NPM
-        # npm-install = "npm install";
-        # Open editors for the following files by default, if they exist:
-        default.openFiles = [ ".idx/dev.nix" "README.md" ];
-      };
-      # Runs when the workspace is (re)started
-      onStart = {
-        # Example: start a background task to watch and re-build backend code
-        # watch-backend = "npm run watch-backend";
+        # Nombre de la vista previa (puedes tener varias).
+        web = {
+          # Comando para iniciar la aplicación en el puerto asignado por IDX.
+          command = ["npm" "run" "dev" "--" "--port" "$PORT" "--host" "0.0.0.0"];
+          manager = "web"; # Tipo de vista previa.
+        };
       };
     };
   };
