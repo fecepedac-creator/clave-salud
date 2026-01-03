@@ -42,7 +42,7 @@ import { useToast } from "./components/Toast";
 
 import { db, auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, signInWithPopup, sendPasswordResetEmail, GoogleAuthProvider } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, signInWithPopup, sendPasswordResetEmail, GoogleAuthProvider, createUserWithEmailAndPassword } from "firebase/auth";
 import {
   collection,
   deleteDoc,
@@ -55,6 +55,7 @@ import {
   updateDoc,
   where,
   serverTimestamp,
+  limit,
 } from "firebase/firestore";
 
 // -------------------- Center / Modules Context --------------------
@@ -185,6 +186,85 @@ const activeCenter = useMemo(
     return () => unsub();
   }, []);
   const [error, setError] = useState("");
+
+  // ---------- Invite (crear administrador por token) ----------
+  const [inviteToken, setInviteToken] = useState<string>("");
+  const [inviteLoading, setInviteLoading] = useState<boolean>(false);
+  const [inviteError, setInviteError] = useState<string>("");
+  const [inviteEmail, setInviteEmail] = useState<string>("");
+  const [inviteCenterId, setInviteCenterId] = useState<string>("");
+  const [inviteCenterName, setInviteCenterName] = useState<string>("");
+  const [invitePassword, setInvitePassword] = useState<string>("");
+  const [invitePassword2, setInvitePassword2] = useState<string>("");
+  const [inviteDone, setInviteDone] = useState<boolean>(false);
+
+  // Si la URL viene como /invite?token=..., entramos directo al flujo de invitación.
+  useEffect(() => {
+    try {
+      const path = window.location.pathname || "";
+      if (!path.toLowerCase().startsWith("/invite")) return;
+
+      const params = new URLSearchParams(window.location.search);
+      const t = (params.get("token") || "").trim();
+      if (!t) {
+        setInviteError("Invitación inválida: falta el token.");
+        setView("home" as ViewMode);
+        return;
+      }
+      setInviteToken(t);
+      setView("invite" as any);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cargar invitación desde Firestore
+  useEffect(() => {
+    const load = async () => {
+      if (!inviteToken) return;
+      setInviteLoading(true);
+      setInviteError("");
+      try {
+        const qy = query(collection(db, "invitations"), where("token", "==", inviteToken), limit(1));
+        const snap = await getDocs(qy);
+        if (snap.empty) throw new Error("Invitación no encontrada o ya fue utilizada.");
+
+        const docSnap = snap.docs[0];
+        const inv: any = docSnap.data() || {};
+
+        if (inv.used === true || inv.status === "used") {
+          throw new Error("Esta invitación ya fue utilizada.");
+        }
+
+        // expiresAt puede venir como Timestamp (Firestore) o string ISO
+        const now = Date.now();
+        let expMs = 0;
+        if (inv.expiresAt?.toMillis) expMs = inv.expiresAt.toMillis();
+        else if (typeof inv.expiresAt === "string") expMs = Date.parse(inv.expiresAt);
+        else if (typeof inv.expiresAt === "number") expMs = inv.expiresAt;
+
+        if (expMs && now > expMs) throw new Error("Esta invitación expiró. Solicita una nueva invitación.");
+
+        const emailInv = String(inv.email || inv.adminEmail || "").trim().toLowerCase();
+        const centerIdInv = String(inv.centerId || inv.centroId || "").trim();
+        if (!emailInv || !centerIdInv) throw new Error("Invitación mal formada: faltan datos.");
+
+        // obtener nombre del centro para mostrarlo bonito
+        const centerSnap = await getDoc(doc(db, "centers", centerIdInv)).catch(() => null as any);
+        const centerName = centerSnap?.exists?.() ? (centerSnap.data() as any)?.name : "";
+
+        setInviteEmail(emailInv);
+        setInviteCenterId(centerIdInv);
+        setInviteCenterName(centerName || "");
+      } catch (e: any) {
+        setInviteError(e?.message || "No se pudo cargar la invitación.");
+      } finally {
+        setInviteLoading(false);
+      }
+    };
+    load();
+  }, [inviteToken]);
 
   // Booking wizard
   const [bookingStep, setBookingStep] = useState(0);
@@ -411,7 +491,7 @@ setCurrentUser(userFromFirestore as any);
 
         // selección de centro para el resto
         setPostCenterSelectView(targetView);
-        setView("center-select" as any);
+        setView("select-center" as any);
         return;
       }
 
@@ -471,7 +551,7 @@ setCurrentUser(userFromFirestore as any);
 
       // Selección de centro
       setPostCenterSelectView(targetView);
-      setView("center-select" as any);
+      setView("select-center" as any);
     } catch (e: any) {
       console.error("GOOGLE LOGIN ERROR", e);
       setError(e?.message || "No se pudo iniciar sesión con Google.");
@@ -517,7 +597,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     }
     const newAppt: Appointment = {
       id: generateId(),
-      centerId: activeCenter.id,
+      centerId: activeCenterId,
       doctorId: selectedDoctorForBooking.id,
       date: selectedSlot.date,
       time: selectedSlot.time,
@@ -657,7 +737,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         <PatientForm
           onSave={(patient: Patient) => {
             const exists = patients.find((p) => p.rut === patient.rut);
-            const payload = exists ? { ...patient, id: exists.id, centerId: activeCenter.id } : { ...patient, centerId: activeCenter.id };
+            const payload = exists ? { ...patient, id: exists.id, centerId: activeCenterId } : { ...patient, centerId: activeCenterId };
             onGlobalUpdate("patients", payload);
             showToast("Ficha actualizada correctamente", "success");
             setView("patient-menu" as ViewMode);
@@ -673,7 +753,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
 
     const uniqueRoles = Array.from(
-      new Set(doctors.filter((d) => d.centerId === activeCenter.id).map((d) => d.role))
+      new Set(doctors.filter((d) => d.centerId === activeCenterId).map((d) => d.role))
     );
 
     const dateStr = bookingDate.toISOString().split("T")[0];
@@ -735,7 +815,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">Seleccione Profesional</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {doctors
-                  .filter((d) => d.role === selectedRole && d.centerId === activeCenter.id)
+                  .filter((d) => d.role === selectedRole && d.centerId === activeCenterId)
                   .map((docu) => (
                     <button
                       key={docu.id}
@@ -1053,10 +1133,219 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     </div>
   );
 
+
+  const renderSelectCenter = () => {
+    // Centros disponibles para el usuario (acepta "centros" o "centers" por compatibilidad)
+    const allowed: string[] = Array.isArray(currentUser?.centros) ? currentUser.centros : (Array.isArray(currentUser?.centers) ? currentUser.centers : []);
+    const available = centers.filter((c) => allowed.includes(c.id));
+
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-extrabold text-slate-800">Selecciona un centro</h2>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+
+          {available.length === 0 ? (
+            <div className="bg-amber-50 border border-amber-100 text-amber-800 rounded-xl p-4 text-sm">
+              Tu usuario no tiene centros asignados. Pide a SuperAdmin que te asigne un centro.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {available.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setActiveCenterId(c.id);
+                    setView(postCenterSelectView);
+                  }}
+                  className="p-5 rounded-2xl border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all text-left bg-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden flex items-center justify-center">
+                      {(c as any).logoUrl ? (
+                        <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <Building2 className="w-6 h-6 text-slate-700" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-extrabold text-slate-900">{c.name}</div>
+                      <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6 text-xs text-slate-500">
+            Consejo: si administras más de un centro, podrás cambiar de centro desde aquí.
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderInviteRegister = () => {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+          <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Crear cuenta</h2>
+          <p className="text-slate-500 text-sm mb-6">
+            {inviteCenterName ? (
+              <>Has sido invitado(a) para administrar <span className="font-bold text-slate-700">{inviteCenterName}</span>.</>
+            ) : (
+              <>Has sido invitado(a) para administrar un centro en ClaveSalud.</>
+            )}
+          </p>
+
+          {inviteLoading && (
+            <div className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4">
+              Cargando invitación…
+            </div>
+          )}
+
+          {inviteError && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3 mb-4">
+              {inviteError}
+            </div>
+          )}
+
+          {inviteDone ? (
+            <>
+              <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-4">
+                Cuenta creada. Ya puedes ingresar como administrador del centro.
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // Limpia URL /invite para no re-abrir el flujo al refrescar
+                  try { window.history.replaceState({}, "", "/"); } catch {}
+                  setView("admin-login" as any);
+                }}
+                className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
+              >
+                Ir a iniciar sesión
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="block mb-3">
+                <span className="text-sm font-semibold text-slate-600">Correo</span>
+                <input
+                  value={inviteEmail}
+                  disabled
+                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 bg-slate-50 text-slate-700"
+                />
+              </label>
+
+              <label className="block mb-3">
+                <span className="text-sm font-semibold text-slate-600">Contraseña</span>
+                <input
+                  value={invitePassword}
+                  onChange={(e) => setInvitePassword(e.target.value)}
+                  type="password"
+                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              <label className="block mb-5">
+                <span className="text-sm font-semibold text-slate-600">Repetir contraseña</span>
+                <input
+                  value={invitePassword2}
+                  onChange={(e) => setInvitePassword2(e.target.value)}
+                  type="password"
+                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              <button
+                type="button"
+                disabled={inviteLoading || !inviteEmail || !inviteCenterId}
+                onClick={async () => {
+                  try {
+                    setInviteError("");
+                    if (!inviteEmail || !inviteCenterId) throw new Error("Invitación incompleta.");
+                    if (invitePassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+                    if (invitePassword !== invitePassword2) throw new Error("Las contraseñas no coinciden.");
+
+                    setInviteLoading(true);
+
+                    const cred = await createUserWithEmailAndPassword(auth, inviteEmail, invitePassword);
+
+                    // Crear perfil users/{uid} para compatibilidad con tu login actual (sin claims aún)
+                    const uid = cred.user.uid;
+                    await setDoc(doc(db, "users", uid), {
+                      uid,
+                      email: inviteEmail,
+                      activo: true,
+                      roles: ["center_admin"],
+                      centros: [inviteCenterId],
+                      createdAt: serverTimestamp(),
+                      fullName: inviteEmail,
+                      role: "Administrador",
+                    }, { merge: true });
+
+                    // Marcar invitación como usada (idealmente esto debería hacerlo una Cloud Function)
+                    const qy = query(collection(db, "invitations"), where("token", "==", inviteToken), limit(1));
+                    const snap = await getDocs(qy);
+                    if (!snap.empty) {
+                      await updateDoc(doc(db, "invitations", snap.docs[0].id), {
+                        used: true,
+                        usedAt: serverTimestamp(),
+                        claimedByUid: uid,
+                        status: "used",
+                      }).catch(() => {});
+                    }
+
+                    setInviteDone(true);
+                    showToast("Cuenta creada correctamente", "success");
+                  } catch (e: any) {
+                    console.error("INVITE REGISTER ERROR", e);
+                    setInviteError(e?.message || "No se pudo crear la cuenta.");
+                  } finally {
+                    setInviteLoading(false);
+                  }
+                }}
+                className="w-full rounded-xl bg-sky-600 text-white font-bold py-3 hover:bg-sky-700 transition-colors disabled:opacity-50"
+              >
+                Crear cuenta
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  try { window.history.replaceState({}, "", "/"); } catch {}
+                  setView("home" as any);
+                }}
+                className="w-full mt-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold py-3 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderHomeDirectory = () => {
     return (
       <div
-        className="relative min-h-[calc(100vh-80px)] flex flex-col items-center justify-center px-4 py-10"
+        className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 py-10 pb-16"
         style={{
           backgroundImage: `linear-gradient(to bottom, rgba(248, 250, 252, 0.86), rgba(248,250,252,0.30)), url(${HOME_BG_SRC})`,
           backgroundSize: "cover",
@@ -1104,9 +1393,9 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               alt="ClaveSalud"
               className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
             />
-            <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900">
-              ClaveSalud
-            </h1>
+           <h1 className="text-4xl md:text-5xl font-extrabold">
+  <span className="text-sky-500">Clave</span><span className="text-teal-700">Salud</span>
+</h1>
           </div>
 
           <p className="text-slate-500 mt-3 text-lg">
@@ -1135,9 +1424,15 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                 className="bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left"
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
-                    <Building2 className="w-7 h-7 text-slate-700" />
-                  </div>
+                 {/* ESTE ES EL NUEVO CÓDIGO */}
+<div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+  {(c as any).logoUrl ? (
+    <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+  ) : (
+    <Building2 className="w-7 h-7 text-slate-700" />
+  )}
+</div>
+
                   <div className="flex-1">
                     <div className="font-extrabold text-slate-900 text-lg leading-tight">
                       {c.name}
@@ -1172,6 +1467,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   }, [centers, activeCenterId]);
 
   
+
+
+  if (view === ("invite" as any)) return (
+    <CenterContext.Provider value={centerCtxValue}>
+      {renderInviteRegister()}
+    </CenterContext.Provider>
+  );
 
   if (view === ("center-portal" as ViewMode)) return (
     <CenterContext.Provider value={centerCtxValue}>
@@ -1272,7 +1574,7 @@ if (view === ("admin-login" as ViewMode)) return (
         onLogActivity={(action: any, details: string, targetId?: string) => {
           const log: AuditLogEntry = {
             id: generateId(),
-            centerId: activeCenter.id,
+            centerId: activeCenterId,
             timestamp: new Date().toISOString(),
             actorName: currentUser.fullName ?? "Usuario",
             actorRole: currentUser.role ?? "Profesional",
@@ -1293,7 +1595,7 @@ if (view === ("admin-login" as ViewMode)) return (
     return (
       <CenterContext.Provider value={centerCtxValue}>
         <AdminDashboard
-        centerId={activeCenter.id}
+        centerId={activeCenterId}
         doctors={doctors}
         onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => onGlobalUpdate("doctors", d))}
         appointments={appointments}
@@ -1305,7 +1607,7 @@ if (view === ("admin-login" as ViewMode)) return (
         onLogActivity={(action: any, details: string, targetId?: string) => {
           const log: AuditLogEntry = {
             id: generateId(),
-            centerId: activeCenter.id,
+            centerId: activeCenterId,
             timestamp: new Date().toISOString(),
             actorName: currentUser.fullName ?? "Usuario",
             actorRole: currentUser.role ?? "Admin",

@@ -20,6 +20,11 @@ import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
 
+// Logo en Firebase Storage
+import { db, auth, storage } from "../firebase";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { addDoc, collection, getDocs, query, serverTimestamp, updateDoc, where, Timestamp } from "firebase/firestore";
+
 /**
  * SuperAdminDashboard (Clavesalud)
  * - Mantiene compatibilidad con el esquema actual de MedicalCenter.
@@ -50,6 +55,7 @@ type BillingInfo = {
 type CenterExt = MedicalCenter & {
   adminEmail?: string;
   billing?: BillingInfo;
+  logoUrl?: string;
 };
 
 interface SuperAdminDashboardProps {
@@ -137,6 +143,103 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [editingCenter, setEditingCenter] = useState<CenterExt | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Logo (Storage + preview)
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+
+// Invitaciones (SaaS)
+const [isInvitingAdmin, setIsInvitingAdmin] = useState(false);
+const [lastInviteLink, setLastInviteLink] = useState<string>("");
+
+const generateSecureToken = (lenBytes: number = 24) => {
+  // 24 bytes => 48 hex chars. Suficiente para token de invitación.
+  const arr = new Uint8Array(lenBytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
+};
+
+const buildInviteEmail = (centerName: string, email: string, link: string) => {
+  return [
+    "Asunto: Invitación a ClaveSalud – Administración del centro",
+    "",
+    `Hola,`,
+    "",
+    `Has sido invitado(a) como Administrador(a) del centro:`,
+    `Centro: ${centerName}`,
+    "",
+    "Para crear tu cuenta, haz clic en este enlace:",
+    link,
+    "",
+    "Este enlace es personal y expira en 7 días.",
+    "",
+    "Saludos,",
+    "Equipo ClaveSalud",
+    "",
+  ].join("\n");
+};
+
+const handleInviteCenterAdmin = async () => {
+  if (!editingCenter) return;
+
+  const email = (isCreating ? newCenterAdminEmail : ((editingCenter as any).adminEmail || "")).trim().toLowerCase();
+  if (!email) {
+    showToast("Falta el correo del administrador (adminEmail).", "error");
+    return;
+  }
+  const centerId = isCreating ? (editingCenter.id || "") : editingCenter.id;
+  if (!centerId) {
+    showToast("Primero guarda el centro para poder invitar a su administrador.", "error");
+    return;
+  }
+
+  setIsInvitingAdmin(true);
+  try {
+    // 1) Revocar invitaciones activas previas para este email + centro
+    const invQ = query(
+      collection(db, "invitations"),
+      where("email", "==", email),
+      where("centerId", "==", centerId),
+      where("used", "==", false)
+    );
+    const prev = await getDocs(invQ);
+    for (const d of prev.docs) {
+      await updateDoc(d.ref, { revoked: true, revokedAt: serverTimestamp() });
+    }
+
+    // 2) Crear invitación nueva
+    const token = generateSecureToken(24);
+    const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // +7 días
+
+    await addDoc(collection(db, "invitations"), {
+      token,
+      email,
+      centerId,
+      role: "center_admin",
+      used: false,
+      revoked: false,
+      expiresAt,
+      createdAt: serverTimestamp(),
+      createdByUid: auth.currentUser?.uid || null,
+    });
+
+    const baseUrl = window.location.origin; // ej: https://clavesalud-2.web.app
+    const link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
+
+    setLastInviteLink(link);
+
+    // 3) Copiar correo listo para enviar
+    const emailBody = buildInviteEmail(editingCenter.name || "Centro", email, link);
+    await navigator.clipboard.writeText(emailBody);
+    showToast("Invitación generada y copiada al portapapeles.", "success");
+  } catch (e: any) {
+    console.error("INVITE ERROR", e);
+    showToast(e?.message || "Error generando invitación", "error");
+  } finally {
+    setIsInvitingAdmin(false);
+  }
+};
   const [newCenterName, setNewCenterName] = useState("");
   const [newCenterSlug, setNewCenterSlug] = useState("");
   const [newCenterAdminEmail, setNewCenterAdminEmail] = useState("");
@@ -172,6 +275,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       .sort((a, b) => (a.createdAtISO < b.createdAtISO ? 1 : -1));
   }, [commCenterId, notifRefreshTick]);
 
+
+  const resetLogoState = () => {
+    if (logoPreview) {
+      try { URL.revokeObjectURL(logoPreview); } catch {}
+    }
+    setLogoFile(null);
+    setLogoPreview("");
+  };
+
   const totals = useMemo(() => {
     const total = centers.length;
     const active = centers.filter((c) => !!(c as any).isActive).length;
@@ -191,6 +303,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   }, [centers]);
 
   const handleStartCreate = () => {
+    resetLogoState();
     setIsCreating(true);
     setEditingCenter({
       id: "",
@@ -220,8 +333,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   };
 
   const handleSaveCenter = async () => {
-    if (!editingCenter) return;
+  if (!editingCenter) return;
 
+  setIsUploadingLogo(true); // bloquea UI mientras sube/guarda
+
+  try {
     const name = (isCreating ? newCenterName : editingCenter.name).trim();
     const slug = normalizeSlug(isCreating ? newCenterSlug : editingCenter.slug);
 
@@ -232,31 +348,60 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
     const centerId = isCreating ? `c_${uidShort()}` : editingCenter.id;
 
+    // logo actual en edición
+    let finalLogoUrl = (editingCenter as any).logoUrl || "";
+
+    // logo anterior (si existía en la lista)
+    const prevLogoUrl = ((centers.find((c) => c.id === centerId) as any)?.logoUrl || "") as string;
+
+    // 1) Subir nuevo logo si el usuario seleccionó archivo
+    if (logoFile) {
+      const logoRef = ref(storage, `centers-logos/${centerId}/logo`);
+      const uploadResult = await uploadBytes(logoRef, logoFile, { contentType: logoFile.type });
+      finalLogoUrl = await getDownloadURL(uploadResult.ref);
+    }
+    // 2) Si el usuario quitó el logo (finalLogoUrl vacío) y antes existía -> borrar archivo en Storage
+    else if (!finalLogoUrl && prevLogoUrl) {
+      try {
+        const logoRef = ref(storage, `centers-logos/${centerId}/logo`);
+        await deleteObject(logoRef);
+      } catch (err: any) {
+        if (err?.code !== "storage/object-not-found") {
+          console.warn("No se pudo eliminar el logo anterior:", err);
+        }
+      }
+    }
+
     const finalCenter: CenterExt = {
       ...editingCenter,
       id: centerId,
       name,
       slug,
+      logoUrl: finalLogoUrl,
       createdAt: isCreating ? new Date().toISOString() : editingCenter.createdAt,
       adminEmail: isCreating ? newCenterAdminEmail.trim() : (editingCenter as any).adminEmail,
     };
 
-    try {
-      // Estrategia "upsert": reemplaza/actualiza solo 1 centro
-      await onUpdateCenters([finalCenter as any]);
-      showToast(isCreating ? "Centro creado" : "Centro actualizado", "success");
-      setEditingCenter(null);
-      setIsCreating(false);
+    // Estrategia "upsert": reemplaza/actualiza solo 1 centro
+    await onUpdateCenters([finalCenter as any]);
 
-      // Opcional: al crear, setea selección para finanzas/comunicación
-      if (isCreating) {
-        setFinanceCenterId(centerId);
-        setCommCenterId(centerId);
-      }
-    } catch (e: any) {
-      showToast(e?.message || "Error guardando centro", "error");
+    showToast(isCreating ? "Centro creado con éxito" : "Centro actualizado con éxito", "success");
+
+    setEditingCenter(null);
+    setIsCreating(false);
+    resetLogoState();
+
+    if (isCreating) {
+      setFinanceCenterId(centerId);
+      setCommCenterId(centerId);
     }
-  };
+  } catch (e: any) {
+    console.error("SAVE CENTER ERROR", e);
+    showToast(e?.message || "Error guardando centro", "error");
+  } finally {
+    setIsUploadingLogo(false);
+  }
+};
 
   const handleDeleteCenter = async (id: string) => {
     if (!id) return;
@@ -543,6 +688,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            resetLogoState();
                             setEditingCenter(center);
                             setIsCreating(false);
                           }}
@@ -693,46 +839,77 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     </div>
 
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Logo del centro</div>
-                      <div className="text-sm text-slate-600">
-                        En esta versión, el logo se guarda como URL (mock). En producción, se sube a Firebase Storage y se guarda logoUrl.
-                      </div>
-                      <div className="mt-3 flex flex-col gap-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="block w-full text-sm"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (!f) return;
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              setEditingCenter({ ...(editingCenter as any), logoUrl: String(reader.result || "") });
-                              showToast("Logo cargado (preview). Guardar para aplicar.", "success");
-                            };
-                            reader.readAsDataURL(f);
-                          }}
-                        />
-                        {!!(editingCenter as any).logoUrl && (
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={(editingCenter as any).logoUrl}
-                              alt="Logo centro"
-                              className="w-14 h-14 rounded-xl object-cover border"
-                            />
-                            <button
-                              type="button"
-                              className="text-sm font-bold text-slate-500 hover:text-slate-700"
-                              onClick={() => setEditingCenter({ ...(editingCenter as any), logoUrl: "" })}
-                            >
-                              Quitar logo
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+  <div className="text-xs font-bold text-slate-400 uppercase mb-2">Logo del centro</div>
+  <div className="text-sm text-slate-600">
+    Sube un logo (PNG/JPG/WEBP, máx. 2MB). Se guarda en Firebase Storage y se registra como <b>logoUrl</b>.
+  </div>
+  <div className="mt-3 flex flex-col gap-2">
+    <input
+      id="logo-input"
+      type="file"
+      accept="image/png, image/jpeg, image/webp"
+      className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
+      disabled={isUploadingLogo}
+      onChange={(e) => {
+        const f = e.target.files?.[0];
 
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+        // limpia preview anterior
+        if (logoPreview) {
+          try { URL.revokeObjectURL(logoPreview); } catch {}
+        }
+
+        if (!f) {
+          setLogoFile(null);
+          setLogoPreview("");
+          return;
+        }
+
+        if (f.size > 2 * 1024 * 1024) {
+          showToast("Archivo muy grande. Máximo 2MB.", "error");
+          e.target.value = "";
+          setLogoFile(null);
+          setLogoPreview("");
+          return;
+        }
+
+        setLogoFile(f);
+        setLogoPreview(URL.createObjectURL(f));
+      }}
+    />
+
+    {(logoPreview || (editingCenter as any)?.logoUrl) && (
+      <div className="flex items-center gap-3 mt-3">
+        <img
+          src={logoPreview || (editingCenter as any).logoUrl}
+          alt="Previsualización del logo"
+          className="w-14 h-14 rounded-xl object-cover border-2 border-slate-200 bg-white"
+        />
+        <button
+          type="button"
+          className="text-sm font-bold text-red-600 hover:text-red-800 disabled:opacity-50"
+          disabled={isUploadingLogo}
+          onClick={() => {
+            // quitar logo: deja logoUrl vacío y sin archivo
+            setLogoFile(null);
+            if (logoPreview) {
+              try { URL.revokeObjectURL(logoPreview); } catch {}
+            }
+            setLogoPreview("");
+
+            setEditingCenter({ ...(editingCenter as any), logoUrl: "" });
+
+            const fileInput = document.getElementById("logo-input") as HTMLInputElement | null;
+            if (fileInput) fileInput.value = "";
+          }}
+        >
+          Quitar logo
+        </button>
+      </div>
+    )}
+  </div>
+</div>
+
+<div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                       <div className="text-xs font-bold text-slate-400 uppercase mb-2">Roles permitidos</div>
                       <div className="text-sm text-slate-600 mb-3">
                         Define qué perfiles puede crear el centro. Se guarda como IDs estables (ej: MEDICO, ENFERMERA).
@@ -791,28 +968,45 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       </div>
                     </label>
 
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Invitación (manual)</div>
-                      <div className="text-sm text-slate-600">
-                        En MVP, registra el adminEmail. La creación de usuario en Auth debe hacerse por Cloud Function.
-                      </div>
-                      <div className="mt-3">
-                        <button
-                          type="button"
-                          className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800"
-                          onClick={() => {
-                            const email = isCreating ? newCenterAdminEmail.trim() : ((editingCenter as any).adminEmail || "").trim();
-                            const slug = normalizeSlug(isCreating ? newCenterSlug : editingCenter.slug);
-                            const name = (isCreating ? newCenterName : editingCenter.name).trim();
-                            const invite = `Invitación ClaveSalud\n\nCentro: ${name}\nSlug: ${slug}\nAdmin: ${email || "[admin@centro.cl]"}\n\nPaso 1: Crear usuario en Firebase Auth\nPaso 2: Asignar rol center_admin y centro ${slug}\n`;
-                            navigator.clipboard?.writeText(invite);
-                            showToast("Plantilla copiada al portapapeles", "success");
-                          }}
-                        >
-                          Copiar plantilla
-                        </button>
-                      </div>
-                    </div>
+                    
+<div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+  <div className="text-xs font-bold text-slate-400 uppercase mb-2">Invitar administrador</div>
+  <div className="text-sm text-slate-600">
+    Genera un enlace seguro (token) para que el administrador cree su contraseña. Expira en 7 días.
+  </div>
+
+  <div className="mt-3 flex flex-col gap-2">
+    <button
+      type="button"
+      className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 disabled:opacity-60"
+      disabled={isInvitingAdmin}
+      onClick={handleInviteCenterAdmin}
+    >
+      {isInvitingAdmin ? "Generando..." : "Generar invitación y copiar correo"}
+    </button>
+
+    {lastInviteLink && (
+      <div className="p-3 bg-white rounded-xl border border-slate-200">
+        <div className="text-xs font-bold text-slate-400 uppercase mb-1">Enlace</div>
+        <div className="text-sm text-slate-700 break-all">{lastInviteLink}</div>
+        <button
+          type="button"
+          className="mt-2 text-sm font-bold text-slate-900 hover:underline"
+          onClick={async () => {
+            await navigator.clipboard.writeText(lastInviteLink);
+            showToast("Enlace copiado.", "success");
+          }}
+        >
+          Copiar enlace
+        </button>
+      </div>
+    )}
+
+    <div className="text-xs text-slate-500">
+      Requisito: el centro debe estar guardado y tener <b>adminEmail</b>.
+    </div>
+  </div>
+</div>
                   </div>
 
                   <div className="space-y-4">
@@ -958,7 +1152,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     onClick={handleSaveCenter}
                     className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center gap-2"
                   >
-                    <Save className="w-5 h-5" /> Guardar
+                    <Save className="w-5 h-5" /> {isUploadingLogo ? "Guardando..." : "Guardar"}
                   </button>
                 </div>
               </div>
