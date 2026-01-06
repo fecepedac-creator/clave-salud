@@ -7,21 +7,12 @@ import {
   MedicalCenter,
   AuditLogEntry,
 } from "./types";
-import {
-  MOCK_PATIENTS,
-  INITIAL_DOCTORS,
-  INITIAL_CENTERS,
-} from "./constants";
+import { MOCK_PATIENTS, INITIAL_DOCTORS, INITIAL_CENTERS } from "./constants";
 import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import {
-  formatRUT,
-  generateId,
-  getStandardSlots,
-  getDaysInMonth,
-} from "./utils";
+import { formatRUT, generateId, getStandardSlots, getDaysInMonth } from "./utils";
 import {
   AlertCircle,
   ArrowLeft,
@@ -31,18 +22,23 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Lock,
   ShieldCheck,
   Stethoscope,
   UserRound,
-  X,
 } from "lucide-react";
 import { useToast } from "./components/Toast";
 
 import { db, auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, signInWithPopup, sendPasswordResetEmail, GoogleAuthProvider, createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+} from "firebase/auth";
 import {
   collection,
   deleteDoc,
@@ -56,19 +52,9 @@ import {
   updateDoc,
   where,
   serverTimestamp,
-  limit,
 } from "firebase/firestore";
 
 // -------------------- Center / Modules Context --------------------
-// Permite que cualquier componente (AdminDashboard, DoctorDashboard, etc.) pueda leer:
-// - centro activo
-// - configuración de módulos (centers/{id}.modules)
-//
-// Uso en otros componentes:
-//   import { useContext } from "react";
-//   import { CenterContext } from "../App";
-//   const { activeCenter, modules, isModuleEnabled } = useContext(CenterContext);
-
 export type CenterModules = Record<string, boolean>;
 
 export const CenterContext = createContext<{
@@ -89,34 +75,25 @@ function isValidCenter(c: any): c is MedicalCenter {
     typeof c === "object" &&
     typeof (c as any).id === "string" &&
     (c as any).id.length > 0 &&
-    // En ClaveSalud, asumimos que un centro válido siempre tiene nombre
     typeof (c as any).name === "string"
   );
 }
 
-/**
- * Convención recomendada de roles (en users/{uid}.roles):
- * - "super_admin": puede crear/editar centros y asignar admin de centro
- * - "center_admin": admin del/los centros listados en users/{uid}.centros
- * - Roles profesionales (solo para UI/filtro): "Medico", "Enfermera", "Kinesiologo", etc.
- *
- * users/{uid} ejemplo:
- *  {
- *    email: "medico@saludmass.cl",
- *    activo: true,
- *    roles: ["Medico", "center_admin"],   // puede ser solo ["Medico"] si NO administra
- *    centros: ["c_saludmass"]             // IDs de centros (de constants.ts o de Firestore)
- *  }
- */
-
-// --- Helpers de persistencia ---
-type GlobalCollection = "patients" | "doctors" | "appointments" | "logs" | "centers" | "users";
+type GlobalCollection =
+  | "patients"
+  | "doctors"
+  | "appointments"
+  | "logs"
+  | "centers"
+  | "users";
 
 function isValidCollection(c: string): c is GlobalCollection {
-  return ["patients", "doctors", "appointments", "logs", "centers", "users"].includes(c);
+  return ["patients", "doctors", "appointments", "logs", "centers", "users"].includes(
+    c
+  );
 }
 
-// Public assets (works even when the app is served under a sub-path)
+// Public assets
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
 const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
@@ -130,101 +107,102 @@ const App: React.FC = () => {
 
   // ---------- Global data ----------
   const [centers, setCenters] = useState<MedicalCenter[]>(INITIAL_CENTERS);
-  
-  // --- Centros desde Firestore (respetando permisos por centro) ---
-  // Regla: nunca listar "centers" completo para usuarios no-superadmin porque Firestore exige
-  // que TODOS los documentos del resultado cumplan la rule.
+
+  // Centros desde Firestore (respetando permisos por centro)
   useEffect(() => {
-  // Sin sesión: usamos catálogo local (modo home / demo)
-  if (!auth.currentUser) {
-    setCenters(INITIAL_CENTERS);
-    return;
-  }
-
-  let unsubscribers: Array<() => void> = [];
-  let cancelled = false;
-
-  const run = async () => {
-    try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-
-      // Leer perfil (autorización UX). La autorización REAL vive en rules.
-      const userSnap = await getDoc(doc(db, "users", uid));
-      const profile: any = userSnap.exists() ? userSnap.data() : null;
-
-      const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
-      const roles = rolesRaw.map((r: any) => String(r ?? "").trim().toLowerCase()).filter(Boolean);
-
-      const centersRaw: any[] = Array.isArray(profile?.centros)
-        ? profile.centros
-        : (Array.isArray(profile?.centers) ? profile.centers : []);
-      const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
-
-      const isSuper = isSuperAdminClaim || roles.includes("super_admin") || roles.includes("superadmin");
-
-      // SuperAdmin: puede escuchar todos los centros
-      if (isSuper) {
-        const unsub = onSnapshot(
-          query(collection(db, "centers")),
-          (snap) => {
-            if (cancelled) return;
-            const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-            setCenters(items.length ? items : INITIAL_CENTERS);
-          },
-          () => {
-            if (cancelled) return;
-            setCenters(INITIAL_CENTERS);
-          }
-        );
-        unsubscribers.push(unsub);
-        return;
-      }
-
-      // Usuarios no-superadmin: escuchar SOLO centros permitidos (documentId in ...)
-      if (!allowed.length) {
-        setCenters(INITIAL_CENTERS);
-        return;
-      }
-
-      // Firestore "in" permite máximo 10 IDs por query
-      const chunks: string[][] = [];
-      for (let i = 0; i < allowed.length; i += 10) chunks.push(allowed.slice(i, i + 10));
-
-      const all: Record<string, MedicalCenter> = {};
-      for (const ids of chunks) {
-        const unsub = onSnapshot(
-          query(collection(db, "centers"), where(documentId(), "in", ids)),
-          (snap) => {
-            if (cancelled) return;
-            snap.docs.forEach((d) => {
-              all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
-            });
-            const merged = Object.values(all);
-            setCenters(merged.length ? merged : INITIAL_CENTERS);
-          },
-          () => {
-            if (cancelled) return;
-            // si falla Firestore, quedamos con INITIAL_CENTERS
-            setCenters(INITIAL_CENTERS);
-          }
-        );
-        unsubscribers.push(unsub);
-      }
-    } catch {
-      if (!cancelled) setCenters(INITIAL_CENTERS);
+    if (!auth.currentUser) {
+      setCenters(INITIAL_CENTERS);
+      return;
     }
-  };
 
-  run();
+    let unsubscribers: Array<() => void> = [];
+    let cancelled = false;
 
-  return () => {
-    cancelled = true;
-    unsubscribers.forEach((u) => {
-      try { u(); } catch {}
-    });
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const run = async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const userSnap = await getDoc(doc(db, "users", uid));
+        const profile: any = userSnap.exists() ? userSnap.data() : null;
+
+        const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
+        const roles = rolesRaw
+          .map((r: any) => String(r ?? "").trim().toLowerCase())
+          .filter(Boolean);
+
+        const centersRaw: any[] = Array.isArray(profile?.centros)
+          ? profile.centros
+          : Array.isArray(profile?.centers)
+          ? profile.centers
+          : [];
+        const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
+
+        const isSuper =
+          isSuperAdminClaim ||
+          roles.includes("super_admin") ||
+          roles.includes("superadmin");
+
+        if (isSuper) {
+          const unsub = onSnapshot(
+            query(collection(db, "centers")),
+            (snap) => {
+              if (cancelled) return;
+              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+              setCenters(items.length ? items : INITIAL_CENTERS);
+            },
+            () => {
+              if (cancelled) return;
+              setCenters(INITIAL_CENTERS);
+            }
+          );
+          unsubscribers.push(unsub);
+          return;
+        }
+
+        if (!allowed.length) {
+          setCenters(INITIAL_CENTERS);
+          return;
+        }
+
+        // "in" máximo 10
+        const chunks: string[][] = [];
+        for (let i = 0; i < allowed.length; i += 10) chunks.push(allowed.slice(i, i + 10));
+
+        const all: Record<string, MedicalCenter> = {};
+        for (const ids of chunks) {
+          const unsub = onSnapshot(
+            query(collection(db, "centers"), where(documentId(), "in", ids)),
+            (snap) => {
+              if (cancelled) return;
+              snap.docs.forEach((d) => {
+                all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
+              });
+              const merged = Object.values(all);
+              setCenters(merged.length ? merged : INITIAL_CENTERS);
+            },
+            () => {
+              if (cancelled) return;
+              setCenters(INITIAL_CENTERS);
+            }
+          );
+          unsubscribers.push(unsub);
+        }
+      } catch {
+        if (!cancelled) setCenters(INITIAL_CENTERS);
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+      unsubscribers.forEach((u) => {
+        try {
+          u();
+        } catch {}
+      });
+    };
   }, [isSuperAdminClaim]);
 
   const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
@@ -235,8 +213,7 @@ const App: React.FC = () => {
 
   // tenant selection
   const [activeCenterId, setActiveCenterId] = useState<string>("");
-  
-  // módulos del centro (persistidos en Firestore dentro de centers/{id}.modules)
+
   const centerModules = useMemo(() => {
     const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId);
     return (c?.modules ?? {}) as CenterModules;
@@ -244,7 +221,7 @@ const App: React.FC = () => {
 
   const isModuleEnabled = (key: string) => {
     const v = centerModules?.[key];
-    return v === undefined ? true : !!v; // default allow si no está definido
+    return v === undefined ? true : !!v;
   };
 
   const activeCenter = useMemo(
@@ -254,13 +231,13 @@ const App: React.FC = () => {
 
   // ---------- Session ----------
   const [view, setView] = useState<ViewMode>("home" as ViewMode);
-  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>("center-portal" as ViewMode);
+  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
+    "center-portal" as ViewMode
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // user state (lo dejamos laxo para no romper types)
   const [currentUser, setCurrentUser] = useState<any>(null);
-
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -268,19 +245,22 @@ const App: React.FC = () => {
       if (user) {
         const token = await user.getIdTokenResult(true);
         setIsSuperAdminClaim(
-          !!((token.claims as any)?.super_admin === true ||
+          !!(
+            (token.claims as any)?.super_admin === true ||
             (token.claims as any)?.superadmin === true ||
-            (token.claims as any)?.superAdmin === true)
+            (token.claims as any)?.superAdmin === true
+          )
         );
-              } else {
+      } else {
         setIsSuperAdminClaim(false);
       }
     });
     return () => unsub();
   }, []);
+
   const [error, setError] = useState("");
 
-  // ---------- Invite (crear administrador por token) ----------
+  // ---------- Invite (por token /invite?token=...) ----------
   const [inviteToken, setInviteToken] = useState<string>("");
   const [inviteLoading, setInviteLoading] = useState<boolean>(false);
   const [inviteError, setInviteError] = useState<string>("");
@@ -290,10 +270,8 @@ const App: React.FC = () => {
   const [invitePassword, setInvitePassword] = useState<string>("");
   const [invitePassword2, setInvitePassword2] = useState<string>("");
   const [inviteMode, setInviteMode] = useState<"signup" | "signin">("signup");
-
   const [inviteDone, setInviteDone] = useState<boolean>(false);
 
-  // Si la URL viene como /invite?token=..., entramos directo al flujo de invitación.
   useEffect(() => {
     try {
       const path = window.location.pathname || "";
@@ -308,133 +286,93 @@ const App: React.FC = () => {
       }
       setInviteToken(t);
       setView("invite" as any);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
-  
-  // Cargar invitación desde Firestore (colección: invites/{token})
-  // Seguridad: la lectura requiere sesión y se valida que el email del token coincida con el email autenticado.
+  // Cargar datos visibles de invitación: intentamos leer; si permisos fallan, pedimos login
   useEffect(() => {
-  const load = async () => {
-    if (!inviteToken) return;
+    const load = async () => {
+      if (!inviteToken) return;
+      setInviteLoading(true);
+      setInviteError("");
 
-    // Requiere estar autenticado (idealmente Google con el mismo correo invitado)
-    if (!auth.currentUser) {
-      setInviteLoading(false);
-      setInviteError("Para continuar, inicia sesión (Google) con el correo invitado.");
-      return;
-    }
+      try {
+        const token = inviteToken.trim();
+        const snap = await getDoc(doc(db, "invites", token));
+        if (!snap.exists()) throw new Error("Invitación no encontrada o inválida.");
 
-    setInviteLoading(true);
-    setInviteError("");
+        const inv: any = snap.data() || {};
+        const status = String(inv.status || "").toLowerCase();
+        if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
+        if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
-    try {
-      const token = inviteToken.trim();
-      const snap = await getDoc(doc(db, "invites", token));
-      if (!snap.exists()) throw new Error("Invitación no encontrada o inválida.");
+        const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+        if (!emailLower) throw new Error("Invitación inválida: falta correo.");
 
-      const inv: any = snap.data() || {};
-
-      const status = String(inv.status || "").toLowerCase();
-      if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
-      if (status === "revoked") throw new Error("Esta invitación fue revocada.");
-
-      const emailLower = String(inv.emailLower || "").trim().toLowerCase();
-      if (!emailLower) {
-        throw new Error("Invitación inválida: falta correo.");
-      }
-
-// expiración opcional (Timestamp)
-      const expiresAt = inv.expiresAt;
-      if (expiresAt && typeof expiresAt.toDate === "function") {
-        const exp = expiresAt.toDate();
-        if (exp.getTime() < Date.now()) {
-          throw new Error("Esta invitación expiró. Solicita una nueva.");
+        const expiresAt = inv.expiresAt;
+        if (expiresAt && typeof expiresAt.toDate === "function") {
+          const exp = expiresAt.toDate();
+          if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
         }
+
+        setInviteEmail(emailLower);
+        setInviteCenterId(String(inv.centerId || ""));
+        setInviteCenterName(String(inv.centerName || ""));
+      } catch (e: any) {
+        // Si es permissions, mostramos mensaje claro (esto evita el “Missing...” genérico)
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("missing") || msg.toLowerCase().includes("permission")) {
+          setInviteError(
+            "No se pudo leer la invitación por permisos. Inicia sesión (Google o Email/Password) y reintenta. " +
+              "Si estás en Firebase Studio, agrega el dominio del workspace en Auth → Settings → Authorized domains."
+          );
+        } else {
+          setInviteError(e?.message || "Error cargando invitación.");
+        }
+      } finally {
+        setInviteLoading(false);
       }
+    };
 
-      setInviteEmail(emailLower);
-      setInviteCenterId(String(inv.centerId || ""));
-      setInviteCenterName(String(inv.centerName || "")); // opcional (puede venir vacío)
-    } catch (e: any) {
-      console.error(e);
-      setInviteError(e?.message || "Error cargando invitación.");
-    } finally {
-      setInviteLoading(false);
-    }
-  };
+    load();
+  }, [inviteToken]);
 
-  load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteToken, authUser]);
-
-  // Booking wizard
-  const [bookingStep, setBookingStep] = useState(0);
-  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phone: string }>({
-    name: "",
-    rut: "",
-    phone: "",
-  });
-  const [selectedRole, setSelectedRole] = useState<string>("");
-  const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
-  const [bookingDate, setBookingDate] = useState<Date>(new Date());
-  const [bookingMonth, setBookingMonth] = useState<Date>(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
-
-  // ---------- Firestore sync (tolerante a fallos) ----------
+  // ---------- Firestore sync (por center) ----------
   useEffect(() => {
     let unsubCenters: (() => void) | null = null;
 
-// Importante: NO listamos "centers" completo para usuarios no-superadmin,
-// porque Firestore exige que TODOS los documentos del resultado cumplan la rule.
-// Para no generar errores de permisos, solo escuchamos centers global si eres superadmin.
-if (isSuperAdminClaim) {
-  unsubCenters = onSnapshot(
-    collection(db, "centers"),
-    (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-      if (items.length) setCenters(items);
-    },
-    () => {
-      // si falla, quedamos con INITIAL_CENTERS
+    if (isSuperAdminClaim) {
+      unsubCenters = onSnapshot(
+        collection(db, "centers"),
+        (snap) => {
+          const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+          if (items.length) setCenters(items);
+        },
+        () => {}
+      );
     }
-  );
-}
+
     const unsubPatients = onSnapshot(
       query(collection(db, "patients"), where("centerId", "==", activeCenterId)),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
-        setPatients(items);
-      },
+      (snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
       () => {}
     );
 
     const unsubDoctors = onSnapshot(
       query(collection(db, "doctors"), where("centerId", "==", activeCenterId)),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
-        setDoctors(items);
-      },
+      (snap) => setDoctors(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[]),
       () => {}
     );
 
     const unsubAppts = onSnapshot(
       query(collection(db, "appointments"), where("centerId", "==", activeCenterId)),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[];
-        setAppointments(items);
-      },
+      (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
       () => {}
     );
 
     const unsubLogs = onSnapshot(
       query(collection(db, "logs"), where("centerId", "==", activeCenterId)),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[];
-        setAuditLogs(items);
-      },
+      (snap) => setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
       () => {}
     );
 
@@ -472,16 +410,14 @@ if (isSuperAdminClaim) {
       if (!snap.exists()) throw new Error("Usuario sin perfil en el sistema");
 
       const profile: any = snap.data();
-
       if (profile.activo === false) throw new Error("Usuario inactivo");
 
-            const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
+      const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
       const roles: string[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean);
       const rolesNorm = roles.map((r) => r.toLowerCase());
 
       const centros: string[] = Array.isArray(profile.centros) ? profile.centros : [];
 
-      // OJO: usa el usuario recién autenticado; authUser puede estar desfasado aquí
       const token = await cred.user.getIdTokenResult(true).catch(() => null as any);
       const claims: any = token?.claims ?? {};
 
@@ -498,10 +434,7 @@ if (isSuperAdminClaim) {
         rolesNorm.includes("center-admin") ||
         rolesNorm.includes("center admin");
 
-      const isAdmin =
-        rolesNorm.includes("admin") ||
-        rolesNorm.includes("administrador");
-  if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
+      if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
         setError("No tiene permisos administrativos.");
         return;
       }
@@ -511,30 +444,21 @@ if (isSuperAdminClaim) {
         email: profile.email ?? emailNorm,
         roles,
         centros,
-        isAdmin: (isCenterAdmin || isSuperAdmin),
-        // campos opcionales usados por dashboards; si no existen, se tolera
+        isAdmin: isCenterAdmin || isSuperAdmin,
         fullName: profile.fullName ?? profile.nombre ?? profile.email ?? "Usuario",
-        role: profile.role ?? (roles.find((r) => r !== "center_admin" && r !== "super_admin") ?? "Profesional"),
-        id: uid, // para dashboards que esperan currentUser.id
+        role:
+          profile.role ??
+          (roles.find((r) => r !== "center_admin" && r !== "super_admin") ?? "Profesional"),
+        id: uid,
       };
-  setCurrentUser(userFromFirestore as any);
+      setCurrentUser(userFromFirestore as any);
 
-      // ✅ SuperAdmin NO depende de centros: siempre entra a su panel
       if (isSuperAdmin) {
-        // SuperAdmin NO depende de centros: entra directo a su panel
-        setCurrentUser(userFromFirestore as any);
         setView("superadmin-dashboard" as any);
         return;
       }
 
-      // selección de centro (para usuarios normales / admins de centro)
       setPostCenterSelectView(targetView);
-
-      // Superadmin: puede administrar cualquier centro (no depende de profile.centros)
-      if (isSuperAdmin && targetView === ("admin-dashboard" as ViewMode)) {
-        setView("select-center" as ViewMode);
-        return;
-      }
 
       if (centros.length === 1) {
         setActiveCenterId(centros[0]);
@@ -545,7 +469,6 @@ if (isSuperAdminClaim) {
         setView("select-center" as ViewMode);
         return;
       }
-      // Si no tiene centros asignados y no es superadmin, se bloquea
       throw new Error("Usuario sin centros asignados");
     } catch (e: any) {
       console.error("LOGIN ERROR", e?.code, e?.message);
@@ -566,45 +489,57 @@ if (isSuperAdminClaim) {
       const emailUser = (user.email || "").trim().toLowerCase();
       if (!emailUser) throw new Error("Tu cuenta Google no tiene email disponible.");
 
-      // 1) Si ya existe perfil, úsalo
       const existingSnap = await getDoc(doc(db, "users", uid));
       if (existingSnap.exists()) {
         const profile: any = existingSnap.data();
         if (profile.activo === false) throw new Error("Usuario inactivo");
 
         const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-        const roles: string[] = rolesRaw.map((r: any) => String(r ?? "").trim().toLowerCase()).filter(Boolean);
-        const centers: string[] = Array.isArray((profile as any).centros) ? (profile as any).centros : (Array.isArray((profile as any).centers) ? (profile as any).centers : []);
-        const token = await authUser.getIdTokenResult?.(true).catch(() => null as any);
+        const roles: string[] = rolesRaw
+          .map((r: any) => String(r ?? "").trim().toLowerCase())
+          .filter(Boolean);
+
+        const centers: string[] = Array.isArray(profile.centros)
+          ? profile.centros
+          : Array.isArray(profile.centers)
+          ? profile.centers
+          : [];
+
+        // ✅ FIX: el token/claims debe venir del `user` recién autenticado
+        const token = await user.getIdTokenResult(true).catch(() => null as any);
         const claims: any = token?.claims ?? {};
-        const isSuperAdmin = !!(claims?.super_admin === true || claims?.superadmin === true) || roles.includes("super_admin");
-        const isCenterAdmin = roles.includes("center_admin");
+
+        const isSuperAdmin =
+          !!(claims?.super_admin === true || claims?.superadmin === true || claims?.superAdmin === true) ||
+          roles.includes("super_admin") ||
+          roles.includes("superadmin");
 
         const userFromFirestore = {
           uid,
           email: profile.email ?? emailUser,
           roles,
           centers,
+          centros: centers,
           activeCenterId: profile.activeCenterId ?? (centers?.[0] ?? null),
           displayName: profile.displayName ?? user.displayName ?? "",
           photoURL: profile.photoURL ?? user.photoURL ?? "",
+          fullName: profile.fullName ?? profile.nombre ?? profile.email ?? user.displayName ?? "Usuario",
+          id: uid,
         };
 
         setCurrentUser(userFromFirestore as any);
 
-        // SuperAdmin por Google (si aplica) entra directo
         if (isSuperAdmin) {
           setView("superadmin-dashboard" as any);
           return;
         }
 
-        // selección de centro para el resto
         setPostCenterSelectView(targetView);
         setView("select-center" as any);
         return;
       }
 
-      // 2) No hay perfil: reclamar invitación(es)
+      // si no existe perfil -> busca invitaciones pendientes
       const qInv = query(
         collection(db, "invites"),
         where("emailLower", "==", emailUser),
@@ -620,63 +555,69 @@ if (isSuperAdminClaim) {
       const rolesFromInvites = Array.from(new Set(inviteDocs.map((i) => i.role).filter(Boolean)));
       const centersFromInvites = Array.from(new Set(inviteDocs.map((i) => i.centerId).filter(Boolean)));
 
-      // Crear perfil usuario (users/{uid})
-      const newProfile = {
-        uid,
-        email: emailUser,
-        displayName: user.displayName ?? "",
-        photoURL: user.photoURL ?? "",
-        roles: rolesFromInvites,
-        centers: centersFromInvites,
-        activo: true,
-        createdAt: serverTimestamp(),
-        activeCenterId: centersFromInvites?.[0] ?? null,
-      };
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          uid,
+          email: emailUser,
+          displayName: user.displayName ?? "",
+          photoURL: user.photoURL ?? "",
+          roles: rolesFromInvites,
+          centers: centersFromInvites,
+          centros: centersFromInvites,
+          activo: true,
+          createdAt: serverTimestamp(),
+          activeCenterId: centersFromInvites?.[0] ?? null,
+        },
+        { merge: true }
+      );
 
-      await setDoc(doc(db, "users", uid), newProfile, { merge: true });
-
-      // Marcar invites como claimed (sin cambiar centerId/role/email) + crear staff por centro
       await Promise.all(
         inviteDocs.map(async (inv) => {
           await updateDoc(doc(db, "invites", inv.id), {
-            status: "claimed",
-            claimedAt: serverTimestamp(),
-            claimedByUid: uid,
-          });
+            status: "accepted",
+            acceptedAt: serverTimestamp(),
+            acceptedByUid: uid,
+          }).catch(() => {});
 
           const cId = String((inv as any).centerId || "").trim();
           const rId = String((inv as any).role || "").trim() || "staff";
           const eLower = String((inv as any).emailLower || emailUser).trim().toLowerCase();
 
           if (cId) {
-            await setDoc(doc(db, "centers", cId, "staff", uid), {
-              uid,
-              emailLower: eLower,
-              role: rId,
-              roles: [rId],
-              activo: true,
-              createdAt: serverTimestamp(),
-              inviteToken: inv.id,
-              invitedBy: (inv as any).invitedBy ?? null,
-              invitedAt: (inv as any).createdAt ?? null,
-            }, { merge: true });
+            await setDoc(
+              doc(db, "centers", cId, "staff", uid),
+              {
+                uid,
+                emailLower: eLower,
+                role: rId,
+                roles: [rId],
+                active: true,
+                activo: true,
+                createdAt: serverTimestamp(),
+                inviteToken: inv.id,
+                invitedBy: (inv as any).invitedBy ?? null,
+                invitedAt: (inv as any).createdAt ?? null,
+              },
+              { merge: true }
+            );
           }
         })
       );
 
-      const userFromFirestore = {
+      setCurrentUser({
         uid,
         email: emailUser,
         roles: rolesFromInvites,
         centers: centersFromInvites,
+        centros: centersFromInvites,
         activeCenterId: centersFromInvites?.[0] ?? null,
         displayName: user.displayName ?? "",
         photoURL: user.photoURL ?? "",
-      };
+        fullName: user.displayName ?? emailUser,
+        id: uid,
+      } as any);
 
-      setCurrentUser(userFromFirestore as any);
-
-      // Selección de centro
       setPostCenterSelectView(targetView);
       setView("select-center" as any);
     } catch (e: any) {
@@ -685,13 +626,10 @@ if (isSuperAdminClaim) {
     }
   };
 
-
   const handleLogout = async () => {
     try {
       await signOut(auth);
-    } catch {
-      // ignore
-    }
+    } catch {}
     setCurrentUser(null);
     setEmail("");
     setPassword("");
@@ -709,14 +647,125 @@ if (isSuperAdminClaim) {
       const fn = httpsCallable(functions, "setSuperAdmin");
       await fn({ uid: authUser.uid });
       alert(`✅ Usuario convertido en SuperAdmin.
-  Cierra sesión y vuelve a ingresar para aplicar permisos.`);
+Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     } catch (e: any) {
       console.error("BOOTSTRAP ERROR", e);
       alert(e?.message || "Error al ejecutar bootstrap");
     }
   };
 
+  // ---- Invitaciones: aceptar token ----
+  const acceptInviteForUser = async (tokenRaw: string, user: any) => {
+    const token = (tokenRaw || "").trim();
+    if (!token) throw new Error("Invitación inválida (sin token).");
+    if (!user?.uid) throw new Error("Debes iniciar sesión para aceptar la invitación.");
+
+    const uid = user.uid as string;
+    const emailUser = String(user.email || "").trim().toLowerCase();
+    if (!emailUser) throw new Error("Tu cuenta no tiene correo. Usa una cuenta con email.");
+
+    const invRef = doc(db, "invites", token);
+    const invSnap = await getDoc(invRef);
+    if (!invSnap.exists()) throw new Error("Invitación no encontrada o inválida.");
+
+    const inv: any = invSnap.data() || {};
+    const status = String(inv.status || "").toLowerCase();
+    if (status === "claimed" || status === "accepted") throw new Error("Esta invitación ya fue utilizada.");
+    if (status === "revoked") throw new Error("Esta invitación fue revocada.");
+
+    const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+    if (!emailLower) throw new Error("Invitación inválida: falta correo.");
+    if (emailLower !== emailUser) {
+      throw new Error(`Esta invitación es para ${emailLower}. Inicia sesión con ese correo.`);
+    }
+
+    const expiresAt = inv.expiresAt;
+    if (expiresAt && typeof expiresAt.toDate === "function") {
+      const exp = expiresAt.toDate();
+      if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
+    }
+
+    const centerId = String(inv.centerId || "").trim();
+    if (!centerId) throw new Error("Invitación inválida: falta centerId.");
+
+    const role = String(inv.role || "center_admin").trim() || "center_admin";
+
+    // users/{uid} union roles/centers
+    const uRef = doc(db, "users", uid);
+    const uSnap = await getDoc(uRef);
+    const existing: any = uSnap.exists() ? (uSnap.data() as any) : {};
+
+    const prevCenters: string[] = Array.isArray(existing.centers)
+      ? existing.centers
+      : Array.isArray(existing.centros)
+      ? existing.centros
+      : [];
+    const prevRoles: string[] = Array.isArray(existing.roles) ? existing.roles : [];
+
+    const nextCenters = Array.from(new Set([...prevCenters, centerId])).filter(Boolean);
+    const nextRoles = Array.from(new Set([...prevRoles, role])).filter(Boolean);
+
+    await setDoc(
+      uRef,
+      {
+        uid,
+        email: emailUser,
+        activo: true,
+        centers: nextCenters,
+        centros: nextCenters,
+        roles: nextRoles,
+        activeCenterId: existing.activeCenterId ?? (nextCenters[0] ?? null),
+        displayName: existing.displayName ?? user.displayName ?? "",
+        photoURL: existing.photoURL ?? user.photoURL ?? "",
+        updatedAt: serverTimestamp(),
+        createdAt: existing.createdAt ?? serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    // staff membership (active + compat)
+    await setDoc(
+      doc(db, "centers", centerId, "staff", uid),
+      {
+        uid,
+        emailLower,
+        role,
+        roles: [role],
+        active: true,
+        activo: true,
+        createdAt: serverTimestamp(),
+        inviteToken: token,
+        invitedBy: inv.invitedBy ?? null,
+        invitedAt: inv.createdAt ?? null,
+      },
+      { merge: true }
+    );
+
+    // mark invite accepted
+    await updateDoc(invRef, {
+      status: "accepted",
+      acceptedAt: serverTimestamp(),
+      acceptedByUid: uid,
+    }).catch(() => {});
+
+    setInviteCenterId(centerId);
+    setInviteCenterName(String(inv.centerName || inviteCenterName || ""));
+    setInviteDone(true);
+  };
+
   // ---------- Booking ----------
+  const [bookingStep, setBookingStep] = useState(0);
+  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phone: string }>({
+    name: "",
+    rut: "",
+    phone: "",
+  });
+  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
+  const [bookingDate, setBookingDate] = useState<Date>(new Date());
+  const [bookingMonth, setBookingMonth] = useState<Date>(new Date());
+  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
+
   const handleBookingConfirm = async () => {
     if (!selectedSlot || !bookingData.rut || !bookingData.name || !selectedDoctorForBooking) {
       showToast("Faltan datos", "error");
@@ -749,67 +798,71 @@ if (isSuperAdminClaim) {
     setView("patient-menu" as ViewMode);
   };
 
-  // ---------- Render ----------
+  // ---------- UI helpers ----------
   const renderCenterPortal = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) {
       return renderHomeDirectory();
     }
-    const primary = (activeCenter as any).primaryColor ?? "blue";
+
     return (
-
-    <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-      <div className="w-full max-w-4xl mb-6 flex justify-start">
-        <button
-          onClick={() => { setActiveCenterId(""); setView("home" as ViewMode); }}
-          className="px-4 py-2 rounded-xl bg-white/80 hover:bg-white shadow border border-white text-slate-700 font-bold"
-        >
-          ← Volver a ClaveSalud
-        </button>
-      </div>
-      <div className="text-center mb-10">
-        <div className={"w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg"}>
-          <Building2 className={"w-12 h-12 text-blue-600"} />
+      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+        <div className="w-full max-w-4xl mb-6 flex justify-start">
+          <button
+            onClick={() => {
+              setActiveCenterId("");
+              setView("home" as ViewMode);
+            }}
+            className="px-4 py-2 rounded-xl bg-white/80 hover:bg-white shadow border border-white text-slate-700 font-bold"
+          >
+            ← Volver a ClaveSalud
+          </button>
         </div>
-        <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">{activeCenter.name}</h1>
-        <p className="text-slate-500 mt-3 text-xl font-medium">Plataforma Integral de Salud</p>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-4xl">
-        <button
-          onClick={() => setView("patient-menu" as ViewMode)}
-          className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-        >
-          <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-            <UserRound className="w-12 h-12 text-blue-600" />
+        <div className="text-center mb-10">
+          <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg">
+            <Building2 className="w-12 h-12 text-blue-600" />
           </div>
-          <h3 className="font-bold text-3xl text-slate-800">Soy Paciente</h3>
-          <p className="text-slate-500 mt-2 font-medium text-lg">Reserva de horas y ficha clínica</p>
+          <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
+            {activeCenter.name}
+          </h1>
+          <p className="text-slate-500 mt-3 text-xl font-medium">Plataforma Integral de Salud</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-4xl">
+          <button
+            onClick={() => setView("patient-menu" as ViewMode)}
+            className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+          >
+            <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+              <UserRound className="w-12 h-12 text-blue-600" />
+            </div>
+            <h3 className="font-bold text-3xl text-slate-800">Soy Paciente</h3>
+            <p className="text-slate-500 mt-2 font-medium text-lg">Reserva de horas y ficha clínica</p>
+          </button>
+
+          <button
+            onClick={() => setView("doctor-login" as ViewMode)}
+            className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-emerald-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+          >
+            <div className="w-24 h-24 bg-emerald-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+              <Stethoscope className="w-12 h-12 text-emerald-600" />
+            </div>
+            <h3 className="font-bold text-3xl text-slate-800">Soy Profesional</h3>
+            <p className="text-slate-500 mt-2 font-medium text-lg">Acceso para equipos de salud</p>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setView("superadmin-login" as any)}
+          className="fixed top-4 right-4 p-3 rounded-full bg-slate-900/80 text-white shadow-xl hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          title="Acceso SuperAdmin"
+          aria-label="Acceso SuperAdmin"
+        >
+          <Lock className="w-5 h-5" />
         </button>
-
-        <button
-          onClick={() => setView("doctor-login" as ViewMode)}
-          className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-emerald-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-        >
-          <div className="w-24 h-24 bg-emerald-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-            <Stethoscope className="w-12 h-12 text-emerald-600" />
-          </div>
-          <h3 className="font-bold text-3xl text-slate-800">Soy Profesional</h3>
-          <p className="text-slate-500 mt-2 font-medium text-lg">Acceso para equipos de salud</p>
-        </button>      </div>
-      {/* Acceso discreto a SuperAdmin */}
-      <button
-        type="button"
-        onClick={() => setView("superadmin-login" as any)}
-        className="fixed top-4 right-4 p-3 rounded-full bg-slate-900/80 text-white shadow-xl hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
-        title="Acceso SuperAdmin"
-        aria-label="Acceso SuperAdmin"
-      >
-        <Lock className="w-5 h-5" />
-      </button>
-
-    </div>
-  );
-
+      </div>
+    );
   };
 
   const renderPatientMenu = () => (
@@ -860,11 +913,15 @@ if (isSuperAdminClaim) {
   const renderPatientForm = () => (
     <div className="min-h-screen pb-12">
       <div className="max-w-4xl mx-auto pt-6 px-4">
-        <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center drop-shadow-sm">Ficha de Pre-Ingreso</h2>
+        <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center drop-shadow-sm">
+          Ficha de Pre-Ingreso
+        </h2>
         <PatientForm
           onSave={(patient: Patient) => {
             const exists = patients.find((p) => p.rut === patient.rut);
-            const payload = exists ? { ...patient, id: exists.id, centerId: activeCenterId } : { ...patient, centerId: activeCenterId };
+            const payload = exists
+              ? { ...patient, id: exists.id, centerId: activeCenterId }
+              : { ...patient, centerId: activeCenterId };
             onGlobalUpdate("patients", payload);
             showToast("Ficha actualizada correctamente", "success");
             setView("patient-menu" as ViewMode);
@@ -876,7 +933,7 @@ if (isSuperAdminClaim) {
     </div>
   );
 
-    const renderBooking = () => {
+  const renderBooking = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
 
     const uniqueRoles = Array.from(
@@ -885,7 +942,6 @@ if (isSuperAdminClaim) {
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
-    // slots disponibles para el día seleccionado (según appointments.status === "available")
     const availableSlotsForDay =
       selectedDoctorForBooking
         ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig).filter((slot: any) => {
@@ -1032,10 +1088,10 @@ if (isSuperAdminClaim) {
                           isSelected
                             ? "bg-indigo-600 text-white border-indigo-600 shadow-lg scale-110 z-10"
                             : isPast
-                              ? "bg-slate-50 text-slate-300 border-transparent cursor-not-allowed opacity-50"
-                              : availableCount > 0
-                                ? "bg-white text-emerald-700 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 hover:scale-105 font-bold cursor-pointer shadow-sm"
-                                : "bg-white text-slate-300 border-slate-100 cursor-not-allowed",
+                            ? "bg-slate-50 text-slate-300 border-transparent cursor-not-allowed opacity-50"
+                            : availableCount > 0
+                            ? "bg-white text-emerald-700 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 hover:scale-105 font-bold cursor-pointer shadow-sm"
+                            : "bg-white text-slate-300 border-slate-100 cursor-not-allowed",
                         ].join(" ")}
                       >
                         <span className="text-base">{day.getDate()}</span>
@@ -1191,6 +1247,13 @@ if (isSuperAdminClaim) {
             <button onClick={() => handleSuperAdminLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)} className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}>
               Ingresar
             </button>
+
+            <button
+              onClick={() => handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)}
+              className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
+            >
+              Continuar con Google
+            </button>
           </div>
         </div>
       </div>
@@ -1252,18 +1315,16 @@ if (isSuperAdminClaim) {
             Ingresar
           </button>
         </div>
-
-        <p className="mt-4 text-xs text-slate-500">
-          * Si este usuario no tiene el rol <span className="font-mono">superadmin</span> / <span className="font-mono">super_admin</span> en Firestore, no podrá entrar.
-        </p>
       </div>
     </div>
   );
 
-
   const renderSelectCenter = () => {
-    // Centros disponibles para el usuario (acepta "centros" o "centers" por compatibilidad)
-    const allowed: string[] = Array.isArray(currentUser?.centros) ? currentUser.centros : (Array.isArray(currentUser?.centers) ? currentUser.centers : []);
+    const allowed: string[] = Array.isArray(currentUser?.centros)
+      ? currentUser.centros
+      : Array.isArray(currentUser?.centers)
+      ? currentUser.centers
+      : [];
     const available = centers.filter((c) => allowed.includes(c.id));
 
     return (
@@ -1271,11 +1332,7 @@ if (isSuperAdminClaim) {
         <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-extrabold text-slate-800">Selecciona un centro</h2>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
-            >
+            <button type="button" onClick={handleLogout} className="text-sm font-semibold text-slate-500 hover:text-slate-800">
               Cerrar sesión
             </button>
           </div>
@@ -1312,114 +1369,9 @@ if (isSuperAdminClaim) {
               ))}
             </div>
           )}
-
-          <div className="mt-6 text-xs text-slate-500">
-            Consejo: si administras más de un centro, podrás cambiar de centro desde aquí.
-          </div>
         </div>
       </div>
     );
-  };
-
-
-  // ---- Invitaciones: aceptar token incluso si el correo ya existe en Auth ----
-  const acceptInviteForUser = async (tokenRaw: string, user: any) => {
-    const token = (tokenRaw || "").trim();
-    if (!token) throw new Error("Invitación inválida (sin token).");
-    if (!user?.uid) throw new Error("Debes iniciar sesión para aceptar la invitación.");
-
-    const uid = user.uid as string;
-    const emailUser = String(user.email || "").trim().toLowerCase();
-    if (!emailUser) throw new Error("Tu cuenta no tiene correo. Usa una cuenta con email.");
-
-    // 1) Leer invitación
-    const invRef = doc(db, "invites", token);
-    const invSnap = await getDoc(invRef);
-    if (!invSnap.exists()) throw new Error("Invitación no encontrada o inválida.");
-
-    const inv: any = invSnap.data() || {};
-    const status = String(inv.status || "").toLowerCase();
-    if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
-    if (status === "revoked") throw new Error("Esta invitación fue revocada.");
-
-    const emailLower = String(inv.emailLower || "").trim().toLowerCase();
-    if (!emailLower) throw new Error("Invitación inválida: falta correo.");
-    if (emailLower !== emailUser) {
-      throw new Error(`Esta invitación es para ${emailLower}. Inicia sesión con ese correo.`);
-    }
-
-    // expiración opcional (Timestamp)
-    const expiresAt = inv.expiresAt;
-    if (expiresAt && typeof expiresAt.toDate === "function") {
-      const exp = expiresAt.toDate();
-      if (exp.getTime() < Date.now()) {
-        throw new Error("Esta invitación expiró. Solicita una nueva.");
-      }
-    }
-
-    const centerId = String(inv.centerId || "").trim();
-    if (!centerId) throw new Error("Invitación inválida: falta centerId.");
-
-    const role = String(inv.role || "center_admin").trim() || "center_admin";
-
-    // 2) Asegurar perfil users/{uid} (unión de roles/centros)
-    const uRef = doc(db, "users", uid);
-    const uSnap = await getDoc(uRef);
-    const existing: any = uSnap.exists() ? (uSnap.data() as any) : {};
-
-    const prevCenters: string[] = Array.isArray(existing.centers) ? existing.centers
-      : Array.isArray(existing.centros) ? existing.centros
-      : [];
-    const prevRoles: string[] = Array.isArray(existing.roles) ? existing.roles : [];
-
-    const nextCenters = Array.from(new Set([...prevCenters, centerId])).filter(Boolean);
-    const nextRoles = Array.from(new Set([...prevRoles, role])).filter(Boolean);
-
-    await setDoc(uRef, {
-      uid,
-      email: emailUser,
-      activo: true,
-      centers: nextCenters,
-      centros: nextCenters, // compatibilidad con versiones anteriores
-      roles: nextRoles,
-      activeCenterId: existing.activeCenterId ?? (nextCenters[0] ?? null),
-      displayName: existing.displayName ?? user.displayName ?? "",
-      photoURL: existing.photoURL ?? user.photoURL ?? "",
-      updatedAt: serverTimestamp(),
-      createdAt: existing.createdAt ?? serverTimestamp(),
-    }, { merge: true });
-
-// 3) Crear membership centers/{centerId}/staff/{uid}
-await setDoc(
-  doc(db, "centers", centerId, "staff", uid),
-  {
-    uid,
-    emailLower,
-    role,
-    roles: [role],
-
-    active: true,   // ✅ NUEVO (para rules actuales)
-    activo: true,   // ✅ mantén compatibilidad
-
-    createdAt: serverTimestamp(),
-    inviteToken: token, // clave para reglas v1.1 (token -> creación staff)
-    invitedBy: inv.invitedBy ?? null,
-    invitedAt: inv.createdAt ?? null,
-  },
-  { merge: true }
-);
-
-    // 4) Marcar invitación como claimed
-    await updateDoc(invRef, {
-      status: "accepted",
-      acceptedAt: serverTimestamp(),
-      acceptedByUid: uid,      
-    }).catch(() => {});
-
-    // 5) UI
-    setInviteCenterId(centerId);
-    setInviteCenterName(String(inv.centerName || inviteCenterName || ""));
-    setInviteDone(true);
   };
 
   const renderInviteRegister = () => {
@@ -1456,10 +1408,7 @@ await setDoc(
               <button
                 type="button"
                 className="w-full mt-4 rounded-xl bg-sky-600 text-white font-bold py-3 hover:bg-sky-700 transition-colors"
-                onClick={() => {
-                  // Luego del accept, tu login normal te llevará a selector/portal
-                  setView("home" as any);
-                }}
+                onClick={() => setView("home" as any)}
               >
                 Ir a inicio
               </button>
@@ -1525,15 +1474,16 @@ await setDoc(
                         await acceptInviteForUser(token, cred.user);
                         showToast("Cuenta creada y invitación aceptada", "success");
                       } catch (e: any) {
-                        // Si el correo ya existe, cambiamos a modo login
                         if (e?.code === "auth/email-already-in-use") {
                           setInviteMode("signin");
                           throw new Error("Este correo ya existe. Inicia sesión para aceptar la invitación.");
                         }
+                        if (e?.code === "auth/operation-not-allowed") {
+                          throw new Error("Email/Password no está habilitado en Firebase Auth. Habilítalo en Console → Auth → Método de acceso.");
+                        }
                         throw e;
                       }
                     } else {
-                      // Sign in y aceptar
                       const cred = await signInWithEmailAndPassword(auth, inviteEmail, invitePassword);
                       await acceptInviteForUser(token, cred.user);
                       showToast("Invitación aceptada", "success");
@@ -1615,29 +1565,14 @@ await setDoc(
           backgroundRepeat: "no-repeat",
         }}
       >
-        {/* 🔐 Bootstrap SuperAdmin (solo si NO es superadmin) */}
         {authUser && !isSuperAdminClaim && (
           <div className="fixed bottom-4 right-4 z-50">
-            <button
-              onClick={bootstrapSuperAdmin}
-              className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700"
-            >
+            <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
               Convertirme en SuperAdmin
             </button>
           </div>
         )}
 
-        {/* Capa sutil de puntos (muy ligera) */} 
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.18]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(15,23,42,0.09) 1px, transparent 0)",
-            backgroundSize: "28px 28px",
-          }}
-        />
-
-        {/* Candado global SuperAdmin (discreto, arriba derecha) */}
         <button
           type="button"
           onClick={() => setView("superadmin-login" as ViewMode)}
@@ -1655,24 +1590,17 @@ await setDoc(
               alt="ClaveSalud"
               className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
             />
-           <h1 className="text-4xl md:text-5xl font-extrabold">
-  <span className="text-sky-500">Clave</span><span className="text-teal-700">Salud</span>
-  </h1>
+            <h1 className="text-4xl md:text-5xl font-extrabold">
+              <span className="text-sky-500">Clave</span><span className="text-teal-700">Salud</span>
+            </h1>
           </div>
-
-          <p className="text-slate-500 mt-3 text-lg">
-            Ficha clínica digital para equipos de salud.
-          </p>
+          <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
         </div>
 
         <div className="w-full max-w-5xl">
           <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-slate-800">
-              Directorio de centros médicos
-            </h2>
-            <p className="text-slate-500 text-sm">
-              Selecciona un centro para ingresar a su portal.
-            </p>
+            <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
+            <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1686,22 +1614,17 @@ await setDoc(
                 className="bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left"
               >
                 <div className="flex items-center gap-4">
-                 {/* ESTE ES EL NUEVO CÓDIGO */}
-  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
-  {(c as any).logoUrl ? (
-    <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
-  ) : (
-    <Building2 className="w-7 h-7 text-slate-700" />
-  )}
-  </div>
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+                    {(c as any).logoUrl ? (
+                      <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <Building2 className="w-7 h-7 text-slate-700" />
+                    )}
+                  </div>
 
                   <div className="flex-1">
-                    <div className="font-extrabold text-slate-900 text-lg leading-tight">
-                      {c.name}
-                    </div>
-                    <div className="text-slate-500 text-sm">
-                      {c.commune ?? c.region ?? "Chile"}
-                    </div>
+                    <div className="font-extrabold text-slate-900 text-lg leading-tight">{c.name}</div>
+                    <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
                   </div>
                 </div>
                 <div className="mt-5 text-sm font-bold text-slate-700 inline-flex items-center gap-2">
@@ -1728,127 +1651,96 @@ await setDoc(
     };
   }, [centers, activeCenterId]);
 
-  
+  // ---------- Render ----------
+  if (view === ("invite" as any))
+    return <CenterContext.Provider value={centerCtxValue}>{renderInviteRegister()}</CenterContext.Provider>;
 
+  if (view === ("center-portal" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
 
-  if (view === ("invite" as any)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderInviteRegister()}
-    </CenterContext.Provider>
-  );
+  if (view === ("patient-menu" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
 
-  if (view === ("center-portal" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderCenterPortal()}
-        </CenterContext.Provider>
-  );
-  if (view === ("patient-menu" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderPatientMenu()}
-        </CenterContext.Provider>
-  );
-  if (view === ("patient-form" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderPatientForm()}
-        </CenterContext.Provider>
-  );
-  if (view === ("patient-booking" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderBooking()}
-        </CenterContext.Provider>
-  );
-  if (view === ("doctor-login" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderLogin(true)}
-    </CenterContext.Provider>
-  );
-  
-  if (view === ("superadmin-login" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderSuperAdminLogin()}
-        </CenterContext.Provider>
-  );
+  if (view === ("patient-form" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;
+
+  if (view === ("patient-booking" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>;
+
+  if (view === ("doctor-login" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>;
+
+  if (view === ("superadmin-login" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderSuperAdminLogin()}</CenterContext.Provider>;
 
   if (view === ("superadmin-dashboard" as ViewMode)) {
     return (
       <CenterContext.Provider value={centerCtxValue}>
         <SuperAdminDashboard
-        centers={centers}
-        doctors={doctors}
-        demoMode={demoMode}
-        onToggleDemo={() => setDemoMode((d) => !d)}
-        onLogout={() => {
-          setCurrentUser(null);
-          setActiveCenterId("");
-    setView("home" as ViewMode);
-        }}
-        onUpdateCenters={async (updates) => {
-          for (const c of updates) await onGlobalUpdate("centers", c as any);
-        }}
-        onDeleteCenter={async (id) => {
-          await onGlobalDelete("centers", id);
-        }}
-        onUpdateDoctors={async (updates) => {
-          for (const d of updates) await onGlobalUpdate("doctors", d as any);
-        }}
-      />
-    )
+          centers={centers}
+          doctors={doctors}
+          demoMode={demoMode}
+          onToggleDemo={() => setDemoMode((d) => !d)}
+          onLogout={() => {
+            setCurrentUser(null);
+            setActiveCenterId("");
+            setView("home" as ViewMode);
+          }}
+          onUpdateCenters={async (updates) => {
+            for (const c of updates) await onGlobalUpdate("centers", c as any);
+          }}
+          onDeleteCenter={async (id) => {
+            await onGlobalDelete("centers", id);
+          }}
+          onUpdateDoctors={async (updates) => {
+            for (const d of updates) await onGlobalUpdate("doctors", d as any);
+          }}
+        />
       </CenterContext.Provider>
     );
   }
 
-  if (view === ("admin-login" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderLogin(false)}
-    </CenterContext.Provider>
-  );
-  if (view === ("home" as ViewMode)) return (
-        <>
-          {renderHomeDirectory()}
-        </>
-      );
+  if (view === ("admin-login" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>;
 
-      if (view === ("select-center" as ViewMode)) return (
-    <CenterContext.Provider value={centerCtxValue}>
-      {renderSelectCenter()}
-        </CenterContext.Provider>
-  );
+  if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
+
+  if (view === ("select-center" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderSelectCenter()}</CenterContext.Provider>;
 
   if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
     return (
       <CenterContext.Provider value={centerCtxValue}>
         <ProfessionalDashboard
-        patients={patients}
-        doctorName={currentUser.fullName}
-        doctorId={currentUser.id}
-        role={currentUser.role}
-        agendaConfig={currentUser.agendaConfig}
-        savedTemplates={currentUser.savedTemplates}
-        currentUser={currentUser}
-        onUpdatePatient={(p: Patient) => onGlobalUpdate("patients", p)}
-        onUpdateDoctor={(d: Doctor) => onGlobalUpdate("doctors", d)}
-        onLogout={handleLogout}
-        appointments={appointments}
-        onUpdateAppointments={(newAppts: Appointment[]) => {
-          // upsert simplistic: write all changed
-          newAppts.forEach((a) => onGlobalUpdate("appointments", a));
-        }}
-        onLogActivity={(action: any, details: string, targetId?: string) => {
-          const log: AuditLogEntry = {
-            id: generateId(),
-            centerId: activeCenterId,
-            timestamp: new Date().toISOString(),
-            actorName: currentUser.fullName ?? "Usuario",
-            actorRole: currentUser.role ?? "Profesional",
-            action,
-            details,
-            targetId,
-          } as any;
-          onGlobalUpdate("logs", log);
-        }}
-        isReadOnly={false}
-      />
-    )
+          patients={patients}
+          doctorName={currentUser.fullName}
+          doctorId={currentUser.id}
+          role={currentUser.role}
+          agendaConfig={currentUser.agendaConfig}
+          savedTemplates={currentUser.savedTemplates}
+          currentUser={currentUser}
+          onUpdatePatient={(p: Patient) => onGlobalUpdate("patients", p)}
+          onUpdateDoctor={(d: Doctor) => onGlobalUpdate("doctors", d)}
+          onLogout={handleLogout}
+          appointments={appointments}
+          onUpdateAppointments={(newAppts: Appointment[]) => {
+            newAppts.forEach((a) => onGlobalUpdate("appointments", a));
+          }}
+          onLogActivity={(action: any, details: string, targetId?: string) => {
+            const log: AuditLogEntry = {
+              id: generateId(),
+              centerId: activeCenterId,
+              timestamp: new Date().toISOString(),
+              actorName: currentUser.fullName ?? "Usuario",
+              actorRole: currentUser.role ?? "Profesional",
+              action,
+              details,
+              targetId,
+            } as any;
+            onGlobalUpdate("logs", log);
+          }}
+          isReadOnly={false}
+        />
       </CenterContext.Provider>
     );
   }
@@ -1857,30 +1749,29 @@ await setDoc(
     return (
       <CenterContext.Provider value={centerCtxValue}>
         <AdminDashboard
-        centerId={activeCenterId}
-        doctors={doctors}
-        onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => onGlobalUpdate("doctors", d))}
-        appointments={appointments}
-        onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => onGlobalUpdate("appointments", a))}
-        patients={patients}
-        onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => onGlobalUpdate("patients", p))}
-        onLogout={handleLogout}
-        logs={auditLogs}
-        onLogActivity={(action: any, details: string, targetId?: string) => {
-          const log: AuditLogEntry = {
-            id: generateId(),
-            centerId: activeCenterId,
-            timestamp: new Date().toISOString(),
-            actorName: currentUser.fullName ?? "Usuario",
-            actorRole: currentUser.role ?? "Admin",
-            action,
-            details,
-            targetId,
-          } as any;
-          onGlobalUpdate("logs", log);
-        }}
-      />
-    )
+          centerId={activeCenterId}
+          doctors={doctors}
+          onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => onGlobalUpdate("doctors", d))}
+          appointments={appointments}
+          onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => onGlobalUpdate("appointments", a))}
+          patients={patients}
+          onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => onGlobalUpdate("patients", p))}
+          onLogout={handleLogout}
+          logs={auditLogs}
+          onLogActivity={(action: any, details: string, targetId?: string) => {
+            const log: AuditLogEntry = {
+              id: generateId(),
+              centerId: activeCenterId,
+              timestamp: new Date().toISOString(),
+              actorName: currentUser.fullName ?? "Usuario",
+              actorRole: currentUser.role ?? "Admin",
+              action,
+              details,
+              targetId,
+            } as any;
+            onGlobalUpdate("logs", log);
+          }}
+        />
       </CenterContext.Provider>
     );
   }
