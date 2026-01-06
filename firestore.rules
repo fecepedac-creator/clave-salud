@@ -2,9 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /* =========================
-       Helpers generales
-    ==========================*/
     function signedIn() {
       return request.auth != null;
     }
@@ -19,18 +16,15 @@ service cloud.firestore {
         : null;
     }
 
-    /* =========================
-       Roles globales (claims)
-    ==========================*/
+    // ✅ Acepta variantes de claim
     function isSuperAdmin() {
-      return signedIn() && request.auth.token.super_admin == true;
+      return signedIn() && (
+        request.auth.token.super_admin == true ||
+        request.auth.token.superadmin == true ||
+        request.auth.token.superAdmin == true
+      );
     }
 
-    /* =========================
-       Users (compatibilidad con tu login actual)
-       - Cada usuario puede leer/escribir su propio perfil.
-       - SuperAdmin puede leerlos.
-    ==========================*/
     match /users/{userId} {
       allow read: if signedIn() && (isSuperAdmin() || uid() == userId);
       allow create: if signedIn() && uid() == userId;
@@ -38,9 +32,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    /* =========================
-       Helpers por centro
-    ==========================*/
     function staffPath(centerId, staffUid) {
       return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
     }
@@ -49,10 +40,11 @@ service cloud.firestore {
       return get(staffPath(centerId, uid()));
     }
 
+    // ✅ Compatible: active OR activo
     function isStaff(centerId) {
       return signedIn()
         && exists(staffPath(centerId, uid()))
-        && staffDoc(centerId).data.active == true;
+        && (staffDoc(centerId).data.active == true || staffDoc(centerId).data.activo == true);
     }
 
     function staffRole(centerId) {
@@ -73,20 +65,11 @@ service cloud.firestore {
       return isSuperAdmin() || isCenterAdmin(centerId);
     }
 
-    /* =========================
-       INVITES helpers (para aceptar invitación sin Cloud Functions)
-    ==========================*/
     function inviteDoc(token) {
       return get(/databases/$(database)/documents/invites/$(token));
     }
 
     function inviteValidForSelf(centerId, staffUid, token) {
-      // staffUid debe ser el usuario autenticado
-      // El invite debe:
-      // - existir
-      // - estar pending
-      // - ser del mismo centerId
-      // - emailLower coincide con el del usuario autenticado
       return signedIn()
         && staffUid == uid()
         && token is string
@@ -96,28 +79,18 @@ service cloud.firestore {
         && inviteDoc(token).data.emailLower == emailLower();
     }
 
-    /* =========================
-       CENTERS (tenant root)
-    ==========================*/
     match /centers/{centerId} {
       allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
       allow create: if isSuperAdmin();
       allow update, delete: if isSuperAdmin();
 
-      /* ---------- STAFF ---------- */
       match /staff/{staffUid} {
-
-        // SuperAdmin ve todo; miembros ven su propio doc; admin ve su centro
         allow read: if signedIn() && (
           isSuperAdmin()
           || (uid() == staffUid)
           || isCenterAdmin(centerId)
         );
 
-        // Crear staff:
-        // - SuperAdmin
-        // - CenterAdmin (para su centro)
-        // - Invitado creando SU propio staff (vía token)
         allow create: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
@@ -127,21 +100,15 @@ service cloud.firestore {
           )
         );
 
-        // Update staff:
-        // - SuperAdmin
-        // - CenterAdmin (para su centro)
-        // - El propio usuario (solo campos no críticos) -> lo dejamos permitido y tú controlas desde UI
         allow update: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
           || (uid() == staffUid)
         );
 
-        // Nadie borra staff desde cliente (mejor desactivar/soft-delete)
         allow delete: if false;
       }
 
-      /* ---------- PATIENTS ---------- */
       match /patients/{patientId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
@@ -154,15 +121,10 @@ service cloud.firestore {
         }
       }
 
-      /* ---------- TEMPLATES ---------- */
       match /templates/{templateId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create: if signedIn() && (isSuperAdmin() || isStaff(centerId));
 
-        // Editar:
-        // - SuperAdmin
-        // - CenterAdmin
-        // - Dueño de plantilla (ownerUid)
         allow update: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
@@ -172,7 +134,6 @@ service cloud.firestore {
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
-      /* ---------- AGENDA CONFIG (opcional separado) ---------- */
       match /agendas/{uidDoc} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (
@@ -183,7 +144,6 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      /* ---------- SLOTS ---------- */
       match /slots/{slotId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (
@@ -194,7 +154,6 @@ service cloud.firestore {
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
-      /* ---------- APPOINTMENTS ---------- */
       match /appointments/{apptId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (
@@ -205,25 +164,21 @@ service cloud.firestore {
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
-      /* ---------- AUDIT LOGS ---------- */
       match /auditLogs/{logId} {
         allow read: if signedIn() && canViewAudit(centerId);
-        // idealmente desde Cloud Functions; por ahora solo superadmin
         allow create: if signedIn() && isSuperAdmin();
         allow update, delete: if false;
       }
     }
 
-    /* =========================
-       INVITES (global)
-    ==========================*/
     match /invites/{token} {
-      // Leer invite por link (antes de login)
-      allow read: if true;
+      // ✅ lectura segura (ya no pública)
+      allow read: if signedIn() && (
+        isSuperAdmin()
+        || (resource.data.centerId is string && isCenterAdmin(resource.data.centerId))
+        || (resource.data.emailLower is string && resource.data.emailLower == emailLower())
+      );
 
-      // Crear invite:
-      // - SuperAdmin
-      // - CenterAdmin del centro destino
       allow create: if signedIn() && (
         isSuperAdmin()
         || (
@@ -232,19 +187,20 @@ service cloud.firestore {
         )
       );
 
-      // Aceptar invite (pending -> accepted por el dueño del correo)
+      // ✅ acepta pending -> accepted o pending -> claimed (dueño del correo)
       allow update: if signedIn()
+        && (resource.data.emailLower is string && resource.data.emailLower == emailLower())
         && resource.data.status == "pending"
-        && request.resource.data.status == "accepted"
-        && request.resource.data.acceptedByUid == uid();
+        && (
+          (request.resource.data.status == "accepted"
+            && request.resource.data.acceptedByUid == uid())
+          || (request.resource.data.status == "claimed"
+            && request.resource.data.claimedByUid == uid())
+        );
 
-      // Nadie borra invites desde cliente
       allow delete: if false;
     }
 
-    /* =========================
-       BLOQUEO COLECCIONES PLANAS LEGACY
-    ==========================*/
     match /doctors/{docId} { allow read, write: if false; }
     match /patients/{patId} { allow read, write: if false; }
     match /appointments/{appId} { allow read, write: if false; }

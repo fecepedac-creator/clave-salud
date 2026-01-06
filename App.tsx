@@ -267,8 +267,12 @@ const App: React.FC = () => {
       setAuthUser(user);
       if (user) {
         const token = await user.getIdTokenResult(true);
-        setIsSuperAdminClaim(!!(token.claims as any)?.superadmin);
-      } else {
+        setIsSuperAdminClaim(
+          !!((token.claims as any)?.super_admin === true ||
+            (token.claims as any)?.superadmin === true ||
+            (token.claims as any)?.superAdmin === true)
+        );
+              } else {
         setIsSuperAdminClaim(false);
       }
     });
@@ -1385,24 +1389,31 @@ if (isSuperAdminClaim) {
       createdAt: existing.createdAt ?? serverTimestamp(),
     }, { merge: true });
 
-    // 3) Crear membership centers/{centerId}/staff/{uid}
-    await setDoc(doc(db, "centers", centerId, "staff", uid), {
-      uid,
-      emailLower,
-      role,
-      roles: [role],
-      activo: true,
-      createdAt: serverTimestamp(),
-      inviteToken: token, // clave para reglas v1.1 (token -> creación staff)
-      invitedBy: inv.invitedBy ?? null,
-      invitedAt: inv.createdAt ?? null,
-    }, { merge: true });
+// 3) Crear membership centers/{centerId}/staff/{uid}
+await setDoc(
+  doc(db, "centers", centerId, "staff", uid),
+  {
+    uid,
+    emailLower,
+    role,
+    roles: [role],
+
+    active: true,   // ✅ NUEVO (para rules actuales)
+    activo: true,   // ✅ mantén compatibilidad
+
+    createdAt: serverTimestamp(),
+    inviteToken: token, // clave para reglas v1.1 (token -> creación staff)
+    invitedBy: inv.invitedBy ?? null,
+    invitedAt: inv.createdAt ?? null,
+  },
+  { merge: true }
+);
 
     // 4) Marcar invitación como claimed
     await updateDoc(invRef, {
-      status: "claimed",
-      claimedAt: serverTimestamp(),
-      claimedByUid: uid,
+      status: "accepted",
+      acceptedAt: serverTimestamp(),
+      acceptedByUid: uid,      
     }).catch(() => {});
 
     // 5) UI

@@ -529,101 +529,93 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     return body;
   }, [commCenter, commType, commTitle, commBody]);
 
-  const handleInviteCenterAdmin = async () => {
-    if (!editingCenter) return;
-    if (isInvitingAdmin) return;
+const handleInviteCenterAdmin = async () => {
+  if (!editingCenter) return;
+  if (isInvitingAdmin) return;
 
-    const emailLower = (isCreating ? newCenterAdminEmail : ((editingCenter as any).adminEmail || ""))
-      .trim()
-      .toLowerCase();
+  const emailLower = (isCreating ? newCenterAdminEmail : String((editingCenter as any).adminEmail || ""))
+    .trim()
+    .toLowerCase();
 
-    if (!emailLower) {
-      showToast("Falta el correo del administrador (adminEmail).", "error");
-      return;
+  if (!emailLower) {
+    showToast("Falta el correo del administrador (adminEmail).", "error");
+    return;
+  }
+
+  const centerId = String(editingCenter.id || "").trim();
+  if (!centerId) {
+    showToast("Primero guarda el centro para poder invitar a su administrador.", "error");
+    return;
+  }
+
+  setIsInvitingAdmin(true);
+  try {
+    // 1) Revocar invitaciones PENDING previas
+    const prevQ = query(
+      collection(db, "invites"),
+      where("emailLower", "==", emailLower),
+      where("centerId", "==", centerId),
+      where("status", "==", "pending")
+    );
+
+    const prev = await getDocs(prevQ);
+    for (const d of prev.docs) {
+      await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
     }
 
-    const centerId = editingCenter.id;
-    if (!centerId) {
-      showToast("Primero guarda el centro para poder invitar a su administrador.", "error");
-      return;
-    }
+    // 2) Crear invitación nueva
+    let token = generateSecureToken(24);
+    const baseUrl = window.location.origin;
+    let link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
 
-    setIsInvitingAdmin(true);
+    // Prefer Cloud Function
     try {
-      // 1) Revocar invitaciones PENDING previas
-      const prevQ = query(
-        collection(db, "invites"),
-        where("emailLower", "==", emailLower),
-        where("centerId", "==", centerId),
-        where("status", "==", "pending")
-      );
+      const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
+      const res: any = await fn({
+        centerId,
+        adminEmail: emailLower,
+        centerName: editingCenter.name || "",
+      });
 
-      const prev = await getDocs(prevQ);
-      for (const d of prev.docs) {
-        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
-      }
-
-      // 2) Crear invitación nueva (docId = token)
-      const token = generateSecureToken(24);
+      const data = res?.data || {};
+      if (data?.token) token = String(data.token);
+      link = String(data?.inviteUrl || `${baseUrl}/invite?token=${encodeURIComponent(token)}`);
+    } catch {
+      // Fallback a Firestore (si rules lo permiten)
       const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-
-      // Prefer Cloud Function (bypasses Firestore rules, enforces server-side auth)
-try {
-  const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
-  const res: any = await fn({
-    centerId: editingCenter.id,
-    adminEmail,
-    centerName: editingCenter.name || "",
-  });
-  const data = (res && res.data) ? res.data : {};
-  const serverToken = data.token || token;
-  const serverUrl = data.inviteUrl || inviteUrl;
-
-  // Use server-provided token/url if available
-  token = serverToken;
-  inviteUrl = serverUrl;
-} catch (err: any) {
-  // Fallback to Firestore (only if rules allow)
-  // If rules deny, the outer catch will show a clear message.
-  await setDoc(doc(db, "invites", token), {
-    token,
-    centerId: editingCenter.id,
-    adminEmailLower: adminEmail.toLowerCase(),
-    role: "center_admin",
-    createdAt: Date.now(),
-    expiresAt,
-    status: "pending",
-  });
-}
-
-      const baseUrl = window.location.origin;
-      const link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
-
-      setLastInviteLink(link);
-
-      const centerName = editingCenter.name || "Centro";
-      const { subject, body } = buildInviteEmailParts(centerName, link);
-
-      // ✅ Guardar para botones Gmail / copiar
-      setLastInviteTo(emailLower);
-      setLastInviteSubject(subject);
-      setLastInviteBody(body);
-
-      // ✅ 3) (Opcional) Abrir correo: lo dejamos como botón para evitar pop-ups múltiples
-      const mailtoUrl = buildMailtoUrl(emailLower, subject, body);
-      // NO abrimos automáticamente para evitar múltiples pestañas/pop-up blockers.
-      // ✅ 4) Copiar (fallback)
-      const copyText = buildCopyEmailText(emailLower, subject, body);
-      await navigator.clipboard.writeText(copyText);
-
-      showToast("Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto si lo deseas.", "success");
-    } catch (e: any) {
-      console.error("INVITE ERROR", e);
-      showToast(e?.message || "Error generando invitación", "error");
-    } finally {
-      setIsInvitingAdmin(false);
+      await setDoc(doc(db, "invites", token), {
+        token,
+        centerId,
+        centerName: editingCenter.name || "",
+        emailLower,
+        role: "center_admin",
+        status: "pending",
+        createdAt: serverTimestamp(),
+        expiresAt,
+        invitedByUid: auth.currentUser?.uid || null,
+      });
     }
-  };
+
+    setLastInviteLink(link);
+
+    const centerName = editingCenter.name || "Centro";
+    const { subject, body } = buildInviteEmailParts(centerName, link);
+
+    setLastInviteTo(emailLower);
+    setLastInviteSubject(subject);
+    setLastInviteBody(body);
+
+    const copyText = buildCopyEmailText(emailLower, subject, body);
+    await navigator.clipboard.writeText(copyText);
+
+    showToast("Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.", "success");
+  } catch (e: any) {
+    console.error("INVITE ERROR", e);
+    showToast(e?.message || "Error generando invitación", "error");
+  } finally {
+    setIsInvitingAdmin(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pl-64">
