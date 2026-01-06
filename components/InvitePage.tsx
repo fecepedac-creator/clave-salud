@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { signInGoogle, upsertBasicUserProfile } from "../services/auth";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 type InviteData = {
   emailLower?: string;
@@ -9,14 +9,14 @@ type InviteData = {
   centerId?: string;
   centerName?: string;
   role?: string;
-  status?: "pending" | "claimed" | "revoked";
-  expiresAt?: any; // Timestamp optional
+  status?: "pending" | "claimed" | "revoked" | "accepted";
+  expiresAt?: any;
+  invitedBy?: string;
+  createdAt?: any;
 };
 
 type Props = {
-  /** opcional: si App ya leyó token */
   token?: string;
-  /** opcional: si quieres forzar un callback al terminar */
   onDone?: () => void;
 };
 
@@ -36,8 +36,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
   const [error, setError] = useState<string>("");
   const [done, setDone] = useState(false);
 
-  const currentUser = auth.currentUser;
-  const authEmailLower = lower(currentUser?.email || "");
+  const authEmailLower = lower(auth.currentUser?.email || "");
 
   const loadInvite = async () => {
     if (!token) {
@@ -56,16 +55,13 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       const inv = (snap.data() || {}) as InviteData;
 
       const status = (inv.status || "pending").toLowerCase() as InviteData["status"];
-      if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
+      if (status === "claimed" || status === "accepted") throw new Error("Esta invitación ya fue utilizada.");
       if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
-      // expiración opcional
       const expiresAt: any = (inv as any).expiresAt;
       if (expiresAt && typeof expiresAt.toDate === "function") {
         const exp = expiresAt.toDate();
-        if (exp.getTime() < Date.now()) {
-          throw new Error("Esta invitación expiró. Solicita una nueva.");
-        }
+        if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
       }
 
       if (!inv.centerId) throw new Error("Invitación inválida: falta centerId.");
@@ -73,7 +69,6 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
 
       setInvite(inv);
     } catch (e: any) {
-      // eslint-disable-next-line no-console
       console.error("InvitePage load error:", e);
       setError(e?.message || "Error cargando invitación.");
       setInvite(null);
@@ -90,11 +85,11 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
   const handleGoogleLogin = async () => {
     setError("");
     try {
-      const u = await signInGoogle();
-      await upsertBasicUserProfile(u);
-      await loadInvite(); // recargar por si el UI depende del user
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, provider);
+      await loadInvite();
     } catch (e: any) {
-      // eslint-disable-next-line no-console
       console.error(e);
       setError(
         e?.message ||
@@ -118,10 +113,8 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       return;
     }
 
-    if (authEmailLower !== inviteEmailLower) {
-      setError(
-        `Sesión incorrecta: estás con ${authEmailLower || "(sin correo)"} pero la invitación es para ${inviteEmailLower}.`
-      );
+    if (lower(user.email || "") !== inviteEmailLower) {
+      setError(`Sesión incorrecta: estás con ${lower(user.email || "")} pero la invitación es para ${inviteEmailLower}.`);
       return;
     }
 
@@ -130,45 +123,55 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
 
     try {
       const centerId = String(invite.centerId || "").trim();
-      const roleRaw = String(invite.role || "center_admin").trim();
+      const role = String(invite.role || "center_admin").trim() || "center_admin";
 
-      // 1) Claim invite: pending -> claimed (tu rules lo permiten si email coincide)
-      await setDoc(
-        doc(db, "invites", token),
-        {
-          status: "claimed",
-          claimedAt: serverTimestamp(),
-          claimedByUid: user.uid,
-        },
-        { merge: true }
-      );
-
-      // 2) Actualizar users/{uid} para acceso por rules (roles/centros)
-      // Nota: NO elevamos permisos por cliente “a ciegas”.
-      // Esto solo es válido porque la invitación ya es una autorización explícita registrada en Firestore.
+      // 1) users/{uid} (merge, compat centers/centros)
       await setDoc(
         doc(db, "users", user.uid),
         {
-          email: user.email || undefined,
+          uid: user.uid,
+          email: lower(user.email || ""),
           activo: true,
           updatedAt: serverTimestamp(),
-          // Merge defensivo: si ya existen, se sobrescriben por arrays "mínimos".
-          // (La versión final la haremos con Cloud Function para union segura)
-          roles: [roleRaw],
+          roles: [role],
+          centers: [centerId],
           centros: [centerId],
         },
         { merge: true }
       );
 
+      // 2) staff membership
+      await setDoc(
+        doc(db, "centers", centerId, "staff", user.uid),
+        {
+          uid: user.uid,
+          emailLower: inviteEmailLower,
+          role,
+          roles: [role],
+          active: true,
+          activo: true,
+          createdAt: serverTimestamp(),
+          inviteToken: token,
+          invitedBy: (invite as any).invitedBy ?? null,
+          invitedAt: (invite as any).createdAt ?? null,
+        },
+        { merge: true }
+      );
+
+      // 3) mark invite accepted
+      await updateDoc(doc(db, "invites", token), {
+        status: "accepted",
+        acceptedAt: serverTimestamp(),
+        acceptedByUid: user.uid,
+      }).catch(() => {});
+
       setDone(true);
       if (onDone) onDone();
 
-      // Redirigir
       setTimeout(() => {
         window.location.href = "/";
       }, 600);
     } catch (e: any) {
-      // eslint-disable-next-line no-console
       console.error("InvitePage accept error:", e);
       setError(e?.message || "No se pudo aceptar la invitación.");
     } finally {
@@ -181,7 +184,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <h1 className="text-xl font-bold">Invitación a ClaveSalud</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Para activar tu acceso, inicia sesión con el correo invitado y acepta la invitación.
+          Inicia sesión con el correo invitado y acepta la invitación.
         </p>
 
         <div className="mt-5 bg-slate-950 border border-slate-800 rounded-xl p-4">
@@ -210,7 +213,9 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">Rol</span>
-                <span className="font-semibold text-slate-200 text-right">{invite.role || "center_admin"}</span>
+                <span className="font-semibold text-slate-200 text-right">
+                  {invite.role || "center_admin"}
+                </span>
               </div>
 
               <div className="mt-3 pt-3 border-t border-slate-800">
@@ -254,11 +259,6 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
             Volver
           </button>
         </div>
-
-        <p className="text-[11px] text-slate-500 mt-4">
-          Si falla el login con popup en Firebase Studio, debes agregar el dominio del workspace en Firebase Console → Auth
-          → Settings → Authorized domains.
-        </p>
       </div>
     </div>
   );
