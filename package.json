@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "D": "^1.0.0",
     "firebase": "^12.6.0",
     "lucide-react": "^0.559.0",
     "postcss": "^8.5.6",

@@ -3,7 +3,7 @@ import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestor
 import { Search, Plus, User } from 'lucide-react';
 import { Patient } from '../types';
 import { db } from '../firebase';
-import { CenterContext } from '../App';
+import { CenterContext } from '../CenterContext';
 
 type Props = {
   /** Si lo pasas, se usa en vez de leer desde Firestore */

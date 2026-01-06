@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useContext } from 'react';
-import { CenterContext } from '../App';
+import { CenterContext } from '../CenterContext';
 import { Doctor, Appointment, Patient, AgendaConfig, AuditLogEntry, ProfessionalRole } from '../types';
 import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } from '../utils';
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp } from 'firebase/firestore';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -21,7 +21,7 @@ interface AdminDashboardProps {
     onLogActivity: (action: AuditLogEntry['action'], details: string, targetId?: string) => void;
 }
 
-const ROLE_LABELS: Record<ProfessionalRole, string> = {
+const ROLE_LABELS: Record<string, string> = {
     'Medico': 'Médico',
     'Enfermera': 'Enfermera/o',
     'Kinesiologo': 'Kinesiólogo',
@@ -49,7 +49,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     
     // --- STATE FOR DOCTORS MANAGEMENT ---
     const [isEditingDoctor, setIsEditingDoctor] = useState(false);
-    const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({ role: 'Medico' });
+    const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({ role: (Object.keys(ROLE_LABELS)[0] as ProfessionalRole) });
 
     // --- STATE FOR AGENDA MANAGEMENT ---
     const [selectedDoctorId, setSelectedDoctorId] = useState<string>(doctors[0]?.id || '');
@@ -97,7 +97,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     useEffect(() => {
         if (activeTab === 'audit' && db) {
             // Only fetch if tab is active AND db is connected
-            const q = query(collection(db, "logs"), orderBy('timestamp', 'desc'), limit(50));
+            const q = query(collection(db, "centers", centerId, "auditLogs"), orderBy('timestamp', 'desc'), limit(50));
             const unsub = onSnapshot(q, (snapshot) => {
                 setFetchedLogs(snapshot.docs.map(d => d.data() as AuditLogEntry));
             });
@@ -109,38 +109,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const displayLogs = (db && fetchedLogs.length > 0) ? fetchedLogs : (logs || []);
 
     // --- DOCTOR FUNCTIONS ---
-// Persist doctor profile + invite (Google-only)
+// Persistencia (Firestore): en el modelo definitivo NO se escribe a colección raíz 'doctors'.
+// El alta de profesionales se hace mediante INVITACIÓN por email. Al aceptar el invite,
+// la app (o una Cloud Function) crea centers/{centerId}/staff/{uid}.
 const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
-    // 1) Save professional under center subcollection
-    const profRef = doc(db, 'centers', centerId, 'professionals', doctor.id);
-    await setDoc(profRef, { ...doctor, centerId, updatedAt: serverTimestamp() }, { merge: true });
 
-    // 2) Ensure there is a pending invite for this email (so the professional can claim access on Google sign-in)
     const emailLower = (doctor.email || '').toLowerCase();
     if (!emailLower) return;
 
-    // Avoid duplicate pending invites for same email+center
+    // Evitar duplicar invitaciones pendientes para el mismo correo/centro
     const qInv = query(
         collection(db, 'invites'),
         where('emailLower', '==', emailLower),
         where('centerId', '==', centerId),
         where('status', '==', 'pending')
     );
+
     const snap = await getDocs(qInv);
     if (!snap.empty) return;
 
-    const inviteId = generateId();
-    const invRef = doc(db, 'invites', inviteId);
-    await setDoc(invRef, {
+    // Rol de acceso al sistema (no confundir con ProfessionalRole clínico)
+    const accessRole = doctor.isAdmin ? 'center_admin' : 'doctor';
+
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+    await setDoc(doc(db, 'invites', generateId()), {
         emailLower,
         email: doctor.email,
         centerId,
-        role: doctor.role,
-        professionalId: doctor.id,
+        role: accessRole,
+        professionalRole: doctor.role, // rol/profesión clínica (Medico, Enfermera, etc.)
         status: 'pending',
+        expiresAt: Timestamp.fromDate(expires),
         createdAt: serverTimestamp(),
-        createdBy: 'centerAdmin'
+        createdByUid: 'centerAdmin' // (opcional) ideal: uid real en el futuro
     });
 };
     const handleSaveDoctor = () => {
@@ -225,18 +227,26 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     
     // Save Config to Doctor Profile
     const handleSaveConfig = () => {
+        let updatedDoctor: Doctor | null = null;
+    
         const updatedDoctors = doctors.map(d => {
             if (d.id === selectedDoctorId) {
-                return { ...d, agendaConfig: tempConfig };
+                updatedDoctor = { ...d, agendaConfig: tempConfig };
+                return updatedDoctor;
             }
             return d;
         });
+    
         onUpdateDoctors(updatedDoctors);
-            // Google-only: persist professional + invite
-            persistDoctorToFirestore(updatedDoctor as Doctor).catch((e) => console.error("persistDoctorToFirestore", e));
+    
+        if (updatedDoctor) {
+            persistDoctorToFirestore(updatedDoctor)
+                .catch((e) => console.error("persistDoctorToFirestore", e));
+        }
+    
         showToast("Configuración de agenda guardada.", "success");
     };
-
+    
     // Get calendar days
     const getDaysInMonth = (date: Date) => {
         const year = date.getFullYear();

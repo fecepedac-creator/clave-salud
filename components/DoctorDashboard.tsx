@@ -5,7 +5,7 @@ import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone } 
 import { COMMON_DIAGNOSES, DEFAULT_TEMPLATES, EXAM_PROFILES, TRACKED_EXAMS_OPTIONS } from '../constants';
 import { Search, Plus, User, Calendar, ChevronRight, LogOut, Save, ShieldCheck, X, AlertCircle, ExternalLink, FileText, Bell, UsersRound, CalendarCheck, AlarmClock, MessageCircle, Clock, ArrowUpDown, Filter, Settings, Trash2, Edit, Activity, RefreshCw, Layers, CheckSquare, Square, KeyRound, Shield, TestTube } from 'lucide-react';
 import { useToast } from './Toast';
-import { CenterContext } from '../App';
+import { CenterContext } from '../CenterContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
@@ -24,50 +24,72 @@ interface ProfessionalDashboardProps {
   patients: Patient[];
   doctorName: string; // Professional Name
   doctorId: string; // Professional ID
-  role: ProfessionalRole; // NEW
+  role: ProfessionalRole;
   agendaConfig?: AgendaConfig;
-  savedTemplates?: ClinicalTemplate[]; 
-  currentUser?: Doctor; // NEW: Needed for password validation and custom exams
+  savedTemplates?: ClinicalTemplate[];
+  currentUser?: Doctor;
   onUpdatePatient: (updatedPatient: Patient) => void;
-  onUpdateDoctor: (updatedDoctor: Doctor) => void; 
+  onUpdateDoctor: (updatedDoctor: Doctor) => void;
   onLogout: () => void;
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
-  onLogActivity: (action: AuditLogEntry['action'], details: string, targetId?: string) => void; // New prop
-  isReadOnly?: boolean; // NEW: Read Only Mode for Suspended Centers
+  onLogActivity: (action: AuditLogEntry['action'], details: string, targetId?: string) => void;
+  isReadOnly?: boolean; // Read Only Mode for Suspended Centers
+};
+
+// --- helpers to avoid infinite loops when props are recreated on every render ---
+function sameById(a: any[] = [], b: any[] = [], extraKeys: string[] = []) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if ((ai?.id ?? ai) !== (bi?.id ?? bi)) return false;
+
+    for (const k of extraKeys) {
+      if ((ai?.[k] ?? undefined) !== (bi?.[k] ?? undefined)) return false;
+    }
+  }
+  return true;
 }
 
 export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ 
     patients, doctorName, doctorId, role, agendaConfig, savedTemplates, currentUser,
     onUpdatePatient, onUpdateDoctor, onLogout, appointments, onUpdateAppointments, onLogActivity, isReadOnly = false 
 }) => {
-  const [activeTab, setActiveTab] = useState<'patients' | 'agenda' | 'reminders' | 'settings'>('patients')
+  const [activeTab, setActiveTab] = useState<'patients' | 'agenda' | 'reminders' | 'settings'>('patients');
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
+
+  // --- contexto del centro ---
+  const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+
+  // --- helpers ---
+  const getEmptyConsultation = (): Partial<Consultation> => ({
+    weight: '', height: '', bmi: '', bloodPressure: '', hgt: '',
+    waist: '', hip: '',
+    reason: '', anamnesis: '', physicalExam: '', diagnosis: '',
+    prescriptions: [],
+    dentalMap: [],
+    exams: {},
+    nextControlDate: '',
+    nextControlReason: '',
+    reminderActive: false,
+  });
 
   // --- módulos del centro (SuperAdmin) ---
-  const moduleGuards = {
-    patients: isModuleEnabled('patients'),
-    agenda: isModuleEnabled('agenda'),
-    prescriptions: isModuleEnabled('prescriptions'),
-    vitals: isModuleEnabled('vitals'),
-    exams: isModuleEnabled('exams'),
-    dental: isModuleEnabled('dental'),
-    settings: isModuleEnabled('settings'),
-  };
-
-  // Si el admin deshabilita un módulo mientras estás dentro, te saca a Pacientes o Configuración.
-  useEffect(() => {
-    if (activeTab === 'agenda' && !moduleGuards.agenda) setActiveTab(moduleGuards.patients ? 'patients' : 'settings');
-    if (activeTab === 'patients' && !moduleGuards.patients) setActiveTab(moduleGuards.settings ? 'settings' : 'agenda');
-    if (activeTab === 'settings' && !moduleGuards.settings) setActiveTab(moduleGuards.patients ? 'patients' : 'agenda');
-  }, [activeTab, moduleGuards.agenda, moduleGuards.patients, moduleGuards.settings]);;
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
-  const { showToast } = useToast();
-  const { activeCenterId } = useContext(CenterContext);
-  const { isModuleEnabled } = useContext(CenterContext);
-  
-  // Edit Mode State
+  const moduleGuards = useMemo(() => ({
+    patients: (isModuleEnabled ? isModuleEnabled('patients') : true),
+    agenda: (isModuleEnabled ? isModuleEnabled('agenda') : true),
+    prescriptions: (isModuleEnabled ? isModuleEnabled('prescriptions') : true),
+    vitals: (isModuleEnabled ? isModuleEnabled('vitals') : true),
+    exams: (isModuleEnabled ? isModuleEnabled('exams') : true),
+    dental: (isModuleEnabled ? isModuleEnabled('dental') : true),
+    settings: (isModuleEnabled ? isModuleEnabled('settings') : true),
+  }), [isModuleEnabled]);
+// Edit Mode State
   const [isEditingPatient, setIsEditingPatient] = useState(false);
   
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
@@ -84,14 +106,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [slotModal, setSlotModal] = useState<{ isOpen: boolean, appointment: Appointment | null }>({ isOpen: false, appointment: null });
 
   // New Consultation State
-  const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>({
-    weight: '', height: '', bmi: '', bloodPressure: '', hgt: '',
-    // Added anthro defaults
-    waist: '', hip: '', 
-    reason: '', anamnesis: '', physicalExam: '', diagnosis: '', 
-    prescriptions: [], dentalMap: [], exams: {},
-    nextControlDate: '', nextControlReason: '', reminderActive: false
-  });
+  const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>(getEmptyConsultation());
+
 
   // Templates State
   const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>([]);
@@ -118,24 +134,27 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   }, [currentUser?.customExams]);
 
   // Load Doctor Data (Templates & Profiles)
-  useEffect(() => {
-    // 1. Templates
-    if (Array.isArray(savedTemplates)) {
-        setMyTemplates(savedTemplates);
-    } else {
-        const roleDefaults = DEFAULT_TEMPLATES.filter(t => t.roles?.includes(role));
-        setMyTemplates(roleDefaults);
-    }
+useEffect(() => {
+  // Templates
+  const nextTemplates = Array.isArray(savedTemplates)
+    ? savedTemplates
+    : DEFAULT_TEMPLATES.filter(t => t.roles?.includes(role));
 
-    // 2. Exam Profiles
-    // If user has saved profiles, use them. Else default.
-    if (currentUser?.savedExamProfiles && currentUser.savedExamProfiles.length > 0) {
-        setMyExamProfiles(currentUser.savedExamProfiles);
-    } else {
-        setMyExamProfiles(EXAM_PROFILES);
-    }
+  setMyTemplates(prev => (sameById(prev, nextTemplates, ['title', 'content']) ? prev : nextTemplates));
 
-  }, [savedTemplates, role, currentUser]);
+  // Exam profiles
+  const nextProfiles =
+    (currentUser?.savedExamProfiles && currentUser.savedExamProfiles.length > 0)
+      ? currentUser.savedExamProfiles
+      : EXAM_PROFILES;
+
+  setMyExamProfiles(prev => (sameById(prev, nextProfiles, ['label', 'description']) ? prev : nextProfiles));
+
+}, [
+  role,
+  savedTemplates,
+  currentUser?.savedExamProfiles
+]);
 
   // PDF Safety
   useEffect(() => {
@@ -209,41 +228,64 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const handleCreateConsultation = async () => {
     if (!selectedPatient) return;
 
+    if (!activeCenterId) {
+      showToast('No hay centro activo. Selecciona un centro antes de guardar.', 'error');
+      return;
+    }
+
+    // Construye un objeto consulta (local + nube)
+    const consultation: Consultation = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      ...(newConsultation as any),
+      prescriptions: (newConsultation.prescriptions || []) as any,
+      dentalMap: (newConsultation.dentalMap || []) as any,
+      exams: (newConsultation.exams || {}) as any,
+      nextControlDate: (newConsultation.nextControlDate || '') as any,
+      nextControlReason: (newConsultation.nextControlReason || '') as any,
+      reminderActive: Boolean((newConsultation as any).reminderActive),
+      patientId: selectedPatient.id as any,
+      centerId: activeCenterId as any,
+      createdBy: (auth.currentUser?.uid ?? doctorId) as any,
+    } as any;
+
+    // 1) Guardar en Firestore (colección "consultations")
     try {
-      const consultationToSave = {
-        ...newConsultation,
-        patientId: selectedPatient.id,
-        centerId: activeCenterId,
-        createdBy: auth.currentUser?.uid ?? null,
+      await addDoc(collection(db, 'consultations'), {
+        ...consultation,
         createdAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, 'consultations'), consultationToSave);
-
+      } as any);
       showToast('Atención guardada correctamente en la nube', 'success');
-
-      setNewConsultation(getEmptyConsultation());
-      setActiveTab('patients');
     } catch (error) {
       console.error(error);
-      showToast('Error al guardar la atención', 'error');
-  };
+      showToast('Error al guardar en la nube (se guardó localmente)', 'error');
+    }
 
-
-    const updatedPatient = {
+    // 2) Actualizar estado local (lista de pacientes)
+    const updatedPatient: Patient = {
       ...selectedPatient,
       consultations: [consultation, ...(selectedPatient.consultations || [])],
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
 
     onUpdatePatient(updatedPatient);
-    // LOG ACTIVITY
-    onLogActivity('create', `Creó atención para ${selectedPatient.fullName}. Motivo: ${consultation.reason}`, selectedPatient.id);
 
+    // 3) Auditoría
+    try {
+      onLogActivity(
+        'create',
+        `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ''}`,
+        selectedPatient.id
+      );
+    } catch {
+      // no-op
+    }
+
+    // 4) Reset UI
     setSelectedPatient(updatedPatient);
     setIsCreatingConsultation(false);
-    setNewConsultation({ weight: '', height: '', bmi: '', bloodPressure: '', hgt: '', waist: '', hip: '', reason: '', anamnesis: '', physicalExam: '', diagnosis: '', prescriptions: [], dentalMap: [], exams: {}, nextControlDate: '', nextControlReason: '', reminderActive: false });
-    showToast('Atención guardada exitosamente.', 'success');
+    setNewConsultation(getEmptyConsultation());
+    setActiveTab('patients');
   };
 
   // --- TEMPLATE HANDLERS ---

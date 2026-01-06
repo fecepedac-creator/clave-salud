@@ -3,7 +3,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Patient, Medication, Allergy } from '../types';
 import { MEDICAL_HISTORY_OPTIONS, SURGICAL_HISTORY_OPTIONS, LIVING_WITH_OPTIONS, MAULE_COMMUNES } from '../constants';
 import { validateRUT, formatRUT, generateId, capitalizeWords, sanitizeText } from '../utils';
-import { CenterContext } from '../App';
+import { CenterContext } from '../CenterContext';
 import { Check, Plus, Trash2, ArrowRight, ArrowLeft, Save, AlertCircle, User, Activity, Pill, Users, MapPin } from 'lucide-react';
 
 interface PatientFormProps {

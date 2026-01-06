@@ -47,6 +47,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDoc,
   getDocs,
   onSnapshot,
@@ -72,18 +73,25 @@ export type CenterModules = Record<string, boolean>;
 
 export const CenterContext = createContext<{
   activeCenterId: string;
-  activeCenter: MedicalCenter;
+  activeCenter: MedicalCenter | null;
   modules: CenterModules;
   isModuleEnabled: (key: string) => boolean;
 }>({
   activeCenterId: "",
-  activeCenter: {} as any,
+  activeCenter: null,
   modules: {},
   isModuleEnabled: () => true,
 });
 
-function isValidCenter(c: any): c is { id: string } {
-  return !!c && typeof c === "object" && typeof (c as any).id === "string" && (c as any).id.length > 0;
+function isValidCenter(c: any): c is MedicalCenter {
+  return (
+    !!c &&
+    typeof c === "object" &&
+    typeof (c as any).id === "string" &&
+    (c as any).id.length > 0 &&
+    // En ClaveSalud, asumimos que un centro válido siempre tiene nombre
+    typeof (c as any).name === "string"
+  );
 }
 
 /**
@@ -116,25 +124,108 @@ const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const App: React.FC = () => {
   const { showToast } = useToast();
 
+  // ---------- Auth/session ----------
+  const [authUser, setAuthUser] = useState<any>(null);
+  const [isSuperAdminClaim, setIsSuperAdminClaim] = useState<boolean>(false);
+
   // ---------- Global data ----------
   const [centers, setCenters] = useState<MedicalCenter[]>(INITIAL_CENTERS);
-  // --- Centros (directorio público) desde Firestore ---
+  
+  // --- Centros desde Firestore (respetando permisos por centro) ---
+  // Regla: nunca listar "centers" completo para usuarios no-superadmin porque Firestore exige
+  // que TODOS los documentos del resultado cumplan la rule.
   useEffect(() => {
-    const unsub = onSnapshot(
-      query(collection(db, "centers")),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-        // Si Firestore está vacío, mantenemos los INITIAL_CENTERS para demo
-        setCenters(items.length ? items : INITIAL_CENTERS);
-      },
-      () => {
-        // si falla Firestore, quedamos con INITIAL_CENTERS
-        setCenters(INITIAL_CENTERS);
+  // Sin sesión: usamos catálogo local (modo home / demo)
+  if (!auth.currentUser) {
+    setCenters(INITIAL_CENTERS);
+    return;
+  }
+
+  let unsubscribers: Array<() => void> = [];
+  let cancelled = false;
+
+  const run = async () => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      // Leer perfil (autorización UX). La autorización REAL vive en rules.
+      const userSnap = await getDoc(doc(db, "users", uid));
+      const profile: any = userSnap.exists() ? userSnap.data() : null;
+
+      const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
+      const roles = rolesRaw.map((r: any) => String(r ?? "").trim().toLowerCase()).filter(Boolean);
+
+      const centersRaw: any[] = Array.isArray(profile?.centros)
+        ? profile.centros
+        : (Array.isArray(profile?.centers) ? profile.centers : []);
+      const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
+
+      const isSuper = isSuperAdminClaim || roles.includes("super_admin") || roles.includes("superadmin");
+
+      // SuperAdmin: puede escuchar todos los centros
+      if (isSuper) {
+        const unsub = onSnapshot(
+          query(collection(db, "centers")),
+          (snap) => {
+            if (cancelled) return;
+            const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+            setCenters(items.length ? items : INITIAL_CENTERS);
+          },
+          () => {
+            if (cancelled) return;
+            setCenters(INITIAL_CENTERS);
+          }
+        );
+        unsubscribers.push(unsub);
+        return;
       }
-    );
-    return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+      // Usuarios no-superadmin: escuchar SOLO centros permitidos (documentId in ...)
+      if (!allowed.length) {
+        setCenters(INITIAL_CENTERS);
+        return;
+      }
+
+      // Firestore "in" permite máximo 10 IDs por query
+      const chunks: string[][] = [];
+      for (let i = 0; i < allowed.length; i += 10) chunks.push(allowed.slice(i, i + 10));
+
+      const all: Record<string, MedicalCenter> = {};
+      for (const ids of chunks) {
+        const unsub = onSnapshot(
+          query(collection(db, "centers"), where(documentId(), "in", ids)),
+          (snap) => {
+            if (cancelled) return;
+            snap.docs.forEach((d) => {
+              all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
+            });
+            const merged = Object.values(all);
+            setCenters(merged.length ? merged : INITIAL_CENTERS);
+          },
+          () => {
+            if (cancelled) return;
+            // si falla Firestore, quedamos con INITIAL_CENTERS
+            setCenters(INITIAL_CENTERS);
+          }
+        );
+        unsubscribers.push(unsub);
+      }
+    } catch {
+      if (!cancelled) setCenters(INITIAL_CENTERS);
+    }
+  };
+
+  run();
+
+  return () => {
+    cancelled = true;
+    unsubscribers.forEach((u) => {
+      try { u(); } catch {}
+    });
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdminClaim]);
 
   const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
   const [doctors, setDoctors] = useState<Doctor[]>(INITIAL_DOCTORS);
@@ -156,7 +247,7 @@ const App: React.FC = () => {
     return v === undefined ? true : !!v; // default allow si no está definido
   };
 
-const activeCenter = useMemo(
+  const activeCenter = useMemo(
     () => centers.find((c) => c.id === activeCenterId) ?? null,
     [centers, activeCenterId]
   );
@@ -170,8 +261,6 @@ const activeCenter = useMemo(
   // user state (lo dejamos laxo para no romper types)
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const [authUser, setAuthUser] = useState<any>(null);
-  const [isSuperAdminClaim, setIsSuperAdminClaim] = useState<boolean>(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -196,6 +285,8 @@ const activeCenter = useMemo(
   const [inviteCenterName, setInviteCenterName] = useState<string>("");
   const [invitePassword, setInvitePassword] = useState<string>("");
   const [invitePassword2, setInvitePassword2] = useState<string>("");
+  const [inviteMode, setInviteMode] = useState<"signup" | "signin">("signup");
+
   const [inviteDone, setInviteDone] = useState<boolean>(false);
 
   // Si la URL viene como /invite?token=..., entramos directo al flujo de invitación.
@@ -216,55 +307,64 @@ const activeCenter = useMemo(
     } catch {
       // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cargar invitación desde Firestore
+  
+  // Cargar invitación desde Firestore (colección: invites/{token})
+  // Seguridad: la lectura requiere sesión y se valida que el email del token coincida con el email autenticado.
   useEffect(() => {
-    const load = async () => {
-      if (!inviteToken) return;
-      setInviteLoading(true);
-      setInviteError("");
-      try {
-        const qy = query(collection(db, "invitations"), where("token", "==", inviteToken), limit(1));
-        const snap = await getDocs(qy);
-        if (snap.empty) throw new Error("Invitación no encontrada o ya fue utilizada.");
+  const load = async () => {
+    if (!inviteToken) return;
 
-        const docSnap = snap.docs[0];
-        const inv: any = docSnap.data() || {};
+    // Requiere estar autenticado (idealmente Google con el mismo correo invitado)
+    if (!auth.currentUser) {
+      setInviteLoading(false);
+      setInviteError("Para continuar, inicia sesión (Google) con el correo invitado.");
+      return;
+    }
 
-        if (inv.used === true || inv.status === "used") {
-          throw new Error("Esta invitación ya fue utilizada.");
-        }
+    setInviteLoading(true);
+    setInviteError("");
 
-        // expiresAt puede venir como Timestamp (Firestore) o string ISO
-        const now = Date.now();
-        let expMs = 0;
-        if (inv.expiresAt?.toMillis) expMs = inv.expiresAt.toMillis();
-        else if (typeof inv.expiresAt === "string") expMs = Date.parse(inv.expiresAt);
-        else if (typeof inv.expiresAt === "number") expMs = inv.expiresAt;
+    try {
+      const token = inviteToken.trim();
+      const snap = await getDoc(doc(db, "invites", token));
+      if (!snap.exists()) throw new Error("Invitación no encontrada o inválida.");
 
-        if (expMs && now > expMs) throw new Error("Esta invitación expiró. Solicita una nueva invitación.");
+      const inv: any = snap.data() || {};
 
-        const emailInv = String(inv.email || inv.adminEmail || "").trim().toLowerCase();
-        const centerIdInv = String(inv.centerId || inv.centroId || "").trim();
-        if (!emailInv || !centerIdInv) throw new Error("Invitación mal formada: faltan datos.");
+      const status = String(inv.status || "").toLowerCase();
+      if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
+      if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
-        // obtener nombre del centro para mostrarlo bonito
-        const centerSnap = await getDoc(doc(db, "centers", centerIdInv)).catch(() => null as any);
-        const centerName = centerSnap?.exists?.() ? (centerSnap.data() as any)?.name : "";
-
-        setInviteEmail(emailInv);
-        setInviteCenterId(centerIdInv);
-        setInviteCenterName(centerName || "");
-      } catch (e: any) {
-        setInviteError(e?.message || "No se pudo cargar la invitación.");
-      } finally {
-        setInviteLoading(false);
+      const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+      if (!emailLower) {
+        throw new Error("Invitación inválida: falta correo.");
       }
-    };
-    load();
-  }, [inviteToken]);
+
+// expiración opcional (Timestamp)
+      const expiresAt = inv.expiresAt;
+      if (expiresAt && typeof expiresAt.toDate === "function") {
+        const exp = expiresAt.toDate();
+        if (exp.getTime() < Date.now()) {
+          throw new Error("Esta invitación expiró. Solicita una nueva.");
+        }
+      }
+
+      setInviteEmail(emailLower);
+      setInviteCenterId(String(inv.centerId || ""));
+      setInviteCenterName(String(inv.centerName || "")); // opcional (puede venir vacío)
+    } catch (e: any) {
+      console.error(e);
+      setInviteError(e?.message || "Error cargando invitación.");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteToken, authUser]);
 
   // Booking wizard
   const [bookingStep, setBookingStep] = useState(0);
@@ -281,17 +381,23 @@ const activeCenter = useMemo(
 
   // ---------- Firestore sync (tolerante a fallos) ----------
   useEffect(() => {
-    const unsubCenters = onSnapshot(
-      collection(db, "centers"),
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-        if (items.length) setCenters(items);
-      },
-      () => {
-        // si falla, quedamos con INITIAL_CENTERS
-      }
-    );
+    let unsubCenters: (() => void) | null = null;
 
+// Importante: NO listamos "centers" completo para usuarios no-superadmin,
+// porque Firestore exige que TODOS los documentos del resultado cumplan la rule.
+// Para no generar errores de permisos, solo escuchamos centers global si eres superadmin.
+if (isSuperAdminClaim) {
+  unsubCenters = onSnapshot(
+    collection(db, "centers"),
+    (snap) => {
+      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+      if (items.length) setCenters(items);
+    },
+    () => {
+      // si falla, quedamos con INITIAL_CENTERS
+    }
+  );
+}
     const unsubPatients = onSnapshot(
       query(collection(db, "patients"), where("centerId", "==", activeCenterId)),
       (snap) => {
@@ -329,14 +435,13 @@ const activeCenter = useMemo(
     );
 
     return () => {
-      unsubCenters();
+      unsubCenters?.();
       unsubPatients();
       unsubDoctors();
       unsubAppts();
       unsubLogs();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCenterId]);
+  }, [activeCenterId, isSuperAdminClaim]);
 
   // ---------- CRUD helpers ----------
   const onGlobalUpdate = async (collectionName: string, payload: any) => {
@@ -392,7 +497,7 @@ const activeCenter = useMemo(
       const isAdmin =
         rolesNorm.includes("admin") ||
         rolesNorm.includes("administrador");
-if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
+  if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
         setError("No tiene permisos administrativos.");
         return;
       }
@@ -408,7 +513,7 @@ if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuper
         role: profile.role ?? (roles.find((r) => r !== "center_admin" && r !== "super_admin") ?? "Profesional"),
         id: uid, // para dashboards que esperan currentUser.id
       };
-setCurrentUser(userFromFirestore as any);
+  setCurrentUser(userFromFirestore as any);
 
       // ✅ SuperAdmin NO depende de centros: siempre entra a su panel
       if (isSuperAdmin) {
@@ -526,15 +631,33 @@ setCurrentUser(userFromFirestore as any);
 
       await setDoc(doc(db, "users", uid), newProfile, { merge: true });
 
-      // Marcar invites como claimed (sin cambiar centerId/role/email)
+      // Marcar invites como claimed (sin cambiar centerId/role/email) + crear staff por centro
       await Promise.all(
-        inviteDocs.map((inv) =>
-          updateDoc(doc(db, "invites", inv.id), {
+        inviteDocs.map(async (inv) => {
+          await updateDoc(doc(db, "invites", inv.id), {
             status: "claimed",
             claimedAt: serverTimestamp(),
             claimedByUid: uid,
-          })
-        )
+          });
+
+          const cId = String((inv as any).centerId || "").trim();
+          const rId = String((inv as any).role || "").trim() || "staff";
+          const eLower = String((inv as any).emailLower || emailUser).trim().toLowerCase();
+
+          if (cId) {
+            await setDoc(doc(db, "centers", cId, "staff", uid), {
+              uid,
+              emailLower: eLower,
+              role: rId,
+              roles: [rId],
+              activo: true,
+              createdAt: serverTimestamp(),
+              inviteToken: inv.id,
+              invitedBy: (inv as any).invitedBy ?? null,
+              invitedAt: (inv as any).createdAt ?? null,
+            }, { merge: true });
+          }
+        })
       );
 
       const userFromFirestore = {
@@ -582,7 +705,7 @@ setCurrentUser(userFromFirestore as any);
       const fn = httpsCallable(functions, "setSuperAdmin");
       await fn({ uid: authUser.uid });
       alert(`✅ Usuario convertido en SuperAdmin.
-Cierra sesión y vuelve a ingresar para aplicar permisos.`);
+  Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     } catch (e: any) {
       console.error("BOOTSTRAP ERROR", e);
       alert(e?.message || "Error al ejecutar bootstrap");
@@ -1140,7 +1263,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     const available = centers.filter((c) => allowed.includes(c.id));
 
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-slate-50">
+      <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50">
         <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-extrabold text-slate-800">Selecciona un centro</h2>
@@ -1194,61 +1317,157 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   };
 
+
+  // ---- Invitaciones: aceptar token incluso si el correo ya existe en Auth ----
+  const acceptInviteForUser = async (tokenRaw: string, user: any) => {
+    const token = (tokenRaw || "").trim();
+    if (!token) throw new Error("Invitación inválida (sin token).");
+    if (!user?.uid) throw new Error("Debes iniciar sesión para aceptar la invitación.");
+
+    const uid = user.uid as string;
+    const emailUser = String(user.email || "").trim().toLowerCase();
+    if (!emailUser) throw new Error("Tu cuenta no tiene correo. Usa una cuenta con email.");
+
+    // 1) Leer invitación
+    const invRef = doc(db, "invites", token);
+    const invSnap = await getDoc(invRef);
+    if (!invSnap.exists()) throw new Error("Invitación no encontrada o inválida.");
+
+    const inv: any = invSnap.data() || {};
+    const status = String(inv.status || "").toLowerCase();
+    if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
+    if (status === "revoked") throw new Error("Esta invitación fue revocada.");
+
+    const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+    if (!emailLower) throw new Error("Invitación inválida: falta correo.");
+    if (emailLower !== emailUser) {
+      throw new Error(`Esta invitación es para ${emailLower}. Inicia sesión con ese correo.`);
+    }
+
+    // expiración opcional (Timestamp)
+    const expiresAt = inv.expiresAt;
+    if (expiresAt && typeof expiresAt.toDate === "function") {
+      const exp = expiresAt.toDate();
+      if (exp.getTime() < Date.now()) {
+        throw new Error("Esta invitación expiró. Solicita una nueva.");
+      }
+    }
+
+    const centerId = String(inv.centerId || "").trim();
+    if (!centerId) throw new Error("Invitación inválida: falta centerId.");
+
+    const role = String(inv.role || "center_admin").trim() || "center_admin";
+
+    // 2) Asegurar perfil users/{uid} (unión de roles/centros)
+    const uRef = doc(db, "users", uid);
+    const uSnap = await getDoc(uRef);
+    const existing: any = uSnap.exists() ? (uSnap.data() as any) : {};
+
+    const prevCenters: string[] = Array.isArray(existing.centers) ? existing.centers
+      : Array.isArray(existing.centros) ? existing.centros
+      : [];
+    const prevRoles: string[] = Array.isArray(existing.roles) ? existing.roles : [];
+
+    const nextCenters = Array.from(new Set([...prevCenters, centerId])).filter(Boolean);
+    const nextRoles = Array.from(new Set([...prevRoles, role])).filter(Boolean);
+
+    await setDoc(uRef, {
+      uid,
+      email: emailUser,
+      activo: true,
+      centers: nextCenters,
+      centros: nextCenters, // compatibilidad con versiones anteriores
+      roles: nextRoles,
+      activeCenterId: existing.activeCenterId ?? (nextCenters[0] ?? null),
+      displayName: existing.displayName ?? user.displayName ?? "",
+      photoURL: existing.photoURL ?? user.photoURL ?? "",
+      updatedAt: serverTimestamp(),
+      createdAt: existing.createdAt ?? serverTimestamp(),
+    }, { merge: true });
+
+    // 3) Crear membership centers/{centerId}/staff/{uid}
+    await setDoc(doc(db, "centers", centerId, "staff", uid), {
+      uid,
+      emailLower,
+      role,
+      roles: [role],
+      activo: true,
+      createdAt: serverTimestamp(),
+      inviteToken: token, // clave para reglas v1.1 (token -> creación staff)
+      invitedBy: inv.invitedBy ?? null,
+      invitedAt: inv.createdAt ?? null,
+    }, { merge: true });
+
+    // 4) Marcar invitación como claimed
+    await updateDoc(invRef, {
+      status: "claimed",
+      claimedAt: serverTimestamp(),
+      claimedByUid: uid,
+    }).catch(() => {});
+
+    // 5) UI
+    setInviteCenterId(centerId);
+    setInviteCenterName(String(inv.centerName || inviteCenterName || ""));
+    setInviteDone(true);
+  };
+
   const renderInviteRegister = () => {
+    const isSignup = inviteMode === "signup";
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-slate-50">
+      <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
-          <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Crear cuenta</h2>
+          <h2 className="text-2xl font-extrabold text-slate-800 mb-2">
+            {isSignup ? "Crear cuenta" : "Iniciar sesión"}
+          </h2>
+
           <p className="text-slate-500 text-sm mb-6">
             {inviteCenterName ? (
-              <>Has sido invitado(a) para administrar <span className="font-bold text-slate-700">{inviteCenterName}</span>.</>
+              <>
+                Has sido invitado(a) para administrar{" "}
+                <span className="font-bold text-slate-700">{inviteCenterName}</span>.
+              </>
             ) : (
               <>Has sido invitado(a) para administrar un centro en ClaveSalud.</>
             )}
           </p>
 
-          {inviteLoading && (
-            <div className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4">
-              Cargando invitación…
-            </div>
-          )}
-
           {inviteError && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl p-3 mb-4">
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {inviteError}
             </div>
           )}
 
           {inviteDone ? (
             <>
-              <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl p-3 mb-4">
-                Cuenta creada. Ya puedes ingresar como administrador del centro.
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-emerald-800 text-sm">
+                Invitación aceptada. Ya puedes continuar.
               </div>
-
               <button
                 type="button"
+                className="w-full mt-4 rounded-xl bg-sky-600 text-white font-bold py-3 hover:bg-sky-700 transition-colors"
                 onClick={() => {
-                  // Limpia URL /invite para no re-abrir el flujo al refrescar
-                  try { window.history.replaceState({}, "", "/"); } catch {}
-                  setView("admin-login" as any);
+                  // Luego del accept, tu login normal te llevará a selector/portal
+                  setView("home" as any);
                 }}
-                className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
               >
-                Ir a iniciar sesión
+                Ir a inicio
               </button>
             </>
           ) : (
             <>
-              <label className="block mb-3">
+              <label className="block mb-4">
                 <span className="text-sm font-semibold text-slate-600">Correo</span>
                 <input
                   value={inviteEmail}
-                  disabled
-                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 bg-slate-50 text-slate-700"
+                  onChange={(e) => setInviteEmail(e.target.value.trim().toLowerCase())}
+                  type="email"
+                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="correo@dominio.cl"
+                  autoComplete="email"
                 />
               </label>
 
-              <label className="block mb-3">
+              <label className="block mb-5">
                 <span className="text-sm font-semibold text-slate-600">Contraseña</span>
                 <input
                   value={invitePassword}
@@ -1256,79 +1475,111 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                   type="password"
                   className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   placeholder="••••••••"
-                  autoComplete="new-password"
+                  autoComplete={isSignup ? "new-password" : "current-password"}
                 />
               </label>
 
-              <label className="block mb-5">
-                <span className="text-sm font-semibold text-slate-600">Repetir contraseña</span>
-                <input
-                  value={invitePassword2}
-                  onChange={(e) => setInvitePassword2(e.target.value)}
-                  type="password"
-                  className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                />
-              </label>
+              {isSignup && (
+                <label className="block mb-5">
+                  <span className="text-sm font-semibold text-slate-600">Repetir contraseña</span>
+                  <input
+                    value={invitePassword2}
+                    onChange={(e) => setInvitePassword2(e.target.value)}
+                    type="password"
+                    className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                  />
+                </label>
+              )}
 
               <button
                 type="button"
-                disabled={inviteLoading || !inviteEmail || !inviteCenterId}
+                disabled={inviteLoading || !inviteEmail}
                 onClick={async () => {
                   try {
                     setInviteError("");
-                    if (!inviteEmail || !inviteCenterId) throw new Error("Invitación incompleta.");
-                    if (invitePassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
-                    if (invitePassword !== invitePassword2) throw new Error("Las contraseñas no coinciden.");
-
                     setInviteLoading(true);
 
-                    const cred = await createUserWithEmailAndPassword(auth, inviteEmail, invitePassword);
+                    const token = inviteToken.trim();
+                    if (!token) throw new Error("Invitación inválida (sin token).");
+                    if (!inviteEmail) throw new Error("Ingresa un correo.");
 
-                    // Crear perfil users/{uid} para compatibilidad con tu login actual (sin claims aún)
-                    const uid = cred.user.uid;
-                    await setDoc(doc(db, "users", uid), {
-                      uid,
-                      email: inviteEmail,
-                      activo: true,
-                      roles: ["center_admin"],
-                      centros: [inviteCenterId],
-                      createdAt: serverTimestamp(),
-                      fullName: inviteEmail,
-                      role: "Administrador",
-                    }, { merge: true });
+                    if (isSignup) {
+                      if (invitePassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+                      if (invitePassword !== invitePassword2) throw new Error("Las contraseñas no coinciden.");
 
-                    // Marcar invitación como usada (idealmente esto debería hacerlo una Cloud Function)
-                    const qy = query(collection(db, "invitations"), where("token", "==", inviteToken), limit(1));
-                    const snap = await getDocs(qy);
-                    if (!snap.empty) {
-                      await updateDoc(doc(db, "invitations", snap.docs[0].id), {
-                        used: true,
-                        usedAt: serverTimestamp(),
-                        claimedByUid: uid,
-                        status: "used",
-                      }).catch(() => {});
+                      try {
+                        const cred = await createUserWithEmailAndPassword(auth, inviteEmail, invitePassword);
+                        await acceptInviteForUser(token, cred.user);
+                        showToast("Cuenta creada y invitación aceptada", "success");
+                      } catch (e: any) {
+                        // Si el correo ya existe, cambiamos a modo login
+                        if (e?.code === "auth/email-already-in-use") {
+                          setInviteMode("signin");
+                          throw new Error("Este correo ya existe. Inicia sesión para aceptar la invitación.");
+                        }
+                        throw e;
+                      }
+                    } else {
+                      // Sign in y aceptar
+                      const cred = await signInWithEmailAndPassword(auth, inviteEmail, invitePassword);
+                      await acceptInviteForUser(token, cred.user);
+                      showToast("Invitación aceptada", "success");
                     }
-
-                    setInviteDone(true);
-                    showToast("Cuenta creada correctamente", "success");
                   } catch (e: any) {
-                    console.error("INVITE REGISTER ERROR", e);
-                    setInviteError(e?.message || "No se pudo crear la cuenta.");
+                    console.error("INVITE FLOW ERROR", e);
+                    setInviteError(e?.message || "No se pudo completar la invitación.");
                   } finally {
                     setInviteLoading(false);
                   }
                 }}
                 className="w-full rounded-xl bg-sky-600 text-white font-bold py-3 hover:bg-sky-700 transition-colors disabled:opacity-50"
               >
-                Crear cuenta
+                {isSignup ? "Crear cuenta" : "Iniciar sesión"}
+              </button>
+
+              <button
+                type="button"
+                disabled={inviteLoading}
+                onClick={async () => {
+                  try {
+                    setInviteError("");
+                    setInviteLoading(true);
+                    const token = inviteToken.trim();
+                    if (!token) throw new Error("Invitación inválida (sin token).");
+                    const prov = new GoogleAuthProvider();
+                    const cred = await signInWithPopup(auth, prov);
+                    await acceptInviteForUser(token, cred.user);
+                    showToast("Invitación aceptada", "success");
+                  } catch (e: any) {
+                    console.error("INVITE GOOGLE ERROR", e);
+                    setInviteError(e?.message || "No se pudo iniciar sesión con Google.");
+                  } finally {
+                    setInviteLoading(false);
+                  }
+                }}
+                className="w-full mt-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold py-3 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Continuar con Google
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  try { window.history.replaceState({}, "", "/"); } catch {}
+                  setInviteError("");
+                  setInviteMode(isSignup ? "signin" : "signup");
+                }}
+                className="w-full mt-3 text-sm text-slate-600 underline underline-offset-4 hover:text-slate-800"
+              >
+                {isSignup ? "Ya tengo cuenta" : "Quiero crear una cuenta nueva"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setInviteError("");
+                  setInviteToken("");
                   setView("home" as any);
                 }}
                 className="w-full mt-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold py-3 hover:bg-slate-50 transition-colors"
@@ -1345,7 +1596,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const renderHomeDirectory = () => {
     return (
       <div
-        className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 py-10 pb-16"
+        className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16"
         style={{
           backgroundImage: `linear-gradient(to bottom, rgba(248, 250, 252, 0.86), rgba(248,250,252,0.30)), url(${HOME_BG_SRC})`,
           backgroundSize: "cover",
@@ -1395,7 +1646,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             />
            <h1 className="text-4xl md:text-5xl font-extrabold">
   <span className="text-sky-500">Clave</span><span className="text-teal-700">Salud</span>
-</h1>
+  </h1>
           </div>
 
           <p className="text-slate-500 mt-3 text-lg">
@@ -1425,13 +1676,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               >
                 <div className="flex items-center gap-4">
                  {/* ESTE ES EL NUEVO CÓDIGO */}
-<div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
   {(c as any).logoUrl ? (
     <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
   ) : (
     <Building2 className="w-7 h-7 text-slate-700" />
   )}
-</div>
+  </div>
 
                   <div className="flex-1">
                     <div className="font-extrabold text-slate-900 text-lg leading-tight">
@@ -1454,7 +1705,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   };
 
   const centerCtxValue = useMemo(() => {
-    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? ({} as any);
+    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
     return {
       activeCenterId,
       activeCenter: c,
@@ -1535,7 +1786,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   }
 
-if (view === ("admin-login" as ViewMode)) return (
+  if (view === ("admin-login" as ViewMode)) return (
     <CenterContext.Provider value={centerCtxValue}>
       {renderLogin(false)}
     </CenterContext.Provider>

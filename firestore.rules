@@ -2,172 +2,252 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /* =========================
+       Helpers generales
+    ==========================*/
     function signedIn() {
       return request.auth != null;
     }
 
-    function userDoc() {
-      return signedIn()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function emailLower() {
+      return request.auth.token.email != null
+        ? request.auth.token.email.toLowerCase()
         : null;
     }
 
-    function userExists() {
-      return signedIn() && userDoc() != null && userDoc().exists();
-    }
-
-    function roles() {
-      return userExists() && (userDoc().data.roles is list) ? userDoc().data.roles : [];
-    }
-
-    function centers() {
-      return userExists() && (userDoc().data.centros is list) ? userDoc().data.centros : [];
-    }
-
-    function authEmailLower() {
-      return signedIn() && (request.auth.token.email is string)
-        ? request.auth.token.email.toLowerCase()
-        : "";
-    }
-
+    /* =========================
+       Roles globales (claims)
+    ==========================*/
     function isSuperAdmin() {
-      // Compat: custom claim OR roles array variants
-      return signedIn() && (
-        (request.auth.token.superadmin == true) ||
-        (request.auth.token.super_admin == true) ||
-        (request.auth.token.role == "super_admin") ||
-        ("super_admin" in roles()) ||
-        ("superadmin" in roles()) ||
-        ("SuperAdmin" in roles()) ||
-        ("SUPERADMIN" in roles())
-      );
+      return signedIn() && request.auth.token.super_admin == true;
     }
 
-    function isCenterAdmin() {
-      return userExists() && (
-        ("center_admin" in roles()) ||
-        ("admin" in roles()) ||
-        ("Admin" in roles()) ||
-        ("Administrador" in roles())
-      );
+    /* =========================
+       Users (compatibilidad con tu login actual)
+       - Cada usuario puede leer/escribir su propio perfil.
+       - SuperAdmin puede leerlos.
+    ==========================*/
+    match /users/{userId} {
+      allow read: if signedIn() && (isSuperAdmin() || uid() == userId);
+      allow create: if signedIn() && uid() == userId;
+      allow update: if signedIn() && (uid() == userId || isSuperAdmin());
+      allow delete: if false;
     }
 
-    function canAccessCenter(centerId) {
-      return isSuperAdmin() || (userExists() && (centerId in centers()));
+    /* =========================
+       Helpers por centro
+    ==========================*/
+    function staffPath(centerId, staffUid) {
+      return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
     }
 
-    // ---------------- USERS ----------------
-    match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
-      allow create: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
-      allow update: if signedIn() && (request.auth.uid == uid || isSuperAdmin());
-      allow delete: if isSuperAdmin();
+    function staffDoc(centerId) {
+      return get(staffPath(centerId, uid()));
     }
 
-    // ---------------- CENTERS ----------------
+    function isStaff(centerId) {
+      return signedIn()
+        && exists(staffPath(centerId, uid()))
+        && staffDoc(centerId).data.active == true;
+    }
+
+    function staffRole(centerId) {
+      return isStaff(centerId)
+        ? staffDoc(centerId).data.role
+        : null;
+    }
+
+    function isCenterAdmin(centerId) {
+      return isStaff(centerId) && staffRole(centerId) == "center_admin";
+    }
+
+    function isDoctor(centerId) {
+      return isStaff(centerId) && staffRole(centerId) == "doctor";
+    }
+
+    function canViewAudit(centerId) {
+      return isSuperAdmin() || isCenterAdmin(centerId);
+    }
+
+    /* =========================
+       INVITES helpers (para aceptar invitación sin Cloud Functions)
+    ==========================*/
+    function inviteDoc(token) {
+      return get(/databases/$(database)/documents/invites/$(token));
+    }
+
+    function inviteValidForSelf(centerId, staffUid, token) {
+      // staffUid debe ser el usuario autenticado
+      // El invite debe:
+      // - existir
+      // - estar pending
+      // - ser del mismo centerId
+      // - emailLower coincide con el del usuario autenticado
+      return signedIn()
+        && staffUid == uid()
+        && token is string
+        && exists(/databases/$(database)/documents/invites/$(token))
+        && inviteDoc(token).data.centerId == centerId
+        && inviteDoc(token).data.status == "pending"
+        && inviteDoc(token).data.emailLower == emailLower();
+    }
+
+    /* =========================
+       CENTERS (tenant root)
+    ==========================*/
     match /centers/{centerId} {
-      allow read: if canAccessCenter(centerId);
-      // Crear/editar centros: solo superadmin (facturación, licencias, módulos)
-      allow create, update, delete: if isSuperAdmin();
-    }
+      allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+      allow create: if isSuperAdmin();
+      allow update, delete: if isSuperAdmin();
 
-    // ---------------- INVITES (Google-only onboarding) ----------------
-    // Document shape recommended:
-    // { emailLower, centerId, role, status: "pending"|"claimed"|"revoked",
-    //   createdAt, createdByUid, claimedAt, claimedByUid }
-    match /invites/{inviteId} {
+      /* ---------- STAFF ---------- */
+      match /staff/{staffUid} {
 
-      // SuperAdmin y CenterAdmin pueden leer invites de centros que administran
-      allow read: if isSuperAdmin()
-        || (isCenterAdmin() && resource.data.centerId is string && canAccessCenter(resource.data.centerId))
-        || (signedIn() && resource.data.emailLower is string && resource.data.emailLower == authEmailLower());
-
-      // Crear invite: superadmin o admin del centro (del centro especificado)
-      allow create: if userExists()
-        && request.resource.data.centerId is string
-        && canAccessCenter(request.resource.data.centerId)
-        && (isSuperAdmin() || isCenterAdmin())
-        && request.resource.data.emailLower is string
-        && request.resource.data.status == "pending";
-
-      // Claim por el dueño del correo (solo pending -> claimed)
-      allow update: if signedIn()
-        && resource.data.emailLower is string
-        && resource.data.emailLower == authEmailLower()
-        && resource.data.status == "pending"
-        && request.resource.data.status == "claimed"
-        && request.resource.data.centerId == resource.data.centerId
-        && request.resource.data.emailLower == resource.data.emailLower;
-
-      // Revocar/borrar: solo admins
-      allow delete: if isSuperAdmin()
-        || (isCenterAdmin() && resource.data.centerId is string && canAccessCenter(resource.data.centerId));
-    }
-
-    // ---------------- PATIENTS ----------------
-    match /patients/{patientId} {
-      allow read: if canAccessCenter(resource.data.centerId);
-
-      allow create: if userExists()
-        && request.resource.data.centerId is string
-        && canAccessCenter(request.resource.data.centerId);
-
-      allow update: if userExists()
-        && request.resource.data.centerId is string
-        && resource.data.centerId == request.resource.data.centerId
-        && canAccessCenter(request.resource.data.centerId);
-
-      allow delete: if isSuperAdmin() || isCenterAdmin();
-    }
-
-    // ---------------- DOCTORS / PROFESSIONALS ----------------
-    match /doctors/{doctorId} {
-      allow read: if canAccessCenter(resource.data.centerId);
-
-      allow create: if userExists()
-        && request.resource.data.centerId is string
-        && canAccessCenter(request.resource.data.centerId)
-        && (isSuperAdmin() || isCenterAdmin());
-
-      allow update: if userExists()
-        && request.resource.data.centerId is string
-        && resource.data.centerId == request.resource.data.centerId
-        && canAccessCenter(request.resource.data.centerId)
-        && (
-          isSuperAdmin() || isCenterAdmin()
-          // Compat: si doctorId == uid o si el doc tiene un campo uid
-          || request.auth.uid == doctorId
-          || (resource.data.uid is string && resource.data.uid == request.auth.uid)
+        // SuperAdmin ve todo; miembros ven su propio doc; admin ve su centro
+        allow read: if signedIn() && (
+          isSuperAdmin()
+          || (uid() == staffUid)
+          || isCenterAdmin(centerId)
         );
 
-      allow delete: if isSuperAdmin() || isCenterAdmin();
+        // Crear staff:
+        // - SuperAdmin
+        // - CenterAdmin (para su centro)
+        // - Invitado creando SU propio staff (vía token)
+        allow create: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (
+            uid() == staffUid
+            && inviteValidForSelf(centerId, staffUid, request.resource.data.inviteToken)
+          )
+        );
+
+        // Update staff:
+        // - SuperAdmin
+        // - CenterAdmin (para su centro)
+        // - El propio usuario (solo campos no críticos) -> lo dejamos permitido y tú controlas desde UI
+        allow update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (uid() == staffUid)
+        );
+
+        // Nadie borra staff desde cliente (mejor desactivar/soft-delete)
+        allow delete: if false;
+      }
+
+      /* ---------- PATIENTS ---------- */
+      match /patients/{patientId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+
+        match /notes/{noteId} {
+          allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+          allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+          allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        }
+      }
+
+      /* ---------- TEMPLATES ---------- */
+      match /templates/{templateId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+
+        // Editar:
+        // - SuperAdmin
+        // - CenterAdmin
+        // - Dueño de plantilla (ownerUid)
+        allow update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (resource.data.ownerUid == uid())
+        );
+
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+      /* ---------- AGENDA CONFIG (opcional separado) ---------- */
+      match /agendas/{uidDoc} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (
+          isSuperAdmin()
+          || (uid() == uidDoc)
+          || isCenterAdmin(centerId)
+        );
+        allow delete: if false;
+      }
+
+      /* ---------- SLOTS ---------- */
+      match /slots/{slotId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (isDoctor(centerId) && request.resource.data.doctorUid == uid())
+        );
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+      /* ---------- APPOINTMENTS ---------- */
+      match /appointments/{apptId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (isDoctor(centerId) && request.resource.data.doctorUid == uid())
+        );
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+      /* ---------- AUDIT LOGS ---------- */
+      match /auditLogs/{logId} {
+        allow read: if signedIn() && canViewAudit(centerId);
+        // idealmente desde Cloud Functions; por ahora solo superadmin
+        allow create: if signedIn() && isSuperAdmin();
+        allow update, delete: if false;
+      }
     }
 
-    // ---------------- APPOINTMENTS ----------------
-    match /appointments/{appointmentId} {
-      allow read: if canAccessCenter(resource.data.centerId);
-      allow create: if userExists()
-        && request.resource.data.centerId is string
-        && canAccessCenter(request.resource.data.centerId);
-      allow update: if userExists()
-        && request.resource.data.centerId is string
-        && resource.data.centerId == request.resource.data.centerId
-        && canAccessCenter(request.resource.data.centerId);
-      allow delete: if isSuperAdmin() || isCenterAdmin();
+    /* =========================
+       INVITES (global)
+    ==========================*/
+    match /invites/{token} {
+      // Leer invite por link (antes de login)
+      allow read: if true;
+
+      // Crear invite:
+      // - SuperAdmin
+      // - CenterAdmin del centro destino
+      allow create: if signedIn() && (
+        isSuperAdmin()
+        || (
+          request.resource.data.centerId is string
+          && isCenterAdmin(request.resource.data.centerId)
+        )
+      );
+
+      // Aceptar invite (pending -> accepted por el dueño del correo)
+      allow update: if signedIn()
+        && resource.data.status == "pending"
+        && request.resource.data.status == "accepted"
+        && request.resource.data.acceptedByUid == uid();
+
+      // Nadie borra invites desde cliente
+      allow delete: if false;
     }
 
-    // ---------------- LOGS / AUDIT ----------------
-    match /logs/{logId} {
-      allow read: if canAccessCenter(resource.data.centerId);
-      allow create: if userExists()
-        && request.resource.data.centerId is string
-        && canAccessCenter(request.resource.data.centerId);
-      allow update, delete: if isSuperAdmin(); // logs no se editan en operación normal
-    }
-
-    // Default: deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    /* =========================
+       BLOQUEO COLECCIONES PLANAS LEGACY
+    ==========================*/
+    match /doctors/{docId} { allow read, write: if false; }
+    match /patients/{patId} { allow read, write: if false; }
+    match /appointments/{appId} { allow read, write: if false; }
+    match /logs/{logId} { allow read, write: if false; }
   }
 }

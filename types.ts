@@ -11,7 +11,7 @@ export interface MedicalCenter {
   isActive: boolean; // If false, access is blocked
   isPinned?: boolean; // To pin important centers to top
   maxUsers: number; // Limit number of doctors
-  allowedRoles: RoleId[]; // Only these roles can be created // Only these roles can be created
+  allowedRoles: AnyRole[]; // Only these roles can be created // Only these roles can be created
   modules: {
       dental: boolean; // Enables Odontogram
       prescriptions: boolean; // Enables Prescription Manager
@@ -222,6 +222,23 @@ export type RoleId =
   | 'QUIMICO_FARMACEUTICO';
 
 /**
+ * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
+ * Mantener compatibilidad con roles legacy definidos en RoleId.
+ */
+export type CanonicalRole =
+  | "super_admin"
+  | "center_admin"
+  | "admin"
+  | "doctor";
+
+/**
+ * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
+ * Útil mientras migramos componentes gradualmente.
+ */
+export type AnyRole = RoleId | CanonicalRole | "superadmin" | "Administrador" | "Admin";
+
+
+/**
  * @deprecated Mantener por compatibilidad. Usar RoleId.
  */
 export type ProfessionalRole = RoleId;
@@ -232,7 +249,7 @@ export interface Doctor {
   rut: string;
   fullName: string;
   photoUrl?: string; // NEW: Profile photo for booking
-  role: RoleId; 
+    role: AnyRole; 
   specialty: string; 
   university?: string;
   email: string;
@@ -249,7 +266,9 @@ export interface CenterInvite {
   centerId: string;
   email: string; // lowercased
   fullName?: string;
-  role: RoleId;
+    role: AnyRole;
+  /** Roles múltiples (preferido). Si existe, úsalo sobre `role`. */
+  roles?: AnyRole[];
   createdAt?: any;
   createdBy?: string; // uid
   status?: "pending" | "claimed" | "revoked";
