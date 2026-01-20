@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Patient,
   ViewMode,
@@ -6,13 +6,14 @@ import {
   Doctor,
   MedicalCenter,
   AuditLogEntry,
+  Preadmission,
 } from "./types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS, INITIAL_CENTERS } from "./constants";
 import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import { formatRUT, generateId, getStandardSlots, getDaysInMonth } from "./utils";
+import { formatRUT, generateId, getStandardSlots, getDaysInMonth, validateRUT } from "./utils";
 import {
   AlertCircle,
   ArrowLeft,
@@ -28,6 +29,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useToast } from "./components/Toast";
+import { CenterContext, CenterModules } from "./CenterContext";
 
 import { db, auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -54,21 +56,6 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-// -------------------- Center / Modules Context --------------------
-export type CenterModules = Record<string, boolean>;
-
-export const CenterContext = createContext<{
-  activeCenterId: string;
-  activeCenter: MedicalCenter | null;
-  modules: CenterModules;
-  isModuleEnabled: (key: string) => boolean;
-}>({
-  activeCenterId: "",
-  activeCenter: null,
-  modules: {},
-  isModuleEnabled: () => true,
-});
-
 function isValidCenter(c: any): c is MedicalCenter {
   return (
     !!c &&
@@ -76,20 +63,6 @@ function isValidCenter(c: any): c is MedicalCenter {
     typeof (c as any).id === "string" &&
     (c as any).id.length > 0 &&
     typeof (c as any).name === "string"
-  );
-}
-
-type GlobalCollection =
-  | "patients"
-  | "doctors"
-  | "appointments"
-  | "logs"
-  | "centers"
-  | "users";
-
-function isValidCollection(c: string): c is GlobalCollection {
-  return ["patients", "doctors", "appointments", "logs", "centers", "users"].includes(
-    c
   );
 }
 
@@ -106,12 +79,17 @@ const App: React.FC = () => {
   const [isSuperAdminClaim, setIsSuperAdminClaim] = useState<boolean>(false);
 
   // ---------- Global data ----------
-  const [centers, setCenters] = useState<MedicalCenter[]>(INITIAL_CENTERS);
+  const [demoMode, setDemoMode] = useState(false);
+  const [centers, setCenters] = useState<MedicalCenter[]>([]);
 
   // Centros desde Firestore (respetando permisos por centro)
   useEffect(() => {
-    if (!auth.currentUser) {
+    if (demoMode) {
       setCenters(INITIAL_CENTERS);
+      return;
+    }
+    if (!auth.currentUser) {
+      setCenters([]);
       return;
     }
 
@@ -149,11 +127,11 @@ const App: React.FC = () => {
             (snap) => {
               if (cancelled) return;
               const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-              setCenters(items.length ? items : INITIAL_CENTERS);
+              setCenters(items);
             },
             () => {
               if (cancelled) return;
-              setCenters(INITIAL_CENTERS);
+              setCenters([]);
             }
           );
           unsubscribers.push(unsub);
@@ -161,7 +139,7 @@ const App: React.FC = () => {
         }
 
         if (!allowed.length) {
-          setCenters(INITIAL_CENTERS);
+          setCenters([]);
           return;
         }
 
@@ -179,17 +157,17 @@ const App: React.FC = () => {
                 all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
               });
               const merged = Object.values(all);
-              setCenters(merged.length ? merged : INITIAL_CENTERS);
+              setCenters(merged);
             },
             () => {
               if (cancelled) return;
-              setCenters(INITIAL_CENTERS);
+              setCenters([]);
             }
           );
           unsubscribers.push(unsub);
         }
       } catch {
-        if (!cancelled) setCenters(INITIAL_CENTERS);
+        if (!cancelled) setCenters([]);
       }
     };
 
@@ -203,30 +181,34 @@ const App: React.FC = () => {
         } catch {}
       });
     };
-  }, [isSuperAdminClaim]);
+  }, [demoMode, isSuperAdminClaim]);
 
-  const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
-  const [doctors, setDoctors] = useState<Doctor[]>(INITIAL_DOCTORS);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [demoMode, setDemoMode] = useState(false);
+  const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
 
   // tenant selection
   const [activeCenterId, setActiveCenterId] = useState<string>("");
 
-  const centerModules = useMemo(() => {
-    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId);
-    return (c?.modules ?? {}) as CenterModules;
-  }, [centers, activeCenterId]);
-
-  const isModuleEnabled = (key: string) => {
-    const v = centerModules?.[key];
-    return v === undefined ? true : !!v;
-  };
-
   const activeCenter = useMemo(
     () => centers.find((c) => c.id === activeCenterId) ?? null,
     [centers, activeCenterId]
+  );
+
+  const updateModules = useCallback(
+    (modules: CenterModules) => {
+      if (!activeCenterId) return;
+      setCenters((prev) =>
+        prev.map((center) =>
+          center.id === activeCenterId
+            ? { ...center, modules: { ...(center.modules ?? {}), ...modules } }
+            : center
+        )
+      );
+    },
+    [activeCenterId]
   );
 
   // ---------- Session ----------
@@ -341,39 +323,64 @@ const App: React.FC = () => {
   useEffect(() => {
     let unsubCenters: (() => void) | null = null;
 
+    if (demoMode) {
+      setPatients(MOCK_PATIENTS);
+      setDoctors(INITIAL_DOCTORS);
+      setAppointments([]);
+      setAuditLogs([]);
+      return;
+    }
+
     if (isSuperAdminClaim) {
       unsubCenters = onSnapshot(
         collection(db, "centers"),
         (snap) => {
           const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-          if (items.length) setCenters(items);
+          setCenters(items);
         },
         () => {}
       );
     }
 
+    if (!activeCenterId) {
+      setPatients([]);
+      setDoctors([]);
+      setAppointments([]);
+      setAuditLogs([]);
+      setPreadmissions([]);
+      return () => {
+        unsubCenters?.();
+      };
+    }
+
     const unsubPatients = onSnapshot(
-      query(collection(db, "patients"), where("centerId", "==", activeCenterId)),
+      collection(db, "centers", activeCenterId, "patients"),
       (snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
-      () => {}
+      () => setPatients([])
     );
 
     const unsubDoctors = onSnapshot(
-      query(collection(db, "doctors"), where("centerId", "==", activeCenterId)),
+      collection(db, "centers", activeCenterId, "staff"),
       (snap) => setDoctors(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[]),
-      () => {}
+      () => setDoctors([])
     );
 
     const unsubAppts = onSnapshot(
-      query(collection(db, "appointments"), where("centerId", "==", activeCenterId)),
+      collection(db, "centers", activeCenterId, "appointments"),
       (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
-      () => {}
+      () => setAppointments([])
     );
 
     const unsubLogs = onSnapshot(
-      query(collection(db, "logs"), where("centerId", "==", activeCenterId)),
+      collection(db, "centers", activeCenterId, "auditLogs"),
       (snap) => setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
-      () => {}
+      () => setAuditLogs([])
+    );
+
+    const unsubPreadmissions = onSnapshot(
+      collection(db, "centers", activeCenterId, "preadmissions"),
+      (snap) => setPreadmissions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]),
+      () => setPreadmissions([])
     );
 
     return () => {
@@ -382,19 +389,160 @@ const App: React.FC = () => {
       unsubDoctors();
       unsubAppts();
       unsubLogs();
+      unsubPreadmissions();
     };
-  }, [activeCenterId, isSuperAdminClaim]);
+  }, [activeCenterId, demoMode, isSuperAdminClaim]);
 
   // ---------- CRUD helpers ----------
-  const onGlobalUpdate = async (collectionName: string, payload: any) => {
-    if (!isValidCollection(collectionName)) throw new Error(`Colección inválida: ${collectionName}`);
-    const id = payload?.id ?? generateId();
-    await setDoc(doc(db, collectionName, id), { ...payload, id }, { merge: true });
+  const requireCenter = (actionLabel: string) => {
+    if (!activeCenterId) {
+      showToast(`Selecciona un centro para ${actionLabel}.`, "warning");
+      return false;
+    }
+    return true;
   };
 
-  const onGlobalDelete = async (collectionName: string, id: string) => {
-    if (!isValidCollection(collectionName)) throw new Error(`Colección inválida: ${collectionName}`);
-    await deleteDoc(doc(db, collectionName, id));
+  const updatePatient = async (payload: Patient) => {
+    if (!requireCenter("guardar pacientes")) return;
+    const id = payload?.id ?? generateId();
+    await setDoc(
+      doc(db, "centers", activeCenterId, "patients", id),
+      { ...payload, id, centerId: activeCenterId },
+      { merge: true }
+    );
+  };
+
+  const deletePatient = async (id: string) => {
+    if (!requireCenter("eliminar pacientes")) return;
+    await deleteDoc(doc(db, "centers", activeCenterId, "patients", id));
+  };
+
+  const updateStaff = async (payload: Doctor) => {
+    if (!requireCenter("guardar profesionales")) return;
+    const id = payload?.id ?? generateId();
+    await setDoc(
+      doc(db, "centers", activeCenterId, "staff", id),
+      { ...payload, id, centerId: activeCenterId },
+      { merge: true }
+    );
+  };
+
+  const deleteStaff = async (id: string) => {
+    if (!requireCenter("eliminar profesionales")) return;
+    await deleteDoc(doc(db, "centers", activeCenterId, "staff", id));
+  };
+
+  const updateAppointment = async (payload: Appointment) => {
+    if (!requireCenter("guardar citas")) return;
+    const id = payload?.id ?? generateId();
+    const doctorUid = (payload as any).doctorUid ?? payload.doctorId;
+    await setDoc(
+      doc(db, "centers", activeCenterId, "appointments", id),
+      { ...payload, doctorUid, id, centerId: activeCenterId },
+      { merge: true }
+    );
+  };
+
+  const deleteAppointment = async (id: string) => {
+    if (!requireCenter("eliminar citas")) return;
+    await deleteDoc(doc(db, "centers", activeCenterId, "appointments", id));
+  };
+
+  const updateAuditLog = async (payload: AuditLogEntry) => {
+    if (!requireCenter("registrar auditoría")) return;
+    const id = payload?.id ?? generateId();
+    const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
+    await setDoc(
+      doc(db, "centers", activeCenterId, "auditLogs", id),
+      { ...payload, actorUid, id, centerId: activeCenterId },
+      { merge: true }
+    );
+  };
+
+  const updateCenter = async (payload: MedicalCenter) => {
+    const id = payload?.id ?? generateId();
+    await setDoc(doc(db, "centers", id), { ...payload, id }, { merge: true });
+  };
+
+  const deleteCenter = async (id: string) => {
+    await deleteDoc(doc(db, "centers", id));
+  };
+
+  const createPreadmission = async (payload: Omit<Preadmission, "id" | "createdAt" | "centerId" | "status">) => {
+    if (!requireCenter("enviar preingresos")) return;
+    const id = generateId();
+    const submissionSource = auth.currentUser ? "staff" : "public";
+    await setDoc(doc(db, "centers", activeCenterId, "preadmissions", id), {
+      id,
+      centerId: activeCenterId,
+      createdAt: serverTimestamp(),
+      status: "pending",
+      source: submissionSource,
+      submittedByUid: auth.currentUser?.uid ?? null,
+      ...payload,
+    });
+  };
+
+  const approvePreadmission = async (item: Preadmission) => {
+    if (!requireCenter("aprobar preingresos")) return;
+    const patientDraft = item.patientDraft ?? {};
+    const patientId = (patientDraft as any).id ?? generateId();
+    const patientPayload: Patient = {
+      id: patientId,
+      centerId: activeCenterId,
+      rut: (patientDraft.rut ?? item.contact?.rut ?? "") as string,
+      fullName: (patientDraft.fullName ?? item.contact?.name ?? "Paciente") as string,
+      birthDate: (patientDraft.birthDate ?? "") as string,
+      gender: (patientDraft.gender ?? "Otro") as any,
+      email: patientDraft.email ?? item.contact?.email,
+      phone: patientDraft.phone ?? item.contact?.phone,
+      address: patientDraft.address,
+      commune: patientDraft.commune,
+      occupation: patientDraft.occupation,
+      livingWith: patientDraft.livingWith ?? [],
+      activeExams: patientDraft.activeExams ?? [],
+      medicalHistory: patientDraft.medicalHistory ?? [],
+      medicalHistoryDetails: patientDraft.medicalHistoryDetails,
+      cancerDetails: patientDraft.cancerDetails,
+      surgicalHistory: patientDraft.surgicalHistory ?? [],
+      surgicalHistoryDetails: patientDraft.surgicalHistoryDetails,
+      herniaDetails: patientDraft.herniaDetails,
+      smokingStatus: (patientDraft.smokingStatus ?? "No fumador") as any,
+      cigarettesPerDay: patientDraft.cigarettesPerDay,
+      yearsSmoking: patientDraft.yearsSmoking,
+      packYearsIndex: patientDraft.packYearsIndex,
+      alcoholStatus: (patientDraft.alcoholStatus ?? "No consumo") as any,
+      alcoholFrequency: patientDraft.alcoholFrequency,
+      drugUse: patientDraft.drugUse,
+      drugDetails: patientDraft.drugDetails,
+      medications: patientDraft.medications ?? [],
+      allergies: patientDraft.allergies ?? [],
+      consultations: patientDraft.consultations ?? [],
+      attachments: patientDraft.attachments ?? [],
+      lastUpdated: new Date().toISOString(),
+    };
+
+    await updatePatient(patientPayload);
+
+    if (item.appointmentDraft) {
+      const appointmentDraft = item.appointmentDraft;
+      const appointmentId = (appointmentDraft as any).id ?? generateId();
+      const appointmentPayload: Appointment = {
+        id: appointmentId,
+        centerId: activeCenterId,
+        doctorId: (appointmentDraft.doctorId ?? appointmentDraft.doctorUid ?? "") as string,
+        doctorUid: (appointmentDraft.doctorUid ?? appointmentDraft.doctorId ?? "") as string,
+        date: appointmentDraft.date ?? new Date().toISOString().split("T")[0],
+        time: appointmentDraft.time ?? "",
+        patientName: appointmentDraft.patientName ?? patientPayload.fullName,
+        patientRut: appointmentDraft.patientRut ?? patientPayload.rut,
+        patientPhone: appointmentDraft.patientPhone ?? patientPayload.phone,
+        status: "booked",
+      };
+      await updateAppointment(appointmentPayload);
+    }
+
+    await deleteDoc(doc(db, "centers", activeCenterId, "preadmissions", item.id));
   };
 
   // ---------- Auth/login ----------
@@ -767,23 +915,58 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
 
   const handleBookingConfirm = async () => {
-    if (!selectedSlot || !bookingData.rut || !bookingData.name || !selectedDoctorForBooking) {
-      showToast("Faltan datos", "error");
+    const name = bookingData.name.trim();
+    const rut = bookingData.rut.trim();
+    const phone = bookingData.phone.trim();
+    if (!selectedSlot || !selectedDoctorForBooking) {
+      showToast("Selecciona un horario y profesional.", "error");
+      return;
+    }
+    if (!name) {
+      showToast("Ingresa el nombre completo.", "error");
+      return;
+    }
+    if (!rut || !validateRUT(rut)) {
+      showToast("RUT inválido. Verifica el formato.", "error");
+      return;
+    }
+    if (!phone) {
+      showToast("Ingresa un teléfono de contacto.", "error");
       return;
     }
     const newAppt: Appointment = {
       id: generateId(),
       centerId: activeCenterId,
       doctorId: selectedDoctorForBooking.id,
+      doctorUid: selectedDoctorForBooking.id,
       date: selectedSlot.date,
       time: selectedSlot.time,
-      patientName: bookingData.name,
-      patientRut: bookingData.rut,
-      patientPhone: bookingData.phone,
+      patientName: name,
+      patientRut: rut,
+      patientPhone: phone,
       status: "booked",
     } as any;
 
-    await onGlobalUpdate("appointments", newAppt);
+    if (!auth.currentUser) {
+      await createPreadmission({
+        patientDraft: {
+          fullName: bookingData.name,
+          rut: bookingData.rut,
+          phone: bookingData.phone,
+        },
+        appointmentDraft: newAppt,
+        contact: {
+          name: bookingData.name,
+          rut: bookingData.rut,
+          phone: bookingData.phone,
+        },
+      });
+      showToast("Preingreso recibido. Te contactaremos para confirmar.", "success");
+      setBookingStep(4);
+      return;
+    }
+
+    await updateAppointment(newAppt);
     setBookingStep(4);
   };
 
@@ -922,7 +1105,22 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             const payload = exists
               ? { ...patient, id: exists.id, centerId: activeCenterId }
               : { ...patient, centerId: activeCenterId };
-            onGlobalUpdate("patients", payload);
+            if (!auth.currentUser) {
+              createPreadmission({
+                patientDraft: payload,
+                contact: {
+                  name: patient.fullName,
+                  rut: patient.rut,
+                  phone: patient.phone,
+                  email: patient.email,
+                },
+              })
+                .then(() => showToast("Preingreso recibido. Te contactaremos.", "success"))
+                .catch(() => showToast("No se pudo enviar el preingreso.", "error"));
+              setView("patient-menu" as ViewMode);
+              return;
+            }
+            updatePatient(payload);
             showToast("Ficha actualizada correctamente", "success");
             setView("patient-menu" as ViewMode);
           }}
@@ -936,18 +1134,17 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const renderBooking = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
 
-    const uniqueRoles = Array.from(
-      new Set(doctors.filter((d) => d.centerId === activeCenterId).map((d) => d.role))
-    );
+    const uniqueRoles = Array.from(new Set(doctors.map((d) => d.role)));
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
+    const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const availableSlotsForDay =
       selectedDoctorForBooking
         ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig).filter((slot: any) => {
             const existing = appointments.find(
               (a) =>
-                a.doctorId === selectedDoctorForBooking.id &&
+                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
                 a.date === dateStr &&
                 a.time === slot.time &&
                 a.status === "available"
@@ -1067,7 +1264,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                     const availableCount = appointments.filter(
                       (a) =>
-                        a.doctorId === selectedDoctorForBooking.id &&
+                        appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
                         a.date === dStr &&
                         a.status === "available"
                     ).length;
@@ -1640,16 +1837,19 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   const centerCtxValue = useMemo(() => {
     const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    const modules = (c?.modules ?? {}) as CenterModules;
     return {
       activeCenterId,
       activeCenter: c,
-      modules: (c?.modules ?? {}) as CenterModules,
+      modules,
+      setActiveCenterId,
+      updateModules,
       isModuleEnabled: (key: string) => {
-        const v = (c?.modules ?? {})?.[key];
+        const v = modules?.[key];
         return v === undefined ? true : !!v;
       },
     };
-  }, [centers, activeCenterId]);
+  }, [activeCenterId, centers, updateModules]);
 
   // ---------- Render ----------
   if (view === ("invite" as any))
@@ -1687,14 +1887,12 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             setView("home" as ViewMode);
           }}
           onUpdateCenters={async (updates) => {
-            for (const c of updates) await onGlobalUpdate("centers", c as any);
+            for (const c of updates) await updateCenter(c as any);
           }}
           onDeleteCenter={async (id) => {
-            await onGlobalDelete("centers", id);
+            await deleteCenter(id);
           }}
-          onUpdateDoctors={async (updates) => {
-            for (const d of updates) await onGlobalUpdate("doctors", d as any);
-          }}
+          onUpdateDoctors={async () => {}}
         />
       </CenterContext.Provider>
     );
@@ -1719,25 +1917,26 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           agendaConfig={currentUser.agendaConfig}
           savedTemplates={currentUser.savedTemplates}
           currentUser={currentUser}
-          onUpdatePatient={(p: Patient) => onGlobalUpdate("patients", p)}
-          onUpdateDoctor={(d: Doctor) => onGlobalUpdate("doctors", d)}
+          onUpdatePatient={(p: Patient) => updatePatient(p)}
+          onUpdateDoctor={(d: Doctor) => updateStaff(d)}
           onLogout={handleLogout}
           appointments={appointments}
           onUpdateAppointments={(newAppts: Appointment[]) => {
-            newAppts.forEach((a) => onGlobalUpdate("appointments", a));
+            newAppts.forEach((a) => updateAppointment(a));
           }}
           onLogActivity={(action: any, details: string, targetId?: string) => {
             const log: AuditLogEntry = {
               id: generateId(),
               centerId: activeCenterId,
               timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? currentUser.id,
               actorName: currentUser.fullName ?? "Usuario",
               actorRole: currentUser.role ?? "Profesional",
               action,
               details,
               targetId,
             } as any;
-            onGlobalUpdate("logs", log);
+            updateAuditLog(log);
           }}
           isReadOnly={false}
         />
@@ -1751,11 +1950,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         <AdminDashboard
           centerId={activeCenterId}
           doctors={doctors}
-          onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => onGlobalUpdate("doctors", d))}
+          onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
           appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => onGlobalUpdate("appointments", a))}
+          onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => updateAppointment(a))}
           patients={patients}
-          onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => onGlobalUpdate("patients", p))}
+          onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
+          preadmissions={preadmissions}
+          onApprovePreadmission={approvePreadmission}
           onLogout={handleLogout}
           logs={auditLogs}
           onLogActivity={(action: any, details: string, targetId?: string) => {
@@ -1763,13 +1964,14 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               id: generateId(),
               centerId: activeCenterId,
               timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? currentUser.id,
               actorName: currentUser.fullName ?? "Usuario",
               actorRole: currentUser.role ?? "Admin",
               action,
               details,
               targetId,
             } as any;
-            onGlobalUpdate("logs", log);
+            updateAuditLog(log);
           }}
         />
       </CenterContext.Provider>

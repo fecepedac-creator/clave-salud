@@ -65,6 +65,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // --- contexto del centro ---
   const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+  const hasActiveCenter = Boolean(activeCenterId);
 
   // --- helpers ---
   const getEmptyConsultation = (): Partial<Consultation> => ({
@@ -228,8 +229,8 @@ useEffect(() => {
   const handleCreateConsultation = async () => {
     if (!selectedPatient) return;
 
-    if (!activeCenterId) {
-      showToast('No hay centro activo. Selecciona un centro antes de guardar.', 'error');
+    if (!hasActiveCenter) {
+      showToast('Selecciona un centro activo antes de guardar.', 'warning');
       return;
     }
 
@@ -251,8 +252,12 @@ useEffect(() => {
 
     // 1) Guardar en Firestore (colección "consultations")
     try {
-      await addDoc(collection(db, 'consultations'), {
+      if (!activeCenterId) throw new Error('Centro no seleccionado');
+      await addDoc(collection(db, 'centers', activeCenterId, 'consultations'), {
         ...consultation,
+        centerId: activeCenterId,
+        patientId: selectedPatient?.id ?? null,
+        createdByUid: auth.currentUser?.uid ?? doctorId,
         createdAt: serverTimestamp(),
       } as any);
       showToast('Atención guardada correctamente en la nube', 'success');
@@ -549,9 +554,14 @@ useEffect(() => {
                                  </p>
                              </div>
                              {!isReadOnly && (
-                                 <button onClick={() => setIsCreatingConsultation(true)} className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg">
+                                  <button
+                                    onClick={() => setIsCreatingConsultation(true)}
+                                    disabled={!hasActiveCenter}
+                                    title={hasActiveCenter ? "Crear atención" : "Selecciona un centro activo"}
+                                    className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
                                     <Plus className="w-6 h-6" /> Nueva Atención
-                                 </button>
+                                  </button>
                              )}
                          </div>
                      )}
@@ -694,7 +704,12 @@ useEffect(() => {
                                             )}
                                         </div>
                                      )}
-                                     <button onClick={handleCreateConsultation} className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl">
+                                     <button
+                                       onClick={handleCreateConsultation}
+                                       disabled={!hasActiveCenter}
+                                       title={hasActiveCenter ? "Guardar atención" : "Selecciona un centro activo"}
+                                       className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                                     >
                                          <Save className="w-7 h-7" /> Guardar Atención
                                      </button>
                                  </div>
@@ -731,7 +746,7 @@ useEffect(() => {
               <div className="flex items-center gap-2">
                   <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                      {appointments.filter(a => a.doctorId === doctorId && a.status === 'booked' && a.date === new Date().toISOString().split('T')[0]).length} Citas Hoy
+                      {appointments.filter(a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.status === 'booked' && a.date === new Date().toISOString().split('T')[0]).length} Citas Hoy
                   </div>
                   <button onClick={onLogout} className="bg-white text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg font-bold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-2">
                       <LogOut className="w-4 h-4"/> Salir
@@ -740,6 +755,11 @@ useEffect(() => {
           </header>
 
           <main className="flex-1 overflow-hidden flex flex-col">
+              {!hasActiveCenter && (
+                  <div className="bg-amber-500/20 text-amber-800 border-b border-amber-200 px-8 py-3 text-sm">
+                      Selecciona un centro activo para habilitar pacientes, agenda y consultas.
+                  </div>
+              )}
               <div className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === 'settings' ? '' : 'overflow-hidden'}`}>
                   
                   {/* Tabs */}
@@ -784,6 +804,10 @@ useEffect(() => {
                                       {!isReadOnly && (
                                           <button 
                                               onClick={() => {
+                                                  if (!hasActiveCenter) {
+                                                    showToast("Selecciona un centro activo para crear pacientes.", "warning");
+                                                    return;
+                                                  }
                                                   const newP: Patient = { 
                                                       id: generateId(), 
                                                       centerId: '', // Will be set by context/app
@@ -793,6 +817,8 @@ useEffect(() => {
                                                   setSelectedPatient(newP);
                                                   setIsEditingPatient(true);
                                               }} 
+                                              disabled={!hasActiveCenter}
+                                              title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
                                               className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
                                           >
                                               <Plus className="w-5 h-5" /> Nuevo Paciente
@@ -886,10 +912,14 @@ useEffect(() => {
                                   onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split('T')[0])}
                                   onToggleSlot={(time) => {
                                       if(isReadOnly) return;
+                                      if (!hasActiveCenter) {
+                                          showToast("Selecciona un centro activo para modificar la agenda.", "warning");
+                                          return;
+                                      }
                                       const date = selectedAgendaDate;
                                       if (!date) return;
 
-                                      const existing = appointments.find(a => a.doctorId === doctorId && a.date === date && a.time === time);
+                                      const existing = appointments.find(a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.date === date && a.time === time);
                                       
                                       if (existing) {
                                           if(existing.status === 'booked') {
@@ -907,7 +937,8 @@ useEffect(() => {
                                           const newSlot: Appointment = {
                                               id: generateId(), 
                                               centerId: currentUser?.centerId || '', 
-                                              doctorId, 
+                                              doctorId,
+                                              doctorUid: doctorId,
                                               date, 
                                               time, 
                                               status: 'available', 
@@ -926,6 +957,15 @@ useEffect(() => {
                       {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
                       {activeTab === 'settings' && moduleGuards.settings && (
                           <div className="w-full animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+                              <div className="lg:col-span-12 bg-blue-50 border border-blue-100 text-blue-900 rounded-3xl p-6 flex items-start gap-4 shadow-sm">
+                                  <ShieldCheck className="w-6 h-6 text-blue-500 mt-0.5"/>
+                                  <div>
+                                      <h3 className="font-bold text-lg">Preingresos sin autenticación</h3>
+                                      <p className="text-sm text-blue-700">
+                                          Los pacientes pueden enviar preingresos sin iniciar sesión. Estas solicitudes se revisan y aprueban desde el panel administrativo del centro.
+                                      </p>
+                                  </div>
+                              </div>
                               
                               {/* 1. EXAM PROFILES EDITOR */}
                               <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">

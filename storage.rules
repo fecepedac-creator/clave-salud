@@ -1,0 +1,46 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function isSuperAdmin() {
+      return signedIn()
+        && (request.auth.token.super_admin == true
+          || request.auth.token.superadmin == true
+          || request.auth.token.superAdmin == true);
+    }
+
+    function staffPath(centerId, staffUid) {
+      return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
+    }
+
+    function isStaff(centerId) {
+      return signedIn()
+        && exists(staffPath(centerId, uid()))
+        && (
+          get(staffPath(centerId, uid())).data.active == true
+          || get(staffPath(centerId, uid())).data.activo == true
+        );
+    }
+
+    function isCenterAdmin(centerId) {
+      return isStaff(centerId)
+        && get(staffPath(centerId, uid())).data.role == "center_admin";
+    }
+
+    match /centers-logos/{centerId}/{fileName} {
+      allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+      allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
