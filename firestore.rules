@@ -166,9 +166,14 @@ service cloud.firestore {
 
       match /auditLogs/{logId} {
         allow read: if signedIn() && canViewAudit(centerId);
-        allow create: if signedIn() && isSuperAdmin();
+        allow create: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow update, delete: if false;
       }
+    }
+
+    match /preadmissions/{docId} {
+      allow create: if request.auth == null;
+      allow read, update, delete: if signedIn() && isSuperAdmin();
     }
 
     match /invites/{token} {
