@@ -159,14 +159,39 @@ service cloud.firestore {
         allow create, update: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
-          || (isDoctor(centerId) && request.resource.data.doctorUid == uid())
+          || (isDoctor(centerId) && (
+            request.resource.data.doctorUid == uid()
+            || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
+          ))
         );
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
+      match /consultations/{consultationId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || isDoctor(centerId)
+        );
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+      match /preadmissions/{preadmissionId} {
+        allow create: if (
+          request.resource.data.centerId == centerId
+          && request.resource.data.status == "pending"
+          && (request.auth == null || isStaff(centerId) || isSuperAdmin())
+        );
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
       match /auditLogs/{logId} {
         allow read: if signedIn() && canViewAudit(centerId);
-        allow create: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow create: if signedIn()
+          && request.resource.data.actorUid == uid()
+          && (isSuperAdmin() || isStaff(centerId));
         allow update, delete: if false;
       }
     }

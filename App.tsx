@@ -6,6 +6,7 @@ import {
   Doctor,
   MedicalCenter,
   AuditLogEntry,
+  Preadmission,
 } from "./types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS, INITIAL_CENTERS } from "./constants";
 import PatientForm from "./components/PatientForm";
@@ -186,6 +187,7 @@ const App: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
 
   // tenant selection
   const [activeCenterId, setActiveCenterId] = useState<string>("");
@@ -345,6 +347,7 @@ const App: React.FC = () => {
       setDoctors([]);
       setAppointments([]);
       setAuditLogs([]);
+      setPreadmissions([]);
       return () => {
         unsubCenters?.();
       };
@@ -374,12 +377,19 @@ const App: React.FC = () => {
       () => setAuditLogs([])
     );
 
+    const unsubPreadmissions = onSnapshot(
+      collection(db, "centers", activeCenterId, "preadmissions"),
+      (snap) => setPreadmissions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]),
+      () => setPreadmissions([])
+    );
+
     return () => {
       unsubCenters?.();
       unsubPatients();
       unsubDoctors();
       unsubAppts();
       unsubLogs();
+      unsubPreadmissions();
     };
   }, [activeCenterId, demoMode, isSuperAdminClaim]);
 
@@ -423,9 +433,10 @@ const App: React.FC = () => {
   const updateAppointment = async (payload: Appointment) => {
     requireCenter();
     const id = payload?.id ?? generateId();
+    const doctorUid = (payload as any).doctorUid ?? payload.doctorId;
     await setDoc(
       doc(db, "centers", activeCenterId, "appointments", id),
-      { ...payload, id, centerId: activeCenterId },
+      { ...payload, doctorUid, id, centerId: activeCenterId },
       { merge: true }
     );
   };
@@ -438,9 +449,10 @@ const App: React.FC = () => {
   const updateAuditLog = async (payload: AuditLogEntry) => {
     requireCenter();
     const id = payload?.id ?? generateId();
+    const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
     await setDoc(
       doc(db, "centers", activeCenterId, "auditLogs", id),
-      { ...payload, id, centerId: activeCenterId },
+      { ...payload, actorUid, id, centerId: activeCenterId },
       { merge: true }
     );
   };
@@ -452,6 +464,85 @@ const App: React.FC = () => {
 
   const deleteCenter = async (id: string) => {
     await deleteDoc(doc(db, "centers", id));
+  };
+
+  const createPreadmission = async (payload: Omit<Preadmission, "id" | "createdAt" | "centerId" | "status">) => {
+    if (!activeCenterId) {
+      throw new Error("No hay centro activo seleccionado.");
+    }
+    const id = generateId();
+    const submissionSource = auth.currentUser ? "staff" : "public";
+    await setDoc(doc(db, "centers", activeCenterId, "preadmissions", id), {
+      id,
+      centerId: activeCenterId,
+      createdAt: serverTimestamp(),
+      status: "pending",
+      source: submissionSource,
+      submittedByUid: auth.currentUser?.uid ?? null,
+      ...payload,
+    });
+  };
+
+  const approvePreadmission = async (item: Preadmission) => {
+    requireCenter();
+    const patientDraft = item.patientDraft ?? {};
+    const patientId = (patientDraft as any).id ?? generateId();
+    const patientPayload: Patient = {
+      id: patientId,
+      centerId: activeCenterId,
+      rut: (patientDraft.rut ?? item.contact?.rut ?? "") as string,
+      fullName: (patientDraft.fullName ?? item.contact?.name ?? "Paciente") as string,
+      birthDate: (patientDraft.birthDate ?? "") as string,
+      gender: (patientDraft.gender ?? "Otro") as any,
+      email: patientDraft.email ?? item.contact?.email,
+      phone: patientDraft.phone ?? item.contact?.phone,
+      address: patientDraft.address,
+      commune: patientDraft.commune,
+      occupation: patientDraft.occupation,
+      livingWith: patientDraft.livingWith ?? [],
+      activeExams: patientDraft.activeExams ?? [],
+      medicalHistory: patientDraft.medicalHistory ?? [],
+      medicalHistoryDetails: patientDraft.medicalHistoryDetails,
+      cancerDetails: patientDraft.cancerDetails,
+      surgicalHistory: patientDraft.surgicalHistory ?? [],
+      surgicalHistoryDetails: patientDraft.surgicalHistoryDetails,
+      herniaDetails: patientDraft.herniaDetails,
+      smokingStatus: (patientDraft.smokingStatus ?? "No fumador") as any,
+      cigarettesPerDay: patientDraft.cigarettesPerDay,
+      yearsSmoking: patientDraft.yearsSmoking,
+      packYearsIndex: patientDraft.packYearsIndex,
+      alcoholStatus: (patientDraft.alcoholStatus ?? "No consumo") as any,
+      alcoholFrequency: patientDraft.alcoholFrequency,
+      drugUse: patientDraft.drugUse,
+      drugDetails: patientDraft.drugDetails,
+      medications: patientDraft.medications ?? [],
+      allergies: patientDraft.allergies ?? [],
+      consultations: patientDraft.consultations ?? [],
+      attachments: patientDraft.attachments ?? [],
+      lastUpdated: new Date().toISOString(),
+    };
+
+    await updatePatient(patientPayload);
+
+    if (item.appointmentDraft) {
+      const appointmentDraft = item.appointmentDraft;
+      const appointmentId = (appointmentDraft as any).id ?? generateId();
+      const appointmentPayload: Appointment = {
+        id: appointmentId,
+        centerId: activeCenterId,
+        doctorId: (appointmentDraft.doctorId ?? appointmentDraft.doctorUid ?? "") as string,
+        doctorUid: (appointmentDraft.doctorUid ?? appointmentDraft.doctorId ?? "") as string,
+        date: appointmentDraft.date ?? new Date().toISOString().split("T")[0],
+        time: appointmentDraft.time ?? "",
+        patientName: appointmentDraft.patientName ?? patientPayload.fullName,
+        patientRut: appointmentDraft.patientRut ?? patientPayload.rut,
+        patientPhone: appointmentDraft.patientPhone ?? patientPayload.phone,
+        status: "booked",
+      };
+      await updateAppointment(appointmentPayload);
+    }
+
+    await deleteDoc(doc(db, "centers", activeCenterId, "preadmissions", item.id));
   };
 
   // ---------- Auth/login ----------
@@ -832,6 +923,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       id: generateId(),
       centerId: activeCenterId,
       doctorId: selectedDoctorForBooking.id,
+      doctorUid: selectedDoctorForBooking.id,
       date: selectedSlot.date,
       time: selectedSlot.time,
       patientName: bookingData.name,
@@ -839,6 +931,25 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       patientPhone: bookingData.phone,
       status: "booked",
     } as any;
+
+    if (!auth.currentUser) {
+      await createPreadmission({
+        patientDraft: {
+          fullName: bookingData.name,
+          rut: bookingData.rut,
+          phone: bookingData.phone,
+        },
+        appointmentDraft: newAppt,
+        contact: {
+          name: bookingData.name,
+          rut: bookingData.rut,
+          phone: bookingData.phone,
+        },
+      });
+      showToast("Preingreso recibido. Te contactaremos para confirmar.", "success");
+      setBookingStep(4);
+      return;
+    }
 
     await updateAppointment(newAppt);
     setBookingStep(4);
@@ -979,6 +1090,21 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             const payload = exists
               ? { ...patient, id: exists.id, centerId: activeCenterId }
               : { ...patient, centerId: activeCenterId };
+            if (!auth.currentUser) {
+              createPreadmission({
+                patientDraft: payload,
+                contact: {
+                  name: patient.fullName,
+                  rut: patient.rut,
+                  phone: patient.phone,
+                  email: patient.email,
+                },
+              })
+                .then(() => showToast("Preingreso recibido. Te contactaremos.", "success"))
+                .catch(() => showToast("No se pudo enviar el preingreso.", "error"));
+              setView("patient-menu" as ViewMode);
+              return;
+            }
             updatePatient(payload);
             showToast("Ficha actualizada correctamente", "success");
             setView("patient-menu" as ViewMode);
@@ -997,12 +1123,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
+    const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const availableSlotsForDay =
       selectedDoctorForBooking
         ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig).filter((slot: any) => {
             const existing = appointments.find(
               (a) =>
-                a.doctorId === selectedDoctorForBooking.id &&
+                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
                 a.date === dateStr &&
                 a.time === slot.time &&
                 a.status === "available"
@@ -1122,7 +1249,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                     const availableCount = appointments.filter(
                       (a) =>
-                        a.doctorId === selectedDoctorForBooking.id &&
+                        appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
                         a.date === dStr &&
                         a.status === "available"
                     ).length;
@@ -1787,6 +1914,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               id: generateId(),
               centerId: activeCenterId,
               timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? currentUser.id,
               actorName: currentUser.fullName ?? "Usuario",
               actorRole: currentUser.role ?? "Profesional",
               action,
@@ -1812,6 +1940,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => updateAppointment(a))}
           patients={patients}
           onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
+          preadmissions={preadmissions}
+          onApprovePreadmission={approvePreadmission}
           onLogout={handleLogout}
           logs={auditLogs}
           onLogActivity={(action: any, details: string, targetId?: string) => {
@@ -1819,6 +1949,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
               id: generateId(),
               centerId: activeCenterId,
               timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? currentUser.id,
               actorName: currentUser.fullName ?? "Usuario",
               actorRole: currentUser.role ?? "Admin",
               action,

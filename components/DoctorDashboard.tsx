@@ -251,8 +251,12 @@ useEffect(() => {
 
     // 1) Guardar en Firestore (colección "consultations")
     try {
-      await addDoc(collection(db, 'consultations'), {
+      if (!activeCenterId) throw new Error('Centro no seleccionado');
+      await addDoc(collection(db, 'centers', activeCenterId, 'consultations'), {
         ...consultation,
+        centerId: activeCenterId,
+        patientId: selectedPatient?.id ?? null,
+        createdByUid: auth.currentUser?.uid ?? doctorId,
         createdAt: serverTimestamp(),
       } as any);
       showToast('Atención guardada correctamente en la nube', 'success');
@@ -731,7 +735,7 @@ useEffect(() => {
               <div className="flex items-center gap-2">
                   <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                      {appointments.filter(a => a.doctorId === doctorId && a.status === 'booked' && a.date === new Date().toISOString().split('T')[0]).length} Citas Hoy
+                      {appointments.filter(a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.status === 'booked' && a.date === new Date().toISOString().split('T')[0]).length} Citas Hoy
                   </div>
                   <button onClick={onLogout} className="bg-white text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg font-bold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-2">
                       <LogOut className="w-4 h-4"/> Salir
@@ -889,7 +893,7 @@ useEffect(() => {
                                       const date = selectedAgendaDate;
                                       if (!date) return;
 
-                                      const existing = appointments.find(a => a.doctorId === doctorId && a.date === date && a.time === time);
+                                      const existing = appointments.find(a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.date === date && a.time === time);
                                       
                                       if (existing) {
                                           if(existing.status === 'booked') {
@@ -907,7 +911,8 @@ useEffect(() => {
                                           const newSlot: Appointment = {
                                               id: generateId(), 
                                               centerId: currentUser?.centerId || '', 
-                                              doctorId, 
+                                              doctorId,
+                                              doctorUid: doctorId,
                                               date, 
                                               time, 
                                               status: 'available', 
@@ -926,6 +931,15 @@ useEffect(() => {
                       {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
                       {activeTab === 'settings' && moduleGuards.settings && (
                           <div className="w-full animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+                              <div className="lg:col-span-12 bg-blue-50 border border-blue-100 text-blue-900 rounded-3xl p-6 flex items-start gap-4 shadow-sm">
+                                  <ShieldCheck className="w-6 h-6 text-blue-500 mt-0.5"/>
+                                  <div>
+                                      <h3 className="font-bold text-lg">Preingresos sin autenticación</h3>
+                                      <p className="text-sm text-blue-700">
+                                          Los pacientes pueden enviar preingresos sin iniciar sesión. Estas solicitudes se revisan y aprueban desde el panel administrativo del centro.
+                                      </p>
+                                  </div>
+                              </div>
                               
                               {/* 1. EXAM PROFILES EDITOR */}
                               <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
