@@ -115,7 +115,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
 
+    const staffId = doctor.id || generateId();
     const emailLower = (doctor.email || '').toLowerCase();
+
+    await setDoc(
+        doc(db, 'centers', centerId, 'staff', staffId),
+        {
+            ...doctor,
+            id: staffId,
+            centerId,
+            emailLower,
+            active: doctor.active ?? true,
+            updatedAt: serverTimestamp(),
+            createdAt: (doctor as any).createdAt ?? serverTimestamp()
+        },
+        { merge: true }
+    );
+
     if (!emailLower) return;
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
@@ -145,7 +161,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         createdByUid: 'centerAdmin' // (opcional) ideal: uid real en el futuro
     });
 };
-    const handleSaveDoctor = () => {
+    const handleSaveDoctor = async () => {
         if (!currentDoctor.fullName || !currentDoctor.rut || !currentDoctor.email || !currentDoctor.role) {
             showToast("Por favor complete todos los campos obligatorios.", "error");
             return;
@@ -155,9 +171,13 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             // Edit
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
             onUpdateDoctors(updated);
-            // Google-only: persist profesional + invite
-            persistDoctorToFirestore(currentDoctor as Doctor).catch((e) => console.error("persistDoctorToFirestore", e));
-            showToast("Profesional actualizado.", "success");
+            try {
+                await persistDoctorToFirestore(currentDoctor as Doctor);
+                showToast("Profesional actualizado.", "success");
+            } catch (e) {
+                console.error("persistDoctorToFirestore", e);
+                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            }
         } else {
             // Create
             const newDoc: Doctor = {
@@ -167,7 +187,13 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' } // Default config
             };
             onUpdateDoctors([...doctors, newDoc]);
-            showToast("Profesional creado exitosamente.", "success");
+            try {
+                await persistDoctorToFirestore(newDoc);
+                showToast("Profesional creado exitosamente.", "success");
+            } catch (e) {
+                console.error("persistDoctorToFirestore", e);
+                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            }
         }
         setIsEditingDoctor(false);
         setCurrentDoctor({ role: 'Medico' });

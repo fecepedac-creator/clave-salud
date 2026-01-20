@@ -34,6 +34,11 @@ function lowerEmailFromContext(context: functions.https.CallableContext): string
   return String(raw || "").trim().toLowerCase();
 }
 
+const SUPERADMIN_WHITELIST = new Set<string>([
+  "fecepedac@gmail.com",
+  "dr.felipecepeda@gmail.com",
+]);
+
 /**
  * INVITE schema (Firestore: invites/{token})
  * {
@@ -80,6 +85,43 @@ export const createCenterAdminInvite = functions.https.onCall(async (data, conte
 
   const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
   return { token, inviteUrl };
+});
+
+export const setSuperAdmin = functions.https.onCall(async (data, context) => {
+  requireAuth(context);
+
+  const callerUid = context.auth!.uid;
+  const callerEmail = lowerEmailFromContext(context);
+
+  const isAllowed =
+    isSuperAdmin(context) ||
+    (callerEmail && SUPERADMIN_WHITELIST.has(callerEmail));
+
+  if (!isAllowed) {
+    throw new functions.https.HttpsError("permission-denied", "No tienes permisos para esta acción.");
+  }
+
+  const targetUidRaw = String(data?.uid || "").trim();
+  const targetUid = targetUidRaw || callerUid;
+
+  if (!isSuperAdmin(context) && targetUid !== callerUid) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Solo puedes elevar tu propio usuario."
+    );
+  }
+
+  await admin.auth().setCustomUserClaims(targetUid, { super_admin: true });
+
+  await db.collection("auditLogs").add({
+    action: "set_super_admin",
+    actorUid: callerUid,
+    actorEmail: callerEmail || null,
+    targetUid,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, targetUid };
 });
 
 export const acceptInvite = functions.https.onCall(async (data, context) => {
