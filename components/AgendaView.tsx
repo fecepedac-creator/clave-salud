@@ -21,6 +21,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
     onMonthChange, onDateClick, onToggleSlot, readOnly = false 
 }) => {
     
+    const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const standardSlots = getStandardSlots(selectedAgendaDate, doctorId, agendaConfig);
     
     // Date comparison helper
@@ -54,7 +55,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                 
                                 const formattedDay = day.toISOString().split('T')[0];
                                 const isSelected = formattedDay === selectedAgendaDate;
-                                const hasSlots = appointments.some(a => a.doctorId === doctorId && a.date === formattedDay);
+                                const hasSlots = appointments.some(a => appointmentDoctorUid(a) === doctorId && a.date === formattedDay);
                                 
                                 // Check if past
                                 const isPast = day < today;
@@ -98,7 +99,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                             {/* Grid de Bloques (Gestión) */}
                             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                                 {standardSlots.map((templateSlot) => {
-                                    const realSlot = appointments.find(a => a.doctorId === doctorId && a.date === selectedAgendaDate && a.time === templateSlot.time);
+                                    const realSlot = appointments.find(a => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.time === templateSlot.time);
                                     const isOpen = !!realSlot;
                                     const isBooked = realSlot?.status === 'booked';
                                     
@@ -132,11 +133,11 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                             {/* Lista de Pacientes Agendados */}
                             <div className="border-t border-slate-100 pt-6">
                                 <h4 className="font-bold text-slate-700 mb-4 text-lg">Pacientes Agendados</h4>
-                                {appointments.filter(a => a.doctorId === doctorId && a.date === selectedAgendaDate && a.status === 'booked').length === 0 ? (
+                                {appointments.filter(a => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.status === 'booked').length === 0 ? (
                                     <p className="text-slate-400 italic">No hay pacientes agendados para este día.</p>
                                 ) : (
                                     <div className="space-y-3">
-                                        {appointments.filter(a => a.doctorId === doctorId && a.date === selectedAgendaDate && a.status === 'booked').sort((a,b) => a.time.localeCompare(b.time)).map(apt => (
+                                        {appointments.filter(a => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.status === 'booked').sort((a,b) => a.time.localeCompare(b.time)).map(apt => (
                                             <div key={apt.id} className="p-4 rounded-xl border border-blue-200 bg-blue-50 flex justify-between items-center">
                                                 <div className="flex items-center gap-4">
                                                     <div className="bg-white px-3 py-1 rounded-lg font-bold text-blue-600 shadow-sm border border-blue-100">{apt.time}</div>

@@ -39,6 +39,7 @@ export interface AuditLogEntry {
   id: string;
   centerId: string;
   timestamp: string;
+  actorUid?: string;
   actorName: string; // Who did it
   actorRole: string;
   action: 'create' | 'update' | 'delete' | 'login' | 'access';
@@ -188,12 +189,30 @@ export interface Appointment {
   id: string;
   centerId: string; // Multi-tenant ID
   doctorId: string; 
+  doctorUid?: string;
   date: string; 
   time: string; 
   patientName: string;
   patientRut: string;
   patientPhone?: string;
   status: 'available' | 'booked';
+}
+
+export interface Preadmission {
+  id: string;
+  centerId: string;
+  patientDraft?: Partial<Patient>;
+  appointmentDraft?: Partial<Appointment>;
+  contact?: {
+    name?: string;
+    rut?: string;
+    phone?: string;
+    email?: string;
+  };
+  source?: "public" | "staff";
+  submittedByUid?: string | null;
+  createdAt?: any;
+  status?: 'pending' | 'approved' | 'rejected';
 }
 
 export interface AgendaConfig {

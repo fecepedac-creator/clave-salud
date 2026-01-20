@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useContext } from 'react';
 import { CenterContext } from '../CenterContext';
-import { Doctor, Appointment, Patient, AgendaConfig, AuditLogEntry, ProfessionalRole } from '../types';
+import { Doctor, Appointment, Patient, AgendaConfig, AuditLogEntry, ProfessionalRole, Preadmission } from '../types';
 import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } from '../utils';
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
@@ -17,6 +17,8 @@ interface AdminDashboardProps {
     onLogout: () => void;
     patients: Patient[];
     onUpdatePatients: (patients: Patient[]) => void;
+    preadmissions: Preadmission[];
+    onApprovePreadmission: (item: Preadmission) => void;
     logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
     onLogActivity: (action: AuditLogEntry['action'], details: string, targetId?: string) => void;
 }
@@ -35,9 +37,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-    centerId, doctors, onUpdateDoctors, appointments, onUpdateAppointments, onLogout, patients, onUpdatePatients, logs, onLogActivity 
+    centerId, doctors, onUpdateDoctors, appointments, onUpdateAppointments, onLogout, patients, onUpdatePatients, preadmissions, onApprovePreadmission, logs, onLogActivity 
 }) => {
-    const [activeTab, setActiveTab] = useState<'doctors' | 'agenda' | 'audit'>('doctors');
+    const [activeTab, setActiveTab] = useState<'doctors' | 'agenda' | 'audit' | 'preadmissions'>('doctors');
     const { showToast } = useToast();
     const { isModuleEnabled } = useContext(CenterContext);
     // --- defensive module guard ---
@@ -67,6 +69,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Calendar State
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string>('');
+
+    const resolvePreadmissionDate = (item: Preadmission) => {
+        const raw = (item as any).createdAt;
+        if (!raw) return null;
+        if (typeof raw?.toDate === 'function') return raw.toDate();
+        if (typeof raw?.seconds === 'number') return new Date(raw.seconds * 1000);
+        if (typeof raw === 'string' || typeof raw === 'number') return new Date(raw);
+        return null;
+    };
+
+    const sortedPreadmissions = [...preadmissions].sort((a, b) => {
+        const aDate = resolvePreadmissionDate(a)?.getTime() ?? 0;
+        const bDate = resolvePreadmissionDate(b)?.getTime() ?? 0;
+        return bDate - aDate;
+    });
     
     // Helper Date for past calculation
     const today = new Date();
@@ -115,7 +132,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
 
+    const staffId = doctor.id || generateId();
     const emailLower = (doctor.email || '').toLowerCase();
+
+    await setDoc(
+        doc(db, 'centers', centerId, 'staff', staffId),
+        {
+            ...doctor,
+            id: staffId,
+            centerId,
+            emailLower,
+            active: doctor.active ?? true,
+            updatedAt: serverTimestamp(),
+            createdAt: (doctor as any).createdAt ?? serverTimestamp()
+        },
+        { merge: true }
+    );
+
     if (!emailLower) return;
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
@@ -145,7 +178,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         createdByUid: 'centerAdmin' // (opcional) ideal: uid real en el futuro
     });
 };
-    const handleSaveDoctor = () => {
+    const handleSaveDoctor = async () => {
         if (!currentDoctor.fullName || !currentDoctor.rut || !currentDoctor.email || !currentDoctor.role) {
             showToast("Por favor complete todos los campos obligatorios.", "error");
             return;
@@ -155,9 +188,13 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             // Edit
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
             onUpdateDoctors(updated);
-            // Google-only: persist profesional + invite
-            persistDoctorToFirestore(currentDoctor as Doctor).catch((e) => console.error("persistDoctorToFirestore", e));
-            showToast("Profesional actualizado.", "success");
+            try {
+                await persistDoctorToFirestore(currentDoctor as Doctor);
+                showToast("Profesional actualizado.", "success");
+            } catch (e) {
+                console.error("persistDoctorToFirestore", e);
+                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            }
         } else {
             // Create
             const newDoc: Doctor = {
@@ -167,7 +204,13 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' } // Default config
             };
             onUpdateDoctors([...doctors, newDoc]);
-            showToast("Profesional creado exitosamente.", "success");
+            try {
+                await persistDoctorToFirestore(newDoc);
+                showToast("Profesional creado exitosamente.", "success");
+            } catch (e) {
+                console.error("persistDoctorToFirestore", e);
+                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            }
         }
         setIsEditingDoctor(false);
         setCurrentDoctor({ role: 'Medico' });
@@ -287,8 +330,9 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         if (!selectedDate || !selectedDoctorId) return;
 
         // Check if slot exists
+        const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
         const existingSlot = appointments.find(
-            a => a.doctorId === selectedDoctorId && a.date === selectedDate && a.time === time
+            a => appointmentDoctorUid(a) === selectedDoctorId && a.date === selectedDate && a.time === time
         );
 
         if (existingSlot) {
@@ -306,6 +350,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 id: generateId(),
                 centerId: centerId, // FIXED: Correctly assigning the current center ID
                 doctorId: selectedDoctorId,
+                doctorUid: selectedDoctorId,
                 date: selectedDate,
                 time: time,
                 status: 'available',
@@ -326,7 +371,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         if (notify) {
             // WhatsApp Logic
             const apt = cancelModal.appointment;
-            const doctor = doctors.find(d => d.id === apt.doctorId);
+            const doctor = doctors.find(d => d.id === ((apt as any).doctorUid ?? apt.doctorId));
             const rawPhone = apt.patientPhone || '';
             const cleanPhone = rawPhone.replace(/\D/g, ''); // Remove non-digits
             
@@ -450,6 +495,12 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                         className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                     >
                         <ShieldCheck className="w-4 h-4"/> Seguridad / Auditoría
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('preadmissions')}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'preadmissions' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <User className="w-4 h-4"/> Preingresos
                     </button>
                 </div>
 
@@ -675,7 +726,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                         const dateStr = day.toISOString().split('T')[0];
                                         const isSelected = dateStr === selectedDate;
                                         // Count slots
-                                        const slotsCount = appointments.filter(a => a.doctorId === selectedDoctorId && a.date === dateStr).length;
+                                        const slotsCount = appointments.filter(a => ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === dateStr).length;
                                         
                                         // Past Day Check
                                         const isPast = day < today;
@@ -711,7 +762,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                         
                                         <div className="grid grid-cols-4 gap-4">
                                             {getStandardSlots(selectedDate, selectedDoctorId, tempConfig).map(slot => {
-                                                const realSlot = appointments.find(a => a.doctorId === selectedDoctorId && a.date === selectedDate && a.time === slot.time);
+                                                const realSlot = appointments.find(a => ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === selectedDate && a.time === slot.time);
                                                 const isOpen = !!realSlot;
                                                 const isBooked = realSlot?.status === 'booked';
                                                 
@@ -768,6 +819,84 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                     </div>
                                 )}
                          </div>
+                    </div>
+                )}
+
+                {/* PREADMISSIONS */}
+                {activeTab === 'preadmissions' && (
+                    <div className="animate-fadeIn">
+                        <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h3 className="font-bold text-white text-2xl flex items-center gap-2">
+                                        <User className="w-6 h-6 text-indigo-400"/> Preingresos pendientes
+                                    </h3>
+                                    <p className="text-slate-400 text-sm mt-2">Solicitudes enviadas sin autenticación o por el equipo.</p>
+                                </div>
+                                <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                                    Total: {sortedPreadmissions.length}
+                                </span>
+                            </div>
+
+                            <div className="space-y-4">
+                                {sortedPreadmissions.map((item) => {
+                                    const date = resolvePreadmissionDate(item);
+                                    const contactName = item.contact?.name || item.patientDraft?.fullName || 'Paciente';
+                                    const contactRut = item.contact?.rut || item.patientDraft?.rut || '';
+                                    const contactPhone = item.contact?.phone || item.patientDraft?.phone || '';
+                                    const contactEmail = item.contact?.email || item.patientDraft?.email || '';
+                                    const apptDate = item.appointmentDraft?.date;
+                                    const apptTime = item.appointmentDraft?.time;
+                                    const sourceLabel = item.source === 'staff' ? 'Equipo' : 'Público';
+
+                                    return (
+                                        <div key={item.id} className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                                <div>
+                                                    <h4 className="text-lg font-bold text-white">{contactName}</h4>
+                                                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
+                                                        {contactRut && <span className="font-mono">{contactRut}</span>}
+                                                        {date && <span className="flex items-center gap-1"><Clock className="w-3 h-3"/> {date.toLocaleString('es-CL')}</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
+                                                        {sourceLabel}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => onApprovePreadmission(item)}
+                                                        className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                                                    >
+                                                        <Check className="w-4 h-4"/> Aprobar
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                                <div className="flex items-center gap-2 text-slate-300">
+                                                    <Phone className="w-4 h-4 text-emerald-400"/>
+                                                    {contactPhone || 'Sin teléfono'}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-slate-300">
+                                                    <Mail className="w-4 h-4 text-indigo-400"/>
+                                                    {contactEmail || 'Sin email'}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-slate-300">
+                                                    <Calendar className="w-4 h-4 text-blue-400"/>
+                                                    {apptDate ? `${apptDate}${apptTime ? ` · ${apptTime}` : ''}` : 'Sin hora solicitada'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {sortedPreadmissions.length === 0 && (
+                                    <div className="text-center text-slate-500 italic py-12">
+                                        No hay preingresos pendientes.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 )}
 

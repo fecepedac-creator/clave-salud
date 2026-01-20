@@ -26,11 +26,8 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       return;
     }
 
-    const q = query(
-      collection(db, 'patients'),
-      where('centerId', '==', activeCenterId),
-      orderBy('fullName', 'asc')
-    );
+    const baseRef = collection(db, 'centers', activeCenterId, 'patients');
+    const q = query(baseRef, orderBy('fullName', 'asc'));
 
     const unsub = onSnapshot(
       q,
@@ -41,7 +38,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       },
       () => {
         // Si falla orderBy por índice, igual mostramos sin crashear:
-        const q2 = query(collection(db, 'patients'), where('centerId', '==', activeCenterId));
+        const q2 = query(baseRef);
         const unsub2 = onSnapshot(q2, (snap2) => {
           const rows2: Patient[] = [];
           snap2.forEach((d) => rows2.push(d.data() as Patient));

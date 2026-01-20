@@ -10,14 +10,14 @@ export type CenterModules = Record<string, boolean>;
 
 export const CenterContext = createContext<{
   activeCenterId: string;
-  activeCenter: MedicalCenter;
+  activeCenter: MedicalCenter | null;
   modules: CenterModules;
   setActiveCenterId: (id: string) => void;
   updateModules: (modules: CenterModules) => void;
   isModuleEnabled: (key: string) => boolean;
 }>({
   activeCenterId: "",
-  activeCenter: null as any as MedicalCenter,
+  activeCenter: null,
   modules: {},
   setActiveCenterId: () => {},
   updateModules: () => {},
