@@ -65,6 +65,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // --- contexto del centro ---
   const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+  const hasActiveCenter = Boolean(activeCenterId);
 
   // --- helpers ---
   const getEmptyConsultation = (): Partial<Consultation> => ({
@@ -228,8 +229,8 @@ useEffect(() => {
   const handleCreateConsultation = async () => {
     if (!selectedPatient) return;
 
-    if (!activeCenterId) {
-      showToast('No hay centro activo. Selecciona un centro antes de guardar.', 'error');
+    if (!hasActiveCenter) {
+      showToast('Selecciona un centro activo antes de guardar.', 'warning');
       return;
     }
 
@@ -553,9 +554,14 @@ useEffect(() => {
                                  </p>
                              </div>
                              {!isReadOnly && (
-                                 <button onClick={() => setIsCreatingConsultation(true)} className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg">
+                                  <button
+                                    onClick={() => setIsCreatingConsultation(true)}
+                                    disabled={!hasActiveCenter}
+                                    title={hasActiveCenter ? "Crear atención" : "Selecciona un centro activo"}
+                                    className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
                                     <Plus className="w-6 h-6" /> Nueva Atención
-                                 </button>
+                                  </button>
                              )}
                          </div>
                      )}
@@ -698,7 +704,12 @@ useEffect(() => {
                                             )}
                                         </div>
                                      )}
-                                     <button onClick={handleCreateConsultation} className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl">
+                                     <button
+                                       onClick={handleCreateConsultation}
+                                       disabled={!hasActiveCenter}
+                                       title={hasActiveCenter ? "Guardar atención" : "Selecciona un centro activo"}
+                                       className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                                     >
                                          <Save className="w-7 h-7" /> Guardar Atención
                                      </button>
                                  </div>
@@ -744,6 +755,11 @@ useEffect(() => {
           </header>
 
           <main className="flex-1 overflow-hidden flex flex-col">
+              {!hasActiveCenter && (
+                  <div className="bg-amber-500/20 text-amber-800 border-b border-amber-200 px-8 py-3 text-sm">
+                      Selecciona un centro activo para habilitar pacientes, agenda y consultas.
+                  </div>
+              )}
               <div className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === 'settings' ? '' : 'overflow-hidden'}`}>
                   
                   {/* Tabs */}
@@ -788,6 +804,10 @@ useEffect(() => {
                                       {!isReadOnly && (
                                           <button 
                                               onClick={() => {
+                                                  if (!hasActiveCenter) {
+                                                    showToast("Selecciona un centro activo para crear pacientes.", "warning");
+                                                    return;
+                                                  }
                                                   const newP: Patient = { 
                                                       id: generateId(), 
                                                       centerId: '', // Will be set by context/app
@@ -797,6 +817,8 @@ useEffect(() => {
                                                   setSelectedPatient(newP);
                                                   setIsEditingPatient(true);
                                               }} 
+                                              disabled={!hasActiveCenter}
+                                              title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
                                               className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
                                           >
                                               <Plus className="w-5 h-5" /> Nuevo Paciente
@@ -890,6 +912,10 @@ useEffect(() => {
                                   onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split('T')[0])}
                                   onToggleSlot={(time) => {
                                       if(isReadOnly) return;
+                                      if (!hasActiveCenter) {
+                                          showToast("Selecciona un centro activo para modificar la agenda.", "warning");
+                                          return;
+                                      }
                                       const date = selectedAgendaDate;
                                       if (!date) return;
 

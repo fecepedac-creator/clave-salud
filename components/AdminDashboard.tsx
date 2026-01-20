@@ -41,7 +41,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'doctors' | 'agenda' | 'audit' | 'preadmissions'>('doctors');
     const { showToast } = useToast();
-    const { isModuleEnabled } = useContext(CenterContext);
+    const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+    const hasActiveCenter = Boolean(activeCenterId);
     // --- defensive module guard ---
     useEffect(() => {
         if (activeTab === 'agenda' && !isModuleEnabled('agenda')) setActiveTab('doctors');
@@ -179,6 +180,10 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     });
 };
     const handleSaveDoctor = async () => {
+        if (!hasActiveCenter) {
+            showToast("Selecciona un centro activo para crear profesionales.", "warning");
+            return;
+        }
         if (!currentDoctor.fullName || !currentDoctor.rut || !currentDoctor.email || !currentDoctor.role) {
             showToast("Por favor complete todos los campos obligatorios.", "error");
             return;
@@ -217,6 +222,10 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     };
 
     const handleDeleteDoctor = (id: string) => {
+        if (!hasActiveCenter) {
+            showToast("Selecciona un centro activo para eliminar profesionales.", "warning");
+            return;
+        }
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
             onUpdateDoctors(doctors.filter(d => d.id !== id));
             showToast("Profesional eliminado.", "info");
@@ -327,6 +336,10 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     };
 
     const toggleSlot = (time: string) => {
+        if (!hasActiveCenter) {
+            showToast("Selecciona un centro activo para modificar la agenda.", "warning");
+            return;
+        }
         if (!selectedDate || !selectedDoctorId) return;
 
         // Check if slot exists
@@ -363,6 +376,10 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     };
 
     const handleConfirmCancellation = (notify: boolean) => {
+        if (!hasActiveCenter) {
+            showToast("Selecciona un centro activo para cancelar citas.", "warning");
+            return;
+        }
         if (!cancelModal.appointment) return;
         
         // LOG CANCELLATION
@@ -392,6 +409,10 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     };
 
     const handleManualBooking = () => {
+        if (!hasActiveCenter) {
+            showToast("Selecciona un centro activo para agendar citas.", "warning");
+            return;
+        }
         if (!bookingSlotId || !bookingRut || !bookingName) {
             showToast("RUT y Nombre son obligatorios", "error");
             return;
@@ -424,6 +445,11 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     // --- RENDER ---
     return (
         <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
+            {!hasActiveCenter && (
+                <div className="bg-amber-500/20 text-amber-200 border-b border-amber-500/40 px-6 py-3 text-sm">
+                    Selecciona un centro activo para habilitar la gestión de profesionales, agenda y preingresos.
+                </div>
+            )}
             {/* Share Modal */}
             {showShareModal && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -486,19 +512,25 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                     </button>
                     <button 
                         onClick={() => setActiveTab('agenda')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        disabled={!hasActiveCenter}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'agenda' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title={hasActiveCenter ? "Configurar agenda" : "Selecciona un centro activo"}
                     >
                         <Calendar className="w-4 h-4"/> Configurar Agenda
                     </button>
                     <button 
                         onClick={() => setActiveTab('audit')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        disabled={!hasActiveCenter}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
                     >
                         <ShieldCheck className="w-4 h-4"/> Seguridad / Auditoría
                     </button>
                     <button 
                         onClick={() => setActiveTab('preadmissions')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'preadmissions' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        disabled={!hasActiveCenter}
+                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'preadmissions' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title={hasActiveCenter ? "Preingresos" : "Selecciona un centro activo"}
                     >
                         <User className="w-4 h-4"/> Preingresos
                     </button>
@@ -639,7 +671,12 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                     {isEditingDoctor && (
                                         <button onClick={() => { setIsEditingDoctor(false); setCurrentDoctor({ role: 'Medico' }); }} className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-600 transition-colors">Cancelar</button>
                                     )}
-                                    <button onClick={handleSaveDoctor} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20">
+                                    <button
+                                        onClick={handleSaveDoctor}
+                                        disabled={!hasActiveCenter}
+                                        title={hasActiveCenter ? "Guardar profesional" : "Selecciona un centro activo"}
+                                        className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
                                         {isEditingDoctor ? 'Guardar Cambios' : 'Crear Profesional'}
                                     </button>
                                 </div>
@@ -865,7 +902,9 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                                     </span>
                                                     <button
                                                         onClick={() => onApprovePreadmission(item)}
-                                                        className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                                                        disabled={!hasActiveCenter}
+                                                        title={hasActiveCenter ? "Aprobar preingreso" : "Selecciona un centro activo"}
+                                                        className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
                                                         <Check className="w-4 h-4"/> Aprobar
                                                     </button>

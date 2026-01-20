@@ -13,7 +13,7 @@ import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import { formatRUT, generateId, getStandardSlots, getDaysInMonth } from "./utils";
+import { formatRUT, generateId, getStandardSlots, getDaysInMonth, validateRUT } from "./utils";
 import {
   AlertCircle,
   ArrowLeft,
@@ -394,14 +394,16 @@ const App: React.FC = () => {
   }, [activeCenterId, demoMode, isSuperAdminClaim]);
 
   // ---------- CRUD helpers ----------
-  const requireCenter = () => {
+  const requireCenter = (actionLabel: string) => {
     if (!activeCenterId) {
-      throw new Error("No hay centro activo seleccionado.");
+      showToast(`Selecciona un centro para ${actionLabel}.`, "warning");
+      return false;
     }
+    return true;
   };
 
   const updatePatient = async (payload: Patient) => {
-    requireCenter();
+    if (!requireCenter("guardar pacientes")) return;
     const id = payload?.id ?? generateId();
     await setDoc(
       doc(db, "centers", activeCenterId, "patients", id),
@@ -411,12 +413,12 @@ const App: React.FC = () => {
   };
 
   const deletePatient = async (id: string) => {
-    requireCenter();
+    if (!requireCenter("eliminar pacientes")) return;
     await deleteDoc(doc(db, "centers", activeCenterId, "patients", id));
   };
 
   const updateStaff = async (payload: Doctor) => {
-    requireCenter();
+    if (!requireCenter("guardar profesionales")) return;
     const id = payload?.id ?? generateId();
     await setDoc(
       doc(db, "centers", activeCenterId, "staff", id),
@@ -426,12 +428,12 @@ const App: React.FC = () => {
   };
 
   const deleteStaff = async (id: string) => {
-    requireCenter();
+    if (!requireCenter("eliminar profesionales")) return;
     await deleteDoc(doc(db, "centers", activeCenterId, "staff", id));
   };
 
   const updateAppointment = async (payload: Appointment) => {
-    requireCenter();
+    if (!requireCenter("guardar citas")) return;
     const id = payload?.id ?? generateId();
     const doctorUid = (payload as any).doctorUid ?? payload.doctorId;
     await setDoc(
@@ -442,12 +444,12 @@ const App: React.FC = () => {
   };
 
   const deleteAppointment = async (id: string) => {
-    requireCenter();
+    if (!requireCenter("eliminar citas")) return;
     await deleteDoc(doc(db, "centers", activeCenterId, "appointments", id));
   };
 
   const updateAuditLog = async (payload: AuditLogEntry) => {
-    requireCenter();
+    if (!requireCenter("registrar auditoría")) return;
     const id = payload?.id ?? generateId();
     const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
     await setDoc(
@@ -467,9 +469,7 @@ const App: React.FC = () => {
   };
 
   const createPreadmission = async (payload: Omit<Preadmission, "id" | "createdAt" | "centerId" | "status">) => {
-    if (!activeCenterId) {
-      throw new Error("No hay centro activo seleccionado.");
-    }
+    if (!requireCenter("enviar preingresos")) return;
     const id = generateId();
     const submissionSource = auth.currentUser ? "staff" : "public";
     await setDoc(doc(db, "centers", activeCenterId, "preadmissions", id), {
@@ -484,7 +484,7 @@ const App: React.FC = () => {
   };
 
   const approvePreadmission = async (item: Preadmission) => {
-    requireCenter();
+    if (!requireCenter("aprobar preingresos")) return;
     const patientDraft = item.patientDraft ?? {};
     const patientId = (patientDraft as any).id ?? generateId();
     const patientPayload: Patient = {
@@ -915,8 +915,23 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
 
   const handleBookingConfirm = async () => {
-    if (!selectedSlot || !bookingData.rut || !bookingData.name || !selectedDoctorForBooking) {
-      showToast("Faltan datos", "error");
+    const name = bookingData.name.trim();
+    const rut = bookingData.rut.trim();
+    const phone = bookingData.phone.trim();
+    if (!selectedSlot || !selectedDoctorForBooking) {
+      showToast("Selecciona un horario y profesional.", "error");
+      return;
+    }
+    if (!name) {
+      showToast("Ingresa el nombre completo.", "error");
+      return;
+    }
+    if (!rut || !validateRUT(rut)) {
+      showToast("RUT inválido. Verifica el formato.", "error");
+      return;
+    }
+    if (!phone) {
+      showToast("Ingresa un teléfono de contacto.", "error");
       return;
     }
     const newAppt: Appointment = {
@@ -926,9 +941,9 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       doctorUid: selectedDoctorForBooking.id,
       date: selectedSlot.date,
       time: selectedSlot.time,
-      patientName: bookingData.name,
-      patientRut: bookingData.rut,
-      patientPhone: bookingData.phone,
+      patientName: name,
+      patientRut: rut,
+      patientPhone: phone,
       status: "booked",
     } as any;
 
