@@ -65,6 +65,40 @@ service cloud.firestore {
       return isSuperAdmin() || isCenterAdmin(centerId);
     }
 
+    function isPublicAppointmentRead() {
+      return request.auth == null && resource.data.status == "available";
+    }
+
+    function isPublicAppointmentBooking() {
+      return request.auth == null
+        && resource.data.status == "available"
+        && request.resource.data.status == "booked"
+        && request.resource.data.centerId == resource.data.centerId
+        && request.resource.data.doctorId == resource.data.doctorId
+        && request.resource.data.doctorUid == resource.data.doctorUid
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.time == resource.data.time
+        && request.resource.data.patientName is string
+        && request.resource.data.patientRut is string
+        && request.resource.data.patientPhone is string
+        && request.resource.data.cancelToken is string;
+    }
+
+    function isPublicAppointmentCancellation() {
+      return request.auth == null
+        && resource.data.status == "booked"
+        && request.resource.data.status == "available"
+        && request.resource.data.centerId == resource.data.centerId
+        && request.resource.data.doctorId == resource.data.doctorId
+        && request.resource.data.doctorUid == resource.data.doctorUid
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.time == resource.data.time
+        && request.resource.data.patientName == ""
+        && request.resource.data.patientRut == ""
+        && request.resource.data.patientPhone == ""
+        && request.resource.data.cancelToken == resource.data.cancelToken;
+    }
+
     function inviteDoc(token) {
       return get(/databases/$(database)/documents/invites/$(token));
     }
@@ -155,8 +189,8 @@ service cloud.firestore {
       }
 
       match /appointments/{apptId} {
-        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-        allow create, update: if signedIn() && (
+        allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId))) || isPublicAppointmentRead();
+        allow create: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
           || (isDoctor(centerId) && (
@@ -164,6 +198,14 @@ service cloud.firestore {
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
           ))
         );
+        allow update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || (isDoctor(centerId) && (
+            request.resource.data.doctorUid == uid()
+            || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
+          ))
+        ) || isPublicAppointmentBooking() || isPublicAppointmentCancellation();
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
