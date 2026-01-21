@@ -142,7 +142,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
       if (!fullName) newErrors.fullName = 'Debe escribir su nombre.';
       if (!rut || !validateRUT(rut)) newErrors.rut = 'El RUT no es válido.';
       if (!birthDate) newErrors.birthDate = 'Indique su fecha de nacimiento.';
-      if (!phone) newErrors.phone = 'Indique un número de contacto.';
+      if (!phone && !email) newErrors.contact = 'Indique teléfono o email de contacto.';
       if (!address) newErrors.address = 'La dirección es importante para la receta.';
       if (!commune) newErrors.commune = 'Seleccione su comuna.';
       if (livingWith.length === 0) newErrors.livingWith = 'Seleccione al menos una opción.';
@@ -269,7 +269,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
                     
                     <BigInput label="Fecha de Nacimiento" type="date" value={birthDate} onChange={(e: any) => setBirthDate(e.target.value)} error={errors.birthDate} />
                     
-                    <BigInput label="Teléfono Celular" type="tel" value={phone} onChange={(e: any) => setPhone(e.target.value)} placeholder="+569..." error={errors.phone} />
+                    <BigInput label="Teléfono Celular" type="tel" value={phone} onChange={(e: any) => setPhone(e.target.value)} placeholder="+569..." error={errors.contact} />
                     
                     <div className="md:col-span-2">
                         <label className="block text-xl font-bold text-slate-700 mb-2">Dirección de Residencia</label>
@@ -292,7 +292,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
                         {(errors.address || errors.commune) && <p className="text-red-600 font-bold mt-1 text-sm flex items-center gap-1"><AlertCircle className="w-4 h-4"/> Dirección completa requerida para recetas.</p>}
                     </div>
 
-                    <BigInput label="Correo Electrónico (Opcional)" type="email" value={email} onChange={(e: any) => setEmail(e.target.value)} placeholder="correo@ejemplo.com" />
+                    <BigInput label="Correo Electrónico (Opcional)" type="email" value={email} onChange={(e: any) => setEmail(e.target.value)} placeholder="correo@ejemplo.com" error={errors.contact} />
 
                     <div className="md:col-span-2">
                         <label className="block text-xl font-bold text-slate-700 mb-4">Sexo</label>

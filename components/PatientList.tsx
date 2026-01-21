@@ -15,6 +15,7 @@ type Props = {
 
 const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, className }) => {
   const { activeCenterId } = useContext(CenterContext);
+  const hasActiveCenter = Boolean(activeCenterId);
   const [remotePatients, setRemotePatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState('');
 
@@ -26,11 +27,8 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       return;
     }
 
-    const q = query(
-      collection(db, 'patients'),
-      where('centerId', '==', activeCenterId),
-      orderBy('fullName', 'asc')
-    );
+    const baseRef = collection(db, 'centers', activeCenterId, 'patients');
+    const q = query(baseRef, orderBy('fullName', 'asc'));
 
     const unsub = onSnapshot(
       q,
@@ -41,7 +39,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       },
       () => {
         // Si falla orderBy por índice, igual mostramos sin crashear:
-        const q2 = query(collection(db, 'patients'), where('centerId', '==', activeCenterId));
+        const q2 = query(baseRef);
         const unsub2 = onSnapshot(q2, (snap2) => {
           const rows2: Patient[] = [];
           snap2.forEach((d) => rows2.push(d.data() as Patient));
@@ -93,7 +91,9 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
           <button
             type="button"
             onClick={onCreateNew}
-            className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 flex items-center gap-2"
+            disabled={!hasActiveCenter}
+            className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro para crear pacientes"}
           >
             <Plus className="w-4 h-4" />
             Nuevo
