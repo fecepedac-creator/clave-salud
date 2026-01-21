@@ -80,23 +80,7 @@ service cloud.firestore {
         && request.resource.data.time == resource.data.time
         && request.resource.data.patientName is string
         && request.resource.data.patientRut is string
-        && request.resource.data.patientPhone is string
-        && request.resource.data.cancelToken is string;
-    }
-
-    function isPublicAppointmentCancellation() {
-      return request.auth == null
-        && resource.data.status == "booked"
-        && request.resource.data.status == "available"
-        && request.resource.data.centerId == resource.data.centerId
-        && request.resource.data.doctorId == resource.data.doctorId
-        && request.resource.data.doctorUid == resource.data.doctorUid
-        && request.resource.data.date == resource.data.date
-        && request.resource.data.time == resource.data.time
-        && request.resource.data.patientName == ""
-        && request.resource.data.patientRut == ""
-        && request.resource.data.patientPhone == ""
-        && request.resource.data.cancelToken == resource.data.cancelToken;
+        && request.resource.data.patientPhone is string;
     }
 
     function inviteDoc(token) {
@@ -205,7 +189,7 @@ service cloud.firestore {
             request.resource.data.doctorUid == uid()
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
           ))
-        ) || isPublicAppointmentBooking() || isPublicAppointmentCancellation();
+        ) || isPublicAppointmentBooking();
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 

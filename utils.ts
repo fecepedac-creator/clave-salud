@@ -14,6 +14,25 @@ export const formatRUT = (rut: string): string => {
   return `${formattedBody}-${dv}`;
 };
 
+export const formatChileanPhone = (digits: string): string => {
+  const clean = digits.replace(/\D/g, '').slice(0, 8);
+  return clean ? `+569${clean}` : '';
+};
+
+export const extractChileanPhoneDigits = (phone: string): string => {
+  const clean = phone.replace(/\D/g, '');
+  if (!clean) return '';
+  if (clean.startsWith('56')) {
+    const rest = clean.slice(2);
+    if (rest.startsWith('9')) return rest.slice(1, 9);
+    return rest.slice(0, 8);
+  }
+  if (clean.startsWith('9') && clean.length >= 9) {
+    return clean.slice(1, 9);
+  }
+  return clean.slice(-8);
+};
+
 export const validateRUT = (rut: string): boolean => {
   if (!rut) return false;
   

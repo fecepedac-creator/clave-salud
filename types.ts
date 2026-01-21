@@ -195,7 +195,6 @@ export interface Appointment {
   patientName: string;
   patientRut: string;
   patientPhone?: string;
-  cancelToken?: string;
   bookedAt?: any;
   cancelledAt?: any;
   status: 'available' | 'booked';
