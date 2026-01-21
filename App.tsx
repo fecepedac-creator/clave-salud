@@ -1057,6 +1057,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     };
 
     await updateAppointment(bookedAppointment);
+    setBookingAppointmentId(bookedAppointment.id);
+    setBookingCancelToken(cancelToken);
 
     if (!auth.currentUser) {
       await createPreadmission({
@@ -1085,6 +1087,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
+    setBookingAppointmentId("");
+    setBookingCancelToken("");
     setView("patient-menu" as ViewMode);
   };
 

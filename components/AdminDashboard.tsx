@@ -6,7 +6,7 @@ import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } f
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
