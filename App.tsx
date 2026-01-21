@@ -102,16 +102,28 @@ const App: React.FC = () => {
       setCenters(INITIAL_CENTERS);
       return;
     }
-    if (!auth.currentUser) {
-      setCenters([]);
-      return;
-    }
-
     let unsubscribers: Array<() => void> = [];
     let cancelled = false;
 
     const run = async () => {
       try {
+        if (!auth.currentUser) {
+          const unsub = onSnapshot(
+            query(collection(db, "centers"), where("isActive", "==", true)),
+            (snap) => {
+              if (cancelled) return;
+              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+              setCenters(items);
+            },
+            () => {
+              if (cancelled) return;
+              setCenters([]);
+            }
+          );
+          unsubscribers.push(unsub);
+          return;
+        }
+
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
@@ -1057,8 +1069,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     };
 
     await updateAppointment(bookedAppointment);
-    setBookingAppointmentId(bookedAppointment.id);
-    setBookingCancelToken(cancelToken);
 
     if (!auth.currentUser) {
       await createPreadmission({

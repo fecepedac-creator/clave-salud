@@ -98,7 +98,8 @@ service cloud.firestore {
     }
 
     match /centers/{centerId} {
-      allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+      allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
+        || resource.data.isActive == true;
       allow create: if isSuperAdmin();
       allow update, delete: if isSuperAdmin();
 
