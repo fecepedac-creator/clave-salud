@@ -1097,6 +1097,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
+    setBookingAppointmentId("");
+    setBookingCancelToken("");
     setView("patient-menu" as ViewMode);
   };
 
