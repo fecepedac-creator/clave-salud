@@ -651,7 +651,7 @@ const App: React.FC = () => {
       };
       setCurrentUser(userFromFirestore as any);
 
-      if (isSuperAdmin) {
+      if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
         setView("superadmin-dashboard" as any);
         return;
       }
@@ -762,7 +762,7 @@ const App: React.FC = () => {
 
         setCurrentUser(userFromFirestore as any);
 
-        if (isSuperAdmin) {
+        if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
           setView("superadmin-dashboard" as any);
           return;
         }
