@@ -240,10 +240,14 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
             if (db) {
                 try {
-                    await deleteDoc(doc(db, 'centers', centerId, 'staff', id));
+                    await setDoc(
+                        doc(db, 'centers', centerId, 'staff', id),
+                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                        { merge: true }
+                    );
                 } catch (error) {
-                    console.error("deleteDoc", error);
-                    showToast("No se pudo eliminar el profesional en Firestore.", "error");
+                    console.error("deactivateStaff", error);
+                    showToast("No se pudo desactivar el profesional en Firestore.", "error");
                     return;
                 }
             }

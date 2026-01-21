@@ -411,7 +411,11 @@ const App: React.FC = () => {
 
     const unsubDoctors = onSnapshot(
       collection(db, "centers", activeCenterId, "staff"),
-      (snap) => setDoctors(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[]),
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
+        const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
+        setDoctors(activeOnly);
+      },
       () => setDoctors([])
     );
 
@@ -479,7 +483,11 @@ const App: React.FC = () => {
 
   const deleteStaff = async (id: string) => {
     if (!requireCenter("eliminar profesionales")) return;
-    await deleteDoc(doc(db, "centers", activeCenterId, "staff", id));
+    await setDoc(
+      doc(db, "centers", activeCenterId, "staff", id),
+      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const updateAppointment = async (payload: Appointment) => {
