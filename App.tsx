@@ -526,6 +526,19 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "centers", activeCenterId, "appointments", id));
   };
 
+  const syncAppointments = async (nextAppointments: Appointment[]) => {
+    const nextIds = new Set(nextAppointments.map((a) => a.id));
+    const removed = appointments.filter((appt) => !nextIds.has(appt.id));
+
+    for (const appt of removed) {
+      await deleteAppointment(appt.id);
+    }
+
+    for (const appt of nextAppointments) {
+      await updateAppointment(appt);
+    }
+  };
+
   const updateAuditLog = async (payload: AuditLogEntry) => {
     if (!requireCenter("registrar auditoría")) return;
     const id = payload?.id ?? generateId();
@@ -2237,7 +2250,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           onLogout={handleLogout}
           appointments={appointments}
           onUpdateAppointments={(newAppts: Appointment[]) => {
-            newAppts.forEach((a) => updateAppointment(a));
+            syncAppointments(newAppts);
           }}
           onLogActivity={(action: any, details: string, targetId?: string) => {
             const log: AuditLogEntry = {
@@ -2267,7 +2280,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           doctors={doctors}
           onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
           appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => newAppts.forEach((a) => updateAppointment(a))}
+          onUpdateAppointments={(newAppts: Appointment[]) => syncAppointments(newAppts)}
           patients={patients}
           onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
           preadmissions={preadmissions}
