@@ -1122,10 +1122,10 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
         <button
           type="button"
-          onClick={() => setView("superadmin-login" as any)}
+          onClick={() => setView("admin-login" as ViewMode)}
           className="fixed top-4 right-4 p-3 rounded-full bg-slate-900/80 text-white shadow-xl hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
-          title="Acceso SuperAdmin"
-          aria-label="Acceso SuperAdmin"
+          title="Acceso Administrador"
+          aria-label="Acceso Administrador"
         >
           <Lock className="w-5 h-5" />
         </button>
