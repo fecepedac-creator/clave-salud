@@ -29,6 +29,21 @@ function randToken(bytes = 24): string {
   return crypto.randomBytes(bytes).toString("hex");
 }
 
+function formatChileanPhone(raw: string): string {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("56")) {
+    return `+${digits}`;
+  }
+  if (digits.startsWith("9") && digits.length >= 9) {
+    return `+56${digits}`;
+  }
+  if (digits.length === 8) {
+    return `+569${digits}`;
+  }
+  return `+56${digits}`;
+}
+
 function lowerEmailFromContext(context: functions.https.CallableContext): string {
   const raw = (context.auth?.token as any)?.email ?? "";
   return String(raw || "").trim().toLowerCase();
@@ -201,5 +216,66 @@ export const acceptInvite = functions.https.onCall(async (data, context) => {
   });
 
   return { ok: true, centerId, role };
+});
+
+export const listPatientAppointments = functions.https.onCall(async (data) => {
+  const centerId = String(data?.centerId || "").trim();
+  const patientRut = String(data?.rut || "").trim();
+  const phone = formatChileanPhone(String(data?.phone || ""));
+
+  if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
+  if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+
+  const snap = await db
+    .collection("centers")
+    .doc(centerId)
+    .collection("appointments")
+    .where("status", "==", "booked")
+    .where("patientRut", "==", patientRut)
+    .where("patientPhone", "==", phone)
+    .limit(25)
+    .get();
+
+  const appointments = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
+  return { appointments };
+});
+
+export const cancelPatientAppointment = functions.https.onCall(async (data) => {
+  const centerId = String(data?.centerId || "").trim();
+  const appointmentId = String(data?.appointmentId || "").trim();
+  const patientRut = String(data?.rut || "").trim();
+  const phone = formatChileanPhone(String(data?.phone || ""));
+
+  if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  if (!appointmentId) throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
+  if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
+  if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+
+  const ref = db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      throw new functions.https.HttpsError("not-found", "La cita no existe.");
+    }
+    const data = snap.data() as any;
+    if (data.status !== "booked") {
+      throw new functions.https.HttpsError("failed-precondition", "La cita no está reservada.");
+    }
+    if (String(data.patientRut || "") !== patientRut || String(data.patientPhone || "") !== phone) {
+      throw new functions.https.HttpsError("permission-denied", "Los datos no coinciden.");
+    }
+
+    tx.update(ref, {
+      status: "available",
+      patientName: "",
+      patientRut: "",
+      patientPhone: "",
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { ok: true };
 });
   

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Patient, Medication, Allergy } from '../types';
 import { MEDICAL_HISTORY_OPTIONS, SURGICAL_HISTORY_OPTIONS, LIVING_WITH_OPTIONS, MAULE_COMMUNES } from '../constants';
-import { validateRUT, formatRUT, generateId, capitalizeWords, sanitizeText } from '../utils';
+import { validateRUT, formatRUT, generateId, capitalizeWords, sanitizeText, formatChileanPhone, extractChileanPhoneDigits } from '../utils';
 import { CenterContext } from '../CenterContext';
 import { Check, Plus, Trash2, ArrowRight, ArrowLeft, Save, AlertCircle, User, Activity, Pill, Users, MapPin } from 'lucide-react';
 
@@ -58,7 +58,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
   const [fullName, setFullName] = useState('');
   const [rut, setRut] = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneDigits, setPhoneDigits] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState(''); // NEW
   const [commune, setCommune] = useState(''); // NEW
@@ -99,7 +99,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
           if (found) {
               // SECURITY UPDATE: Only fill non-sensitive identification data.
               setFullName(found.fullName || '');
-              setPhone(found.phone || '');
+              setPhoneDigits(extractChileanPhoneDigits(found.phone || ''));
               setEmail(found.email || '');
               // Only overwrite birthdate if existing record has a valid one (not just generated today)
               if (found.birthDate) setBirthDate(found.birthDate);
@@ -142,7 +142,8 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
       if (!fullName) newErrors.fullName = 'Debe escribir su nombre.';
       if (!rut || !validateRUT(rut)) newErrors.rut = 'El RUT no es válido.';
       if (!birthDate) newErrors.birthDate = 'Indique su fecha de nacimiento.';
-      if (!phone && !email) newErrors.contact = 'Indique teléfono o email de contacto.';
+      if (!phoneDigits && !email) newErrors.contact = 'Indique teléfono o email de contacto.';
+      if (phoneDigits && phoneDigits.length !== 8) newErrors.contact = 'El teléfono debe tener 8 dígitos.';
       if (!address) newErrors.address = 'La dirección es importante para la receta.';
       if (!commune) newErrors.commune = 'Seleccione su comuna.';
       if (livingWith.length === 0) newErrors.livingWith = 'Seleccione al menos una opción.';
@@ -180,7 +181,7 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
       fullName: finalFullName, 
       birthDate,
       gender,
-      phone,
+      phone: formatChileanPhone(phoneDigits),
       email,
       address: finalAddress,
       commune,
@@ -269,7 +270,20 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
                     
                     <BigInput label="Fecha de Nacimiento" type="date" value={birthDate} onChange={(e: any) => setBirthDate(e.target.value)} error={errors.birthDate} />
                     
-                    <BigInput label="Teléfono Celular" type="tel" value={phone} onChange={(e: any) => setPhone(e.target.value)} placeholder="+569..." error={errors.contact} />
+                    <div className="mb-4">
+                        <label className="block text-xl font-bold text-slate-700 mb-2">Teléfono Celular</label>
+                        <div className="flex items-center gap-2">
+                            <span className="px-4 py-4 text-xl border-2 rounded-xl border-slate-200 bg-slate-50 text-slate-500 font-bold">+56 9</span>
+                            <input
+                                type="tel"
+                                value={phoneDigits}
+                                onChange={(e: any) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                placeholder="12345678"
+                                className={`w-full p-4 text-xl border-2 rounded-xl outline-none transition-all ${errors.contact ? 'border-red-400 bg-red-50' : 'border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'}`}
+                            />
+                        </div>
+                        {errors.contact && <p className="text-red-600 font-bold mt-1 text-sm flex items-center gap-1"><AlertCircle className="w-4 h-4"/> {errors.contact}</p>}
+                    </div>
                     
                     <div className="md:col-span-2">
                         <label className="block text-xl font-bold text-slate-700 mb-2">Dirección de Residencia</label>

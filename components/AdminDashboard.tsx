@@ -111,6 +111,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Share Modal State
     const [showShareModal, setShowShareModal] = useState(false);
 
+    const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, '').toUpperCase();
+
     // --- LAZY LOAD LOGS ---
     useEffect(() => {
         if (activeTab === 'audit' && db) {
@@ -189,6 +191,15 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             return;
         }
 
+        const normalizedRut = normalizeRut(currentDoctor.rut);
+        const duplicateRut = doctors.find(
+            (doctor) => normalizeRut(doctor.rut ?? '') === normalizedRut && doctor.id !== currentDoctor.id
+        );
+        if (duplicateRut) {
+            showToast("Ya existe un profesional con este RUT.", "error");
+            return;
+        }
+
         if (currentDoctor.id) {
             // Edit
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
@@ -221,12 +232,25 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         setCurrentDoctor({ role: 'Medico' });
     };
 
-    const handleDeleteDoctor = (id: string) => {
+    const handleDeleteDoctor = async (id: string) => {
         if (!hasActiveCenter) {
             showToast("Selecciona un centro activo para eliminar profesionales.", "warning");
             return;
         }
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
+            if (db) {
+                try {
+                    await setDoc(
+                        doc(db, 'centers', centerId, 'staff', id),
+                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                        { merge: true }
+                    );
+                } catch (error) {
+                    console.error("deactivateStaff", error);
+                    showToast("No se pudo desactivar el profesional en Firestore.", "error");
+                    return;
+                }
+            }
             onUpdateDoctors(doctors.filter(d => d.id !== id));
             showToast("Profesional eliminado.", "info");
         }
