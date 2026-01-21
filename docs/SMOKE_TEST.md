@@ -85,3 +85,4 @@
 
 - Recargar la app (F5) y confirmar que los datos visibles provienen de Firestore.
 - Confirmar que no se crean documentos en colecciones raíz legacy (`patients`, `appointments`, `logs`).
+
