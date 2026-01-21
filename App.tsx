@@ -38,6 +38,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
@@ -70,6 +72,10 @@ function isValidCenter(c: any): c is MedicalCenter {
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
 const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
+const SUPERADMIN_ALLOWED_EMAILS = new Set([
+  "fecepedac@gmail.com",
+  "dr.felipecepeda@gmail.com",
+]);
 
 const App: React.FC = () => {
   const { showToast } = useToast();
@@ -269,6 +275,50 @@ const App: React.FC = () => {
       setInviteToken(t);
       setView("invite" as any);
     } catch {}
+  }, []);
+
+  const handleSuperAdminUnauthorized = async () => {
+    setError("No autorizado");
+    showToast("No autorizado", "error");
+    try {
+      await signOut(auth);
+    } catch {}
+    setCurrentUser(null);
+    setActiveCenterId("");
+    setView("home" as ViewMode);
+  };
+
+  const assertSuperAdminAccess = async (user: any) => {
+    const emailUser = String(user?.email || "").trim().toLowerCase();
+    if (!SUPERADMIN_ALLOWED_EMAILS.has(emailUser)) {
+      throw new Error("superadmin-unauthorized");
+    }
+    const token = await user.getIdTokenResult(true);
+    const claims: any = token?.claims ?? {};
+    const hasClaim =
+      claims?.super_admin === true || claims?.superadmin === true || claims?.superAdmin === true;
+    if (!hasClaim) {
+      throw new Error("superadmin-unauthorized");
+    }
+  };
+
+  useEffect(() => {
+    const resolveRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result?.user) return;
+        await assertSuperAdminAccess(result.user);
+        setView("superadmin-dashboard" as any);
+      } catch (e: any) {
+        if (e?.message === "superadmin-unauthorized") {
+          await handleSuperAdminUnauthorized();
+          return;
+        }
+        console.error("SUPERADMIN REDIRECT ERROR", e);
+        setError(e?.message || "No se pudo iniciar sesión con Google.");
+      }
+    };
+    void resolveRedirect();
   }, []);
 
   // Cargar datos visibles de invitación: intentamos leer; si permisos fallan, pedimos login
@@ -601,7 +651,7 @@ const App: React.FC = () => {
       };
       setCurrentUser(userFromFirestore as any);
 
-      if (isSuperAdmin) {
+      if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
         setView("superadmin-dashboard" as any);
         return;
       }
@@ -621,6 +671,41 @@ const App: React.FC = () => {
     } catch (e: any) {
       console.error("LOGIN ERROR", e?.code, e?.message);
       setError(e?.message || "Credenciales inválidas o sin permisos");
+    }
+  };
+
+  const handleSuperAdminGoogleLogin = async () => {
+    try {
+      setError("");
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+
+      try {
+        const cred = await signInWithPopup(auth, provider);
+        await assertSuperAdminAccess(cred.user);
+        setView("superadmin-dashboard" as any);
+      } catch (e: any) {
+        const code = String(e?.code || "");
+        const isPopupError =
+          code === "auth/popup-blocked" ||
+          code === "auth/popup-closed-by-user" ||
+          code === "auth/cancelled-popup-request";
+
+        if (isPopupError) {
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+
+        if (e?.message === "superadmin-unauthorized") {
+          await handleSuperAdminUnauthorized();
+          return;
+        }
+
+        throw e;
+      }
+    } catch (e: any) {
+      console.error("SUPERADMIN GOOGLE LOGIN ERROR", e);
+      setError(e?.message || "No se pudo iniciar sesión con Google.");
     }
   };
 
@@ -677,7 +762,7 @@ const App: React.FC = () => {
 
         setCurrentUser(userFromFirestore as any);
 
-        if (isSuperAdmin) {
+        if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
           setView("superadmin-dashboard" as any);
           return;
         }
@@ -1037,10 +1122,10 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
         <button
           type="button"
-          onClick={() => setView("superadmin-login" as any)}
+          onClick={() => setView("admin-login" as ViewMode)}
           className="fixed top-4 right-4 p-3 rounded-full bg-slate-900/80 text-white shadow-xl hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
-          title="Acceso SuperAdmin"
-          aria-label="Acceso SuperAdmin"
+          title="Acceso Administrador"
+          aria-label="Acceso Administrador"
         >
           <Lock className="w-5 h-5" />
         </button>
@@ -1475,29 +1560,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         </div>
 
         <div className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-600">Correo</span>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
-              placeholder="correo@dominio.cl"
-              autoComplete="username"
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-600">Contraseña</span>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              className="mt-1 w-full rounded-xl border border-slate-200 p-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </label>
-
           {error && (
             <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
               {error}
@@ -1506,10 +1568,10 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
           <button
             type="button"
-            onClick={() => handleSuperAdminLogin("superadmin-dashboard" as any)}
+            onClick={handleSuperAdminGoogleLogin}
             className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
           >
-            Ingresar
+            Ingresar con Google
           </button>
         </div>
       </div>
