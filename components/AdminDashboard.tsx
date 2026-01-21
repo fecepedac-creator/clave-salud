@@ -6,7 +6,7 @@ import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } f
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -111,6 +111,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Share Modal State
     const [showShareModal, setShowShareModal] = useState(false);
 
+    const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, '').toUpperCase();
+
     // --- LAZY LOAD LOGS ---
     useEffect(() => {
         if (activeTab === 'audit' && db) {
@@ -189,6 +191,15 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             return;
         }
 
+        const normalizedRut = normalizeRut(currentDoctor.rut);
+        const duplicateRut = doctors.find(
+            (doctor) => normalizeRut(doctor.rut ?? '') === normalizedRut && doctor.id !== currentDoctor.id
+        );
+        if (duplicateRut) {
+            showToast("Ya existe un profesional con este RUT.", "error");
+            return;
+        }
+
         if (currentDoctor.id) {
             // Edit
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
@@ -221,12 +232,21 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         setCurrentDoctor({ role: 'Medico' });
     };
 
-    const handleDeleteDoctor = (id: string) => {
+    const handleDeleteDoctor = async (id: string) => {
         if (!hasActiveCenter) {
             showToast("Selecciona un centro activo para eliminar profesionales.", "warning");
             return;
         }
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
+            if (db) {
+                try {
+                    await deleteDoc(doc(db, 'centers', centerId, 'staff', id));
+                } catch (error) {
+                    console.error("deleteDoc", error);
+                    showToast("No se pudo eliminar el profesional en Firestore.", "error");
+                    return;
+                }
+            }
             onUpdateDoctors(doctors.filter(d => d.id !== id));
             showToast("Profesional eliminado.", "info");
         }
