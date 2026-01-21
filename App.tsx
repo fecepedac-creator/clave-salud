@@ -411,7 +411,11 @@ const App: React.FC = () => {
 
     const unsubDoctors = onSnapshot(
       collection(db, "centers", activeCenterId, "staff"),
-      (snap) => setDoctors(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[]),
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
+        const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
+        setDoctors(activeOnly);
+      },
       () => setDoctors([])
     );
 
@@ -479,7 +483,11 @@ const App: React.FC = () => {
 
   const deleteStaff = async (id: string) => {
     if (!requireCenter("eliminar profesionales")) return;
-    await deleteDoc(doc(db, "centers", activeCenterId, "staff", id));
+    await setDoc(
+      doc(db, "centers", activeCenterId, "staff", id),
+      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const updateAppointment = async (payload: Appointment) => {
@@ -997,7 +1005,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
   const [bookingMonth, setBookingMonth] = useState<Date>(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; appointmentId: string } | null>(null);
+  const [bookingAppointmentId, setBookingAppointmentId] = useState("");
+  const [bookingCancelToken, setBookingCancelToken] = useState("");
+  const [cancelAppointmentId, setCancelAppointmentId] = useState("");
+  const [cancelTokenInput, setCancelTokenInput] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   const handleBookingConfirm = async () => {
     const name = bookingData.name.trim();
@@ -1019,18 +1033,26 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       showToast("Ingresa un teléfono de contacto.", "error");
       return;
     }
-    const newAppt: Appointment = {
-      id: generateId(),
-      centerId: activeCenterId,
-      doctorId: selectedDoctorForBooking.id,
-      doctorUid: selectedDoctorForBooking.id,
-      date: selectedSlot.date,
-      time: selectedSlot.time,
+    const slotAppointment = appointments.find((appointment) => appointment.id === selectedSlot.appointmentId);
+    if (!slotAppointment || slotAppointment.status !== "available") {
+      showToast("El horario ya no está disponible. Selecciona otro.", "error");
+      return;
+    }
+
+    const cancelToken = generateId();
+    const bookedAppointment: Appointment = {
+      ...slotAppointment,
+      status: "booked",
       patientName: name,
       patientRut: rut,
       patientPhone: phone,
-      status: "booked",
-    } as any;
+      cancelToken,
+      bookedAt: serverTimestamp(),
+    };
+
+    await updateAppointment(bookedAppointment);
+    setBookingAppointmentId(bookedAppointment.id);
+    setBookingCancelToken(cancelToken);
 
     if (!auth.currentUser) {
       await createPreadmission({
@@ -1039,19 +1061,15 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           rut: bookingData.rut,
           phone: bookingData.phone,
         },
-        appointmentDraft: newAppt,
+        appointmentDraft: bookedAppointment,
         contact: {
           name: bookingData.name,
           rut: bookingData.rut,
           phone: bookingData.phone,
         },
       });
-      showToast("Preingreso recibido. Te contactaremos para confirmar.", "success");
-      setBookingStep(4);
-      return;
     }
 
-    await updateAppointment(newAppt);
     setBookingStep(4);
   };
 
@@ -1063,7 +1081,48 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
+    setBookingAppointmentId("");
+    setBookingCancelToken("");
     setView("patient-menu" as ViewMode);
+  };
+
+  const handlePublicCancellation = async () => {
+    if (!activeCenterId) {
+      showToast("Selecciona un centro activo para cancelar.", "warning");
+      return;
+    }
+    const appointmentId = cancelAppointmentId.trim();
+    const cancelToken = cancelTokenInput.trim();
+    if (!appointmentId || !cancelToken) {
+      setCancelError("Ingresa el código de reserva y el código de cancelación.");
+      return;
+    }
+    setCancelError("");
+    setCancelLoading(true);
+    try {
+      await setDoc(
+        doc(db, "centers", activeCenterId, "appointments", appointmentId),
+        {
+          status: "available",
+          patientName: "",
+          patientRut: "",
+          patientPhone: "",
+          cancelToken,
+          cancelledAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      showToast("Hora cancelada y liberada correctamente.", "success");
+      setCancelAppointmentId("");
+      setCancelTokenInput("");
+      setView("patient-menu" as ViewMode);
+    } catch (error) {
+      console.error("publicCancellation", error);
+      showToast("No se pudo cancelar la hora. Verifica los códigos.", "error");
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
   // ---------- UI helpers ----------
@@ -1173,6 +1232,73 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             <h3 className="font-bold text-3xl text-slate-800">Completar Antecedentes</h3>
             <p className="text-slate-500 mt-2 font-medium text-lg">Pre-ingreso y ficha clínica</p>
           </button>
+
+          <button
+            onClick={() => setView("patient-cancel" as ViewMode)}
+            className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-rose-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+          >
+            <div className="w-24 h-24 bg-rose-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+              <AlertCircle className="w-12 h-12 text-rose-500" />
+            </div>
+            <h3 className="font-bold text-3xl text-slate-800">Cancelar Hora</h3>
+            <p className="text-slate-500 mt-2 font-medium text-lg">Libera una cita agendada</p>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPatientCancel = () => (
+    <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+      <div className="max-w-xl w-full">
+        <button
+          onClick={() => setView("patient-menu" as ViewMode)}
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" /> Volver
+        </button>
+
+        <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
+          <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
+          <p className="text-slate-500 text-center mb-8">
+            Ingresa el código de reserva y el código de cancelación entregados al agendar.
+          </p>
+
+          <div className="space-y-6">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Código de Reserva</label>
+              <input
+                className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                value={cancelAppointmentId}
+                onChange={(e) => setCancelAppointmentId(e.target.value)}
+                placeholder="ID de la reserva"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Código de Cancelación</label>
+              <input
+                className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                value={cancelTokenInput}
+                onChange={(e) => setCancelTokenInput(e.target.value)}
+                placeholder="Código de cancelación"
+              />
+            </div>
+
+            {cancelError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm">
+                {cancelError}
+              </div>
+            )}
+
+            <button
+              onClick={handlePublicCancellation}
+              disabled={cancelLoading}
+              className="w-full bg-rose-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-rose-700 shadow-lg transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {cancelLoading ? "Cancelando..." : "Cancelar Hora"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1226,16 +1352,18 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const availableSlotsForDay =
       selectedDoctorForBooking
-        ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig).filter((slot: any) => {
-            const existing = appointments.find(
-              (a) =>
-                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-                a.date === dateStr &&
-                a.time === slot.time &&
-                a.status === "available"
-            );
-            return !!existing;
-          })
+        ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig)
+            .map((slot: any) => {
+              const existing = appointments.find(
+                (a) =>
+                  appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
+                  a.date === dateStr &&
+                  a.time === slot.time &&
+                  a.status === "available"
+              );
+              return existing ? { ...slot, appointmentId: existing.id } : null;
+            })
+            .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
         : [];
 
     return (
@@ -1395,7 +1523,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                       <button
                         key={slot.time}
                         onClick={() => {
-                          setSelectedSlot({ date: dateStr, time: slot.time });
+                          setSelectedSlot({ date: dateStr, time: slot.time, appointmentId: slot.appointmentId });
                           setBookingStep(3);
                         }}
                         className="py-4 bg-white border-2 border-emerald-100 text-emerald-700 font-bold rounded-2xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm hover:shadow-lg text-lg"
@@ -1489,7 +1617,30 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                 <Check className="w-12 h-12 text-green-600" />
               </div>
               <h3 className="text-4xl font-bold text-slate-800 mb-3">¡Reserva Exitosa!</h3>
-              <p className="text-slate-500 mb-10 text-xl">Su hora ha sido agendada correctamente.</p>
+              <p className="text-slate-500 text-xl">Su hora ha sido agendada correctamente.</p>
+              {bookingAppointmentId && bookingCancelToken && (
+                <div className="mt-6 mb-10 bg-white/90 border border-slate-200 rounded-2xl p-6 text-left max-w-xl mx-auto">
+                  <h4 className="text-lg font-bold text-slate-700 mb-3">Guarda estos datos para cancelar si es necesario</h4>
+                  <div className="space-y-2 text-sm text-slate-600">
+                    <p>
+                      <span className="font-bold text-slate-700">Código de reserva:</span> {bookingAppointmentId}
+                    </p>
+                    <p>
+                      <span className="font-bold text-slate-700">Código de cancelación:</span> {bookingCancelToken}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCancelAppointmentId(bookingAppointmentId);
+                      setCancelTokenInput(bookingCancelToken);
+                      setView("patient-cancel" as ViewMode);
+                    }}
+                    className="mt-4 w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800"
+                  >
+                    Cancelar esta hora
+                  </button>
+                </div>
+              )}
               <button
                 onClick={resetBooking}
                 className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-slate-800 text-lg shadow-lg"
@@ -1922,6 +2073,9 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   if (view === ("patient-menu" as ViewMode))
     return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
+
+  if (view === ("patient-cancel" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderPatientCancel()}</CenterContext.Provider>;
 
   if (view === ("patient-form" as ViewMode))
     return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;
