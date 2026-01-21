@@ -13,7 +13,15 @@ import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import { formatRUT, generateId, getStandardSlots, getDaysInMonth, validateRUT } from "./utils";
+import {
+  extractChileanPhoneDigits,
+  formatChileanPhone,
+  formatRUT,
+  generateId,
+  getDaysInMonth,
+  getStandardSlots,
+  validateRUT,
+} from "./utils";
 import {
   AlertCircle,
   ArrowLeft,
@@ -94,16 +102,28 @@ const App: React.FC = () => {
       setCenters(INITIAL_CENTERS);
       return;
     }
-    if (!auth.currentUser) {
-      setCenters([]);
-      return;
-    }
-
     let unsubscribers: Array<() => void> = [];
     let cancelled = false;
 
     const run = async () => {
       try {
+        if (!auth.currentUser) {
+          const unsub = onSnapshot(
+            query(collection(db, "centers"), where("isActive", "==", true)),
+            (snap) => {
+              if (cancelled) return;
+              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+              setCenters(items);
+            },
+            () => {
+              if (cancelled) return;
+              setCenters([]);
+            }
+          );
+          unsubscribers.push(unsub);
+          return;
+        }
+
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
@@ -411,7 +431,11 @@ const App: React.FC = () => {
 
     const unsubDoctors = onSnapshot(
       collection(db, "centers", activeCenterId, "staff"),
-      (snap) => setDoctors(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[]),
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
+        const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
+        setDoctors(activeOnly);
+      },
       () => setDoctors([])
     );
 
@@ -479,7 +503,11 @@ const App: React.FC = () => {
 
   const deleteStaff = async (id: string) => {
     if (!requireCenter("eliminar profesionales")) return;
-    await deleteDoc(doc(db, "centers", activeCenterId, "staff", id));
+    await setDoc(
+      doc(db, "centers", activeCenterId, "staff", id),
+      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const updateAppointment = async (payload: Appointment) => {
@@ -988,21 +1016,26 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   // ---------- Booking ----------
   const [bookingStep, setBookingStep] = useState(0);
-  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phone: string }>({
+  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phoneDigits: string }>({
     name: "",
     rut: "",
-    phone: "",
+    phoneDigits: "",
   });
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
   const [bookingMonth, setBookingMonth] = useState<Date>(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; appointmentId: string } | null>(null);
+  const [cancelRut, setCancelRut] = useState("");
+  const [cancelPhoneDigits, setCancelPhoneDigits] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [cancelResults, setCancelResults] = useState<Appointment[]>([]);
 
   const handleBookingConfirm = async () => {
     const name = bookingData.name.trim();
     const rut = bookingData.rut.trim();
-    const phone = bookingData.phone.trim();
+    const phoneDigits = bookingData.phoneDigits.trim();
     if (!selectedSlot || !selectedDoctorForBooking) {
       showToast("Selecciona un horario y profesional.", "error");
       return;
@@ -1015,55 +1048,144 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       showToast("RUT inválido. Verifica el formato.", "error");
       return;
     }
-    if (!phone) {
-      showToast("Ingresa un teléfono de contacto.", "error");
+    if (!phoneDigits || phoneDigits.length !== 8) {
+      showToast("Ingresa un teléfono válido de 8 dígitos.", "error");
       return;
     }
-    const newAppt: Appointment = {
-      id: generateId(),
-      centerId: activeCenterId,
-      doctorId: selectedDoctorForBooking.id,
-      doctorUid: selectedDoctorForBooking.id,
-      date: selectedSlot.date,
-      time: selectedSlot.time,
+    const phone = formatChileanPhone(phoneDigits);
+    const slotAppointment = appointments.find((appointment) => appointment.id === selectedSlot.appointmentId);
+    if (!slotAppointment || slotAppointment.status !== "available") {
+      showToast("El horario ya no está disponible. Selecciona otro.", "error");
+      return;
+    }
+
+    const bookedAppointment: Appointment = {
+      ...slotAppointment,
+      status: "booked",
       patientName: name,
       patientRut: rut,
       patientPhone: phone,
-      status: "booked",
-    } as any;
+      bookedAt: serverTimestamp(),
+    };
+
+    await updateAppointment(bookedAppointment);
 
     if (!auth.currentUser) {
       await createPreadmission({
         patientDraft: {
           fullName: bookingData.name,
           rut: bookingData.rut,
-          phone: bookingData.phone,
+          phone,
         },
-        appointmentDraft: newAppt,
+        appointmentDraft: bookedAppointment,
         contact: {
           name: bookingData.name,
           rut: bookingData.rut,
-          phone: bookingData.phone,
+          phone,
         },
       });
-      showToast("Preingreso recibido. Te contactaremos para confirmar.", "success");
-      setBookingStep(4);
-      return;
     }
 
-    await updateAppointment(newAppt);
     setBookingStep(4);
   };
 
   const resetBooking = () => {
     setBookingStep(0);
-    setBookingData({ name: "", rut: "", phone: "" });
+    setBookingData({ name: "", rut: "", phoneDigits: "" });
     setSelectedRole("");
     setSelectedDoctorForBooking(null);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
     setView("patient-menu" as ViewMode);
+  };
+
+  const handleLookupAppointments = async () => {
+    if (!activeCenterId) {
+      showToast("Selecciona un centro activo para continuar.", "warning");
+      return;
+    }
+    const rut = cancelRut.trim();
+    const phoneDigits = cancelPhoneDigits.trim();
+    if (!rut || !validateRUT(rut)) {
+      setCancelError("Ingresa un RUT válido.");
+      return;
+    }
+    try {
+      if (!phoneDigits || phoneDigits.length !== 8) {
+        setCancelError("Ingresa un teléfono válido de 8 dígitos.");
+        return;
+      }
+      setCancelError("");
+      setCancelLoading(true);
+      const functions = getFunctions();
+      const fn = httpsCallable(functions, "listPatientAppointments");
+      const response = await fn({
+        centerId: activeCenterId,
+        rut,
+        phone: formatChileanPhone(phoneDigits),
+      });
+      const data = (response.data as { appointments?: Appointment[] }) || {};
+      setCancelResults((data.appointments || []) as Appointment[]);
+      if (!data.appointments || data.appointments.length === 0) {
+        showToast("No encontramos horas agendadas con esos datos.", "info");
+      }
+    } catch (error) {
+      console.error("lookupAppointments", error);
+      showToast("No se pudieron cargar las horas agendadas.", "error");
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  const cancelPatientAppointment = async (appointment: Appointment) => {
+    if (!activeCenterId) {
+      showToast("Selecciona un centro activo para cancelar.", "warning");
+      return false;
+    }
+    const rut = cancelRut.trim();
+    const phoneDigits = cancelPhoneDigits.trim();
+    if (!rut || !phoneDigits) {
+      setCancelError("Ingresa tu RUT y teléfono.");
+      return false;
+    }
+    try {
+      const functions = getFunctions();
+      const fn = httpsCallable(functions, "cancelPatientAppointment");
+      await fn({
+        centerId: activeCenterId,
+        appointmentId: appointment.id,
+        rut,
+        phone: formatChileanPhone(phoneDigits),
+      });
+      setCancelResults((prev) => prev.filter((item) => item.id !== appointment.id));
+      showToast("Hora cancelada y liberada correctamente.", "success");
+      return true;
+    } catch (error) {
+      console.error("cancelAppointment", error);
+      showToast("No se pudo cancelar la hora. Verifica los datos.", "error");
+      return false;
+    }
+  };
+
+  const handleReschedule = async (appointment: Appointment) => {
+    const cancelled = await cancelPatientAppointment(appointment);
+    if (!cancelled) return;
+    const doctor = doctors.find((doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId));
+    if (doctor) {
+      setSelectedRole(doctor.role);
+      setSelectedDoctorForBooking(doctor);
+    }
+    setBookingData({
+      name: appointment.patientName || bookingData.name,
+      rut: appointment.patientRut || bookingData.rut,
+      phoneDigits: extractChileanPhoneDigits(appointment.patientPhone || ""),
+    });
+    setSelectedSlot(null);
+    setBookingDate(new Date());
+    setBookingMonth(new Date());
+    setBookingStep(2);
+    setView("patient-booking" as ViewMode);
   };
 
   // ---------- UI helpers ----------
@@ -1173,6 +1295,120 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             <h3 className="font-bold text-3xl text-slate-800">Completar Antecedentes</h3>
             <p className="text-slate-500 mt-2 font-medium text-lg">Pre-ingreso y ficha clínica</p>
           </button>
+
+          <button
+            onClick={() => setView("patient-cancel" as ViewMode)}
+            className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-rose-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+          >
+            <div className="w-24 h-24 bg-rose-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+              <AlertCircle className="w-12 h-12 text-rose-500" />
+            </div>
+            <h3 className="font-bold text-3xl text-slate-800">Cancelar Hora</h3>
+            <p className="text-slate-500 mt-2 font-medium text-lg">Libera una cita agendada</p>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPatientCancel = () => (
+    <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+      <div className="max-w-xl w-full">
+        <button
+          onClick={() => setView("patient-menu" as ViewMode)}
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" /> Volver
+        </button>
+
+        <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
+          <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
+          <p className="text-slate-500 text-center mb-8">
+            Ingresa tu RUT y teléfono para ver tus horas agendadas.
+          </p>
+
+          <div className="space-y-6">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">RUT</label>
+              <input
+                className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                value={cancelRut}
+                onChange={(e) => setCancelRut(formatRUT(e.target.value))}
+                placeholder="12.345.678-9"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Teléfono</label>
+              <div className="flex items-center gap-2">
+                <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
+                  +56 9
+                </span>
+                <input
+                  className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                  value={cancelPhoneDigits}
+                  onChange={(e) => setCancelPhoneDigits(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  placeholder="12345678"
+                />
+              </div>
+            </div>
+
+            {cancelError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm">
+                {cancelError}
+              </div>
+            )}
+
+            <button
+              onClick={handleLookupAppointments}
+              disabled={cancelLoading}
+              className="w-full bg-rose-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-rose-700 shadow-lg transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {cancelLoading ? "Buscando..." : "Buscar Horas"}
+            </button>
+
+            {cancelResults.length > 0 && (
+              <div className="pt-6 border-t border-slate-200 space-y-4">
+                <h3 className="text-lg font-bold text-slate-700 text-center">Tus horas agendadas</h3>
+                {cancelResults.map((appointment) => {
+                  const doctor = doctors.find(
+                    (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
+                  );
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-3"
+                    >
+                      <div>
+                        <p className="text-sm text-slate-500">Profesional</p>
+                        <p className="text-base font-bold text-slate-700">
+                          {doctor?.fullName || "Profesional"}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between text-sm text-slate-600">
+                        <span>{appointment.date}</span>
+                        <span className="font-bold">{appointment.time}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          onClick={() => cancelPatientAppointment(appointment)}
+                          className="flex-1 bg-rose-600 text-white py-2 rounded-xl font-bold hover:bg-rose-700"
+                        >
+                          Anular
+                        </button>
+                        <button
+                          onClick={() => handleReschedule(appointment)}
+                          className="flex-1 bg-slate-900 text-white py-2 rounded-xl font-bold hover:bg-slate-800"
+                        >
+                          Cambiar fecha
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1226,16 +1462,18 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const availableSlotsForDay =
       selectedDoctorForBooking
-        ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig).filter((slot: any) => {
-            const existing = appointments.find(
-              (a) =>
-                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-                a.date === dateStr &&
-                a.time === slot.time &&
-                a.status === "available"
-            );
-            return !!existing;
-          })
+        ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig)
+            .map((slot: any) => {
+              const existing = appointments.find(
+                (a) =>
+                  appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
+                  a.date === dateStr &&
+                  a.time === slot.time &&
+                  a.status === "available"
+              );
+              return existing ? { ...slot, appointmentId: existing.id } : null;
+            })
+            .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
         : [];
 
     return (
@@ -1395,7 +1633,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                       <button
                         key={slot.time}
                         onClick={() => {
-                          setSelectedSlot({ date: dateStr, time: slot.time });
+                          setSelectedSlot({ date: dateStr, time: slot.time, appointmentId: slot.appointmentId });
                           setBookingStep(3);
                         }}
                         className="py-4 bg-white border-2 border-emerald-100 text-emerald-700 font-bold rounded-2xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm hover:shadow-lg text-lg"
@@ -1451,12 +1689,19 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Teléfono</label>
-                  <input
-                    className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
-                    value={bookingData.phone}
-                    onChange={(e) => setBookingData({ ...bookingData, phone: e.target.value })}
-                    placeholder="+569..."
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
+                      +56 9
+                    </span>
+                    <input
+                      className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
+                      value={bookingData.phoneDigits}
+                      onChange={(e) =>
+                        setBookingData({ ...bookingData, phoneDigits: e.target.value.replace(/\D/g, "").slice(0, 8) })
+                      }
+                      placeholder="12345678"
+                    />
+                  </div>
                 </div>
 
                 {error && (
@@ -1489,7 +1734,10 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                 <Check className="w-12 h-12 text-green-600" />
               </div>
               <h3 className="text-4xl font-bold text-slate-800 mb-3">¡Reserva Exitosa!</h3>
-              <p className="text-slate-500 mb-10 text-xl">Su hora ha sido agendada correctamente.</p>
+              <p className="text-slate-500 text-xl">Su hora ha sido agendada correctamente.</p>
+              <p className="text-slate-400 mt-3 text-sm">
+                Si necesitas anular o cambiar la fecha, usa la opción “Cancelar Hora” en el menú de pacientes.
+              </p>
               <button
                 onClick={resetBooking}
                 className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-slate-800 text-lg shadow-lg"
@@ -1922,6 +2170,9 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   if (view === ("patient-menu" as ViewMode))
     return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
+
+  if (view === ("patient-cancel" as ViewMode))
+    return <CenterContext.Provider value={centerCtxValue}>{renderPatientCancel()}</CenterContext.Provider>;
 
   if (view === ("patient-form" as ViewMode))
     return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;

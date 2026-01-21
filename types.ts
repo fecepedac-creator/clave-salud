@@ -195,6 +195,8 @@ export interface Appointment {
   patientName: string;
   patientRut: string;
   patientPhone?: string;
+  bookedAt?: any;
+  cancelledAt?: any;
   status: 'available' | 'booked';
 }
 
@@ -299,6 +301,7 @@ export interface CenterInvite {
 export type ViewMode =
   | "landing"
   | "patient-menu"
+  | "patient-cancel"
   | "patient-form"
   | "patient-upload"
   | "patient-booking"
