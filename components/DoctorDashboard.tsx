@@ -35,6 +35,7 @@ interface ProfessionalDashboardProps {
   onUpdateAppointments: (appointments: Appointment[]) => void;
   onLogActivity: (action: AuditLogEntry['action'], details: string, targetId?: string) => void;
   isReadOnly?: boolean; // Read Only Mode for Suspended Centers
+  isSyncingAppointments?: boolean;
 };
 
 // --- helpers to avoid infinite loops when props are recreated on every render ---
@@ -57,7 +58,7 @@ function sameById(a: any[] = [], b: any[] = [], extraKeys: string[] = []) {
 
 export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({ 
     patients, doctorName, doctorId, role, agendaConfig, savedTemplates, currentUser,
-    onUpdatePatient, onUpdateDoctor, onLogout, appointments, onUpdateAppointments, onLogActivity, isReadOnly = false 
+    onUpdatePatient, onUpdateDoctor, onLogout, appointments, onUpdateAppointments, onLogActivity, isReadOnly = false, isSyncingAppointments = false 
 }) => {
   const [activeTab, setActiveTab] = useState<'patients' | 'agenda' | 'reminders' | 'settings'>('patients');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -904,6 +905,7 @@ useEffect(() => {
                                   appointments={appointments}
                                   doctorId={doctorId}
                                   agendaConfig={agendaConfig}
+                                  isSyncingAppointments={isSyncingAppointments}
                                   onMonthChange={(inc) => {
                                       const newDate = new Date(currentMonth);
                                       newDate.setMonth(newDate.getMonth() + inc);

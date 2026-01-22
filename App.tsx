@@ -214,6 +214,7 @@ const App: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
+  const [isSyncingAppointments, setIsSyncingAppointments] = useState(false);
 
   // tenant selection
   const [activeCenterId, setActiveCenterId] = useState<string>("");
@@ -530,12 +531,17 @@ const App: React.FC = () => {
     const nextIds = new Set(nextAppointments.map((a) => a.id));
     const removed = appointments.filter((appt) => !nextIds.has(appt.id));
 
-    for (const appt of removed) {
-      await deleteAppointment(appt.id);
-    }
+    setIsSyncingAppointments(true);
+    try {
+      for (const appt of removed) {
+        await deleteAppointment(appt.id);
+      }
 
-    for (const appt of nextAppointments) {
-      await updateAppointment(appt);
+      for (const appt of nextAppointments) {
+        await updateAppointment(appt);
+      }
+    } finally {
+      setIsSyncingAppointments(false);
     }
   };
 
@@ -1471,6 +1477,9 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
 
     const uniqueRoles = Array.from(new Set(doctors.map((d) => d.role)));
+    const doctorsForRole = selectedRole
+      ? doctors.filter((d) => d.role === selectedRole && d.centerId === activeCenterId)
+      : [];
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
@@ -1532,9 +1541,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             <div className="animate-fadeIn">
               <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">Seleccione Profesional</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {doctors
-                  .filter((d) => d.role === selectedRole && d.centerId === activeCenterId)
-                  .map((docu) => (
+                {doctorsForRole.map((docu) => (
                     <button
                       key={docu.id}
                       onClick={() => {
@@ -1553,6 +1560,11 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
                       </div>
                     </button>
                   ))}
+                {doctorsForRole.length === 0 && (
+                  <div className="col-span-2 text-center text-slate-400">
+                    No hay profesionales disponibles para esta especialidad.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2250,8 +2262,10 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           onLogout={handleLogout}
           appointments={appointments}
           onUpdateAppointments={(newAppts: Appointment[]) => {
+            setAppointments(newAppts);
             syncAppointments(newAppts);
           }}
+          isSyncingAppointments={isSyncingAppointments}
           onLogActivity={(action: any, details: string, targetId?: string) => {
             const log: AuditLogEntry = {
               id: generateId(),
@@ -2280,7 +2294,11 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           doctors={doctors}
           onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
           appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => syncAppointments(newAppts)}
+          onUpdateAppointments={(newAppts: Appointment[]) => {
+            setAppointments(newAppts);
+            syncAppointments(newAppts);
+          }}
+          isSyncingAppointments={isSyncingAppointments}
           patients={patients}
           onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
           preadmissions={preadmissions}
