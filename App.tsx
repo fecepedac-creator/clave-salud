@@ -79,8 +79,10 @@ function isValidCenter(c: any): c is MedicalCenter {
 // Public assets
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
-const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
-const CENTER_BG_SRC = `${ASSET_BASE}assets/background.png.png`;
+const HOME_BG_SRC = `${ASSET_BASE}assets/fondo%20principal.webp`;
+const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
+const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
+const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 const SUPERADMIN_ALLOWED_EMAILS = new Set([
   "fecepedac@gmail.com",
   "dr.felipecepeda@gmail.com",
@@ -2111,7 +2113,11 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     return (
       <div
         className="home-hero relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-hidden"
-        style={{ "--home-hero-image": `url(${HOME_BG_SRC})` } as React.CSSProperties}
+        style={
+          {
+            "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
+          } as React.CSSProperties
+        }
       >
         <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.12),_transparent_55%)]" />
@@ -2193,7 +2199,11 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const renderCenterBackdrop = (children: React.ReactNode) => (
     <div
       className="center-hero relative min-h-dvh w-full overflow-hidden"
-      style={{ "--center-hero-image": `url(${CENTER_BG_SRC})` } as React.CSSProperties}
+      style={
+        {
+          "--center-hero-image": `image-set(url("${CENTER_BG_SRC}") type("image/webp"), url("${CENTER_BG_FALLBACK_SRC}") type("image/png"))`,
+        } as React.CSSProperties
+      }
     >
       <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40 pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.12),_transparent_55%)] pointer-events-none" />
