@@ -2113,8 +2113,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         className="home-hero relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-hidden"
         style={{ "--home-hero-image": `url(${HOME_BG_SRC})` } as React.CSSProperties}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-white/45 to-white/80" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.18),_transparent_55%)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.12),_transparent_55%)]" />
         {authUser && !isSuperAdminClaim && (
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
@@ -2195,8 +2195,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       className="center-hero relative min-h-dvh w-full overflow-hidden"
       style={{ "--center-hero-image": `url(${CENTER_BG_SRC})` } as React.CSSProperties}
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/40 to-white/80 pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.18),_transparent_55%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.12),_transparent_55%)] pointer-events-none" />
       <div className="relative z-10 min-h-dvh w-full">{children}</div>
     </div>
   );
