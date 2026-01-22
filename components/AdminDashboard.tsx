@@ -14,6 +14,7 @@ interface AdminDashboardProps {
     onUpdateDoctors: (doctors: Doctor[]) => void;
     appointments: Appointment[];
     onUpdateAppointments: (appointments: Appointment[]) => void;
+    isSyncingAppointments?: boolean;
     onLogout: () => void;
     patients: Patient[];
     onUpdatePatients: (patients: Patient[]) => void;
@@ -37,7 +38,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-    centerId, doctors, onUpdateDoctors, appointments, onUpdateAppointments, onLogout, patients, onUpdatePatients, preadmissions, onApprovePreadmission, logs, onLogActivity 
+    centerId, doctors, onUpdateDoctors, appointments, onUpdateAppointments, isSyncingAppointments, onLogout, patients, onUpdatePatients, preadmissions, onApprovePreadmission, logs, onLogActivity 
 }) => {
     const [activeTab, setActiveTab] = useState<'doctors' | 'agenda' | 'audit' | 'preadmissions'>('doctors');
     const { showToast } = useToast();
@@ -112,6 +113,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const [showShareModal, setShowShareModal] = useState(false);
 
     const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, '').toUpperCase();
+    const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
+    const savedConfig = selectedDoctor?.agendaConfig;
+    const isConfigEqual = (a?: AgendaConfig, b?: AgendaConfig) =>
+        !!a && !!b && a.slotDuration === b.slotDuration && a.startTime === b.startTime && a.endTime === b.endTime;
+    const hasUnsavedConfig = savedConfig ? !isConfigEqual(savedConfig, tempConfig) : false;
 
     // --- LAZY LOAD LOGS ---
     useEffect(() => {
@@ -771,6 +777,11 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                     >
                                         Guardar Configuración
                                     </button>
+                                    {hasUnsavedConfig && (
+                                        <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
+                                            Cambios sin guardar. La grilla usa la configuración actualmente guardada.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -816,13 +827,20 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                          <div className="lg:col-span-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 min-h-[500px]">
                                 {selectedDate ? (
                                     <>
-                                        <div className="flex justify-between items-center mb-8">
+                                        <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
                                             <h3 className="text-2xl font-bold text-white capitalize">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long'})}</h3>
-                                            <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">Haga clic para abrir/cerrar bloques</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">Haga clic para abrir/cerrar bloques</span>
+                                                {isSyncingAppointments && (
+                                                    <span className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/40 px-2 py-1 rounded-full">
+                                                        Guardando...
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         
                                         <div className="grid grid-cols-4 gap-4">
-                                            {getStandardSlots(selectedDate, selectedDoctorId, tempConfig).map(slot => {
+                                            {getStandardSlots(selectedDate, selectedDoctorId, savedConfig ?? tempConfig).map(slot => {
                                                 const realSlot = appointments.find(a => ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === selectedDate && a.time === slot.time);
                                                 const isOpen = !!realSlot;
                                                 const isBooked = realSlot?.status === 'booked';

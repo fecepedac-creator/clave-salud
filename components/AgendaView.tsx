@@ -14,11 +14,12 @@ interface AgendaViewProps {
     onDateClick: (date: Date) => void;
     onToggleSlot: (time: string) => void;
     readOnly?: boolean; // NEW PROP
+    isSyncingAppointments?: boolean;
 }
 
 const AgendaView: React.FC<AgendaViewProps> = ({ 
     currentMonth, selectedAgendaDate, appointments, doctorId, agendaConfig,
-    onMonthChange, onDateClick, onToggleSlot, readOnly = false 
+    onMonthChange, onDateClick, onToggleSlot, readOnly = false, isSyncingAppointments = false 
 }) => {
     
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
@@ -83,9 +84,18 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 
             {/* Right: Scheduled Appointments & Slot Management */}
             <div className="lg:col-span-8 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col min-h-[500px]">
-                <h3 className="font-bold text-2xl text-slate-800 mb-6 flex justify-between items-center">
+                <h3 className="font-bold text-2xl text-slate-800 mb-6 flex flex-wrap justify-between items-center gap-2">
                     <span>{headerDate ? `Agenda del ${headerDate.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}` : 'Seleccione una fecha'}</span>
-                    {selectedAgendaDate && <span className="text-xs text-slate-400 font-normal">Clic para Abrir/Cerrar Bloques</span>}
+                    {selectedAgendaDate && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400 font-normal">Clic para Abrir/Cerrar Bloques</span>
+                            {isSyncingAppointments && (
+                                <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">
+                                    Guardando...
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </h3>
                 
                 <div className="flex-1 overflow-auto">
