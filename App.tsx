@@ -1794,7 +1794,23 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   };
 
+  const renderHomeBackdrop = (children: React.ReactNode) => (
+    <div
+      className="home-hero relative min-h-dvh w-full overflow-hidden"
+      style={
+        {
+          "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
+        } as React.CSSProperties
+      }
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.04),_transparent_55%)] pointer-events-none" />
+      <div className="relative z-10 min-h-dvh w-full">{children}</div>
+    </div>
+  );
+
   const renderLogin = (isDoc: boolean) => {
+    const centerLogoUrl = (activeCenter as any)?.logoUrl as string | undefined;
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}>
@@ -1804,7 +1820,13 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
           <div className="flex flex-col gap-10 mt-4">
             <div className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}>
-              {isDoc ? <Stethoscope className="w-10 h-10" /> : <ShieldCheck className="w-10 h-10" />}
+              {isDoc ? (
+                <Stethoscope className="w-10 h-10" />
+              ) : centerLogoUrl ? (
+                <img src={centerLogoUrl} alt={`Logo de ${activeCenter?.name ?? "centro médico"}`} className="w-12 h-12 object-contain" />
+              ) : (
+                <ShieldCheck className="w-10 h-10" />
+              )}
             </div>
             <h2 className="text-3xl font-bold text-center text-slate-800">{isDoc ? "Acceso Profesional" : "Acceso Administrativo"}</h2>
 
@@ -1834,45 +1856,49 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       </div>
     );
 
-    if (!isDoc) return content;
-    return renderCenterBackdrop(content);
+    if (isDoc) return renderCenterBackdrop(content);
+    return renderHomeBackdrop(content);
   };
 
-  const renderSuperAdminLogin = () => (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
-            <Lock className="w-6 h-6 text-slate-700" />
-            Acceso SuperAdmin
-          </h2>
-          <button
-            type="button"
-            onClick={() => setView("center-portal" as ViewMode)}
-            className="text-sm font-semibold text-slate-500 hover:text-slate-800"
-          >
-            Volver
-          </button>
-        </div>
+  const renderSuperAdminLogin = () => {
+    const content = (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+              <Lock className="w-6 h-6 text-slate-700" />
+              Acceso SuperAdmin
+            </h2>
+            <button
+              type="button"
+              onClick={() => setView("center-portal" as ViewMode)}
+              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+            >
+              Volver
+            </button>
+          </div>
 
-        <div className="space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
-              {error}
-            </div>
-          )}
+          <div className="space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
+                {error}
+              </div>
+            )}
 
-          <button
-            type="button"
-            onClick={handleSuperAdminGoogleLogin}
-            className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
-          >
-            Ingresar con Google
-          </button>
+            <button
+              type="button"
+              onClick={handleSuperAdminGoogleLogin}
+              className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
+            >
+              Ingresar con Google
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+
+    return renderHomeBackdrop(content);
+  };
 
   const renderSelectCenter = () => {
     const allowed: string[] = Array.isArray(currentUser?.centros)
