@@ -79,8 +79,8 @@ function isValidCenter(c: any): c is MedicalCenter {
 // Public assets
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
-const HOME_BG_SRC = `${ASSET_BASE}assets/home-hero.svg`;
-const CENTER_BG_SRC = `${ASSET_BASE}assets/center-hero.svg`;
+const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
+const CENTER_BG_SRC = `${ASSET_BASE}assets/background.png.png`;
 const SUPERADMIN_ALLOWED_EMAILS = new Set([
   "fecepedac@gmail.com",
   "dr.felipecepeda@gmail.com",
@@ -441,10 +441,15 @@ const App: React.FC = () => {
       () => setDoctors([])
     );
 
+    const apptCollection = collection(db, "centers", activeCenterId, "appointments");
+    const apptQuery = auth.currentUser ? apptCollection : query(apptCollection, where("status", "==", "available"));
     const unsubAppts = onSnapshot(
-      collection(db, "centers", activeCenterId, "appointments"),
+      apptQuery,
       (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
-      () => setAppointments([])
+      (error) => {
+        console.error("appointments snapshot error", error);
+        setAppointments([]);
+      }
     );
 
     const unsubLogs = onSnapshot(
@@ -467,7 +472,7 @@ const App: React.FC = () => {
       unsubLogs();
       unsubPreadmissions();
     };
-  }, [activeCenterId, demoMode, isSuperAdminClaim]);
+  }, [activeCenterId, authUser, demoMode, isSuperAdminClaim]);
 
   // ---------- CRUD helpers ----------
   const requireCenter = (actionLabel: string) => {
@@ -2105,13 +2110,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const renderHomeDirectory = () => {
     return (
       <div
-        className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-hidden"
-        style={{
-          backgroundImage: `linear-gradient(120deg, rgba(255,255,255,0.86), rgba(239,246,255,0.68)), url(${HOME_BG_SRC})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center top",
-          backgroundRepeat: "no-repeat",
-        }}
+        className="home-hero relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-hidden"
+        style={{ "--home-hero-image": `url(${HOME_BG_SRC})` } as React.CSSProperties}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-white/45 to-white/80" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.18),_transparent_55%)]" />
@@ -2192,13 +2192,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   const renderCenterBackdrop = (children: React.ReactNode) => (
     <div
-      className="relative min-h-dvh w-full overflow-hidden"
-      style={{
-        backgroundImage: `linear-gradient(120deg, rgba(255,255,255,0.9), rgba(240,249,255,0.72)), url(${CENTER_BG_SRC})`,
-        backgroundSize: "cover",
-        backgroundPosition: "left center",
-        backgroundRepeat: "no-repeat",
-      }}
+      className="center-hero relative min-h-dvh w-full overflow-hidden"
+      style={{ "--center-hero-image": `url(${CENTER_BG_SRC})` } as React.CSSProperties}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/40 to-white/80 pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.18),_transparent_55%)] pointer-events-none" />

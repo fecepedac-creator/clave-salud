@@ -1,3 +1,29 @@
 @import "tailwindcss";
 
 /* Si quieres, aquí abajo puedes dejar tus estilos propios (los que tenías antes) */
+
+.home-hero {
+  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.86), rgba(239, 246, 255, 0.68)),
+    var(--home-hero-image);
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+.center-hero {
+  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.9), rgba(240, 249, 255, 0.72)),
+    var(--center-hero-image);
+  background-size: cover;
+  background-position: left center;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .home-hero {
+    background-position: center;
+  }
+
+  .center-hero {
+    background-position: center;
+  }
+}
