@@ -80,6 +80,7 @@ function isValidCenter(c: any): c is MedicalCenter {
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
 const HOME_BG_SRC = `${ASSET_BASE}assets/home-bg.png`;
+const CENTER_BG_SRC = `${ASSET_BASE}assets/background.png.png`;
 const SUPERADMIN_ALLOWED_EMAILS = new Set([
   "fecepedac@gmail.com",
   "dr.felipecepeda@gmail.com",
@@ -440,10 +441,15 @@ const App: React.FC = () => {
       () => setDoctors([])
     );
 
+    const apptCollection = collection(db, "centers", activeCenterId, "appointments");
+    const apptQuery = auth.currentUser ? apptCollection : query(apptCollection, where("status", "==", "available"));
     const unsubAppts = onSnapshot(
-      collection(db, "centers", activeCenterId, "appointments"),
+      apptQuery,
       (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
-      () => setAppointments([])
+      (error) => {
+        console.error("appointments snapshot error", error);
+        setAppointments([]);
+      }
     );
 
     const unsubLogs = onSnapshot(
@@ -466,7 +472,7 @@ const App: React.FC = () => {
       unsubLogs();
       unsubPreadmissions();
     };
-  }, [activeCenterId, demoMode, isSuperAdminClaim]);
+  }, [activeCenterId, authUser, demoMode, isSuperAdminClaim]);
 
   // ---------- CRUD helpers ----------
   const requireCenter = (actionLabel: string) => {
@@ -1215,7 +1221,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       return renderHomeDirectory();
     }
 
-    return (
+    return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-4xl mb-6 flex justify-start">
           <button
@@ -1230,8 +1236,16 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         </div>
 
         <div className="text-center mb-10">
-          <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg">
-            <Building2 className="w-12 h-12 text-blue-600" />
+          <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg overflow-hidden">
+            {(activeCenter as any).logoUrl ? (
+              <img
+                src={(activeCenter as any).logoUrl}
+                alt={`Logo de ${activeCenter.name}`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Building2 className="w-12 h-12 text-blue-600" />
+            )}
           </div>
           <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
             {activeCenter.name}
@@ -1276,7 +1290,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   };
 
-  const renderPatientMenu = () => (
+  const renderPatientMenu = () => renderCenterBackdrop(
     <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
       <div className="max-w-4xl w-full">
         <button
@@ -1332,7 +1346,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     </div>
   );
 
-  const renderPatientCancel = () => (
+  const renderPatientCancel = () => renderCenterBackdrop(
     <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
       <div className="max-w-xl w-full">
         <button
@@ -1435,7 +1449,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     </div>
   );
 
-  const renderPatientForm = () => (
+  const renderPatientForm = () => renderCenterBackdrop(
     <div className="min-h-screen pb-12">
       <div className="max-w-4xl mx-auto pt-6 px-4">
         <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center drop-shadow-sm">
@@ -1500,7 +1514,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
         : [];
 
-    return (
+    return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-4xl">
           <button
@@ -1778,44 +1792,49 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   };
 
-  const renderLogin = (isDoc: boolean) => (
-    <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-      <div className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}>
-        <button onClick={() => setView("center-portal" as ViewMode)} className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors">
-          <ArrowLeft className="w-6 h-6" />
-        </button>
+  const renderLogin = (isDoc: boolean) => {
+    const content = (
+      <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+        <div className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}>
+          <button onClick={() => setView("center-portal" as ViewMode)} className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
 
-        <div className="flex flex-col gap-10 mt-4">
-          <div className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}>
-            {isDoc ? <Stethoscope className="w-10 h-10" /> : <ShieldCheck className="w-10 h-10" />}
-          </div>
-          <h2 className="text-3xl font-bold text-center text-slate-800">{isDoc ? "Acceso Profesional" : "Acceso Administrativo"}</h2>
-
-          <div className="space-y-6 max-w-sm mx-auto w-full">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase ml-1">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700" placeholder="nombre@centro.cl" />
+          <div className="flex flex-col gap-10 mt-4">
+            <div className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}>
+              {isDoc ? <Stethoscope className="w-10 h-10" /> : <ShieldCheck className="w-10 h-10" />}
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase ml-1">Contraseña</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors" placeholder="••••••••" />
-            </div>
-            {error && <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
-            <button onClick={() => handleSuperAdminLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)} className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}>
-              Ingresar
-            </button>
+            <h2 className="text-3xl font-bold text-center text-slate-800">{isDoc ? "Acceso Profesional" : "Acceso Administrativo"}</h2>
 
-            <button
-              onClick={() => handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)}
-              className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
-            >
-              Continuar con Google
-            </button>
+            <div className="space-y-6 max-w-sm mx-auto w-full">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700" placeholder="nombre@centro.cl" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Contraseña</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors" placeholder="••••••••" />
+              </div>
+              {error && <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
+              <button onClick={() => handleSuperAdminLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)} className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}>
+                Ingresar
+              </button>
+
+              <button
+                onClick={() => handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)}
+                className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
+              >
+                Continuar con Google
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+
+    if (!isDoc) return content;
+    return renderCenterBackdrop(content);
+  };
 
   const renderSuperAdminLogin = () => (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
@@ -2091,14 +2110,11 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const renderHomeDirectory = () => {
     return (
       <div
-        className="relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16"
-        style={{
-          backgroundImage: `linear-gradient(to bottom, rgba(248, 250, 252, 0.86), rgba(248,250,252,0.30)), url(${HOME_BG_SRC})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
+        className="home-hero relative min-h-dvh flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-hidden"
+        style={{ "--home-hero-image": `url(${HOME_BG_SRC})` } as React.CSSProperties}
       >
+        <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.12),_transparent_55%)]" />
         {authUser && !isSuperAdminClaim && (
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
@@ -2117,60 +2133,73 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           <Lock className="w-5 h-5 text-slate-800" />
         </button>
 
-        <div className="text-center mb-10">
-          <div className="flex flex-col items-center justify-center gap-3">
-            <img
-              src={LOGO_SRC}
-              alt="ClaveSalud"
-              className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
-            />
-            <h1 className="text-4xl md:text-5xl font-extrabold">
-              <span className="text-sky-500">Clave</span><span className="text-teal-700">Salud</span>
-            </h1>
-          </div>
-          <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
-        </div>
-
-        <div className="w-full max-w-5xl">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
-            <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
+        <div className="relative z-10 w-full max-w-6xl">
+          <div className="text-center mb-10 rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
+            <div className="flex flex-col items-center justify-center gap-3">
+              <img
+                src={LOGO_SRC}
+                alt="ClaveSalud"
+                className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(15,23,42,0.16)]"
+              />
+              <h1 className="text-4xl md:text-5xl font-extrabold">
+                <span className="text-sky-600">Clave</span><span className="text-teal-700">Salud</span>
+              </h1>
+            </div>
+            <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {centers.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setActiveCenterId(c.id);
-                  setView("center-portal" as ViewMode);
-                }}
-                className="bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
-                    {(c as any).logoUrl ? (
-                      <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
-                    ) : (
-                      <Building2 className="w-7 h-7 text-slate-700" />
-                    )}
-                  </div>
+          <div className="rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
+              <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
+            </div>
 
-                  <div className="flex-1">
-                    <div className="font-extrabold text-slate-900 text-lg leading-tight">{c.name}</div>
-                    <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {centers.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setActiveCenterId(c.id);
+                    setView("center-portal" as ViewMode);
+                  }}
+                  className="bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+                      {(c as any).logoUrl ? (
+                        <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <Building2 className="w-7 h-7 text-slate-700" />
+                      )}
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="font-extrabold text-slate-900 text-lg leading-tight">{c.name}</div>
+                      <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-5 text-sm font-bold text-slate-700 inline-flex items-center gap-2">
-                  Ingresar <ArrowRight className="w-4 h-4" />
-                </div>
-              </button>
-            ))}
+                  <div className="mt-5 text-sm font-bold text-slate-700 inline-flex items-center gap-2">
+                    Ingresar <ArrowRight className="w-4 h-4" />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   };
+
+  const renderCenterBackdrop = (children: React.ReactNode) => (
+    <div
+      className="center-hero relative min-h-dvh w-full overflow-hidden"
+      style={{ "--center-hero-image": `url(${CENTER_BG_SRC})` } as React.CSSProperties}
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.12),_transparent_55%)] pointer-events-none" />
+      <div className="relative z-10 min-h-dvh w-full">{children}</div>
+    </div>
+  );
 
   const centerCtxValue = useMemo(() => {
     const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
