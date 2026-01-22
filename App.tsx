@@ -2134,7 +2134,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         </button>
 
         <div className="relative z-10 w-full max-w-6xl">
-          <div className="text-center mb-10 rounded-3xl bg-white/70 backdrop-blur-md border border-white/80 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
+          <div className="text-center mb-10 rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
             <div className="flex flex-col items-center justify-center gap-3">
               <img
                 src={LOGO_SRC}
@@ -2148,7 +2148,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
           </div>
 
-          <div className="rounded-3xl bg-white/80 backdrop-blur-md border border-white/80 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
+          <div className="rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
             <div className="text-center mb-6">
               <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
               <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
