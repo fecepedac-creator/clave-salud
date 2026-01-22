@@ -1,0 +1,46 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8f4f3" />
+      <stop offset="55%" stop-color="#f4f7fb" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+    <linearGradient id="hexFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9dd5dc" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.45" />
+    </linearGradient>
+    <pattern id="hex" width="140" height="120" patternUnits="userSpaceOnUse">
+      <path d="M70 4 L132 36 V84 L70 116 L8 84 V36 Z" fill="none" stroke="#77b7c5" stroke-width="2" opacity="0.35" />
+    </pattern>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" />
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)" />
+  <rect width="1600" height="900" fill="url(#hex)" opacity="0.6" />
+
+  <g opacity="0.5">
+    <polygon points="160,150 280,220 280,360 160,430 40,360 40,220" fill="url(#hexFill)" />
+    <polygon points="320,250 430,310 430,430 320,490 210,430 210,310" fill="url(#hexFill)" opacity="0.7" />
+  </g>
+
+  <g opacity="0.35" stroke="#0ea5a4" stroke-width="3">
+    <line x1="260" y1="330" x2="430" y2="330" />
+    <line x1="430" y1="330" x2="430" y2="470" />
+    <line x1="260" y1="330" x2="260" y2="460" />
+  </g>
+
+  <g filter="url(#blur)" opacity="0.2">
+    <circle cx="360" cy="640" r="120" fill="#38bdf8" />
+    <circle cx="520" cy="600" r="90" fill="#34d399" />
+  </g>
+
+  <g opacity="0.55">
+    <rect x="190" y="300" width="120" height="140" rx="16" fill="#0f172a" opacity="0.12" />
+    <rect x="215" y="328" width="70" height="12" rx="6" fill="#38bdf8" />
+    <rect x="215" y="352" width="58" height="8" rx="4" fill="#94a3b8" />
+    <rect x="215" y="372" width="80" height="8" rx="4" fill="#94a3b8" />
+    <rect x="215" y="394" width="50" height="8" rx="4" fill="#94a3b8" />
+  </g>
+</svg>
