@@ -2119,8 +2119,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           } as React.CSSProperties
         }
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.12),_transparent_55%)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-white/5 to-white/15" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.06),_transparent_55%)]" />
         {authUser && !isSuperAdminClaim && (
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
@@ -2140,7 +2140,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         </button>
 
         <div className="relative z-10 w-full max-w-6xl">
-          <div className="text-center mb-10 rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
+          <div className="text-center mb-10 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
             <div className="flex flex-col items-center justify-center gap-3">
               <img
                 src={LOGO_SRC}
@@ -2154,7 +2154,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
             <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
           </div>
 
-          <div className="rounded-3xl bg-white/20 backdrop-blur-md border border-white/30 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
+          <div className="rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
             <div className="text-center mb-6">
               <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
               <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
@@ -2205,8 +2205,8 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         } as React.CSSProperties
       }
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-white/15 to-white/40 pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.12),_transparent_55%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-white/5 to-white/15 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.06),_transparent_55%)] pointer-events-none" />
       <div className="relative z-10 min-h-dvh w-full">{children}</div>
     </div>
   );
