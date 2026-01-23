@@ -434,8 +434,11 @@ const App: React.FC = () => {
       () => setPatients([])
     );
 
+    const doctorsCollection = auth.currentUser
+      ? collection(db, "centers", activeCenterId, "staff")
+      : collection(db, "centers", activeCenterId, "publicStaff");
     const unsubDoctors = onSnapshot(
-      collection(db, "centers", activeCenterId, "staff"),
+      doctorsCollection,
       (snap) => {
         const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
         const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
@@ -1108,6 +1111,31 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
     await updateAppointment(bookedAppointment);
 
+    const trimmedRut = rut.trim();
+    const existingPatient = patients.find((patient) => (patient.rut ?? "").trim() === trimmedRut);
+    if (activeCenterId && !existingPatient) {
+      const patientId = generateId();
+      const patientPayload: Patient = {
+        id: patientId,
+        centerId: activeCenterId,
+        rut: trimmedRut,
+        fullName: name,
+        birthDate: "",
+        gender: "Otro",
+        phone,
+        medicalHistory: [],
+        surgicalHistory: [],
+        smokingStatus: "No fumador",
+        alcoholStatus: "No consumo",
+        medications: [],
+        allergies: [],
+        consultations: [],
+        attachments: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
+    }
+
     if (!auth.currentUser) {
       const storedContact = {
         name: bookingData.name,
@@ -1119,28 +1147,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         window.localStorage.setItem("lastBookingContact", JSON.stringify(storedContact));
       } catch {
         // ignore storage failures
-      }
-      if (activeCenterId) {
-        const patientId = generateId();
-        const patientPayload: Patient = {
-          id: patientId,
-          centerId: activeCenterId,
-          rut,
-          fullName: name,
-          birthDate: "",
-          gender: "Otro",
-          phone,
-          medicalHistory: [],
-          surgicalHistory: [],
-          smokingStatus: "No fumador",
-          alcoholStatus: "No consumo",
-          medications: [],
-          allergies: [],
-          consultations: [],
-          attachments: [],
-          lastUpdated: new Date().toISOString(),
-        };
-        await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
       }
     }
 
