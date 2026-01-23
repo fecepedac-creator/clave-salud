@@ -13,13 +13,14 @@ interface AgendaViewProps {
     onMonthChange: (increment: number) => void;
     onDateClick: (date: Date) => void;
     onToggleSlot: (time: string) => void;
+    onOpenPatient: (appointment: Appointment) => void;
     readOnly?: boolean; // NEW PROP
     isSyncingAppointments?: boolean;
 }
 
 const AgendaView: React.FC<AgendaViewProps> = ({ 
     currentMonth, selectedAgendaDate, appointments, doctorId, agendaConfig,
-    onMonthChange, onDateClick, onToggleSlot, readOnly = false, isSyncingAppointments = false 
+    onMonthChange, onDateClick, onToggleSlot, onOpenPatient, readOnly = false, isSyncingAppointments = false 
 }) => {
     
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
@@ -148,7 +149,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                 ) : (
                                     <div className="space-y-3">
                                         {appointments.filter(a => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.status === 'booked').sort((a,b) => a.time.localeCompare(b.time)).map(apt => (
-                                            <div key={apt.id} className="p-4 rounded-xl border border-blue-200 bg-blue-50 flex justify-between items-center">
+                                            <div key={apt.id} className="p-4 rounded-xl border border-blue-200 bg-blue-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                                                 <div className="flex items-center gap-4">
                                                     <div className="bg-white px-3 py-1 rounded-lg font-bold text-blue-600 shadow-sm border border-blue-100">{apt.time}</div>
                                                     <div>
@@ -156,7 +157,14 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                                         <p className="text-sm text-slate-500">{apt.patientRut} • {apt.patientPhone}</p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-right flex items-center justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onOpenPatient(apt)}
+                                                        className="bg-white text-blue-700 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded-full text-xs font-bold uppercase transition-colors"
+                                                    >
+                                                        Abrir ficha
+                                                    </button>
                                                     <span className="bg-blue-200 text-blue-800 px-3 py-1 rounded-full text-xs font-bold uppercase">Confirmado</span>
                                                 </div>
                                             </div>

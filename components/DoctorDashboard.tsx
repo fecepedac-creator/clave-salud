@@ -119,6 +119,26 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       .replace(/\s+/g, ' ')
       .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
   };
+  const normalizeRut = (value?: string | null) => String(value ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
+  const handleOpenPatientFromAppointment = (appointment: Appointment) => {
+    const foundById = appointment.patientId
+      ? patients.find((patient) => patient.id === appointment.patientId)
+      : null;
+    const appointmentRut = normalizeRut(appointment.patientRut);
+    const foundByRut =
+      !foundById && appointmentRut
+        ? patients.find((patient) => normalizeRut(patient.rut) === appointmentRut)
+        : null;
+    const resolvedPatient = foundById ?? foundByRut ?? null;
+
+    if (resolvedPatient) {
+      setSelectedPatient(resolvedPatient);
+      setActiveTab('patients');
+      return;
+    }
+
+    showToast('Paciente no encontrado; revisa si fue creado', 'warning');
+  };
   const patientDisplayName = formatPersonName(slotModal.appointment?.patientName) || 'Paciente';
   const doctorFormattedName = formatPersonName(doctorName);
   const doctorDisplayName = doctorFormattedName ? `el Dr. ${doctorFormattedName}` : 'el profesional asignado';
@@ -983,6 +1003,7 @@ useEffect(() => {
                                           showToast("Bloque abierto disponible.", "success");
                                       }
                                   }}
+                                  onOpenPatient={handleOpenPatientFromAppointment}
                                   readOnly={isReadOnly}
                               />
                           </div>

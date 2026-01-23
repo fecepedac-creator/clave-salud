@@ -665,6 +665,7 @@ const App: React.FC = () => {
         time: appointmentDraft.time ?? "",
         patientName: appointmentDraft.patientName ?? patientPayload.fullName,
         patientRut: appointmentDraft.patientRut ?? patientPayload.rut,
+        patientId: patientPayload.id,
         patientPhone: appointmentDraft.patientPhone ?? patientPayload.phone,
         status: "booked",
       };
@@ -1123,11 +1124,16 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
     const normalizedRut = normalizeRut(rut);
     const formattedRut = formatRUT(normalizedRut);
+    const existingPatient = patients.find(
+      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
+    );
+    const patientId = existingPatient?.id ?? generateId();
     const bookedAppointment: Appointment = {
       ...slotAppointment,
       status: "booked",
       patientName: name,
       patientRut: formattedRut,
+      patientId,
       patientPhone: phone,
       bookedAt: serverTimestamp(),
     };
@@ -1135,11 +1141,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     await updateAppointment(bookedAppointment);
     setAppointments((prev) => prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt)));
 
-    const existingPatient = patients.find(
-      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
-    );
     if (activeCenterId && !existingPatient) {
-      const patientId = generateId();
       const patientPayload: Patient = {
         id: patientId,
         centerId: activeCenterId,

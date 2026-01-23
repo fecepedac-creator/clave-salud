@@ -194,6 +194,7 @@ export interface Appointment {
   time: string; 
   patientName: string;
   patientRut: string;
+  patientId?: string;
   patientPhone?: string;
   bookedAt?: any;
   cancelledAt?: any;
