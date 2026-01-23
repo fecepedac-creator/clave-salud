@@ -1484,6 +1484,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           }}
           onCancel={() => setView("patient-menu" as ViewMode)}
           existingPatients={patients}
+          existingPreadmissions={preadmissions}
         />
       </div>
     </div>
