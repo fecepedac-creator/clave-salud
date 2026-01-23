@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 
@@ -374,13 +374,15 @@ export const backfillPublicStaff = functions.https.onCall(async (data, context) 
 
   const requestedCenterId = String(data?.centerId || "").trim();
   const centersRef = db.collection("centers");
-  const centersSnap = requestedCenterId
-    ? await centersRef.doc(requestedCenterId).get()
-    : await centersRef.get();
+  let centersDocs: admin.firestore.DocumentSnapshot[];
 
-  const centersDocs = requestedCenterId
-    ? (centersSnap.exists ? [centersSnap] : [])
-    : centersSnap.docs;
+  if (requestedCenterId) {
+    const centerSnap = await centersRef.doc(requestedCenterId).get();
+    centersDocs = centerSnap.exists ? [centerSnap] : [];
+  } else {
+    const centersSnap = await centersRef.get();
+    centersDocs = centersSnap.docs;
+  }
 
   let centersProcessed = 0;
   let staffProcessed = 0;
