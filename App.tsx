@@ -1155,8 +1155,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
-    setBookingAppointmentId("");
-    setBookingCancelToken("");
     setView("patient-menu" as ViewMode);
   };
 
@@ -2450,7 +2448,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const lastPathRef = useRef<string | null>(null);
 
   const getCenterIdFromPath = (pathname: string) => {
-    const match = pathname.match(/^\\/center\\/([^/]+)\\/?/);
+    const match = pathname.match(/^\/center\/([^/]+)\/?/);
     return match?.[1] ?? "";
   };
 
