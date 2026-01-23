@@ -8,6 +8,56 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
+
+type StaffPublicData = {
+  id: string;
+  centerId: string;
+  fullName: string;
+  role: string;
+  specialty: string;
+  photoUrl: string;
+  agendaConfig: Record<string, unknown> | null;
+  active: boolean;
+  updatedAt: admin.firestore.FieldValue;
+  createdAt: admin.firestore.FieldValue | admin.firestore.Timestamp | null;
+};
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function resolveActive(data: Record<string, any> | undefined): boolean {
+  if (!data) return true;
+  if (typeof data.active === "boolean") return data.active;
+  if (typeof data.activo === "boolean") return data.activo;
+  return true;
+}
+
+function buildPublicStaffData(
+  staffUid: string,
+  centerId: string,
+  staffData: Record<string, any> | undefined,
+  createdAt: admin.firestore.FieldValue | admin.firestore.Timestamp | null
+): StaffPublicData {
+  const agendaConfig =
+    staffData && staffData.agendaConfig !== undefined ? staffData.agendaConfig : null;
+
+  return {
+    id: staffUid,
+    centerId,
+    fullName: normalizeString(
+      staffData?.fullName ?? staffData?.nombre ?? staffData?.name ?? staffData?.displayName ?? ""
+    ),
+    role: normalizeString(staffData?.role ?? ""),
+    specialty: normalizeString(staffData?.specialty ?? ""),
+    photoUrl: normalizeString(staffData?.photoUrl ?? ""),
+    agendaConfig,
+    active: resolveActive(staffData),
+    updatedAt: serverTimestamp(),
+    createdAt: createdAt ?? serverTimestamp(),
+  };
+}
 
 function requireAuth(context: functions.https.CallableContext) {
   if (!context.auth?.uid) {
@@ -277,5 +327,103 @@ export const cancelPatientAppointment = functions.https.onCall(async (data) => {
   });
 
   return { ok: true };
+});
+
+export const syncPublicStaff = functions.firestore
+  .document("centers/{centerId}/staff/{staffUid}")
+  .onWrite(async (change, context) => {
+    const centerId = String(context.params.centerId || "").trim();
+    const staffUid = String(context.params.staffUid || "").trim();
+
+    if (!centerId || !staffUid) {
+      functions.logger.warn("syncPublicStaff missing params", { centerId, staffUid });
+      return;
+    }
+
+    const publicRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("publicStaff")
+      .doc(staffUid);
+
+    if (!change.after.exists) {
+      await publicRef.delete();
+      functions.logger.info("syncPublicStaff deleted public staff", { centerId, staffUid });
+      return;
+    }
+
+    const staffData = change.after.data() as Record<string, any> | undefined;
+    const publicSnap = await publicRef.get();
+    const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
+
+    const publicData = buildPublicStaffData(staffUid, centerId, staffData, existingCreatedAt);
+    await publicRef.set(publicData, { merge: true });
+
+    functions.logger.info("syncPublicStaff upserted public staff", {
+      centerId,
+      staffUid,
+      active: publicData.active,
+    });
+  });
+
+export const backfillPublicStaff = functions.https.onCall(async (data, context) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const requestedCenterId = String(data?.centerId || "").trim();
+  const centersRef = db.collection("centers");
+  const centersSnap = requestedCenterId
+    ? await centersRef.doc(requestedCenterId).get()
+    : await centersRef.get();
+
+  const centersDocs = requestedCenterId
+    ? (centersSnap.exists ? [centersSnap] : [])
+    : centersSnap.docs;
+
+  let centersProcessed = 0;
+  let staffProcessed = 0;
+  let failures = 0;
+
+  for (const centerDoc of centersDocs) {
+    const centerId = centerDoc.id;
+    const centerData = centerDoc.data() as Record<string, any> | undefined;
+    if (!requestedCenterId && centerData?.isActive === false) {
+      continue;
+    }
+
+    centersProcessed += 1;
+    const staffSnap = await centersRef.doc(centerId).collection("staff").get();
+
+    for (const staffDoc of staffSnap.docs) {
+      const staffUid = staffDoc.id;
+      const staffData = staffDoc.data() as Record<string, any> | undefined;
+      const publicRef = centersRef.doc(centerId).collection("publicStaff").doc(staffUid);
+
+      try {
+        const publicSnap = await publicRef.get();
+        const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
+        const publicData = buildPublicStaffData(staffUid, centerId, staffData, existingCreatedAt);
+        await publicRef.set(publicData, { merge: true });
+        staffProcessed += 1;
+      } catch (error) {
+        failures += 1;
+        functions.logger.error("backfillPublicStaff failed", {
+          centerId,
+          staffUid,
+          error: String(error),
+        });
+      }
+    }
+  }
+
+  functions.logger.info("backfillPublicStaff completed", {
+    centersProcessed,
+    staffProcessed,
+    failures,
+  });
+
+  return { ok: true, centersProcessed, staffProcessed, failures };
 });
   
