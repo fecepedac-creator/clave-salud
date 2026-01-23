@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./components/Toast";
 import { CenterContext, CenterModules } from "./CenterContext";
+import { Route, Routes, useParams } from "react-router-dom";
 
 import { db, auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -2289,159 +2290,206 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     };
   }, [activeCenterId, centers, updateModules]);
 
-  // ---------- Render ----------
-  if (view === ("invite" as any))
-    return <CenterContext.Provider value={centerCtxValue}>{renderInviteRegister()}</CenterContext.Provider>;
+  const renderByView = () => {
+    if (view === ("invite" as any))
+      return <CenterContext.Provider value={centerCtxValue}>{renderInviteRegister()}</CenterContext.Provider>;
 
-  if (view === ("center-portal" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
+    if (view === ("center-portal" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
 
-  if (view === ("patient-menu" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
+    if (view === ("patient-menu" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
 
-  if (view === ("patient-cancel" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderPatientCancel()}</CenterContext.Provider>;
+    if (view === ("patient-cancel" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderPatientCancel()}</CenterContext.Provider>;
 
-  if (view === ("patient-form" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;
+    if (view === ("patient-form" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;
 
-  if (view === ("patient-booking" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>;
+    if (view === ("patient-booking" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>;
 
-  if (view === ("doctor-login" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>;
+    if (view === ("doctor-login" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>;
 
-  if (view === ("superadmin-login" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderSuperAdminLogin()}</CenterContext.Provider>;
+    if (view === ("superadmin-login" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderSuperAdminLogin()}</CenterContext.Provider>;
 
-  if (view === ("superadmin-dashboard" as ViewMode)) {
+    if (view === ("superadmin-dashboard" as ViewMode)) {
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          <SuperAdminDashboard
+            centers={centers}
+            doctors={doctors}
+            demoMode={demoMode}
+            onToggleDemo={() => setDemoMode((d) => !d)}
+            onLogout={() => {
+              setCurrentUser(null);
+              setActiveCenterId("");
+              setView("home" as ViewMode);
+            }}
+            onUpdateCenters={async (updates) => {
+              for (const c of updates) await updateCenter(c as any);
+            }}
+            onDeleteCenter={async (id) => {
+              await deleteCenter(id);
+            }}
+            onUpdateDoctors={async () => {}}
+          />
+        </CenterContext.Provider>
+      );
+    }
+
+    if (view === ("admin-login" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>;
+
+    if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
+
+    if (view === ("select-center" as ViewMode))
+      return <CenterContext.Provider value={centerCtxValue}>{renderSelectCenter()}</CenterContext.Provider>;
+
+    if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
+      const currentUid = currentUser?.uid ?? currentUser?.id;
+      const currentEmailLower = String(currentUser?.email ?? "").trim().toLowerCase();
+      const matchedDoctor =
+        doctors.find((doc) => doc.id === currentUid) ||
+        doctors.find((doc) => (doc as any).uid === currentUid) ||
+        doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
+        doctors.find((doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower) ||
+        null;
+      const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
+      const resolvedDoctorName = matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+      const mergedCurrentUser = matchedDoctor
+        ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
+        : currentUser;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          <ProfessionalDashboard
+            patients={patients}
+            doctorName={resolvedDoctorName}
+            doctorId={resolvedDoctorId}
+            role={mergedCurrentUser.role}
+            agendaConfig={matchedDoctor?.agendaConfig ?? currentUser.agendaConfig}
+            savedTemplates={matchedDoctor?.savedTemplates ?? currentUser.savedTemplates}
+            currentUser={mergedCurrentUser}
+            onUpdatePatient={(p: Patient) => updatePatient(p)}
+            onUpdateDoctor={(d: Doctor) => updateStaff(d)}
+            onLogout={handleLogout}
+            appointments={appointments}
+            onUpdateAppointments={(newAppts: Appointment[]) => {
+              setAppointments(newAppts);
+              syncAppointments(newAppts);
+            }}
+            isSyncingAppointments={isSyncingAppointments}
+            onLogActivity={(action: any, details: string, targetId?: string) => {
+              const log: AuditLogEntry = {
+                id: generateId(),
+                centerId: activeCenterId,
+                timestamp: new Date().toISOString(),
+                actorUid: auth.currentUser?.uid ?? currentUser.id,
+                actorName: currentUser.fullName ?? "Usuario",
+                actorRole: currentUser.role ?? "Profesional",
+                action,
+                details,
+                targetId,
+              } as any;
+              updateAuditLog(log);
+            }}
+            isReadOnly={false}
+          />
+        </CenterContext.Provider>
+      );
+    }
+
+    if (view === ("admin-dashboard" as ViewMode) && currentUser) {
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          <AdminDashboard
+            centerId={activeCenterId}
+            doctors={doctors}
+            onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
+            appointments={appointments}
+            onUpdateAppointments={(newAppts: Appointment[]) => {
+              setAppointments(newAppts);
+              syncAppointments(newAppts);
+            }}
+            isSyncingAppointments={isSyncingAppointments}
+            patients={patients}
+            onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
+            preadmissions={preadmissions}
+            onApprovePreadmission={approvePreadmission}
+            onLogout={handleLogout}
+            logs={auditLogs}
+            onLogActivity={(action: any, details: string, targetId?: string) => {
+              const log: AuditLogEntry = {
+                id: generateId(),
+                centerId: activeCenterId,
+                timestamp: new Date().toISOString(),
+                actorUid: auth.currentUser?.uid ?? currentUser.id,
+                actorName: currentUser.fullName ?? "Usuario",
+                actorRole: currentUser.role ?? "Admin",
+                action,
+                details,
+                targetId,
+              } as any;
+              updateAuditLog(log);
+            }}
+          />
+        </CenterContext.Provider>
+      );
+    }
+
     return (
       <CenterContext.Provider value={centerCtxValue}>
-        <SuperAdminDashboard
-          centers={centers}
-          doctors={doctors}
-          demoMode={demoMode}
-          onToggleDemo={() => setDemoMode((d) => !d)}
-          onLogout={() => {
-            setCurrentUser(null);
-            setActiveCenterId("");
-            setView("home" as ViewMode);
-          }}
-          onUpdateCenters={async (updates) => {
-            for (const c of updates) await updateCenter(c as any);
-          }}
-          onDeleteCenter={async (id) => {
-            await deleteCenter(id);
-          }}
-          onUpdateDoctors={async () => {}}
-        />
+        <div className="p-6 text-slate-600">Vista no encontrada</div>
       </CenterContext.Provider>
     );
-  }
+  };
 
-  if (view === ("admin-login" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>;
+  const HomeRoute = () => {
+    useEffect(() => {
+      if (view !== ("home" as ViewMode)) {
+        setView("home" as ViewMode);
+      }
+      if (activeCenterId) {
+        setActiveCenterId("");
+      }
+    }, [activeCenterId, view]);
 
-  if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
+    return <>{renderHomeDirectory()}</>;
+  };
 
-  if (view === ("select-center" as ViewMode))
-    return <CenterContext.Provider value={centerCtxValue}>{renderSelectCenter()}</CenterContext.Provider>;
+  const CenterRoute = () => {
+    const { centerId } = useParams();
+    useEffect(() => {
+      if (centerId && centerId !== activeCenterId) {
+        setActiveCenterId(centerId);
+      }
+      if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
+        setView("center-portal" as ViewMode);
+      }
+    }, [activeCenterId, centerId, view]);
 
-  if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
-    const currentUid = currentUser?.uid ?? currentUser?.id;
-    const currentEmailLower = String(currentUser?.email ?? "").trim().toLowerCase();
-    const matchedDoctor =
-      doctors.find((doc) => doc.id === currentUid) ||
-      doctors.find((doc) => (doc as any).uid === currentUid) ||
-      doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
-      doctors.find((doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower) ||
-      null;
-    const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
-    const resolvedDoctorName = matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
-    const mergedCurrentUser = matchedDoctor
-      ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
-      : currentUser;
-    return (
-      <CenterContext.Provider value={centerCtxValue}>
-        <ProfessionalDashboard
-          patients={patients}
-          doctorName={resolvedDoctorName}
-          doctorId={resolvedDoctorId}
-          role={mergedCurrentUser.role}
-          agendaConfig={matchedDoctor?.agendaConfig ?? currentUser.agendaConfig}
-          savedTemplates={matchedDoctor?.savedTemplates ?? currentUser.savedTemplates}
-          currentUser={mergedCurrentUser}
-          onUpdatePatient={(p: Patient) => updatePatient(p)}
-          onUpdateDoctor={(d: Doctor) => updateStaff(d)}
-          onLogout={handleLogout}
-          appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => {
-            setAppointments(newAppts);
-            syncAppointments(newAppts);
-          }}
-          isSyncingAppointments={isSyncingAppointments}
-          onLogActivity={(action: any, details: string, targetId?: string) => {
-            const log: AuditLogEntry = {
-              id: generateId(),
-              centerId: activeCenterId,
-              timestamp: new Date().toISOString(),
-              actorUid: auth.currentUser?.uid ?? currentUser.id,
-              actorName: currentUser.fullName ?? "Usuario",
-              actorRole: currentUser.role ?? "Profesional",
-              action,
-              details,
-              targetId,
-            } as any;
-            updateAuditLog(log);
-          }}
-          isReadOnly={false}
-        />
-      </CenterContext.Provider>
-    );
-  }
+    if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
+      return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
+    }
 
-  if (view === ("admin-dashboard" as ViewMode) && currentUser) {
-    return (
-      <CenterContext.Provider value={centerCtxValue}>
-        <AdminDashboard
-          centerId={activeCenterId}
-          doctors={doctors}
-          onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
-          appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => {
-            setAppointments(newAppts);
-            syncAppointments(newAppts);
-          }}
-          isSyncingAppointments={isSyncingAppointments}
-          patients={patients}
-          onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
-          preadmissions={preadmissions}
-          onApprovePreadmission={approvePreadmission}
-          onLogout={handleLogout}
-          logs={auditLogs}
-          onLogActivity={(action: any, details: string, targetId?: string) => {
-            const log: AuditLogEntry = {
-              id: generateId(),
-              centerId: activeCenterId,
-              timestamp: new Date().toISOString(),
-              actorUid: auth.currentUser?.uid ?? currentUser.id,
-              actorName: currentUser.fullName ?? "Usuario",
-              actorRole: currentUser.role ?? "Admin",
-              action,
-              details,
-              targetId,
-            } as any;
-            updateAuditLog(log);
-          }}
-        />
-      </CenterContext.Provider>
-    );
-  }
+    return renderByView();
+  };
 
   return (
-    <CenterContext.Provider value={centerCtxValue}>
-      <div className="p-6 text-slate-600">Vista no encontrada</div>
-    </CenterContext.Provider>
+    <Routes>
+      <Route path="/" element={<HomeRoute />} />
+      <Route path="/center/:centerId/*" element={<CenterRoute />} />
+      <Route
+        path="*"
+        element={
+          <CenterContext.Provider value={centerCtxValue}>
+            <div className="p-6 text-slate-600">Vista no encontrada</div>
+          </CenterContext.Provider>
+        }
+      />
+    </Routes>
   );
 };
 
