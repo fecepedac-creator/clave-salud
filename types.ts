@@ -270,15 +270,17 @@ export interface Doctor {
   rut: string;
   fullName: string;
   photoUrl?: string; // NEW: Profile photo for booking
-    role: AnyRole; 
-  specialty: string; 
+  role: AnyRole;
+  specialty: string;
   university?: string;
   email: string;
   /** @deprecated Autenticación real se gestiona con Firebase Auth (Google). */
-isAdmin?: boolean; // NEW: Controls access to AdminDashboard
-  agendaConfig?: AgendaConfig; 
+  isAdmin?: boolean; // NEW: Controls access to AdminDashboard
+  active?: boolean;
+  activo?: boolean;
+  agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
-  savedExamProfiles?: ExamProfile[]; 
+  savedExamProfiles?: ExamProfile[];
   customExams?: ExamDefinition[]; // NEW: Allows doctor to define their own exams
 }
 
@@ -287,7 +289,7 @@ export interface CenterInvite {
   centerId: string;
   email: string; // lowercased
   fullName?: string;
-    role: AnyRole;
+  role: AnyRole;
   /** Roles múltiples (preferido). Si existe, úsalo sobre `role`. */
   roles?: AnyRole[];
   createdAt?: any;

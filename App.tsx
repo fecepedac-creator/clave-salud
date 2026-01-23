@@ -1155,8 +1155,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setBookingDate(new Date());
     setBookingMonth(new Date());
     setSelectedSlot(null);
-    setBookingAppointmentId("");
-    setBookingCancelToken("");
     setView("patient-menu" as ViewMode);
   };
 
@@ -2448,28 +2446,35 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
   const isApplyingPopStateRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
+  const activeCenterIdRef = useRef(activeCenterId);
+  const viewRef = useRef(view);
 
   const getCenterIdFromPath = (pathname: string) => {
-    const match = pathname.match(/^\\/center\\/([^/]+)\\/?/);
+    const match = pathname.match(/^\/center\/([^/]+)\/?/);
     return match?.[1] ?? "";
   };
+
+  useEffect(() => {
+    activeCenterIdRef.current = activeCenterId;
+    viewRef.current = view;
+  }, [activeCenterId, view]);
 
   useEffect(() => {
     const applyPath = (pathname: string) => {
       const nextCenterId = getCenterIdFromPath(pathname);
       isApplyingPopStateRef.current = true;
       if (nextCenterId) {
-        if (nextCenterId !== activeCenterId) {
+        if (nextCenterId !== activeCenterIdRef.current) {
           setActiveCenterId(nextCenterId);
         }
-        if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
+        if (viewRef.current === ("home" as ViewMode) || viewRef.current === ("select-center" as ViewMode)) {
           setView("center-portal" as ViewMode);
         }
       } else {
-        if (activeCenterId) {
+        if (activeCenterIdRef.current) {
           setActiveCenterId("");
         }
-        if (view !== ("home" as ViewMode)) {
+        if (viewRef.current !== ("home" as ViewMode)) {
           setView("home" as ViewMode);
         }
       }
@@ -2484,7 +2489,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [activeCenterId, view]);
+  }, []);
 
   useEffect(() => {
     if (isApplyingPopStateRef.current) {
