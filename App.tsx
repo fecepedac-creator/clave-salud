@@ -512,12 +512,32 @@ const App: React.FC = () => {
       { ...payload, id, centerId: activeCenterId },
       { merge: true }
     );
+    await setDoc(
+      doc(db, "centers", activeCenterId, "publicStaff", id),
+      {
+        id,
+        centerId: activeCenterId,
+        fullName: payload.fullName ?? "",
+        role: payload.role ?? "",
+        specialty: payload.specialty ?? "",
+        photoUrl: payload.photoUrl ?? "",
+        agendaConfig: payload.agendaConfig ?? null,
+        active: payload.active ?? true,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   };
 
   const deleteStaff = async (id: string) => {
     if (!requireCenter("eliminar profesionales")) return;
     await setDoc(
       doc(db, "centers", activeCenterId, "staff", id),
+      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+      { merge: true }
+    );
+    await setDoc(
+      doc(db, "centers", activeCenterId, "publicStaff", id),
       { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
       { merge: true }
     );
@@ -1101,25 +1121,29 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       return;
     }
 
+    const normalizedRut = normalizeRut(rut);
+    const formattedRut = formatRUT(normalizedRut);
     const bookedAppointment: Appointment = {
       ...slotAppointment,
       status: "booked",
       patientName: name,
-      patientRut: rut,
+      patientRut: formattedRut,
       patientPhone: phone,
       bookedAt: serverTimestamp(),
     };
 
     await updateAppointment(bookedAppointment);
+    setAppointments((prev) => prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt)));
 
-    const trimmedRut = rut.trim();
-    const existingPatient = patients.find((patient) => (patient.rut ?? "").trim() === trimmedRut);
+    const existingPatient = patients.find(
+      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
+    );
     if (activeCenterId && !existingPatient) {
       const patientId = generateId();
       const patientPayload: Patient = {
         id: patientId,
         centerId: activeCenterId,
-        rut: trimmedRut,
+        rut: formattedRut,
         fullName: name,
         birthDate: "",
         gender: "Otro",
@@ -1140,7 +1164,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     if (!auth.currentUser) {
       const storedContact = {
         name: bookingData.name,
-        rut: bookingData.rut,
+        rut: formattedRut,
         phone,
       };
       setPrefillContact(storedContact);
