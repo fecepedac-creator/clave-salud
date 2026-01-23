@@ -1048,6 +1048,16 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     rut: "",
     phoneDigits: "",
   });
+  const [prefillContact, setPrefillContact] = useState<{ name: string; rut: string; phone: string; email?: string } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem("lastBookingContact");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
@@ -1098,19 +1108,39 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     await updateAppointment(bookedAppointment);
 
     if (!auth.currentUser) {
-      await createPreadmission({
-        patientDraft: {
-          fullName: bookingData.name,
-          rut: bookingData.rut,
+      const storedContact = {
+        name: bookingData.name,
+        rut: bookingData.rut,
+        phone,
+      };
+      setPrefillContact(storedContact);
+      try {
+        window.localStorage.setItem("lastBookingContact", JSON.stringify(storedContact));
+      } catch {
+        // ignore storage failures
+      }
+      if (activeCenterId) {
+        const patientId = generateId();
+        const patientPayload: Patient = {
+          id: patientId,
+          centerId: activeCenterId,
+          rut,
+          fullName: name,
+          birthDate: "",
+          gender: "Otro",
           phone,
-        },
-        appointmentDraft: bookedAppointment,
-        contact: {
-          name: bookingData.name,
-          rut: bookingData.rut,
-          phone,
-        },
-      });
+          medicalHistory: [],
+          surgicalHistory: [],
+          smokingStatus: "No fumador",
+          alcoholStatus: "No consumo",
+          medications: [],
+          allergies: [],
+          consultations: [],
+          attachments: [],
+          lastUpdated: new Date().toISOString(),
+        };
+        await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
+      }
     }
 
     setBookingStep(4);
@@ -1458,24 +1488,28 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           Ficha de Pre-Ingreso
         </h2>
         <PatientForm
-          onSave={(patient: Patient) => {
+          onSave={async (patient: Patient) => {
             const exists = patients.find((p) => p.rut === patient.rut);
             const payload = exists
               ? { ...patient, id: exists.id, centerId: activeCenterId }
               : { ...patient, centerId: activeCenterId };
             if (!auth.currentUser) {
-              createPreadmission({
-                patientDraft: payload,
-                contact: {
-                  name: patient.fullName,
-                  rut: patient.rut,
-                  phone: patient.phone,
-                  email: patient.email,
-                },
-              })
-                .then(() => showToast("Preingreso recibido. Te contactaremos.", "success"))
-                .catch(() => showToast("No se pudo enviar el preingreso.", "error"));
-              setView("patient-menu" as ViewMode);
+              try {
+                await createPreadmission({
+                  patientDraft: payload,
+                  contact: {
+                    name: patient.fullName,
+                    rut: patient.rut,
+                    phone: patient.phone,
+                    email: patient.email,
+                  },
+                });
+                showToast("Preingreso recibido. Te contactaremos.", "success");
+                setView("patient-menu" as ViewMode);
+              } catch (error) {
+                console.error("createPreadmission", error);
+                showToast("No se pudo enviar el preingreso.", "error");
+              }
               return;
             }
             updatePatient(payload);
@@ -1485,6 +1519,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
           onCancel={() => setView("patient-menu" as ViewMode)}
           existingPatients={patients}
           existingPreadmissions={preadmissions}
+          prefillContact={prefillContact}
         />
       </div>
     </div>
