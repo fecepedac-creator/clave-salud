@@ -374,18 +374,20 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
 
         // Check if slot exists
         const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-        const existingSlot = appointments.find(
+        const matchingSlots = appointments.filter(
             a => appointmentDoctorUid(a) === selectedDoctorId && a.date === selectedDate && a.time === time
         );
+        const bookedSlot = matchingSlots.find(slot => slot.status === 'booked');
 
-        if (existingSlot) {
-            // If booked, handle via modal
-            if (existingSlot.status === 'booked') {
-                setCancelModal({ isOpen: true, appointment: existingSlot });
-                return;
-            }
-            // If available, remove slot (Close it/Block it)
-            onUpdateAppointments(appointments.filter(a => a.id !== existingSlot.id));
+        if (bookedSlot) {
+            setCancelModal({ isOpen: true, appointment: bookedSlot });
+            return;
+        }
+
+        if (matchingSlots.length > 0) {
+            // If available, remove all matching slots (Close it/Block it)
+            const matchingIds = new Set(matchingSlots.map(slot => slot.id));
+            onUpdateAppointments(appointments.filter(a => !matchingIds.has(a.id)));
             showToast("Bloque cerrado.", "info");
         } else {
             // Create slot (Open it)
