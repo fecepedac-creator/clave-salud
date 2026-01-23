@@ -158,6 +158,23 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         { merge: true }
     );
 
+    await setDoc(
+        doc(db, 'centers', centerId, 'publicStaff', staffId),
+        {
+            id: staffId,
+            centerId,
+            fullName: doctor.fullName ?? '',
+            role: doctor.role ?? '',
+            specialty: doctor.specialty ?? '',
+            photoUrl: doctor.photoUrl ?? '',
+            agendaConfig: doctor.agendaConfig ?? null,
+            active: doctor.active ?? true,
+            updatedAt: serverTimestamp(),
+            createdAt: (doctor as any).createdAt ?? serverTimestamp()
+        },
+        { merge: true }
+    );
+
     if (!emailLower) return;
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
@@ -248,6 +265,11 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 try {
                     await setDoc(
                         doc(db, 'centers', centerId, 'staff', id),
+                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                        { merge: true }
+                    );
+                    await setDoc(
+                        doc(db, 'centers', centerId, 'publicStaff', id),
                         { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
                         { merge: true }
                     );

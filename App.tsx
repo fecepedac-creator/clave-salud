@@ -434,8 +434,11 @@ const App: React.FC = () => {
       () => setPatients([])
     );
 
+    const doctorsCollection = auth.currentUser
+      ? collection(db, "centers", activeCenterId, "staff")
+      : collection(db, "centers", activeCenterId, "publicStaff");
     const unsubDoctors = onSnapshot(
-      collection(db, "centers", activeCenterId, "staff"),
+      doctorsCollection,
       (snap) => {
         const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
         const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
