@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./components/Toast";
 import { CenterContext, CenterModules } from "./CenterContext";
-import { Route, Routes, useParams } from "react-router-dom";
+import { useRef } from "react";
 
 import { db, auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -2446,51 +2446,59 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     );
   };
 
-  const HomeRoute = () => {
-    useEffect(() => {
-      if (view !== ("home" as ViewMode)) {
-        setView("home" as ViewMode);
-      }
-      if (activeCenterId) {
-        setActiveCenterId("");
-      }
-    }, [activeCenterId, view]);
+  const isApplyingPopStateRef = useRef(false);
+  const lastPathRef = useRef<string | null>(null);
 
-    return <>{renderHomeDirectory()}</>;
+  const getCenterIdFromPath = (pathname: string) => {
+    const match = pathname.match(/^\\/center\\/([^/]+)\\/?/);
+    return match?.[1] ?? "";
   };
 
-  const CenterRoute = () => {
-    const { centerId } = useParams();
-    useEffect(() => {
-      if (centerId && centerId !== activeCenterId) {
-        setActiveCenterId(centerId);
-      }
-      if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
-        setView("center-portal" as ViewMode);
-      }
-    }, [activeCenterId, centerId, view]);
-
-    if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
-      return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
-    }
-
-    return renderByView();
-  };
-
-  return (
-    <Routes>
-      <Route path="/" element={<HomeRoute />} />
-      <Route path="/center/:centerId/*" element={<CenterRoute />} />
-      <Route
-        path="*"
-        element={
-          <CenterContext.Provider value={centerCtxValue}>
-            <div className="p-6 text-slate-600">Vista no encontrada</div>
-          </CenterContext.Provider>
+  useEffect(() => {
+    const applyPath = (pathname: string) => {
+      const nextCenterId = getCenterIdFromPath(pathname);
+      isApplyingPopStateRef.current = true;
+      if (nextCenterId) {
+        if (nextCenterId !== activeCenterId) {
+          setActiveCenterId(nextCenterId);
         }
-      />
-    </Routes>
-  );
+        if (view === ("home" as ViewMode) || view === ("select-center" as ViewMode)) {
+          setView("center-portal" as ViewMode);
+        }
+      } else {
+        if (activeCenterId) {
+          setActiveCenterId("");
+        }
+        if (view !== ("home" as ViewMode)) {
+          setView("home" as ViewMode);
+        }
+      }
+      isApplyingPopStateRef.current = false;
+    };
+
+    applyPath(window.location.pathname);
+
+    const handlePopState = () => {
+      applyPath(window.location.pathname);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [activeCenterId, view]);
+
+  useEffect(() => {
+    if (isApplyingPopStateRef.current) {
+      return;
+    }
+    const nextPath =
+      view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+    if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+      lastPathRef.current = nextPath;
+    }
+  }, [activeCenterId, view]);
+
+  return renderByView();
 };
 
 export default App;
