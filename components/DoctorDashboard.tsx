@@ -65,7 +65,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
 
   // --- contexto del centro ---
-  const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
 
   // --- helpers ---
@@ -106,6 +106,25 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedAgendaDate, setSelectedAgendaDate] = useState<string>('');
   const [slotModal, setSlotModal] = useState<{ isOpen: boolean, appointment: Appointment | null }>({ isOpen: false, appointment: null });
+
+  const slotDateLabel = slotModal.appointment?.date
+    ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+  const centerName = activeCenter?.name || 'Centro Médico';
+  const doctorDisplayName = doctorName ? `el Dr. ${doctorName}` : 'el profesional asignado';
+  const cancelWhatsappMessage = slotModal.appointment
+    ? `Estimado/a ${slotModal.appointment.patientName}, le escribimos desde ${centerName}. Por motivos de fuerza mayor, ${doctorDisplayName} no podrá asistir a la consulta del ${slotDateLabel} a las ${slotModal.appointment.time}. Pedimos disculpas e invitamos a reagendar su hora por los canales habituales: teléfono del centro médico o por esta misma vía.`
+    : '';
+  const confirmWhatsappMessage = slotModal.appointment
+    ? `Estimado/a ${slotModal.appointment.patientName}, lo saludamos desde ${centerName} y queremos confirmar su hora con ${doctorName || 'el profesional'} para el día ${slotDateLabel} a las ${slotModal.appointment.time}. Agradecemos su confirmación, por favor.`
+    : '';
+  const whatsappPhone = slotModal.appointment ? normalizePhone(slotModal.appointment.patientPhone || '') : '';
+  const cancelWhatsappUrl = slotModal.appointment
+    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(cancelWhatsappMessage)}`
+    : '#';
+  const confirmWhatsappUrl = slotModal.appointment
+    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(confirmWhatsappMessage)}`
+    : '#';
 
   // New Consultation State
   const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>(getEmptyConsultation());
@@ -1271,14 +1290,25 @@ useEffect(() => {
                                           {slotModal.appointment.date} - {slotModal.appointment.time}
                                       </div>
                                   </div>
-                                  <div className="flex gap-2">
-                                      <button onClick={() => setSlotModal({ isOpen: false, appointment: null })} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">Cerrar</button>
+                                  <div className="flex flex-col gap-3">
+                                      <button onClick={() => setSlotModal({ isOpen: false, appointment: null })} className="py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">
+                                          Cerrar
+                                      </button>
                                       <a 
-                                          href={`https://wa.me/${normalizePhone(slotModal.appointment.patientPhone || '')}`} 
+                                          href={cancelWhatsappUrl} 
                                           target="_blank"
-                                          className="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                                          rel="noreferrer"
+                                          className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
                                       >
-                                          <MessageCircle className="w-4 h-4"/> WhatsApp
+                                          <MessageCircle className="w-4 h-4"/> Cancelar hora por WhatsApp
+                                      </a>
+                                      <a 
+                                          href={confirmWhatsappUrl} 
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                                      >
+                                          <MessageCircle className="w-4 h-4"/> Confirmar hora por WhatsApp
                                       </a>
                                   </div>
                               </div>
