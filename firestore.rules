@@ -83,6 +83,24 @@ service cloud.firestore {
         && request.resource.data.patientPhone is string;
     }
 
+    function isPublicPatientCreate(centerId) {
+      return request.auth == null
+        && request.resource.data.centerId == centerId
+        && request.resource.data.rut is string
+        && request.resource.data.fullName is string
+        && request.resource.data.birthDate is string
+        && request.resource.data.gender is string
+        && request.resource.data.medicalHistory is list
+        && request.resource.data.surgicalHistory is list
+        && request.resource.data.smokingStatus is string
+        && request.resource.data.alcoholStatus is string
+        && request.resource.data.medications is list
+        && request.resource.data.allergies is list
+        && request.resource.data.consultations is list
+        && request.resource.data.attachments is list
+        && request.resource.data.lastUpdated is string;
+    }
+
     function inviteDoc(token) {
       return get(/databases/$(database)/documents/invites/$(token));
     }
@@ -130,7 +148,9 @@ service cloud.firestore {
 
       match /patients/{patientId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-        allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
+          || isPublicPatientCreate(centerId);
+        allow update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
 
         match /notes/{noteId} {

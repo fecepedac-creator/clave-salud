@@ -11,6 +11,7 @@ interface PatientFormProps {
   onCancel: () => void;
   existingPatients: Patient[]; // Added prop to check for existing data
   existingPreadmissions?: Preadmission[];
+  prefillContact?: { name: string; rut: string; phone: string; email?: string } | null;
 }
 
 // --- Helper Components defined OUTSIDE the main component to prevent re-renders ---
@@ -55,6 +56,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
   onCancel,
   existingPatients,
   existingPreadmissions = [],
+  prefillContact = null,
 }) => {
   const { activeCenterId } = useContext(CenterContext);
   const [step, setStep] = useState(1);
@@ -138,8 +140,15 @@ const PatientForm: React.FC<PatientFormProps> = ({
       if (name) setFullName(name);
       if (phone) setPhoneDigits(extractChileanPhoneDigits(phone));
       if (emailValue) setEmail(emailValue);
+      return;
     }
-  }, [rut, existingPatients, existingPreadmissions]);
+
+    if (prefillContact && prefillContact.rut === rut) {
+      setFullName(prefillContact.name || '');
+      setPhoneDigits(extractChileanPhoneDigits(prefillContact.phone || ''));
+      if (prefillContact.email) setEmail(prefillContact.email);
+    }
+  }, [rut, existingPatients, existingPreadmissions, prefillContact]);
 
   // IPA Calculation Effect
   useEffect(() => {
