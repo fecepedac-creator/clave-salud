@@ -1072,6 +1072,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [cancelResults, setCancelResults] = useState<Appointment[]>([]);
+  const normalizeRut = (value: string) => value.replace(/[^0-9kK]/g, "").toUpperCase();
 
   const handleBookingConfirm = async () => {
     const name = bookingData.name.trim();
