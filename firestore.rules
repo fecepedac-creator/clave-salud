@@ -151,7 +151,11 @@ service cloud.firestore {
       }
 
       match /publicStaff/{staffUid} {
-        allow read: if isActiveCenter(centerId) && (resource.data.active == true || resource.data.activo == true);
+        allow read: if isActiveCenter(centerId) && (
+          resource.data.active == true
+          || resource.data.activo == true
+          || !resource.data.keys().hasAny(["active", "activo"])
+        );
         allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if false;
       }
