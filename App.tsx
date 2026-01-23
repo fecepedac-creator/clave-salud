@@ -1072,6 +1072,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [cancelResults, setCancelResults] = useState<Appointment[]>([]);
+  const normalizeRut = (value: string) => value.replace(/[^0-9kK]/g, "").toUpperCase();
 
   const handleBookingConfirm = async () => {
     const name = bookingData.name.trim();
@@ -1123,28 +1124,38 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       } catch {
         // ignore storage failures
       }
-      if (activeCenterId) {
-        const patientId = generateId();
-        const patientPayload: Patient = {
-          id: patientId,
-          centerId: activeCenterId,
-          rut,
-          fullName: name,
-          birthDate: "",
-          gender: "Otro",
-          phone,
-          medicalHistory: [],
-          surgicalHistory: [],
-          smokingStatus: "No fumador",
-          alcoholStatus: "No consumo",
-          medications: [],
-          allergies: [],
-          consultations: [],
-          attachments: [],
-          lastUpdated: new Date().toISOString(),
-        };
-        await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
-      }
+    }
+
+    if (activeCenterId) {
+      const normalizedRut = normalizeRut(rut);
+      const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
+      const patientPayload: Patient = existingPatient
+        ? {
+            ...existingPatient,
+            rut,
+            fullName: name || existingPatient.fullName,
+            phone: phone || existingPatient.phone,
+            lastUpdated: new Date().toISOString(),
+          }
+        : {
+            id: generateId(),
+            centerId: activeCenterId,
+            rut,
+            fullName: name,
+            birthDate: "",
+            gender: "Otro",
+            phone,
+            medicalHistory: [],
+            surgicalHistory: [],
+            smokingStatus: "No fumador",
+            alcoholStatus: "No consumo",
+            medications: [],
+            allergies: [],
+            consultations: [],
+            attachments: [],
+            lastUpdated: new Date().toISOString(),
+          };
+      await updatePatient(patientPayload);
     }
 
     setBookingStep(4);
