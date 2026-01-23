@@ -69,6 +69,10 @@ service cloud.firestore {
       return request.auth == null && resource.data.status == "available";
     }
 
+    function isActiveCenter(centerId) {
+      return get(/databases/$(database)/documents/centers/$(centerId)).data.isActive == true;
+    }
+
     function isPublicAppointmentBooking() {
       return request.auth == null
         && resource.data.status == "available"
@@ -143,6 +147,12 @@ service cloud.firestore {
           || (uid() == staffUid)
         );
 
+        allow delete: if false;
+      }
+
+      match /publicStaff/{staffUid} {
+        allow read: if isActiveCenter(centerId) && (resource.data.active == true || resource.data.activo == true);
+        allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if false;
       }
 
