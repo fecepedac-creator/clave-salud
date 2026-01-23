@@ -2313,16 +2313,29 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     return <CenterContext.Provider value={centerCtxValue}>{renderSelectCenter()}</CenterContext.Provider>;
 
   if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
+    const currentUid = currentUser?.uid ?? currentUser?.id;
+    const currentEmailLower = String(currentUser?.email ?? "").trim().toLowerCase();
+    const matchedDoctor =
+      doctors.find((doc) => doc.id === currentUid) ||
+      doctors.find((doc) => (doc as any).uid === currentUid) ||
+      doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
+      doctors.find((doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower) ||
+      null;
+    const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
+    const resolvedDoctorName = matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+    const mergedCurrentUser = matchedDoctor
+      ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
+      : currentUser;
     return (
       <CenterContext.Provider value={centerCtxValue}>
         <ProfessionalDashboard
           patients={patients}
-          doctorName={currentUser.fullName}
-          doctorId={currentUser.id}
-          role={currentUser.role}
-          agendaConfig={currentUser.agendaConfig}
-          savedTemplates={currentUser.savedTemplates}
-          currentUser={currentUser}
+          doctorName={resolvedDoctorName}
+          doctorId={resolvedDoctorId}
+          role={mergedCurrentUser.role}
+          agendaConfig={matchedDoctor?.agendaConfig ?? currentUser.agendaConfig}
+          savedTemplates={matchedDoctor?.savedTemplates ?? currentUser.savedTemplates}
+          currentUser={mergedCurrentUser}
           onUpdatePatient={(p: Patient) => updatePatient(p)}
           onUpdateDoctor={(d: Doctor) => updateStaff(d)}
           onLogout={handleLogout}
