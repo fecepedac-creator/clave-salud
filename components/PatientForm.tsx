@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useContext } from 'react';
-import { Patient, Medication, Allergy } from '../types';
+import { Patient, Medication, Allergy, Preadmission } from '../types';
 import { MEDICAL_HISTORY_OPTIONS, SURGICAL_HISTORY_OPTIONS, LIVING_WITH_OPTIONS, MAULE_COMMUNES } from '../constants';
 import { validateRUT, formatRUT, generateId, capitalizeWords, sanitizeText, formatChileanPhone, extractChileanPhoneDigits } from '../utils';
 import { CenterContext } from '../CenterContext';
@@ -10,6 +10,7 @@ interface PatientFormProps {
   onSave: (patient: Patient) => void;
   onCancel: () => void;
   existingPatients: Patient[]; // Added prop to check for existing data
+  existingPreadmissions?: Preadmission[];
 }
 
 // --- Helper Components defined OUTSIDE the main component to prevent re-renders ---
@@ -49,7 +50,12 @@ const SelectionCard = ({ label, selected, onClick }: any) => (
     </button>
 );
 
-const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPatients }) => {
+const PatientForm: React.FC<PatientFormProps> = ({
+  onSave,
+  onCancel,
+  existingPatients,
+  existingPreadmissions = [],
+}) => {
   const { activeCenterId } = useContext(CenterContext);
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -93,29 +99,47 @@ const PatientForm: React.FC<PatientFormProps> = ({ onSave, onCancel, existingPat
 
   // AUTOCOMPLETE EFFECT
   useEffect(() => {
-      // Logic: If RUT is valid, search in existingPatients and fill fields
-      if (validateRUT(rut)) {
-          const found = existingPatients.find(p => p.rut === rut);
-          if (found) {
-              // SECURITY UPDATE: Only fill non-sensitive identification data.
-              setFullName(found.fullName || '');
-              setPhoneDigits(extractChileanPhoneDigits(found.phone || ''));
-              setEmail(found.email || '');
-              // Only overwrite birthdate if existing record has a valid one (not just generated today)
-              if (found.birthDate) setBirthDate(found.birthDate);
-              
-              setAddress(found.address || '');
-              setCommune(found.commune || '');
-              setGender(found.gender || 'Masculino');
-              setOccupation(found.occupation || '');
-              
-              // SENSITIVE DATA IS NOT LOADED TO PROTECT PRIVACY
-              // Users must re-enter clinical data if they are doing a new admission form.
-              // setLivingWith(found.livingWith || []);
-              // setMedicalHistory(found.medicalHistory || []); ... etc
-          }
-      }
-  }, [rut, existingPatients]);
+    if (!validateRUT(rut)) return;
+
+    const found = existingPatients.find((p) => p.rut === rut);
+    if (found) {
+      // SECURITY UPDATE: Only fill non-sensitive identification data.
+      setFullName(found.fullName || '');
+      setPhoneDigits(extractChileanPhoneDigits(found.phone || ''));
+      setEmail(found.email || '');
+      // Only overwrite birthdate if existing record has a valid one (not just generated today)
+      if (found.birthDate) setBirthDate(found.birthDate);
+
+      setAddress(found.address || '');
+      setCommune(found.commune || '');
+      setGender(found.gender || 'Masculino');
+      setOccupation(found.occupation || '');
+
+      // SENSITIVE DATA IS NOT LOADED TO PROTECT PRIVACY
+      // Users must re-enter clinical data if they are doing a new admission form.
+      // setLivingWith(found.livingWith || []);
+      // setMedicalHistory(found.medicalHistory || []); ... etc
+      return;
+    }
+
+    const preadmission = existingPreadmissions.find((item) => {
+      const draftRut = item.patientDraft?.rut;
+      const contactRut = item.contact?.rut;
+      return draftRut === rut || contactRut === rut;
+    });
+
+    if (preadmission) {
+      const draft = preadmission.patientDraft;
+      const contact = preadmission.contact;
+      const name = draft?.fullName ?? contact?.name ?? '';
+      const phone = draft?.phone ?? contact?.phone ?? '';
+      const emailValue = draft?.email ?? contact?.email ?? '';
+
+      if (name) setFullName(name);
+      if (phone) setPhoneDigits(extractChileanPhoneDigits(phone));
+      if (emailValue) setEmail(emailValue);
+    }
+  }, [rut, existingPatients, existingPreadmissions]);
 
   // IPA Calculation Effect
   useEffect(() => {
