@@ -463,6 +463,36 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             return a;
         });
         onUpdateAppointments(updated);
+
+        const normalizedRut = normalizeRut(bookingRut);
+        const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
+        const patientPayload: Patient = existingPatient
+            ? {
+                ...existingPatient,
+                rut: bookingRut,
+                fullName: bookingName || existingPatient.fullName,
+                phone: bookingPhone || existingPatient.phone,
+                lastUpdated: new Date().toISOString(),
+            }
+            : {
+                id: generateId(),
+                centerId,
+                rut: bookingRut,
+                fullName: bookingName,
+                birthDate: "",
+                gender: "Otro",
+                phone: bookingPhone,
+                medicalHistory: [],
+                surgicalHistory: [],
+                smokingStatus: "No fumador",
+                alcoholStatus: "No consumo",
+                medications: [],
+                allergies: [],
+                consultations: [],
+                attachments: [],
+                lastUpdated: new Date().toISOString(),
+            };
+        onUpdatePatients([patientPayload]);
         
         // LOG MANUAL BOOKING
         onLogActivity('create', `Agendamiento manual Admin para ${bookingName}.`, bookingSlotId);
