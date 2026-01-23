@@ -921,16 +921,18 @@ useEffect(() => {
                                       const date = selectedAgendaDate;
                                       if (!date) return;
 
-                                      const existing = appointments.find(a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.date === date && a.time === time);
+                                      const matchingSlots = appointments.filter(
+                                          a => ((a as any).doctorUid ?? a.doctorId) === doctorId && a.date === date && a.time === time
+                                      );
+                                      const bookedSlot = matchingSlots.find(slot => slot.status === 'booked');
                                       
-                                      if (existing) {
-                                          if(existing.status === 'booked') {
-                                              setSlotModal({ isOpen: true, appointment: existing });
-                                          } else {
-                                              // Remove slot (Close it)
-                                              onUpdateAppointments(appointments.filter(a => a.id !== existing.id));
-                                              showToast("Bloque cerrado (horario bloqueado).", "info");
-                                          }
+                                      if (bookedSlot) {
+                                          setSlotModal({ isOpen: true, appointment: bookedSlot });
+                                      } else if (matchingSlots.length > 0) {
+                                          // Remove slot (Close it)
+                                          const matchingIds = new Set(matchingSlots.map(slot => slot.id));
+                                          onUpdateAppointments(appointments.filter(a => !matchingIds.has(a.id)));
+                                          showToast("Bloque cerrado (horario bloqueado).", "info");
                                       } else {
                                           // Add slot (Open it)
                                           // NOTE: 'centerId' should technically come from currentUser context or App, 
