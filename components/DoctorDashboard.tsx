@@ -111,12 +111,23 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '';
   const centerName = activeCenter?.name || 'Centro Médico';
-  const doctorDisplayName = doctorName ? `el Dr. ${doctorName}` : 'el profesional asignado';
+  const formatPersonName = (value?: string | null) => {
+    if (!value) return '';
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
+  };
+  const patientDisplayName = formatPersonName(slotModal.appointment?.patientName) || 'Paciente';
+  const doctorFormattedName = formatPersonName(doctorName);
+  const doctorDisplayName = doctorFormattedName ? `el Dr. ${doctorFormattedName}` : 'el profesional asignado';
+  const bookingUrl = typeof window !== 'undefined' ? window.location.origin : 'https://clavesalud-2.web.app';
   const cancelWhatsappMessage = slotModal.appointment
-    ? `Estimado/a ${slotModal.appointment.patientName}, le escribimos desde ${centerName}. Por motivos de fuerza mayor, ${doctorDisplayName} no podrá asistir a la consulta del ${slotDateLabel} a las ${slotModal.appointment.time}. Pedimos disculpas e invitamos a reagendar su hora por los canales habituales: teléfono del centro médico o por esta misma vía.`
+    ? `Estimado/a ${patientDisplayName}, le escribimos desde ${centerName}. Por motivos de fuerza mayor, ${doctorDisplayName} no podrá asistir a la consulta del ${slotDateLabel} a las ${slotModal.appointment.time}. Pedimos disculpas e invitamos a reagendar su hora por los canales habituales: teléfono del centro médico o por esta misma vía. Puedes solicitar una nueva hora aquí: ${bookingUrl}`
     : '';
   const confirmWhatsappMessage = slotModal.appointment
-    ? `Estimado/a ${slotModal.appointment.patientName}, lo saludamos desde ${centerName} y queremos confirmar su hora con ${doctorName || 'el profesional'} para el día ${slotDateLabel} a las ${slotModal.appointment.time}. Agradecemos su confirmación, por favor.`
+    ? `Estimado/a ${patientDisplayName}, lo saludamos desde ${centerName} y queremos confirmar su hora con ${doctorFormattedName || 'el profesional'} para el día ${slotDateLabel} a las ${slotModal.appointment.time}. Agradecemos su confirmación, por favor.`
     : '';
   const whatsappPhone = slotModal.appointment ? normalizePhone(slotModal.appointment.patientPhone || '') : '';
   const cancelWhatsappUrl = slotModal.appointment
