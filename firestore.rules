@@ -70,7 +70,7 @@ service cloud.firestore {
     }
 
     function isActiveCenter(centerId) {
-      return get(/databases/$(database)/documents/centers/$(centerId)).data.isActive == true;
+      return get(/databases/$(database)/documents/centers/$(centerId)).data.isActive != false;
     }
 
     function isPublicAppointmentBooking() {
