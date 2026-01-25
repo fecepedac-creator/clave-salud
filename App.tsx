@@ -1,14 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Patient,
-  ViewMode,
-  Appointment,
-  Doctor,
-  MedicalCenter,
-  AuditLogEntry,
-  Preadmission,
-} from "./types";
-import { MOCK_PATIENTS, INITIAL_DOCTORS, INITIAL_CENTERS } from "./constants";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { Patient, ViewMode, Appointment, Doctor, MedicalCenter, AuditLogEntry } from "./types";
 import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
@@ -38,1268 +29,175 @@ import {
 } from "lucide-react";
 import { useToast } from "./components/Toast";
 import { CenterContext, CenterModules } from "./CenterContext";
-import { useRef } from "react";
-
-import { db, auth } from "./firebase";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-} from "firebase/auth";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  documentId,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-  serverTimestamp,
-} from "firebase/firestore";
+import { auth } from "./firebase";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { useAuth } from "./hooks/useAuth";
+import { useCenters } from "./hooks/useCenters";
+import { useFirestoreSync } from "./hooks/useFirestoreSync";
+import { useInvite } from "./hooks/useInvite";
+import { useBooking } from "./hooks/useBooking";
+import { useCrudOperations } from "./hooks/useCrudOperations";
 
 function isValidCenter(c: any): c is MedicalCenter {
-  return (
-    !!c &&
-    typeof c === "object" &&
-    typeof (c as any).id === "string" &&
-    (c as any).id.length > 0 &&
-    typeof (c as any).name === "string"
-  );
+  return !!c && typeof c === "object" && typeof (c as any).id === "string" && (c as any).id.length > 0 && typeof (c as any).name === "string";
 }
 
-// Public assets
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
 const LOGO_SRC = `${ASSET_BASE}assets/logo.png`;
 const HOME_BG_SRC = `${ASSET_BASE}assets/fondo%20principal.webp`;
 const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
-const SUPERADMIN_ALLOWED_EMAILS = new Set([
-  "fecepedac@gmail.com",
-  "dr.felipecepeda@gmail.com",
-]);
 
 const App: React.FC = () => {
   const { showToast } = useToast();
-
-  // ---------- Auth/session ----------
-  const [authUser, setAuthUser] = useState<any>(null);
-  const [isSuperAdminClaim, setIsSuperAdminClaim] = useState<boolean>(false);
-
-  // ---------- Global data ----------
   const [demoMode, setDemoMode] = useState(false);
-  const [centers, setCenters] = useState<MedicalCenter[]>([]);
-
-  // Centros desde Firestore (respetando permisos por centro)
-  useEffect(() => {
-    if (demoMode) {
-      setCenters(INITIAL_CENTERS);
-      return;
-    }
-    let unsubscribers: Array<() => void> = [];
-    let cancelled = false;
-
-    const run = async () => {
-      try {
-        if (!auth.currentUser) {
-          const unsub = onSnapshot(
-            query(collection(db, "centers"), where("isActive", "==", true)),
-            (snap) => {
-              if (cancelled) return;
-              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-              setCenters(items);
-            },
-            () => {
-              if (cancelled) return;
-              setCenters([]);
-            }
-          );
-          unsubscribers.push(unsub);
-          return;
-        }
-
-        const uid = auth.currentUser?.uid;
-        if (!uid) return;
-
-        const userSnap = await getDoc(doc(db, "users", uid));
-        const profile: any = userSnap.exists() ? userSnap.data() : null;
-
-        const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
-        const roles = rolesRaw
-          .map((r: any) => String(r ?? "").trim().toLowerCase())
-          .filter(Boolean);
-
-        const centersRaw: any[] = Array.isArray(profile?.centros)
-          ? profile.centros
-          : Array.isArray(profile?.centers)
-          ? profile.centers
-          : [];
-        const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
-
-        const isSuper =
-          isSuperAdminClaim ||
-          roles.includes("super_admin") ||
-          roles.includes("superadmin");
-
-        if (isSuper) {
-          const unsub = onSnapshot(
-            query(collection(db, "centers")),
-            (snap) => {
-              if (cancelled) return;
-              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-              setCenters(items);
-            },
-            () => {
-              if (cancelled) return;
-              setCenters([]);
-            }
-          );
-          unsubscribers.push(unsub);
-          return;
-        }
-
-        if (!allowed.length) {
-          setCenters([]);
-          return;
-        }
-
-        // "in" máximo 10
-        const chunks: string[][] = [];
-        for (let i = 0; i < allowed.length; i += 10) chunks.push(allowed.slice(i, i + 10));
-
-        const all: Record<string, MedicalCenter> = {};
-        for (const ids of chunks) {
-          const unsub = onSnapshot(
-            query(collection(db, "centers"), where(documentId(), "in", ids)),
-            (snap) => {
-              if (cancelled) return;
-              snap.docs.forEach((d) => {
-                all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
-              });
-              const merged = Object.values(all);
-              setCenters(merged);
-            },
-            () => {
-              if (cancelled) return;
-              setCenters([]);
-            }
-          );
-          unsubscribers.push(unsub);
-        }
-      } catch {
-        if (!cancelled) setCenters([]);
-      }
-    };
-
-    run();
-
-    return () => {
-      cancelled = true;
-      unsubscribers.forEach((u) => {
-        try {
-          u();
-        } catch {}
-      });
-    };
-  }, [demoMode, isSuperAdminClaim]);
-
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
+  const [view, setView] = useState<ViewMode>("home" as ViewMode);
+  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>("center-portal" as ViewMode);
   const [isSyncingAppointments, setIsSyncingAppointments] = useState(false);
 
-  // tenant selection
-  const [activeCenterId, setActiveCenterId] = useState<string>("");
+  const {
+    authUser,
+    isSuperAdminClaim,
+    currentUser,
+    email,
+    setEmail,
+    password,
+    setPassword,
+    error,
+    setError,
+    setCurrentUser,
+    handleSuperAdminLogin: hookHandleSuperAdminLogin,
+    handleSuperAdminGoogleLogin: hookHandleSuperAdminGoogleLogin,
+    handleGoogleLogin: hookHandleGoogleLogin,
+    handleLogout: hookHandleLogout,
+    bootstrapSuperAdmin,
+    handleSuperAdminUnauthorized,
+    handleRedirectResult,
+  } = useAuth();
 
-  const activeCenter = useMemo(
-    () => centers.find((c) => c.id === activeCenterId) ?? null,
-    [centers, activeCenterId]
-  );
+  const { centers, setCenters, activeCenterId, setActiveCenterId, activeCenter, updateModules } = useCenters(demoMode, isSuperAdminClaim);
+  const { patients, setPatients, doctors, setDoctors, appointments, setAppointments, auditLogs, preadmissions } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters);
+  const {
+    inviteToken,
+    inviteLoading,
+    inviteError,
+    setInviteError,
+    inviteEmail,
+    setInviteEmail,
+    inviteCenterName,
+    invitePassword,
+    setInvitePassword,
+    invitePassword2,
+    setInvitePassword2,
+    inviteMode,
+    setInviteMode,
+    inviteDone,
+    acceptInviteForUser,
+  } = useInvite();
+  const { updatePatient, deletePatient, updateStaff, deleteStaff, updateAppointment, deleteAppointment, syncAppointments: hookSyncAppointments, updateAuditLog, updateCenter, deleteCenter, approvePreadmission } = useCrudOperations(activeCenterId, appointments, showToast);
+  const {
+    bookingStep,
+    setBookingStep,
+    bookingData,
+    setBookingData,
+    prefillContact,
+    selectedRole,
+    setSelectedRole,
+    selectedDoctorForBooking,
+    setSelectedDoctorForBooking,
+    bookingDate,
+    setBookingDate,
+    bookingMonth,
+    setBookingMonth,
+    selectedSlot,
+    setSelectedSlot,
+    cancelRut,
+    setCancelRut,
+    cancelPhoneDigits,
+    setCancelPhoneDigits,
+    cancelLoading,
+    cancelError,
+    setCancelError,
+    cancelResults,
+    handleBookingConfirm,
+    resetBooking,
+    handleLookupAppointments,
+    cancelPatientAppointment,
+    handleReschedule,
+  } = useBooking(activeCenterId, appointments, patients, doctors, updateAppointment, setAppointments, showToast);
 
-  const updateModules = useCallback(
-    (modules: CenterModules) => {
-      if (!activeCenterId) return;
-      setCenters((prev) =>
-        prev.map((center) =>
-          center.id === activeCenterId
-            ? { ...center, modules: { ...(center.modules ?? {}), ...modules } }
-            : center
-        )
-      );
-    },
-    [activeCenterId]
-  );
+  const syncAppointments = useCallback((nextAppointments: Appointment[]) => hookSyncAppointments(nextAppointments, setIsSyncingAppointments), [hookSyncAppointments]);
+  const handleSuperAdminLogin = useCallback((targetView: ViewMode) => hookHandleSuperAdminLogin(targetView, (user, view, centerId) => { setCurrentUser(user); setView(view); if (centerId) setActiveCenterId(centerId); }), [hookHandleSuperAdminLogin, setCurrentUser, setActiveCenterId]);
+  const handleSuperAdminGoogleLogin = useCallback(() => hookHandleSuperAdminGoogleLogin(() => setView("superadmin-dashboard" as any), handleSuperAdminUnauthorized), [hookHandleSuperAdminGoogleLogin, handleSuperAdminUnauthorized]);
+  const handleGoogleLogin = useCallback((targetView: ViewMode) => hookHandleGoogleLogin(targetView, (user) => { setCurrentUser(user); setPostCenterSelectView(targetView); setView("select-center" as any); }), [hookHandleGoogleLogin, setCurrentUser]);
+  const handleLogout = useCallback(async () => { await hookHandleLogout(); setActiveCenterId(""); setView("home" as ViewMode); }, [hookHandleLogout, setActiveCenterId]);
 
-  // ---------- Session ----------
-  const [view, setView] = useState<ViewMode>("home" as ViewMode);
-  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
-    "center-portal" as ViewMode
-  );
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  useEffect(() => { if (!inviteToken && window.location.pathname.toLowerCase().startsWith("/invite")) setView("invite" as any); }, [inviteToken]);
+  useEffect(() => { handleRedirectResult(() => setView("superadmin-dashboard" as any), handleSuperAdminUnauthorized); }, [handleRedirectResult, handleSuperAdminUnauthorized]);
 
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const centerCtxValue = useMemo(() => {
+    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    const modules = (c?.modules ?? {}) as CenterModules;
+    return {
+      activeCenterId,
+      activeCenter: c,
+      modules,
+      setActiveCenterId,
+      updateModules,
+      isModuleEnabled: (key: string) => {
+        const v = modules?.[key];
+        return v === true || v === "enabled";
+      },
+    };
+  }, [activeCenterId, centers, updateModules]);
+
+  const isApplyingPopStateRef = useRef(false);
+  const lastPathRef = useRef<string | null>(null);
+  const activeCenterIdRef = useRef(activeCenterId);
+  const viewRef = useRef(view);
+
+  const getCenterIdFromPath = (pathname: string) => {
+    const match = pathname.match(/^\/center\/([^/]+)\/?/);
+    return match?.[1] ?? "";
+  };
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setAuthUser(user);
-      if (user) {
-        const token = await user.getIdTokenResult(true);
-        setIsSuperAdminClaim(
-          !!(
-            (token.claims as any)?.super_admin === true ||
-            (token.claims as any)?.superadmin === true ||
-            (token.claims as any)?.superAdmin === true
-          )
-        );
+    activeCenterIdRef.current = activeCenterId;
+    viewRef.current = view;
+  }, [activeCenterId, view]);
+
+  useEffect(() => {
+    const applyPath = (pathname: string) => {
+      const nextCenterId = getCenterIdFromPath(pathname);
+      isApplyingPopStateRef.current = true;
+      if (nextCenterId) {
+        if (nextCenterId !== activeCenterIdRef.current) setActiveCenterId(nextCenterId);
+        if (viewRef.current === ("home" as ViewMode) || viewRef.current === ("select-center" as ViewMode)) {
+          setView("center-portal" as ViewMode);
+        }
       } else {
-        setIsSuperAdminClaim(false);
+        if (activeCenterIdRef.current) setActiveCenterId("");
+        if (viewRef.current !== ("home" as ViewMode)) setView("home" as ViewMode);
       }
-    });
-    return () => unsub();
-  }, []);
+      isApplyingPopStateRef.current = false;
+    };
 
-  const [error, setError] = useState("");
-
-  // ---------- Invite (por token /invite?token=...) ----------
-  const [inviteToken, setInviteToken] = useState<string>("");
-  const [inviteLoading, setInviteLoading] = useState<boolean>(false);
-  const [inviteError, setInviteError] = useState<string>("");
-  const [inviteEmail, setInviteEmail] = useState<string>("");
-  const [inviteCenterId, setInviteCenterId] = useState<string>("");
-  const [inviteCenterName, setInviteCenterName] = useState<string>("");
-  const [invitePassword, setInvitePassword] = useState<string>("");
-  const [invitePassword2, setInvitePassword2] = useState<string>("");
-  const [inviteMode, setInviteMode] = useState<"signup" | "signin">("signup");
-  const [inviteDone, setInviteDone] = useState<boolean>(false);
+    applyPath(window.location.pathname);
+    const handlePopState = () => applyPath(window.location.pathname);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [setActiveCenterId]);
 
   useEffect(() => {
-    try {
-      const path = window.location.pathname || "";
-      if (!path.toLowerCase().startsWith("/invite")) return;
-
-      const params = new URLSearchParams(window.location.search);
-      const t = (params.get("token") || "").trim();
-      if (!t) {
-        setInviteError("Invitación inválida: falta el token.");
-        setView("home" as ViewMode);
-        return;
-      }
-      setInviteToken(t);
-      setView("invite" as any);
-    } catch {}
-  }, []);
-
-  const handleSuperAdminUnauthorized = async () => {
-    setError("No autorizado");
-    showToast("No autorizado", "error");
-    try {
-      await signOut(auth);
-    } catch {}
-    setCurrentUser(null);
-    setActiveCenterId("");
-    setView("home" as ViewMode);
-  };
-
-  const assertSuperAdminAccess = async (user: any) => {
-    const emailUser = String(user?.email || "").trim().toLowerCase();
-    if (!SUPERADMIN_ALLOWED_EMAILS.has(emailUser)) {
-      throw new Error("superadmin-unauthorized");
+    if (isApplyingPopStateRef.current) return;
+    const nextPath = view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+    if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+      lastPathRef.current = nextPath;
     }
-    const token = await user.getIdTokenResult(true);
-    const claims: any = token?.claims ?? {};
-    const hasClaim =
-      claims?.super_admin === true || claims?.superadmin === true || claims?.superAdmin === true;
-    if (!hasClaim) {
-      throw new Error("superadmin-unauthorized");
-    }
-  };
+  }, [activeCenterId, view]);
 
-  useEffect(() => {
-    const resolveRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (!result?.user) return;
-        await assertSuperAdminAccess(result.user);
-        setView("superadmin-dashboard" as any);
-      } catch (e: any) {
-        if (e?.message === "superadmin-unauthorized") {
-          await handleSuperAdminUnauthorized();
-          return;
-        }
-        console.error("SUPERADMIN REDIRECT ERROR", e);
-        setError(e?.message || "No se pudo iniciar sesión con Google.");
-      }
-    };
-    void resolveRedirect();
-  }, []);
-
-  // Cargar datos visibles de invitación: intentamos leer; si permisos fallan, pedimos login
-  useEffect(() => {
-    const load = async () => {
-      if (!inviteToken) return;
-      setInviteLoading(true);
-      setInviteError("");
-
-      try {
-        const token = inviteToken.trim();
-        const snap = await getDoc(doc(db, "invites", token));
-        if (!snap.exists()) throw new Error("Invitación no encontrada o inválida.");
-
-        const inv: any = snap.data() || {};
-        const status = String(inv.status || "").toLowerCase();
-        if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
-        if (status === "revoked") throw new Error("Esta invitación fue revocada.");
-
-        const emailLower = String(inv.emailLower || "").trim().toLowerCase();
-        if (!emailLower) throw new Error("Invitación inválida: falta correo.");
-
-        const expiresAt = inv.expiresAt;
-        if (expiresAt && typeof expiresAt.toDate === "function") {
-          const exp = expiresAt.toDate();
-          if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
-        }
-
-        setInviteEmail(emailLower);
-        setInviteCenterId(String(inv.centerId || ""));
-        setInviteCenterName(String(inv.centerName || ""));
-      } catch (e: any) {
-        // Si es permissions, mostramos mensaje claro (esto evita el “Missing...” genérico)
-        const msg = String(e?.message || "");
-        if (msg.toLowerCase().includes("missing") || msg.toLowerCase().includes("permission")) {
-          setInviteError(
-            "No se pudo leer la invitación por permisos. Inicia sesión (Google o Email/Password) y reintenta. " +
-              "Si estás en Firebase Studio, agrega el dominio del workspace en Auth → Settings → Authorized domains."
-          );
-        } else {
-          setInviteError(e?.message || "Error cargando invitación.");
-        }
-      } finally {
-        setInviteLoading(false);
-      }
-    };
-
-    load();
-  }, [inviteToken]);
-
-  // ---------- Firestore sync (por center) ----------
-  useEffect(() => {
-    let unsubCenters: (() => void) | null = null;
-
-    if (demoMode) {
-      setPatients(MOCK_PATIENTS);
-      setDoctors(INITIAL_DOCTORS);
-      setAppointments([]);
-      setAuditLogs([]);
-      return;
-    }
-
-    if (isSuperAdminClaim) {
-      unsubCenters = onSnapshot(
-        collection(db, "centers"),
-        (snap) => {
-          const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
-          setCenters(items);
-        },
-        () => {}
-      );
-    }
-
-    if (!activeCenterId) {
-      setPatients([]);
-      setDoctors([]);
-      setAppointments([]);
-      setAuditLogs([]);
-      setPreadmissions([]);
-      return () => {
-        unsubCenters?.();
-      };
-    }
-
-    const unsubPatients = onSnapshot(
-      collection(db, "centers", activeCenterId, "patients"),
-      (snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
-      () => setPatients([])
-    );
-
-    const doctorsCollection = auth.currentUser
-      ? collection(db, "centers", activeCenterId, "staff")
-      : collection(db, "centers", activeCenterId, "publicStaff");
-    const unsubDoctors = onSnapshot(
-      doctorsCollection,
-      (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
-        const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
-        setDoctors(activeOnly);
-      },
-      () => setDoctors([])
-    );
-
-    const apptCollection = collection(db, "centers", activeCenterId, "appointments");
-    const apptQuery = auth.currentUser ? apptCollection : query(apptCollection, where("status", "==", "available"));
-    const unsubAppts = onSnapshot(
-      apptQuery,
-      (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
-      (error) => {
-        console.error("appointments snapshot error", error);
-        setAppointments([]);
-      }
-    );
-
-    const unsubLogs = onSnapshot(
-      collection(db, "centers", activeCenterId, "auditLogs"),
-      (snap) => setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
-      () => setAuditLogs([])
-    );
-
-    const unsubPreadmissions = onSnapshot(
-      collection(db, "centers", activeCenterId, "preadmissions"),
-      (snap) => setPreadmissions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]),
-      () => setPreadmissions([])
-    );
-
-    return () => {
-      unsubCenters?.();
-      unsubPatients();
-      unsubDoctors();
-      unsubAppts();
-      unsubLogs();
-      unsubPreadmissions();
-    };
-  }, [activeCenterId, authUser, demoMode, isSuperAdminClaim]);
-
-  // ---------- CRUD helpers ----------
-  const requireCenter = (actionLabel: string) => {
-    if (!activeCenterId) {
-      showToast(`Selecciona un centro para ${actionLabel}.`, "warning");
-      return false;
-    }
-    return true;
-  };
-
-  const updatePatient = async (payload: Patient) => {
-    if (!requireCenter("guardar pacientes")) return;
-    const id = payload?.id ?? generateId();
-    await setDoc(
-      doc(db, "centers", activeCenterId, "patients", id),
-      { ...payload, id, centerId: activeCenterId },
-      { merge: true }
-    );
-  };
-
-  const deletePatient = async (id: string) => {
-    if (!requireCenter("eliminar pacientes")) return;
-    await deleteDoc(doc(db, "centers", activeCenterId, "patients", id));
-  };
-
-  const updateStaff = async (payload: Doctor) => {
-    if (!requireCenter("guardar profesionales")) return;
-    const id = payload?.id ?? generateId();
-    await setDoc(
-      doc(db, "centers", activeCenterId, "staff", id),
-      { ...payload, id, centerId: activeCenterId },
-      { merge: true }
-    );
-    await setDoc(
-      doc(db, "centers", activeCenterId, "publicStaff", id),
-      {
-        id,
-        centerId: activeCenterId,
-        fullName: payload.fullName ?? "",
-        role: payload.role ?? "",
-        specialty: payload.specialty ?? "",
-        photoUrl: payload.photoUrl ?? "",
-        agendaConfig: payload.agendaConfig ?? null,
-        active: payload.active ?? true,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  };
-
-  const deleteStaff = async (id: string) => {
-    if (!requireCenter("eliminar profesionales")) return;
-    await setDoc(
-      doc(db, "centers", activeCenterId, "staff", id),
-      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-      { merge: true }
-    );
-    await setDoc(
-      doc(db, "centers", activeCenterId, "publicStaff", id),
-      { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-      { merge: true }
-    );
-  };
-
-  const updateAppointment = async (payload: Appointment) => {
-    if (!requireCenter("guardar citas")) return;
-    const id = payload?.id ?? generateId();
-    const doctorUid = (payload as any).doctorUid ?? payload.doctorId;
-    await setDoc(
-      doc(db, "centers", activeCenterId, "appointments", id),
-      { ...payload, doctorUid, id, centerId: activeCenterId },
-      { merge: true }
-    );
-  };
-
-  const deleteAppointment = async (id: string) => {
-    if (!requireCenter("eliminar citas")) return;
-    await deleteDoc(doc(db, "centers", activeCenterId, "appointments", id));
-  };
-
-  const syncAppointments = async (nextAppointments: Appointment[]) => {
-    const nextIds = new Set(nextAppointments.map((a) => a.id));
-    const removed = appointments.filter((appt) => !nextIds.has(appt.id));
-
-    setIsSyncingAppointments(true);
-    try {
-      for (const appt of removed) {
-        await deleteAppointment(appt.id);
-      }
-
-      for (const appt of nextAppointments) {
-        await updateAppointment(appt);
-      }
-    } finally {
-      setIsSyncingAppointments(false);
-    }
-  };
-
-  const updateAuditLog = async (payload: AuditLogEntry) => {
-    if (!requireCenter("registrar auditoría")) return;
-    const id = payload?.id ?? generateId();
-    const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
-    await setDoc(
-      doc(db, "centers", activeCenterId, "auditLogs", id),
-      { ...payload, actorUid, id, centerId: activeCenterId },
-      { merge: true }
-    );
-  };
-
-  const updateCenter = async (payload: MedicalCenter) => {
-    const id = payload?.id ?? generateId();
-    await setDoc(doc(db, "centers", id), { ...payload, id }, { merge: true });
-  };
-
-  const deleteCenter = async (id: string) => {
-    await deleteDoc(doc(db, "centers", id));
-  };
-
-  const createPreadmission = async (payload: Omit<Preadmission, "id" | "createdAt" | "centerId" | "status">) => {
-    if (!requireCenter("enviar preingresos")) return;
-    const id = generateId();
-    const submissionSource = auth.currentUser ? "staff" : "public";
-    await setDoc(doc(db, "centers", activeCenterId, "preadmissions", id), {
-      id,
-      centerId: activeCenterId,
-      createdAt: serverTimestamp(),
-      status: "pending",
-      source: submissionSource,
-      submittedByUid: auth.currentUser?.uid ?? null,
-      ...payload,
-    });
-  };
-
-  const approvePreadmission = async (item: Preadmission) => {
-    if (!requireCenter("aprobar preingresos")) return;
-    const patientDraft = item.patientDraft ?? {};
-    const patientId = (patientDraft as any).id ?? generateId();
-    const patientPayload: Patient = {
-      id: patientId,
-      centerId: activeCenterId,
-      rut: (patientDraft.rut ?? item.contact?.rut ?? "") as string,
-      fullName: (patientDraft.fullName ?? item.contact?.name ?? "Paciente") as string,
-      birthDate: (patientDraft.birthDate ?? "") as string,
-      gender: (patientDraft.gender ?? "Otro") as any,
-      email: patientDraft.email ?? item.contact?.email,
-      phone: patientDraft.phone ?? item.contact?.phone,
-      address: patientDraft.address,
-      commune: patientDraft.commune,
-      occupation: patientDraft.occupation,
-      livingWith: patientDraft.livingWith ?? [],
-      activeExams: patientDraft.activeExams ?? [],
-      medicalHistory: patientDraft.medicalHistory ?? [],
-      medicalHistoryDetails: patientDraft.medicalHistoryDetails,
-      cancerDetails: patientDraft.cancerDetails,
-      surgicalHistory: patientDraft.surgicalHistory ?? [],
-      surgicalHistoryDetails: patientDraft.surgicalHistoryDetails,
-      herniaDetails: patientDraft.herniaDetails,
-      smokingStatus: (patientDraft.smokingStatus ?? "No fumador") as any,
-      cigarettesPerDay: patientDraft.cigarettesPerDay,
-      yearsSmoking: patientDraft.yearsSmoking,
-      packYearsIndex: patientDraft.packYearsIndex,
-      alcoholStatus: (patientDraft.alcoholStatus ?? "No consumo") as any,
-      alcoholFrequency: patientDraft.alcoholFrequency,
-      drugUse: patientDraft.drugUse,
-      drugDetails: patientDraft.drugDetails,
-      medications: patientDraft.medications ?? [],
-      allergies: patientDraft.allergies ?? [],
-      consultations: patientDraft.consultations ?? [],
-      attachments: patientDraft.attachments ?? [],
-      lastUpdated: new Date().toISOString(),
-    };
-
-    await updatePatient(patientPayload);
-
-    if (item.appointmentDraft) {
-      const appointmentDraft = item.appointmentDraft;
-      const appointmentId = (appointmentDraft as any).id ?? generateId();
-      const appointmentPayload: Appointment = {
-        id: appointmentId,
-        centerId: activeCenterId,
-        doctorId: (appointmentDraft.doctorId ?? appointmentDraft.doctorUid ?? "") as string,
-        doctorUid: (appointmentDraft.doctorUid ?? appointmentDraft.doctorId ?? "") as string,
-        date: appointmentDraft.date ?? new Date().toISOString().split("T")[0],
-        time: appointmentDraft.time ?? "",
-        patientName: appointmentDraft.patientName ?? patientPayload.fullName,
-        patientRut: appointmentDraft.patientRut ?? patientPayload.rut,
-        patientId: patientPayload.id,
-        patientPhone: appointmentDraft.patientPhone ?? patientPayload.phone,
-        status: "booked",
-      };
-      await updateAppointment(appointmentPayload);
-    }
-
-    await deleteDoc(doc(db, "centers", activeCenterId, "preadmissions", item.id));
-  };
-
-  // ---------- Auth/login ----------
-  const handleSuperAdminLogin = async (targetView: ViewMode) => {
-    try {
-      setError("");
-      const emailNorm = email.trim().toLowerCase();
-
-      const cred = await signInWithEmailAndPassword(auth, emailNorm, password);
-      const uid = cred.user.uid;
-
-      const snap = await getDoc(doc(db, "users", uid));
-      if (!snap.exists()) throw new Error("Usuario sin perfil en el sistema");
-
-      const profile: any = snap.data();
-      if (profile.activo === false) throw new Error("Usuario inactivo");
-
-      const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-      const roles: string[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean);
-      const rolesNorm = roles.map((r) => r.toLowerCase());
-
-      const centros: string[] = Array.isArray(profile.centros) ? profile.centros : [];
-
-      const token = await cred.user.getIdTokenResult(true).catch(() => null as any);
-      const claims: any = token?.claims ?? {};
-
-      const isSuperAdmin =
-        !!(claims?.super_admin === true || claims?.superadmin === true || claims?.superAdmin === true) ||
-        rolesNorm.includes("superadmin") ||
-        rolesNorm.includes("super_admin") ||
-        rolesNorm.includes("super-admin") ||
-        rolesNorm.includes("super admin");
-
-      const isCenterAdmin =
-        rolesNorm.includes("centeradmin") ||
-        rolesNorm.includes("center_admin") ||
-        rolesNorm.includes("center-admin") ||
-        rolesNorm.includes("center admin");
-
-      if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
-        setError("No tiene permisos administrativos.");
-        return;
-      }
-
-      const userFromFirestore = {
-        uid,
-        email: profile.email ?? emailNorm,
-        roles,
-        centros,
-        isAdmin: isCenterAdmin || isSuperAdmin,
-        fullName: profile.fullName ?? profile.nombre ?? profile.email ?? "Usuario",
-        role:
-          profile.role ??
-          (roles.find((r) => r !== "center_admin" && r !== "super_admin") ?? "Profesional"),
-        id: uid,
-      };
-      setCurrentUser(userFromFirestore as any);
-
-      if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
-        setView("superadmin-dashboard" as any);
-        return;
-      }
-
-      setPostCenterSelectView(targetView);
-
-      if (centros.length === 1) {
-        setActiveCenterId(centros[0]);
-        setView(targetView);
-        return;
-      }
-      if (centros.length > 1) {
-        setView("select-center" as ViewMode);
-        return;
-      }
-      throw new Error("Usuario sin centros asignados");
-    } catch (e: any) {
-      console.error("LOGIN ERROR", e?.code, e?.message);
-      setError(e?.message || "Credenciales inválidas o sin permisos");
-    }
-  };
-
-  const handleSuperAdminGoogleLogin = async () => {
-    try {
-      setError("");
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-
-      try {
-        const cred = await signInWithPopup(auth, provider);
-        await assertSuperAdminAccess(cred.user);
-        setView("superadmin-dashboard" as any);
-      } catch (e: any) {
-        const code = String(e?.code || "");
-        const isPopupError =
-          code === "auth/popup-blocked" ||
-          code === "auth/popup-closed-by-user" ||
-          code === "auth/cancelled-popup-request";
-
-        if (isPopupError) {
-          await signInWithRedirect(auth, provider);
-          return;
-        }
-
-        if (e?.message === "superadmin-unauthorized") {
-          await handleSuperAdminUnauthorized();
-          return;
-        }
-
-        throw e;
-      }
-    } catch (e: any) {
-      console.error("SUPERADMIN GOOGLE LOGIN ERROR", e);
-      setError(e?.message || "No se pudo iniciar sesión con Google.");
-    }
-  };
-
-  const handleGoogleLogin = async (targetView: ViewMode) => {
-    try {
-      setError("");
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-
-      const cred = await signInWithPopup(auth, provider);
-      const user = cred.user;
-
-      const uid = user.uid;
-      const emailUser = (user.email || "").trim().toLowerCase();
-      if (!emailUser) throw new Error("Tu cuenta Google no tiene email disponible.");
-
-      const existingSnap = await getDoc(doc(db, "users", uid));
-      if (existingSnap.exists()) {
-        const profile: any = existingSnap.data();
-        if (profile.activo === false) throw new Error("Usuario inactivo");
-
-        const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-        const roles: string[] = rolesRaw
-          .map((r: any) => String(r ?? "").trim().toLowerCase())
-          .filter(Boolean);
-
-        const centers: string[] = Array.isArray(profile.centros)
-          ? profile.centros
-          : Array.isArray(profile.centers)
-          ? profile.centers
-          : [];
-
-        // ✅ FIX: el token/claims debe venir del `user` recién autenticado
-        const token = await user.getIdTokenResult(true).catch(() => null as any);
-        const claims: any = token?.claims ?? {};
-
-        const isSuperAdmin =
-          !!(claims?.super_admin === true || claims?.superadmin === true || claims?.superAdmin === true) ||
-          roles.includes("super_admin") ||
-          roles.includes("superadmin");
-
-        const userFromFirestore = {
-          uid,
-          email: profile.email ?? emailUser,
-          roles,
-          centers,
-          centros: centers,
-          activeCenterId: profile.activeCenterId ?? (centers?.[0] ?? null),
-          displayName: profile.displayName ?? user.displayName ?? "",
-          photoURL: profile.photoURL ?? user.photoURL ?? "",
-          fullName: profile.fullName ?? profile.nombre ?? profile.email ?? user.displayName ?? "Usuario",
-          id: uid,
-        };
-
-        setCurrentUser(userFromFirestore as any);
-
-        if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
-          setView("superadmin-dashboard" as any);
-          return;
-        }
-
-        setPostCenterSelectView(targetView);
-        setView("select-center" as any);
-        return;
-      }
-
-      // si no existe perfil -> busca invitaciones pendientes
-      const qInv = query(
-        collection(db, "invites"),
-        where("emailLower", "==", emailUser),
-        where("status", "==", "pending")
-      );
-      const invSnap = await getDocs(qInv);
-
-      if (invSnap.empty) {
-        throw new Error("No tienes invitación activa. Pide al administrador del centro que te invite con este correo.");
-      }
-
-      const inviteDocs = invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      const rolesFromInvites = Array.from(new Set(inviteDocs.map((i) => i.role).filter(Boolean)));
-      const centersFromInvites = Array.from(new Set(inviteDocs.map((i) => i.centerId).filter(Boolean)));
-
-      await setDoc(
-        doc(db, "users", uid),
-        {
-          uid,
-          email: emailUser,
-          displayName: user.displayName ?? "",
-          photoURL: user.photoURL ?? "",
-          roles: rolesFromInvites,
-          centers: centersFromInvites,
-          centros: centersFromInvites,
-          activo: true,
-          createdAt: serverTimestamp(),
-          activeCenterId: centersFromInvites?.[0] ?? null,
-        },
-        { merge: true }
-      );
-
-      await Promise.all(
-        inviteDocs.map(async (inv) => {
-          await updateDoc(doc(db, "invites", inv.id), {
-            status: "accepted",
-            acceptedAt: serverTimestamp(),
-            acceptedByUid: uid,
-          }).catch(() => {});
-
-          const cId = String((inv as any).centerId || "").trim();
-          const rId = String((inv as any).role || "").trim() || "staff";
-          const eLower = String((inv as any).emailLower || emailUser).trim().toLowerCase();
-          const profileData = (inv as any).profileData || {};
-
-          if (cId) {
-            await setDoc(
-              doc(db, "centers", cId, "staff", uid),
-              {
-                uid,
-                emailLower: eLower,
-                role: rId,
-                roles: [rId],
-                active: true,
-                activo: true,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                inviteToken: inv.id,
-                invitedBy: (inv as any).invitedBy ?? null,
-                invitedAt: (inv as any).createdAt ?? null,
-                // Include profile data from invite
-                fullName: profileData.fullName ?? "",
-                rut: profileData.rut ?? "",
-                specialty: profileData.specialty ?? "",
-                photoUrl: profileData.photoUrl ?? "",
-                agendaConfig: profileData.agendaConfig ?? null,
-                professionalRole: profileData.role ?? (inv as any).professionalRole ?? "",
-                isAdmin: profileData.isAdmin ?? false,
-              },
-              { merge: true }
-            );
-          }
-        })
-      );
-
-      setCurrentUser({
-        uid,
-        email: emailUser,
-        roles: rolesFromInvites,
-        centers: centersFromInvites,
-        centros: centersFromInvites,
-        activeCenterId: centersFromInvites?.[0] ?? null,
-        displayName: user.displayName ?? "",
-        photoURL: user.photoURL ?? "",
-        fullName: user.displayName ?? emailUser,
-        id: uid,
-      } as any);
-
-      setPostCenterSelectView(targetView);
-      setView("select-center" as any);
-    } catch (e: any) {
-      console.error("GOOGLE LOGIN ERROR", e);
-      setError(e?.message || "No se pudo iniciar sesión con Google.");
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch {}
-    setCurrentUser(null);
-    setEmail("");
-    setPassword("");
-    setActiveCenterId("");
-    setView("home" as ViewMode);
-  };
-
-  const bootstrapSuperAdmin = async () => {
-    if (!authUser) {
-      alert("Debes iniciar sesión primero");
-      return;
-    }
-    try {
-      const functions = getFunctions();
-      const fn = httpsCallable(functions, "setSuperAdmin");
-      await fn({ uid: authUser.uid });
-      alert(`✅ Usuario convertido en SuperAdmin.
-Cierra sesión y vuelve a ingresar para aplicar permisos.`);
-    } catch (e: any) {
-      console.error("BOOTSTRAP ERROR", e);
-      alert(e?.message || "Error al ejecutar bootstrap");
-    }
-  };
-
-  // ---- Invitaciones: aceptar token ----
-  const acceptInviteForUser = async (tokenRaw: string, user: any) => {
-    const token = (tokenRaw || "").trim();
-    if (!token) throw new Error("Invitación inválida (sin token).");
-    if (!user?.uid) throw new Error("Debes iniciar sesión para aceptar la invitación.");
-
-    const uid = user.uid as string;
-    const emailUser = String(user.email || "").trim().toLowerCase();
-    if (!emailUser) throw new Error("Tu cuenta no tiene correo. Usa una cuenta con email.");
-
-    const invRef = doc(db, "invites", token);
-    const invSnap = await getDoc(invRef);
-    if (!invSnap.exists()) throw new Error("Invitación no encontrada o inválida.");
-
-    const inv: any = invSnap.data() || {};
-    const status = String(inv.status || "").toLowerCase();
-    if (status === "claimed" || status === "accepted") throw new Error("Esta invitación ya fue utilizada.");
-    if (status === "revoked") throw new Error("Esta invitación fue revocada.");
-
-    const emailLower = String(inv.emailLower || "").trim().toLowerCase();
-    if (!emailLower) throw new Error("Invitación inválida: falta correo.");
-    if (emailLower !== emailUser) {
-      throw new Error(`Esta invitación es para ${emailLower}. Inicia sesión con ese correo.`);
-    }
-
-    const expiresAt = inv.expiresAt;
-    if (expiresAt && typeof expiresAt.toDate === "function") {
-      const exp = expiresAt.toDate();
-      if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
-    }
-
-    const centerId = String(inv.centerId || "").trim();
-    if (!centerId) throw new Error("Invitación inválida: falta centerId.");
-
-    const role = String(inv.role || "center_admin").trim() || "center_admin";
-    const profileData = inv.profileData || {};
-
-    // users/{uid} union roles/centers
-    const uRef = doc(db, "users", uid);
-    const uSnap = await getDoc(uRef);
-    const existing: any = uSnap.exists() ? (uSnap.data() as any) : {};
-
-    const prevCenters: string[] = Array.isArray(existing.centers)
-      ? existing.centers
-      : Array.isArray(existing.centros)
-      ? existing.centros
-      : [];
-    const prevRoles: string[] = Array.isArray(existing.roles) ? existing.roles : [];
-
-    const nextCenters = Array.from(new Set([...prevCenters, centerId])).filter(Boolean);
-    const nextRoles = Array.from(new Set([...prevRoles, role])).filter(Boolean);
-
-    await setDoc(
-      uRef,
-      {
-        uid,
-        email: emailUser,
-        activo: true,
-        centers: nextCenters,
-        centros: nextCenters,
-        roles: nextRoles,
-        activeCenterId: existing.activeCenterId ?? (nextCenters[0] ?? null),
-        displayName: existing.displayName ?? user.displayName ?? "",
-        photoURL: existing.photoURL ?? user.photoURL ?? "",
-        updatedAt: serverTimestamp(),
-        createdAt: existing.createdAt ?? serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    // staff membership with profile data from invite
-    await setDoc(
-      doc(db, "centers", centerId, "staff", uid),
-      {
-        uid,
-        emailLower,
-        role,
-        roles: [role],
-        active: true,
-        activo: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        inviteToken: token,
-        invitedBy: inv.invitedBy ?? null,
-        invitedAt: inv.createdAt ?? null,
-        // Include profile data from invite
-        fullName: profileData.fullName ?? "",
-        rut: profileData.rut ?? "",
-        specialty: profileData.specialty ?? "",
-        photoUrl: profileData.photoUrl ?? "",
-        agendaConfig: profileData.agendaConfig ?? null,
-        professionalRole: profileData.role ?? inv.professionalRole ?? "",
-        isAdmin: profileData.isAdmin ?? false,
-      },
-      { merge: true }
-    );
-
-    // mark invite accepted
-    await updateDoc(invRef, {
-      status: "accepted",
-      acceptedAt: serverTimestamp(),
-      acceptedByUid: uid,
-    }).catch(() => {});
-
-    setInviteCenterId(centerId);
-    setInviteCenterName(String(inv.centerName || inviteCenterName || ""));
-    setInviteDone(true);
-  };
-
-  // ---------- Booking ----------
-  const [bookingStep, setBookingStep] = useState(0);
-  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phoneDigits: string }>({
-    name: "",
-    rut: "",
-    phoneDigits: "",
-  });
-  const [prefillContact, setPrefillContact] = useState<{ name: string; rut: string; phone: string; email?: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem("lastBookingContact");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  });
-  const [selectedRole, setSelectedRole] = useState<string>("");
-  const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
-  const [bookingDate, setBookingDate] = useState<Date>(new Date());
-  const [bookingMonth, setBookingMonth] = useState<Date>(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; appointmentId: string } | null>(null);
-  const [cancelRut, setCancelRut] = useState("");
-  const [cancelPhoneDigits, setCancelPhoneDigits] = useState("");
-  const [cancelLoading, setCancelLoading] = useState(false);
-  const [cancelError, setCancelError] = useState("");
-  const [cancelResults, setCancelResults] = useState<Appointment[]>([]);
-  const normalizeRut = (value: string) => value.replace(/[^0-9kK]/g, "").toUpperCase();
-
-  const handleBookingConfirm = async () => {
-    const name = bookingData.name.trim();
-    const rut = bookingData.rut.trim();
-    const phoneDigits = bookingData.phoneDigits.trim();
-    if (!selectedSlot || !selectedDoctorForBooking) {
-      showToast("Selecciona un horario y profesional.", "error");
-      return;
-    }
-    if (!name) {
-      showToast("Ingresa el nombre completo.", "error");
-      return;
-    }
-    if (!rut || !validateRUT(rut)) {
-      showToast("RUT inválido. Verifica el formato.", "error");
-      return;
-    }
-    if (!phoneDigits || phoneDigits.length !== 8) {
-      showToast("Ingresa un teléfono válido de 8 dígitos.", "error");
-      return;
-    }
-    const phone = formatChileanPhone(phoneDigits);
-    const slotAppointment = appointments.find((appointment) => appointment.id === selectedSlot.appointmentId);
-    if (!slotAppointment || slotAppointment.status !== "available") {
-      showToast("El horario ya no está disponible. Selecciona otro.", "error");
-      return;
-    }
-
-    const normalizedRut = normalizeRut(rut);
-    const formattedRut = formatRUT(normalizedRut);
-    const existingPatient = patients.find(
-      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
-    );
-    const patientId = existingPatient?.id ?? generateId();
-    const bookedAppointment: Appointment = {
-      ...slotAppointment,
-      status: "booked",
-      patientName: name,
-      patientRut: formattedRut,
-      patientId,
-      patientPhone: phone,
-      bookedAt: serverTimestamp(),
-    };
-
-    await updateAppointment(bookedAppointment);
-    setAppointments((prev) => prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt)));
-
-    if (activeCenterId && !existingPatient) {
-      const patientPayload: Patient = {
-        id: patientId,
-        centerId: activeCenterId,
-        rut: formattedRut,
-        fullName: name,
-        birthDate: "",
-        gender: "Otro",
-        phone,
-        medicalHistory: [],
-        surgicalHistory: [],
-        smokingStatus: "No fumador",
-        alcoholStatus: "No consumo",
-        medications: [],
-        allergies: [],
-        consultations: [],
-        attachments: [],
-        lastUpdated: new Date().toISOString(),
-      };
-      await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
-    }
-
-    if (!auth.currentUser) {
-      const storedContact = {
-        name: bookingData.name,
-        rut: formattedRut,
-        phone,
-      };
-      setPrefillContact(storedContact);
-      try {
-        window.localStorage.setItem("lastBookingContact", JSON.stringify(storedContact));
-      } catch {
-        // ignore storage failures
-      }
-    }
-
-    setBookingStep(4);
-  };
-
-  const resetBooking = () => {
-    setBookingStep(0);
-    setBookingData({ name: "", rut: "", phoneDigits: "" });
-    setSelectedRole("");
-    setSelectedDoctorForBooking(null);
-    setBookingDate(new Date());
-    setBookingMonth(new Date());
-    setSelectedSlot(null);
-    setView("patient-menu" as ViewMode);
-  };
-
-  const handleLookupAppointments = async () => {
-    if (!activeCenterId) {
-      showToast("Selecciona un centro activo para continuar.", "warning");
-      return;
-    }
-    const rut = cancelRut.trim();
-    const phoneDigits = cancelPhoneDigits.trim();
-    if (!rut || !validateRUT(rut)) {
-      setCancelError("Ingresa un RUT válido.");
-      return;
-    }
-    try {
-      if (!phoneDigits || phoneDigits.length !== 8) {
-        setCancelError("Ingresa un teléfono válido de 8 dígitos.");
-        return;
-      }
-      setCancelError("");
-      setCancelLoading(true);
-      const functions = getFunctions();
-      const fn = httpsCallable(functions, "listPatientAppointments");
-      const response = await fn({
-        centerId: activeCenterId,
-        rut,
-        phone: formatChileanPhone(phoneDigits),
-      });
-      const data = (response.data as { appointments?: Appointment[] }) || {};
-      setCancelResults((data.appointments || []) as Appointment[]);
-      if (!data.appointments || data.appointments.length === 0) {
-        showToast("No encontramos horas agendadas con esos datos.", "info");
-      }
-    } catch (error) {
-      console.error("lookupAppointments", error);
-      showToast("No se pudieron cargar las horas agendadas.", "error");
-    } finally {
-      setCancelLoading(false);
-    }
-  };
-
-  const cancelPatientAppointment = async (appointment: Appointment) => {
-    if (!activeCenterId) {
-      showToast("Selecciona un centro activo para cancelar.", "warning");
-      return false;
-    }
-    const rut = cancelRut.trim();
-    const phoneDigits = cancelPhoneDigits.trim();
-    if (!rut || !phoneDigits) {
-      setCancelError("Ingresa tu RUT y teléfono.");
-      return false;
-    }
-    try {
-      const functions = getFunctions();
-      const fn = httpsCallable(functions, "cancelPatientAppointment");
-      await fn({
-        centerId: activeCenterId,
-        appointmentId: appointment.id,
-        rut,
-        phone: formatChileanPhone(phoneDigits),
-      });
-      setCancelResults((prev) => prev.filter((item) => item.id !== appointment.id));
-      showToast("Hora cancelada y liberada correctamente.", "success");
-      return true;
-    } catch (error) {
-      console.error("cancelAppointment", error);
-      showToast("No se pudo cancelar la hora. Verifica los datos.", "error");
-      return false;
-    }
-  };
-
-  const handleReschedule = async (appointment: Appointment) => {
-    const cancelled = await cancelPatientAppointment(appointment);
-    if (!cancelled) return;
-    const doctor = doctors.find((doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId));
-    if (doctor) {
-      setSelectedRole(doctor.role);
-      setSelectedDoctorForBooking(doctor);
-    }
-    setBookingData({
-      name: appointment.patientName || bookingData.name,
-      rut: appointment.patientRut || bookingData.rut,
-      phoneDigits: extractChileanPhoneDigits(appointment.patientPhone || ""),
-    });
-    setSelectedSlot(null);
-    setBookingDate(new Date());
-    setBookingMonth(new Date());
-    setBookingStep(2);
-    setView("patient-booking" as ViewMode);
-  };
-
-  // ---------- UI helpers ----------
   const renderCenterPortal = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) {
       return renderHomeDirectory();
@@ -2325,22 +1223,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     </div>
   );
 
-  const centerCtxValue = useMemo(() => {
-    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
-    const modules = (c?.modules ?? {}) as CenterModules;
-    return {
-      activeCenterId,
-      activeCenter: c,
-      modules,
-      setActiveCenterId,
-      updateModules,
-      isModuleEnabled: (key: string) => {
-        const v = modules?.[key];
-        return v === undefined ? true : !!v;
-      },
-    };
-  }, [activeCenterId, centers, updateModules]);
-
   const renderByView = () => {
     if (view === ("invite" as any))
       return <CenterContext.Provider value={centerCtxValue}>{renderInviteRegister()}</CenterContext.Provider>;
@@ -2496,65 +1378,6 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       </CenterContext.Provider>
     );
   };
-
-  const isApplyingPopStateRef = useRef(false);
-  const lastPathRef = useRef<string | null>(null);
-  const activeCenterIdRef = useRef(activeCenterId);
-  const viewRef = useRef(view);
-
-  const getCenterIdFromPath = (pathname: string) => {
-    const match = pathname.match(/^\/center\/([^/]+)\/?/);
-    return match?.[1] ?? "";
-  };
-
-  useEffect(() => {
-    activeCenterIdRef.current = activeCenterId;
-    viewRef.current = view;
-  }, [activeCenterId, view]);
-
-  useEffect(() => {
-    const applyPath = (pathname: string) => {
-      const nextCenterId = getCenterIdFromPath(pathname);
-      isApplyingPopStateRef.current = true;
-      if (nextCenterId) {
-        if (nextCenterId !== activeCenterIdRef.current) {
-          setActiveCenterId(nextCenterId);
-        }
-        if (viewRef.current === ("home" as ViewMode) || viewRef.current === ("select-center" as ViewMode)) {
-          setView("center-portal" as ViewMode);
-        }
-      } else {
-        if (activeCenterIdRef.current) {
-          setActiveCenterId("");
-        }
-        if (viewRef.current !== ("home" as ViewMode)) {
-          setView("home" as ViewMode);
-        }
-      }
-      isApplyingPopStateRef.current = false;
-    };
-
-    applyPath(window.location.pathname);
-
-    const handlePopState = () => {
-      applyPath(window.location.pathname);
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  useEffect(() => {
-    if (isApplyingPopStateRef.current) {
-      return;
-    }
-    const nextPath =
-      view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
-    if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
-      window.history.pushState({}, "", nextPath);
-      lastPathRef.current = nextPath;
-    }
-  }, [activeCenterId, view]);
 
   return renderByView();
 };
