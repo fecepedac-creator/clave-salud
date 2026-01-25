@@ -6,7 +6,7 @@ import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } f
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, getDoc, Timestamp, deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -138,44 +138,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 // Persistencia (Firestore): en el modelo definitivo NO se escribe a colección raíz 'doctors'.
 // El alta de profesionales se hace mediante INVITACIÓN por email. Al aceptar el invite,
 // la app (o una Cloud Function) crea centers/{centerId}/staff/{uid}.
+// IMPORTANTE: NO se crean documentos staff directamente aquí para evitar inconsistencias
+// con el UID del usuario autenticado. Los documentos staff se crean SOLO al aceptar invite.
 const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
 
-    const staffId = doctor.id || generateId();
     const emailLower = (doctor.email || '').toLowerCase();
-
-    await setDoc(
-        doc(db, 'centers', centerId, 'staff', staffId),
-        {
-            ...doctor,
-            id: staffId,
-            centerId,
-            emailLower,
-            active: doctor.active ?? true,
-            updatedAt: serverTimestamp(),
-            createdAt: (doctor as any).createdAt ?? serverTimestamp()
-        },
-        { merge: true }
-    );
-
-    await setDoc(
-        doc(db, 'centers', centerId, 'publicStaff', staffId),
-        {
-            id: staffId,
-            centerId,
-            fullName: doctor.fullName ?? '',
-            role: doctor.role ?? '',
-            specialty: doctor.specialty ?? '',
-            photoUrl: doctor.photoUrl ?? '',
-            agendaConfig: doctor.agendaConfig ?? null,
-            active: doctor.active ?? true,
-            updatedAt: serverTimestamp(),
-            createdAt: (doctor as any).createdAt ?? serverTimestamp()
-        },
-        { merge: true }
-    );
-
-    if (!emailLower) return;
+    if (!emailLower) {
+        throw new Error('El correo electrónico es requerido para crear la invitación');
+    }
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
     const qInv = query(
@@ -186,12 +157,16 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     );
 
     const snap = await getDocs(qInv);
-    if (!snap.empty) return;
+    if (!snap.empty) {
+        throw new Error('Ya existe una invitación pendiente para este correo en este centro');
+    }
 
     // Rol de acceso al sistema (no confundir con ProfessionalRole clínico)
     const accessRole = doctor.isAdmin ? 'center_admin' : 'doctor';
 
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+    
+    // Guardar datos del profesional en la invitación para usarlos al aceptar
     await setDoc(doc(db, 'invites', generateId()), {
         emailLower,
         email: doctor.email,
@@ -201,7 +176,17 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         status: 'pending',
         expiresAt: Timestamp.fromDate(expires),
         createdAt: serverTimestamp(),
-        createdByUid: 'centerAdmin' // (opcional) ideal: uid real en el futuro
+        createdByUid: 'centerAdmin', // (opcional) ideal: uid real en el futuro
+        // Datos del profesional para usar al aceptar la invitación
+        profileData: {
+            fullName: doctor.fullName,
+            rut: doctor.rut,
+            specialty: doctor.specialty,
+            photoUrl: doctor.photoUrl,
+            agendaConfig: doctor.agendaConfig,
+            role: doctor.role,
+            isAdmin: doctor.isAdmin
+        }
     });
 };
     const handleSaveDoctor = async () => {
@@ -224,31 +209,50 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         }
 
         if (currentDoctor.id) {
-            // Edit
+            // Edit existing staff member (already has a UID-based staff document)
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
             onUpdateDoctors(updated);
             try {
-                await persistDoctorToFirestore(currentDoctor as Doctor);
+                // Update the staff document directly (using their UID)
+                await setDoc(
+                    doc(db, 'centers', centerId, 'staff', currentDoctor.id),
+                    {
+                        fullName: currentDoctor.fullName,
+                        rut: currentDoctor.rut,
+                        email: currentDoctor.email,
+                        emailLower: (currentDoctor.email || '').toLowerCase(),
+                        specialty: currentDoctor.specialty,
+                        photoUrl: currentDoctor.photoUrl,
+                        agendaConfig: currentDoctor.agendaConfig,
+                        role: currentDoctor.role,
+                        isAdmin: currentDoctor.isAdmin,
+                        active: currentDoctor.active ?? true,
+                        updatedAt: serverTimestamp()
+                    },
+                    { merge: true }
+                );
                 showToast("Profesional actualizado.", "success");
-            } catch (e) {
-                console.error("persistDoctorToFirestore", e);
-                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            } catch (e: any) {
+                console.error("updateStaffDocument", e);
+                showToast(e?.message || "No se pudo actualizar el profesional.", "error");
             }
         } else {
-            // Create
+            // Create new professional - only create invitation
             const newDoc: Doctor = {
                 ...currentDoctor as Doctor,
-                id: generateId(),
-                centerId: centerId, // Ensure doctor is created in this center
-                agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' } // Default config
+                id: generateId(), // temporary ID for local state
+                centerId: centerId,
+                agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' }
             };
-            onUpdateDoctors([...doctors, newDoc]);
+            
             try {
                 await persistDoctorToFirestore(newDoc);
-                showToast("Profesional creado exitosamente.", "success");
-            } catch (e) {
+                showToast(`Invitación enviada a ${newDoc.email}. El profesional debe aceptar la invitación para completar su registro.`, "success");
+                // Note: Don't add to local doctors list - they'll appear after accepting invite
+            } catch (e: any) {
                 console.error("persistDoctorToFirestore", e);
-                showToast("No se pudo guardar el profesional en Firestore.", "error");
+                showToast(e?.message || "No se pudo crear la invitación.", "error");
+                return;
             }
         }
         setIsEditingDoctor(false);
@@ -263,16 +267,53 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
             if (db) {
                 try {
-                    await setDoc(
-                        doc(db, 'centers', centerId, 'staff', id),
-                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-                        { merge: true }
-                    );
-                    await setDoc(
-                        doc(db, 'centers', centerId, 'publicStaff', id),
-                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-                        { merge: true }
-                    );
+                    // Try to deactivate the staff document (for accepted professionals)
+                    const staffRef = doc(db, 'centers', centerId, 'staff', id);
+                    const staffSnap = await getDoc(staffRef);
+                    
+                    if (staffSnap.exists()) {
+                        // Staff member exists - deactivate them
+                        await setDoc(
+                            staffRef,
+                            { active: false, activo: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                            { merge: true }
+                        );
+                        
+                        // Also update publicStaff for syncPublicStaff trigger
+                        await setDoc(
+                            doc(db, 'centers', centerId, 'publicStaff', id),
+                            { active: false, activo: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                            { merge: true }
+                        );
+                        showToast("Profesional desactivado exitosamente.", "success");
+                    } else {
+                        // Staff member doesn't exist yet - they may have a pending invite
+                        // Revoke any pending invites for this email
+                        const doctor = doctors.find(d => d.id === id);
+                        if (doctor?.email) {
+                            const emailLower = doctor.email.toLowerCase();
+                            const qInv = query(
+                                collection(db, 'invites'),
+                                where('emailLower', '==', emailLower),
+                                where('centerId', '==', centerId),
+                                where('status', '==', 'pending')
+                            );
+                            const invSnap = await getDocs(qInv);
+                            
+                            if (!invSnap.empty) {
+                                for (const invDoc of invSnap.docs) {
+                                    await setDoc(
+                                        doc(db, 'invites', invDoc.id),
+                                        { status: 'revoked', revokedAt: serverTimestamp() },
+                                        { merge: true }
+                                    );
+                                }
+                                showToast("Invitación revocada exitosamente.", "success");
+                            } else {
+                                showToast("Profesional eliminado de la lista local.", "info");
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.error("deactivateStaff", error);
                     showToast("No se pudo desactivar el profesional en Firestore.", "error");
@@ -280,7 +321,6 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 }
             }
             onUpdateDoctors(doctors.filter(d => d.id !== id));
-            showToast("Profesional eliminado.", "info");
         }
     };
 

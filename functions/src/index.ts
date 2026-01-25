@@ -223,6 +223,7 @@ export const acceptInvite = functions.https.onCall(async (data, context) => {
   if (!centerId) throw new functions.https.HttpsError("failed-precondition", "Invitación sin centerId.");
 
   const role = String(inv.role || "center_admin").trim() || "center_admin";
+  const profileData = inv.profileData || {};
 
   const userRef = db.collection("users").doc(uid);
   const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
@@ -254,6 +255,14 @@ export const acceptInvite = functions.https.onCall(async (data, context) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         inviteToken: token,
+        // Include profile data from invite
+        fullName: profileData.fullName ?? "",
+        rut: profileData.rut ?? "",
+        specialty: profileData.specialty ?? "",
+        photoUrl: profileData.photoUrl ?? "",
+        agendaConfig: profileData.agendaConfig ?? null,
+        professionalRole: profileData.role ?? inv.professionalRole ?? "",
+        isAdmin: profileData.isAdmin ?? false,
       },
       { merge: true }
     );
