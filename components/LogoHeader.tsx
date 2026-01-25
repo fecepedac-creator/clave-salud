@@ -25,9 +25,9 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <img 
-        src="/assets/logo.png" 
-        alt="ClaveSalud Logo" 
+      <img
+        src="/assets/logo.png"
+        alt="ClaveSalud Logo"
         className={`${sizes[size]} object-contain`}
       />
 

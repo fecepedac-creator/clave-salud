@@ -1076,7 +1076,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   }
                 }}
               />
-              <span className="text-slate-700 text-sm font-bold hidden">{activeCenter.logoUrl}</span>
+              <span className="text-slate-700 text-sm font-bold hidden">
+                {activeCenter.logoUrl}
+              </span>
             </div>
           )}
           <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">

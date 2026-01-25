@@ -752,7 +752,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }
                 }}
               />
-              <span className="text-slate-300 text-sm font-bold hidden">{activeCenter.logoUrl}</span>
+              <span className="text-slate-300 text-sm font-bold hidden">
+                {activeCenter.logoUrl}
+              </span>
             </div>
           )}
           <button
