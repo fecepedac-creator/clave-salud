@@ -121,7 +121,7 @@ export const formatPersonName = (value?: string | null): string => {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
-    .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
+    .replace(/\b[a-záéíóúñü]/g, (match) => match.toUpperCase());
 };
 
 export const normalizePhone = (phone: string): string => {

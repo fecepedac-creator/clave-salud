@@ -51,6 +51,9 @@ const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 
+// SuperAdmin whitelist - emails allowed to bootstrap SuperAdmin role
+const SUPERADMIN_WHITELIST = ['fecepedac@gmail.com', 'dr.felipecepeda@gmail.com'];
+
 const App: React.FC = () => {
   const { showToast } = useToast();
   const [demoMode, setDemoMode] = useState(false);
@@ -1148,7 +1151,7 @@ const App: React.FC = () => {
         {authUser && 
          !isSuperAdminClaim && 
          authUser.email && 
-         ['fecepedac@gmail.com', 'dr.felipecepeda@gmail.com'].includes(authUser.email.toLowerCase()) && (
+         SUPERADMIN_WHITELIST.includes(authUser.email.toLowerCase()) && (
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
               Convertirme en SuperAdmin

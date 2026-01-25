@@ -1554,12 +1554,22 @@ const handleInviteCenterAdmin = async () => {
                       type="button"
                       className="px-5 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 shadow inline-flex items-center gap-2"
                       onClick={() => {
-                        const gmailUrl = buildGmailComposeUrl(
-                          selectedCenter?.adminEmail || "",
-                          commTitle,
-                          emailTemplate
-                        );
-                        window.open(gmailUrl, "_blank");
+                        if (!commCenter) return;
+                        const adminEmail = (commCenter as any).adminEmail?.trim() || "";
+                        if (!adminEmail) {
+                          showToast("Falta el email del administrador del centro", "error");
+                          return;
+                        }
+                        const subject = commType === "billing"
+                          ? `ClaveSalud — Aviso de facturación (${commCenter.name})`
+                          : commType === "incident"
+                          ? `ClaveSalud — Incidencia operativa (${commCenter.name})`
+                          : commType === "security"
+                          ? `ClaveSalud — Aviso de seguridad (${commCenter.name})`
+                          : `ClaveSalud — Información (${commCenter.name})`;
+                        
+                        const url = buildGmailComposeUrl(adminEmail, subject, `${commTitle}\n\n${commBody}\n\n— Equipo ClaveSalud`);
+                        window.open(url, "_blank");
                       }}
                     >
                       <Mail className="w-5 h-5" /> Enviar con Gmail
