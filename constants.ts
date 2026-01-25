@@ -459,7 +459,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Medicina Interna',
     university: 'U. Católica del Maule',
     email: 'medico@saludmass.cl',
-    password: 'admin',
     isAdmin: true, // DEFAULT ADMIN
     agendaConfig: { slotDuration: 20, startTime: '16:00', endTime: '20:00' }
   },
@@ -472,7 +471,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Odontología General',
     university: 'U. de Talca',
     email: 'dental@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 30, startTime: '09:00', endTime: '13:00' }
   },
@@ -485,7 +483,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Rehabilitación Musculoesquelética',
     university: 'U. Autónoma',
     email: 'kine@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 45, startTime: '14:00', endTime: '19:00' }
   },
@@ -498,7 +495,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Psicología Clínica Adulto',
     university: 'U. de Chile',
     email: 'psico@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 60, startTime: '09:00', endTime: '18:00' }
   },
@@ -512,7 +508,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Curaciones y Procedimientos',
     university: 'U. Santo Tomás',
     email: 'enfermera@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '17:00' }
   },
@@ -525,7 +520,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Ginecología y Obstetricia',
     university: 'U. de Concepción',
     email: 'matrona@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 30, startTime: '09:00', endTime: '18:00' }
   },
@@ -538,7 +532,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Rehabilitación Física Adulto',
     university: 'U. Mayor',
     email: 'to@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 45, startTime: '10:00', endTime: '19:00' }
   },
@@ -551,7 +544,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Podología Clínica',
     university: 'CFT San Agustín',
     email: 'podologo@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 30, startTime: '09:00', endTime: '13:00' }
   },
@@ -564,7 +556,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Audiología y Voz',
     university: 'U. de Talca',
     email: 'fono@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 30, startTime: '14:00', endTime: '20:00' }
   },
@@ -577,7 +568,6 @@ export const INITIAL_DOCTORS: Doctor[] = [
     specialty: 'Nutrición Deportiva y Obesidad',
     university: 'U. del Desarrollo',
     email: 'nutri@saludmass.cl',
-    password: 'admin',
     isAdmin: false,
     agendaConfig: { slotDuration: 30, startTime: '08:00', endTime: '14:00' }
   }
