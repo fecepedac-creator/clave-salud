@@ -118,7 +118,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     "doctors"
   );
   const { showToast } = useToast();
-  const { activeCenterId, isModuleEnabled } = useContext(CenterContext);
+  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
   // --- defensive module guard ---
   useEffect(() => {
@@ -737,6 +737,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <LogoHeader size="md" showText={true} />
         </div>
         <div className="flex items-center gap-4">
+          {activeCenter?.logoUrl && (
+            <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
+              <span className="text-slate-400 text-xs font-medium">Centro:</span>
+              <img 
+                src={activeCenter.logoUrl} 
+                alt={`Logo ${activeCenter.name}`} 
+                className="h-8 w-auto max-w-[120px] object-contain rounded"
+                onError={(e) => {
+                  // Fallback if logoUrl is not a valid URL (e.g., emoji)
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextSibling) {
+                    (e.currentTarget.nextSibling as HTMLElement).style.display = 'block';
+                  }
+                }}
+              />
+              <span className="text-slate-300 text-sm font-bold hidden">{activeCenter.logoUrl}</span>
+            </div>
+          )}
           <button
             onClick={() => setShowShareModal(true)}
             className="flex items-center gap-2 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
@@ -805,7 +823,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* DOCTORS MANAGEMENT */}
-        {activeTab === "doctors" && isModuleEnabled("doctors") && (
+        {activeTab === "doctors" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fadeIn">
             {/* List */}
             <div className="lg:col-span-2 space-y-4">

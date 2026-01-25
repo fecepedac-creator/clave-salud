@@ -25,11 +25,11 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div
-        className={`${sizes[size]} bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200`}
-      >
-        <span className={`text-white font-bold ${size === "sm" ? "text-xs" : "text-sm"}`}>CS</span>
-      </div>
+      <img 
+        src="/assets/logo.png" 
+        alt="ClaveSalud Logo" 
+        className={`${sizes[size]} object-contain`}
+      />
 
       {showText && (
         <div className="flex flex-col">
