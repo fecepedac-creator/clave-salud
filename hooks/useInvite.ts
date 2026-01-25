@@ -28,7 +28,9 @@ export function useInvite() {
         return;
       }
       setInviteToken(t);
-    } catch {}
+    } catch (e) {
+      console.error("Error parsing invite URL:", e);
+    }
   }, []);
 
   // Load invite data from Firestore

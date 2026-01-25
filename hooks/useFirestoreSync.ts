@@ -35,7 +35,9 @@ export function useFirestoreSync(
           const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
           setCenters(items);
         },
-        () => {}
+        (error) => {
+          console.error("Firestore centers subscription error:", error);
+        }
       );
     }
 

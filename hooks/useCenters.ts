@@ -154,7 +154,9 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
       unsubscribers.forEach((u) => {
         try {
           u();
-        } catch {}
+        } catch (e) {
+          // Ignore cleanup errors during unmount
+        }
       });
     };
   }, [demoMode, isSuperAdminClaim]);

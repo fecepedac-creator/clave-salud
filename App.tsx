@@ -125,7 +125,15 @@ const App: React.FC = () => {
     handleLookupAppointments,
     cancelPatientAppointment,
     handleReschedule,
-  } = useBooking(activeCenterId, appointments, patients, doctors, updateAppointment, setAppointments, showToast);
+  } = useBooking(
+    activeCenterId,
+    appointments,
+    patients,
+    doctors,
+    updateAppointment,
+    setAppointments,
+    showToast
+  );
 
   const syncAppointments = useCallback((nextAppointments: Appointment[]) => hookSyncAppointments(nextAppointments, setIsSyncingAppointments), [hookSyncAppointments]);
   const handleSuperAdminLogin = useCallback((targetView: ViewMode) => hookHandleSuperAdminLogin(targetView, (user, view, centerId) => { setCurrentUser(user); setView(view); if (centerId) setActiveCenterId(centerId); }), [hookHandleSuperAdminLogin, setCurrentUser, setActiveCenterId]);
