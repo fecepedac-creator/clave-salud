@@ -80,7 +80,9 @@ const App: React.FC = () => {
   const { patients, setPatients, doctors, setDoctors, appointments, setAppointments, auditLogs, preadmissions } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters);
   const {
     inviteToken,
+    setInviteToken,
     inviteLoading,
+    setInviteLoading,
     inviteError,
     setInviteError,
     inviteEmail,
@@ -95,7 +97,7 @@ const App: React.FC = () => {
     inviteDone,
     acceptInviteForUser,
   } = useInvite();
-  const { updatePatient, deletePatient, updateStaff, deleteStaff, updateAppointment, deleteAppointment, syncAppointments: hookSyncAppointments, updateAuditLog, updateCenter, deleteCenter, approvePreadmission } = useCrudOperations(activeCenterId, appointments, showToast);
+  const { updatePatient, deletePatient, updateStaff, deleteStaff, updateAppointment, deleteAppointment, syncAppointments: hookSyncAppointments, updateAuditLog, updateCenter, deleteCenter, createPreadmission, approvePreadmission } = useCrudOperations(activeCenterId, appointments, showToast);
   const {
     bookingStep,
     setBookingStep,
@@ -155,7 +157,7 @@ const App: React.FC = () => {
       updateModules,
       isModuleEnabled: (key: string) => {
         const v = modules?.[key];
-        return v === true || v === "enabled";
+        return v === true || (typeof v === "string" && v === "enabled");
       },
     };
   }, [activeCenterId, centers, updateModules]);
