@@ -21,7 +21,11 @@ export function useBooking(
   showToast: (message: string, type: "success" | "error" | "info" | "warning") => void
 ) {
   const [bookingStep, setBookingStep] = useState(0);
-  const [bookingData, setBookingData] = useState<{ name: string; rut: string; phoneDigits: string }>({
+  const [bookingData, setBookingData] = useState<{
+    name: string;
+    rut: string;
+    phoneDigits: string;
+  }>({
     name: "",
     rut: "",
     phoneDigits: "",
@@ -60,157 +64,152 @@ export function useBooking(
 
   const normalizeRut = (value: string) => value.replace(/[^0-9kK]/g, "").toUpperCase();
 
-  const handleBookingConfirm = useCallback(
-    async () => {
-      const name = bookingData.name.trim();
-      const rut = bookingData.rut.trim();
-      const phoneDigits = bookingData.phoneDigits.trim();
-      if (!selectedSlot || !selectedDoctorForBooking) {
-        showToast("Selecciona un horario y profesional.", "error");
-        return;
-      }
-      if (!name) {
-        showToast("Ingresa el nombre completo.", "error");
-        return;
-      }
-      if (!rut || !validateRUT(rut)) {
-        showToast("RUT inválido. Verifica el formato.", "error");
-        return;
-      }
-      if (!phoneDigits || phoneDigits.length !== 8) {
-        showToast("Ingresa un teléfono válido de 8 dígitos.", "error");
-        return;
-      }
-      const phone = formatChileanPhone(phoneDigits);
-      const slotAppointment = appointments.find((appointment) => appointment.id === selectedSlot.appointmentId);
-      if (!slotAppointment || slotAppointment.status !== "available") {
-        showToast("El horario ya no está disponible. Selecciona otro.", "error");
-        return;
-      }
+  const handleBookingConfirm = useCallback(async () => {
+    const name = bookingData.name.trim();
+    const rut = bookingData.rut.trim();
+    const phoneDigits = bookingData.phoneDigits.trim();
+    if (!selectedSlot || !selectedDoctorForBooking) {
+      showToast("Selecciona un horario y profesional.", "error");
+      return;
+    }
+    if (!name) {
+      showToast("Ingresa el nombre completo.", "error");
+      return;
+    }
+    if (!rut || !validateRUT(rut)) {
+      showToast("RUT inválido. Verifica el formato.", "error");
+      return;
+    }
+    if (!phoneDigits || phoneDigits.length !== 8) {
+      showToast("Ingresa un teléfono válido de 8 dígitos.", "error");
+      return;
+    }
+    const phone = formatChileanPhone(phoneDigits);
+    const slotAppointment = appointments.find(
+      (appointment) => appointment.id === selectedSlot.appointmentId
+    );
+    if (!slotAppointment || slotAppointment.status !== "available") {
+      showToast("El horario ya no está disponible. Selecciona otro.", "error");
+      return;
+    }
 
-      const normalizedRut = normalizeRut(rut);
-      const formattedRut = formatRUT(normalizedRut);
-      const existingPatient = patients.find(
-        (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
-      );
-      const patientId = existingPatient?.id ?? generateId();
-      const bookedAppointment: Appointment = {
-        ...slotAppointment,
-        status: "booked",
-        patientName: name,
-        patientRut: formattedRut,
-        patientId,
-        patientPhone: phone,
-        bookedAt: serverTimestamp(),
+    const normalizedRut = normalizeRut(rut);
+    const formattedRut = formatRUT(normalizedRut);
+    const existingPatient = patients.find(
+      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
+    );
+    const patientId = existingPatient?.id ?? generateId();
+    const bookedAppointment: Appointment = {
+      ...slotAppointment,
+      status: "booked",
+      patientName: name,
+      patientRut: formattedRut,
+      patientId,
+      patientPhone: phone,
+      bookedAt: serverTimestamp(),
+    };
+
+    await updateAppointment(bookedAppointment);
+    setAppointments((prev) =>
+      prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
+    );
+
+    if (activeCenterId && !existingPatient) {
+      const patientPayload: Patient = {
+        id: patientId,
+        centerId: activeCenterId,
+        rut: formattedRut,
+        fullName: name,
+        birthDate: "",
+        gender: "Otro",
+        phone,
+        medicalHistory: [],
+        surgicalHistory: [],
+        smokingStatus: "No fumador",
+        alcoholStatus: "No consumo",
+        medications: [],
+        allergies: [],
+        consultations: [],
+        attachments: [],
+        lastUpdated: new Date().toISOString(),
       };
+      await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
+    }
 
-      await updateAppointment(bookedAppointment);
-      setAppointments((prev) => prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt)));
-
-      if (activeCenterId && !existingPatient) {
-        const patientPayload: Patient = {
-          id: patientId,
-          centerId: activeCenterId,
-          rut: formattedRut,
-          fullName: name,
-          birthDate: "",
-          gender: "Otro",
-          phone,
-          medicalHistory: [],
-          surgicalHistory: [],
-          smokingStatus: "No fumador",
-          alcoholStatus: "No consumo",
-          medications: [],
-          allergies: [],
-          consultations: [],
-          attachments: [],
-          lastUpdated: new Date().toISOString(),
-        };
-        await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
-      }
-
-      if (!auth.currentUser) {
-        const storedContact = {
-          name: bookingData.name,
-          rut: formattedRut,
-          phone,
-        };
-        setPrefillContact(storedContact);
-        try {
-          window.localStorage.setItem("lastBookingContact", JSON.stringify(storedContact));
-        } catch {
-          // ignore storage failures
-        }
-      }
-
-      setBookingStep(4);
-    },
-    [
-      bookingData,
-      selectedSlot,
-      selectedDoctorForBooking,
-      appointments,
-      patients,
-      activeCenterId,
-      showToast,
-      updateAppointment,
-      setAppointments,
-    ]
-  );
-
-  const resetBooking = useCallback(
-    () => {
-      setBookingStep(0);
-      setBookingData({ name: "", rut: "", phoneDigits: "" });
-      setSelectedRole("");
-      setSelectedDoctorForBooking(null);
-      setBookingDate(new Date());
-      setBookingMonth(new Date());
-      setSelectedSlot(null);
-    },
-    []
-  );
-
-  const handleLookupAppointments = useCallback(
-    async () => {
-      if (!activeCenterId) {
-        showToast("Selecciona un centro activo para continuar.", "warning");
-        return;
-      }
-      const rut = cancelRut.trim();
-      const phoneDigits = cancelPhoneDigits.trim();
-      if (!rut || !validateRUT(rut)) {
-        setCancelError("Ingresa un RUT válido.");
-        return;
-      }
+    if (!auth.currentUser) {
+      const storedContact = {
+        name: bookingData.name,
+        rut: formattedRut,
+        phone,
+      };
+      setPrefillContact(storedContact);
       try {
-        if (!phoneDigits || phoneDigits.length !== 8) {
-          setCancelError("Ingresa un teléfono válido de 8 dígitos.");
-          return;
-        }
-        setCancelError("");
-        setCancelLoading(true);
-        const functions = getFunctions();
-        const fn = httpsCallable(functions, "listPatientAppointments");
-        const response = await fn({
-          centerId: activeCenterId,
-          rut,
-          phone: formatChileanPhone(phoneDigits),
-        });
-        const data = (response.data as { appointments?: Appointment[] }) || {};
-        setCancelResults((data.appointments || []) as Appointment[]);
-        if (!data.appointments || data.appointments.length === 0) {
-          showToast("No encontramos horas agendadas con esos datos.", "info");
-        }
-      } catch (error) {
-        console.error("lookupAppointments", error);
-        showToast("No se pudieron cargar las horas agendadas.", "error");
-      } finally {
-        setCancelLoading(false);
+        window.localStorage.setItem("lastBookingContact", JSON.stringify(storedContact));
+      } catch {
+        // ignore storage failures
       }
-    },
-    [activeCenterId, cancelRut, cancelPhoneDigits, showToast]
-  );
+    }
+
+    setBookingStep(4);
+  }, [
+    bookingData,
+    selectedSlot,
+    selectedDoctorForBooking,
+    appointments,
+    patients,
+    activeCenterId,
+    showToast,
+    updateAppointment,
+    setAppointments,
+  ]);
+
+  const resetBooking = useCallback(() => {
+    setBookingStep(0);
+    setBookingData({ name: "", rut: "", phoneDigits: "" });
+    setSelectedRole("");
+    setSelectedDoctorForBooking(null);
+    setBookingDate(new Date());
+    setBookingMonth(new Date());
+    setSelectedSlot(null);
+  }, []);
+
+  const handleLookupAppointments = useCallback(async () => {
+    if (!activeCenterId) {
+      showToast("Selecciona un centro activo para continuar.", "warning");
+      return;
+    }
+    const rut = cancelRut.trim();
+    const phoneDigits = cancelPhoneDigits.trim();
+    if (!rut || !validateRUT(rut)) {
+      setCancelError("Ingresa un RUT válido.");
+      return;
+    }
+    try {
+      if (!phoneDigits || phoneDigits.length !== 8) {
+        setCancelError("Ingresa un teléfono válido de 8 dígitos.");
+        return;
+      }
+      setCancelError("");
+      setCancelLoading(true);
+      const functions = getFunctions();
+      const fn = httpsCallable(functions, "listPatientAppointments");
+      const response = await fn({
+        centerId: activeCenterId,
+        rut,
+        phone: formatChileanPhone(phoneDigits),
+      });
+      const data = (response.data as { appointments?: Appointment[] }) || {};
+      setCancelResults((data.appointments || []) as Appointment[]);
+      if (!data.appointments || data.appointments.length === 0) {
+        showToast("No encontramos horas agendadas con esos datos.", "info");
+      }
+    } catch (error) {
+      console.error("lookupAppointments", error);
+      showToast("No se pudieron cargar las horas agendadas.", "error");
+    } finally {
+      setCancelLoading(false);
+    }
+  }, [activeCenterId, cancelRut, cancelPhoneDigits, showToast]);
 
   const cancelPatientAppointment = useCallback(
     async (appointment: Appointment) => {
@@ -249,7 +248,9 @@ export function useBooking(
     async (appointment: Appointment) => {
       const cancelled = await cancelPatientAppointment(appointment);
       if (!cancelled) return;
-      const doctor = doctors.find((doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId));
+      const doctor = doctors.find(
+        (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
+      );
       if (doctor) {
         setSelectedRole(doctor.role);
         setSelectedDoctorForBooking(doctor);

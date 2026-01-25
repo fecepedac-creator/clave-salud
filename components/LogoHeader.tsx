@@ -6,21 +6,21 @@ interface LogoHeaderProps {
   className?: string;
 }
 
-const LogoHeader: React.FC<LogoHeaderProps> = ({ 
-  size = 'md', 
+const LogoHeader: React.FC<LogoHeaderProps> = ({
+  size = "md",
   showText = true,
-  className = '' 
+  className = "",
 }) => {
   const sizes = {
-    sm: 'h-6 w-6',
-    md: 'h-8 w-8',
-    lg: 'h-10 w-10'
+    sm: "h-6 w-6",
+    md: "h-8 w-8",
+    lg: "h-10 w-10",
   };
 
   const textSizes = {
-    sm: 'text-xs',
-    md: 'text-sm',
-    lg: 'text-base'
+    sm: "text-xs",
+    md: "text-sm",
+    lg: "text-base",
   };
 
   return (

@@ -353,12 +353,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const active = centers.filter((c) => !!(c as any).isActive).length;
     const maxUsers = centers.reduce((acc, c) => acc + (Number((c as any).maxUsers) || 0), 0);
 
-    const billingStats = centers.reduce((acc, c) => {
-      const b = ((c as any).billing || {}) as BillingInfo;
-      const st = (b.billingStatus || "due") as BillingStatus;
-      acc[st] = (acc[st] || 0) + 1;
-      return acc;
-    }, {} as Record<BillingStatus, number>);
+    const billingStats = centers.reduce(
+      (acc, c) => {
+        const b = ((c as any).billing || {}) as BillingInfo;
+        const st = (b.billingStatus || "due") as BillingStatus;
+        acc[st] = (acc[st] || 0) + 1;
+        return acc;
+      },
+      {} as Record<BillingStatus, number>
+    );
 
     return { total, active, maxUsers, billingStats };
   }, [centers]);
@@ -416,10 +419,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const centerId = isCreating ? `c_${uidShort()}` : editingCenter.id;
 
       let finalLogoUrl = (editingCenter as any).logoUrl || "";
-      const prevLogoUrl = (((centers.find((c) => c.id === centerId) as any)?.logoUrl || "") as string) || "";
+      const prevLogoUrl =
+        (((centers.find((c) => c.id === centerId) as any)?.logoUrl || "") as string) || "";
 
       const isWorkspacePreview =
-        typeof window !== "undefined" && window.location?.hostname?.includes("cloudworkstations.dev");
+        typeof window !== "undefined" &&
+        window.location?.hostname?.includes("cloudworkstations.dev");
 
       if (logoFile) {
         if (isWorkspacePreview) {
@@ -598,10 +603,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       commType === "billing"
         ? `ClaveSalud — Aviso de facturación (${centerName})`
         : commType === "incident"
-        ? `ClaveSalud — Incidencia operativa (${centerName})`
-        : commType === "security"
-        ? `ClaveSalud — Aviso de seguridad (${centerName})`
-        : `ClaveSalud — Información (${centerName})`;
+          ? `ClaveSalud — Incidencia operativa (${centerName})`
+          : commType === "security"
+            ? `ClaveSalud — Aviso de seguridad (${centerName})`
+            : `ClaveSalud — Información (${centerName})`;
 
     const body = [
       `Para: ${adminEmail}`,
@@ -622,98 +627,104 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     return body;
   }, [commCenter, commType, commTitle, commBody]);
 
-const handleInviteCenterAdmin = async () => {
-  if (!editingCenter) return;
-  if (isInvitingAdmin) return;
+  const handleInviteCenterAdmin = async () => {
+    if (!editingCenter) return;
+    if (isInvitingAdmin) return;
 
-  const emailLower = (isCreating ? newCenterAdminEmail : String((editingCenter as any).adminEmail || ""))
-    .trim()
-    .toLowerCase();
+    const emailLower = (
+      isCreating ? newCenterAdminEmail : String((editingCenter as any).adminEmail || "")
+    )
+      .trim()
+      .toLowerCase();
 
-  if (!emailLower) {
-    showToast("Falta el correo del administrador (adminEmail).", "error");
-    return;
-  }
-
-  const centerId = String(editingCenter.id || "").trim();
-  if (!centerId) {
-    showToast("Primero guarda el centro para poder invitar a su administrador.", "error");
-    return;
-  }
-
-  setIsInvitingAdmin(true);
-  try {
-    // 1) Revocar invitaciones PENDING previas
-    const prevQ = query(
-      collection(db, "invites"),
-      where("emailLower", "==", emailLower),
-      where("centerId", "==", centerId),
-      where("status", "==", "pending")
-    );
-
-    const prev = await getDocs(prevQ);
-    for (const d of prev.docs) {
-      await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
+    if (!emailLower) {
+      showToast("Falta el correo del administrador (adminEmail).", "error");
+      return;
     }
 
-    // 2) Crear invitación nueva
-    let token = generateSecureToken(24);
-    const baseUrl = window.location.origin;
-    let link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
+    const centerId = String(editingCenter.id || "").trim();
+    if (!centerId) {
+      showToast("Primero guarda el centro para poder invitar a su administrador.", "error");
+      return;
+    }
 
-    // Prefer Cloud Function
+    setIsInvitingAdmin(true);
     try {
-      const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
-      const res: any = await fn({
-        centerId,
-        adminEmail: emailLower,
-        centerName: editingCenter.name || "",
-      });
+      // 1) Revocar invitaciones PENDING previas
+      const prevQ = query(
+        collection(db, "invites"),
+        where("emailLower", "==", emailLower),
+        where("centerId", "==", centerId),
+        where("status", "==", "pending")
+      );
 
-      const data = res?.data || {};
-      if (data?.token) token = String(data.token);
-      link = String(data?.inviteUrl || `${baseUrl}/invite?token=${encodeURIComponent(token)}`);
-    } catch {
-      // Fallback a Firestore (si rules lo permiten)
-      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-      await setDoc(doc(db, "invites", token), {
-        token,
-        centerId,
-        centerName: editingCenter.name || "",
-        emailLower,
-        role: "center_admin",
-        status: "pending",
-        createdAt: serverTimestamp(),
-        expiresAt,
-        invitedByUid: auth.currentUser?.uid || null,
-      });
+      const prev = await getDocs(prevQ);
+      for (const d of prev.docs) {
+        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
+      }
+
+      // 2) Crear invitación nueva
+      let token = generateSecureToken(24);
+      const baseUrl = window.location.origin;
+      let link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
+
+      // Prefer Cloud Function
+      try {
+        const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
+        const res: any = await fn({
+          centerId,
+          adminEmail: emailLower,
+          centerName: editingCenter.name || "",
+        });
+
+        const data = res?.data || {};
+        if (data?.token) token = String(data.token);
+        link = String(data?.inviteUrl || `${baseUrl}/invite?token=${encodeURIComponent(token)}`);
+      } catch {
+        // Fallback a Firestore (si rules lo permiten)
+        const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+        await setDoc(doc(db, "invites", token), {
+          token,
+          centerId,
+          centerName: editingCenter.name || "",
+          emailLower,
+          role: "center_admin",
+          status: "pending",
+          createdAt: serverTimestamp(),
+          expiresAt,
+          invitedByUid: auth.currentUser?.uid || null,
+        });
+      }
+
+      setLastInviteLink(link);
+
+      const centerName = editingCenter.name || "Centro";
+      const { subject, body } = buildInviteEmailParts(centerName, link);
+
+      setLastInviteTo(emailLower);
+      setLastInviteSubject(subject);
+      setLastInviteBody(body);
+
+      const copyText = buildCopyEmailText(emailLower, subject, body);
+      await navigator.clipboard.writeText(copyText);
+
+      showToast(
+        "Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.",
+        "success"
+      );
+    } catch (e: any) {
+      console.error("INVITE ERROR", e);
+      showToast(e?.message || "Error generando invitación", "error");
+    } finally {
+      setIsInvitingAdmin(false);
     }
-
-    setLastInviteLink(link);
-
-    const centerName = editingCenter.name || "Centro";
-    const { subject, body } = buildInviteEmailParts(centerName, link);
-
-    setLastInviteTo(emailLower);
-    setLastInviteSubject(subject);
-    setLastInviteBody(body);
-
-    const copyText = buildCopyEmailText(emailLower, subject, body);
-    await navigator.clipboard.writeText(copyText);
-
-    showToast("Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.", "success");
-  } catch (e: any) {
-    console.error("INVITE ERROR", e);
-    showToast(e?.message || "Error generando invitación", "error");
-  } finally {
-    setIsInvitingAdmin(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pl-64">
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full fixed left-0 top-0 border-r border-slate-800 z-50">
         <div className="p-6 border-b border-slate-800">
+          <LogoHeader size="sm" showText={true} className="mb-3" />
           <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-emerald-500">
             <Shield className="w-3 h-3" /> Super Admin
           </div>
@@ -794,24 +805,31 @@ const handleInviteCenterAdmin = async () => {
                 <div className="text-3xl font-bold text-slate-800">{totals.total}</div>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Centros Activos</div>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                  Centros Activos
+                </div>
                 <div className="text-3xl font-bold text-slate-800">{totals.active}</div>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Cupos (maxUsers)</div>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                  Cupos (maxUsers)
+                </div>
                 <div className="text-3xl font-bold text-slate-800">{totals.maxUsers}</div>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2">Atrasados</div>
-                <div className="text-3xl font-bold text-slate-800">{totals.billingStats.overdue || 0}</div>
+                <div className="text-3xl font-bold text-slate-800">
+                  {totals.billingStats.overdue || 0}
+                </div>
               </div>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-sm text-slate-600">
               <p className="font-semibold text-slate-800 mb-2">Nota importante</p>
               <p>
-                Por seguridad, este panel <b>no crea usuarios/contraseñas</b> en Firebase Auth desde el navegador. Para un
-                alta segura de administradores, usa una <b>Cloud Function</b> (Admin SDK) o un flujo de invitación controlado.
+                Por seguridad, este panel <b>no crea usuarios/contraseñas</b> en Firebase Auth desde
+                el navegador. Para un alta segura de administradores, usa una <b>Cloud Function</b>{" "}
+                (Admin SDK) o un flujo de invitación controlado.
               </p>
             </div>
           </div>
@@ -854,7 +872,9 @@ const handleInviteCenterAdmin = async () => {
                           <h3 className="text-lg font-bold text-slate-800">{center.name}</h3>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              (center as any).isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                              (center as any).isActive
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
                             }`}
                           >
                             {(center as any).isActive ? "Activo" : "Suspendido"}
@@ -866,9 +886,12 @@ const handleInviteCenterAdmin = async () => {
                         </div>
 
                         <div className="text-sm text-slate-500 mt-1">
-                          <span className="font-mono bg-slate-100 px-1 rounded">/{center.slug}</span>
+                          <span className="font-mono bg-slate-100 px-1 rounded">
+                            /{center.slug}
+                          </span>
                           {" • "}maxUsers: {(center as any).maxUsers ?? 0}
-                          {" • "}Admin: {(center as any).adminEmail ? (center as any).adminEmail : "—"}
+                          {" • "}Admin:{" "}
+                          {(center as any).adminEmail ? (center as any).adminEmail : "—"}
                         </div>
                       </div>
 
@@ -904,7 +927,9 @@ const handleInviteCenterAdmin = async () => {
                   );
                 })}
                 {centers.length === 0 && (
-                  <p className="text-center py-10 text-slate-400 font-bold">No hay centros creados aún.</p>
+                  <p className="text-center py-10 text-slate-400 font-bold">
+                    No hay centros creados aún.
+                  </p>
                 )}
               </div>
             ) : (
@@ -913,7 +938,10 @@ const handleInviteCenterAdmin = async () => {
                   <h3 className="text-2xl font-bold text-slate-800">
                     {isCreating ? "Nuevo Centro" : `Editar: ${editingCenter.name}`}
                   </h3>
-                  <button onClick={() => setEditingCenter(null)} className="text-slate-400 hover:text-slate-600 font-bold text-sm">
+                  <button
+                    onClick={() => setEditingCenter(null)}
+                    className="text-slate-400 hover:text-slate-600 font-bold text-sm"
+                  >
                     Cancelar
                   </button>
                 </div>
@@ -939,10 +967,14 @@ const handleInviteCenterAdmin = async () => {
                             onChange={(e) => setNewCenterSlug(e.target.value)}
                             placeholder="ej: saludmass"
                           />
-                          <div className="text-xs text-slate-400 mt-1">Se normaliza automáticamente.</div>
+                          <div className="text-xs text-slate-400 mt-1">
+                            Se normaliza automáticamente.
+                          </div>
                         </label>
                         <label className="block">
-                          <span className="text-xs font-bold text-slate-400 uppercase">Admin Email (primer admin)</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase">
+                            Admin Email (primer admin)
+                          </span>
                           <input
                             className="w-full p-3 border rounded-xl"
                             value={newCenterAdminEmail}
@@ -958,7 +990,9 @@ const handleInviteCenterAdmin = async () => {
                           <input
                             className="w-full p-3 border rounded-xl"
                             value={editingCenter.name}
-                            onChange={(e) => setEditingCenter({ ...editingCenter, name: e.target.value })}
+                            onChange={(e) =>
+                              setEditingCenter({ ...editingCenter, name: e.target.value })
+                            }
                           />
                         </label>
                         <label className="block">
@@ -966,15 +1000,24 @@ const handleInviteCenterAdmin = async () => {
                           <input
                             className="w-full p-3 border rounded-xl"
                             value={editingCenter.slug}
-                            onChange={(e) => setEditingCenter({ ...editingCenter, slug: e.target.value })}
+                            onChange={(e) =>
+                              setEditingCenter({ ...editingCenter, slug: e.target.value })
+                            }
                           />
                         </label>
                         <label className="block">
-                          <span className="text-xs font-bold text-slate-400 uppercase">Admin Email</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase">
+                            Admin Email
+                          </span>
                           <input
                             className="w-full p-3 border rounded-xl"
                             value={(editingCenter as any).adminEmail || ""}
-                            onChange={(e) => setEditingCenter({ ...(editingCenter as any), adminEmail: e.target.value })}
+                            onChange={(e) =>
+                              setEditingCenter({
+                                ...(editingCenter as any),
+                                adminEmail: e.target.value,
+                              })
+                            }
                             placeholder="admin@centro.cl"
                           />
                         </label>
@@ -983,9 +1026,12 @@ const handleInviteCenterAdmin = async () => {
 
                     {/* Logo */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Logo del centro</div>
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Logo del centro
+                      </div>
                       <div className="text-sm text-slate-600">
-                        Sube un logo (PNG/JPG/WEBP, máx. 2MB). Se guarda en Firebase Storage como <b>logoUrl</b>.
+                        Sube un logo (PNG/JPG/WEBP, máx. 2MB). Se guarda en Firebase Storage como{" "}
+                        <b>logoUrl</b>.
                       </div>
                       <div className="mt-3 flex flex-col gap-2">
                         <input
@@ -1044,7 +1090,9 @@ const handleInviteCenterAdmin = async () => {
 
                                 setEditingCenter({ ...(editingCenter as any), logoUrl: "" });
 
-                                const fileInput = document.getElementById("logo-input") as HTMLInputElement | null;
+                                const fileInput = document.getElementById(
+                                  "logo-input"
+                                ) as HTMLInputElement | null;
                                 if (fileInput) fileInput.value = "";
                               }}
                             >
@@ -1057,9 +1105,12 @@ const handleInviteCenterAdmin = async () => {
 
                     {/* ✅ INVITAR ADMIN: mailto + Gmail */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Invitar administrador</div>
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Invitar administrador
+                      </div>
                       <div className="text-sm text-slate-600">
-                        Genera un enlace seguro (token) para que el administrador cree su contraseña. Expira en 7 días.
+                        Genera un enlace seguro (token) para que el administrador cree su
+                        contraseña. Expira en 7 días.
                       </div>
 
                       <div className="mt-3 flex flex-col gap-2">
@@ -1078,7 +1129,16 @@ const handleInviteCenterAdmin = async () => {
                             <button
                               type="button"
                               className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800"
-                              onClick={() => window.open(buildGmailComposeUrl(lastInviteTo, lastInviteSubject, lastInviteBody), "_blank")}
+                              onClick={() =>
+                                window.open(
+                                  buildGmailComposeUrl(
+                                    lastInviteTo,
+                                    lastInviteSubject,
+                                    lastInviteBody
+                                  ),
+                                  "_blank"
+                                )
+                              }
                               title="Abrir Gmail web con el correo prellenado"
                             >
                               Abrir en Gmail
@@ -1088,7 +1148,13 @@ const handleInviteCenterAdmin = async () => {
                               type="button"
                               className="px-4 py-2 rounded-xl bg-white border text-slate-900 font-bold text-sm hover:bg-slate-50"
                               onClick={async () => {
-                                await navigator.clipboard.writeText(buildCopyEmailText(lastInviteTo, lastInviteSubject, lastInviteBody));
+                                await navigator.clipboard.writeText(
+                                  buildCopyEmailText(
+                                    lastInviteTo,
+                                    lastInviteSubject,
+                                    lastInviteBody
+                                  )
+                                );
                                 showToast("Correo completo copiado.", "success");
                               }}
                             >
@@ -1110,7 +1176,9 @@ const handleInviteCenterAdmin = async () => {
 
                         {lastInviteLink && (
                           <div className="p-3 bg-white rounded-xl border border-slate-200">
-                            <div className="text-xs font-bold text-slate-400 uppercase mb-1">Enlace</div>
+                            <div className="text-xs font-bold text-slate-400 uppercase mb-1">
+                              Enlace
+                            </div>
                             <div className="text-sm text-slate-700 break-all">{lastInviteLink}</div>
                           </div>
                         )}
@@ -1123,9 +1191,12 @@ const handleInviteCenterAdmin = async () => {
 
                     {/* Roles permitidos */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Roles permitidos</div>
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Roles permitidos
+                      </div>
                       <div className="text-sm text-slate-600 mb-3">
-                        Define qué perfiles puede crear el centro. Se guarda como IDs estables (ej: MEDICO, ENFERMERA).
+                        Define qué perfiles puede crear el centro. Se guarda como IDs estables (ej:
+                        MEDICO, ENFERMERA).
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {ROLE_CATALOG.filter((r) => r.id !== "ADMIN_CENTRO").map((r) => {
@@ -1133,18 +1204,26 @@ const handleInviteCenterAdmin = async () => {
                             ? (editingCenter as any).allowedRoles.includes(r.id)
                             : false;
                           return (
-                            <label key={r.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border">
+                            <label
+                              key={r.id}
+                              className="flex items-center gap-3 p-3 bg-white rounded-xl border"
+                            >
                               <input
                                 type="checkbox"
                                 checked={selected}
                                 onChange={(e) => {
-                                  const curr: string[] = Array.isArray((editingCenter as any).allowedRoles)
+                                  const curr: string[] = Array.isArray(
+                                    (editingCenter as any).allowedRoles
+                                  )
                                     ? [...(editingCenter as any).allowedRoles]
                                     : [];
                                   const next = e.target.checked
                                     ? Array.from(new Set([...curr, r.id]))
                                     : curr.filter((x) => x !== r.id);
-                                  setEditingCenter({ ...(editingCenter as any), allowedRoles: next });
+                                  setEditingCenter({
+                                    ...(editingCenter as any),
+                                    allowedRoles: next,
+                                  });
                                 }}
                                 className="w-5 h-5 accent-indigo-600"
                               />
@@ -1154,7 +1233,8 @@ const handleInviteCenterAdmin = async () => {
                         })}
                       </div>
                       <div className="mt-2 text-xs text-slate-400">
-                        Nota: el rol "Administrador del Centro" se asigna por invitación/alta y no se controla aquí.
+                        Nota: el rol "Administrador del Centro" se asigna por invitación/alta y no
+                        se controla aquí.
                       </div>
                     </div>
 
@@ -1164,7 +1244,12 @@ const handleInviteCenterAdmin = async () => {
                         type="number"
                         className="w-full p-3 border rounded-xl"
                         value={(editingCenter as any).maxUsers ?? 0}
-                        onChange={(e) => setEditingCenter({ ...(editingCenter as any), maxUsers: Number(e.target.value) })}
+                        onChange={(e) =>
+                          setEditingCenter({
+                            ...(editingCenter as any),
+                            maxUsers: Number(e.target.value),
+                          })
+                        }
                       />
                     </label>
 
@@ -1172,12 +1257,19 @@ const handleInviteCenterAdmin = async () => {
                       <input
                         type="checkbox"
                         checked={!!(editingCenter as any).isActive}
-                        onChange={(e) => setEditingCenter({ ...(editingCenter as any), isActive: e.target.checked })}
+                        onChange={(e) =>
+                          setEditingCenter({
+                            ...(editingCenter as any),
+                            isActive: e.target.checked,
+                          })
+                        }
                         className="w-5 h-5 accent-indigo-600"
                       />
                       <div>
                         <span className="block font-bold text-slate-700">Centro activo</span>
-                        <span className="text-xs text-slate-400">Si está desactivado, el centro queda suspendido.</span>
+                        <span className="text-xs text-slate-400">
+                          Si está desactivado, el centro queda suspendido.
+                        </span>
                       </div>
                     </label>
                   </div>
@@ -1194,7 +1286,10 @@ const handleInviteCenterAdmin = async () => {
                           onChange={(e) =>
                             setEditingCenter({
                               ...(editingCenter as any),
-                              modules: { ...((editingCenter as any).modules || {}), agenda: e.target.checked },
+                              modules: {
+                                ...((editingCenter as any).modules || {}),
+                                agenda: e.target.checked,
+                              },
                             })
                           }
                           className="w-5 h-5 accent-indigo-600"
@@ -1209,7 +1304,10 @@ const handleInviteCenterAdmin = async () => {
                           onChange={(e) =>
                             setEditingCenter({
                               ...(editingCenter as any),
-                              modules: { ...((editingCenter as any).modules || {}), prescriptions: e.target.checked },
+                              modules: {
+                                ...((editingCenter as any).modules || {}),
+                                prescriptions: e.target.checked,
+                              },
                             })
                           }
                           className="w-5 h-5 accent-indigo-600"
@@ -1224,7 +1322,10 @@ const handleInviteCenterAdmin = async () => {
                           onChange={(e) =>
                             setEditingCenter({
                               ...(editingCenter as any),
-                              modules: { ...((editingCenter as any).modules || {}), dental: e.target.checked },
+                              modules: {
+                                ...((editingCenter as any).modules || {}),
+                                dental: e.target.checked,
+                              },
                             })
                           }
                           className="w-5 h-5 accent-indigo-600"
@@ -1234,17 +1335,24 @@ const handleInviteCenterAdmin = async () => {
                     </div>
 
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">Plan / Facturación (rápido)</div>
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Plan / Facturación (rápido)
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label className="block">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">Plan</span>
+                          <span className="text-[11px] font-bold text-slate-400 uppercase">
+                            Plan
+                          </span>
                           <select
                             className="w-full p-3 border rounded-xl bg-white"
                             value={((editingCenter as any).billing?.plan || "trial") as PlanKey}
                             onChange={(e) =>
                               setEditingCenter({
                                 ...(editingCenter as any),
-                                billing: { ...((editingCenter as any).billing || {}), plan: e.target.value as PlanKey },
+                                billing: {
+                                  ...((editingCenter as any).billing || {}),
+                                  plan: e.target.value as PlanKey,
+                                },
                               })
                             }
                           >
@@ -1256,7 +1364,9 @@ const handleInviteCenterAdmin = async () => {
                         </label>
 
                         <label className="block">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">UF / mes</span>
+                          <span className="text-[11px] font-bold text-slate-400 uppercase">
+                            UF / mes
+                          </span>
                           <input
                             type="number"
                             className="w-full p-3 border rounded-xl"
@@ -1264,17 +1374,25 @@ const handleInviteCenterAdmin = async () => {
                             onChange={(e) =>
                               setEditingCenter({
                                 ...(editingCenter as any),
-                                billing: { ...((editingCenter as any).billing || {}), monthlyUF: Number(e.target.value) },
+                                billing: {
+                                  ...((editingCenter as any).billing || {}),
+                                  monthlyUF: Number(e.target.value),
+                                },
                               })
                             }
                           />
                         </label>
 
                         <label className="block">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">Estado</span>
+                          <span className="text-[11px] font-bold text-slate-400 uppercase">
+                            Estado
+                          </span>
                           <select
                             className="w-full p-3 border rounded-xl bg-white"
-                            value={((editingCenter as any).billing?.billingStatus || "due") as BillingStatus}
+                            value={
+                              ((editingCenter as any).billing?.billingStatus ||
+                                "due") as BillingStatus
+                            }
                             onChange={(e) =>
                               setEditingCenter({
                                 ...(editingCenter as any),
@@ -1294,7 +1412,9 @@ const handleInviteCenterAdmin = async () => {
                         </label>
 
                         <label className="block">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">Próximo venc.</span>
+                          <span className="text-[11px] font-bold text-slate-400 uppercase">
+                            Próximo venc.
+                          </span>
                           <input
                             type="date"
                             className="w-full p-3 border rounded-xl"
@@ -1302,19 +1422,27 @@ const handleInviteCenterAdmin = async () => {
                             onChange={(e) =>
                               setEditingCenter({
                                 ...(editingCenter as any),
-                                billing: { ...((editingCenter as any).billing || {}), nextDueDate: e.target.value },
+                                billing: {
+                                  ...((editingCenter as any).billing || {}),
+                                  nextDueDate: e.target.value,
+                                },
                               })
                             }
                           />
                         </label>
                       </div>
-                      <div className="mt-3 text-xs text-slate-400">Tip: puedes ajustar también desde la pestaña Finanzas.</div>
+                      <div className="mt-3 text-xs text-slate-400">
+                        Tip: puedes ajustar también desde la pestaña Finanzas.
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex gap-4 justify-end pt-6 border-t mt-8">
-                  <button onClick={() => setEditingCenter(null)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100">
+                  <button
+                    onClick={() => setEditingCenter(null)}
+                    className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100"
+                  >
                     Cancelar
                   </button>
                   <button
@@ -1355,7 +1483,9 @@ const handleInviteCenterAdmin = async () => {
                 </label>
 
                 <div className="flex items-center gap-2">
-                  {financeCenter?.billing ? renderBadge(financeCenter.billing.billingStatus) : renderBadge("due")}
+                  {financeCenter?.billing
+                    ? renderBadge(financeCenter.billing.billingStatus)
+                    : renderBadge("due")}
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
                     {String((financeCenter as any)?.billing?.plan || "trial").toUpperCase()}
                   </span>
@@ -1372,7 +1502,9 @@ const handleInviteCenterAdmin = async () => {
                       <select
                         className="w-full p-3 border rounded-xl bg-white"
                         value={((financeCenter as any).billing?.plan || "trial") as PlanKey}
-                        onChange={(e) => updateBilling(financeCenter.id, { plan: e.target.value as PlanKey })}
+                        onChange={(e) =>
+                          updateBilling(financeCenter.id, { plan: e.target.value as PlanKey })
+                        }
                       >
                         <option value="trial">Trial</option>
                         <option value="basic">Basic</option>
@@ -1387,16 +1519,26 @@ const handleInviteCenterAdmin = async () => {
                         type="number"
                         className="w-full p-3 border rounded-xl"
                         value={Number((financeCenter as any).billing?.monthlyUF || 0)}
-                        onChange={(e) => updateBilling(financeCenter.id, { monthlyUF: Number(e.target.value) })}
+                        onChange={(e) =>
+                          updateBilling(financeCenter.id, { monthlyUF: Number(e.target.value) })
+                        }
                       />
                     </label>
 
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Estado de pago</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Estado de pago
+                      </span>
                       <select
                         className="w-full p-3 border rounded-xl bg-white"
-                        value={((financeCenter as any).billing?.billingStatus || "due") as BillingStatus}
-                        onChange={(e) => updateBilling(financeCenter.id, { billingStatus: e.target.value as BillingStatus })}
+                        value={
+                          ((financeCenter as any).billing?.billingStatus || "due") as BillingStatus
+                        }
+                        onChange={(e) =>
+                          updateBilling(financeCenter.id, {
+                            billingStatus: e.target.value as BillingStatus,
+                          })
+                        }
                       >
                         <option value="paid">Al día</option>
                         <option value="due">Por vencer</option>
@@ -1410,7 +1552,12 @@ const handleInviteCenterAdmin = async () => {
                       <button
                         type="button"
                         className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 inline-flex items-center gap-2"
-                        onClick={() => updateBilling(financeCenter.id, { billingStatus: "paid", lastPaidAt: todayISO() })}
+                        onClick={() =>
+                          updateBilling(financeCenter.id, {
+                            billingStatus: "paid",
+                            lastPaidAt: todayISO(),
+                          })
+                        }
                         title="Marcar pagado hoy"
                       >
                         <DollarSign className="w-4 h-4" /> Marcar pagado
@@ -1419,7 +1566,9 @@ const handleInviteCenterAdmin = async () => {
                       <button
                         type="button"
                         className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 inline-flex items-center gap-2"
-                        onClick={() => updateBilling(financeCenter.id, { billingStatus: "overdue" })}
+                        onClick={() =>
+                          updateBilling(financeCenter.id, { billingStatus: "overdue" })
+                        }
                         title="Marcar atrasado"
                       >
                         <CreditCard className="w-4 h-4" /> Marcar atrasado
@@ -1429,27 +1578,37 @@ const handleInviteCenterAdmin = async () => {
 
                   <div className="space-y-4">
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Próximo vencimiento</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Próximo vencimiento
+                      </span>
                       <input
                         type="date"
                         className="w-full p-3 border rounded-xl"
                         value={String((financeCenter as any).billing?.nextDueDate || "")}
-                        onChange={(e) => updateBilling(financeCenter.id, { nextDueDate: e.target.value })}
+                        onChange={(e) =>
+                          updateBilling(financeCenter.id, { nextDueDate: e.target.value })
+                        }
                       />
                     </label>
 
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Último pago</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Último pago
+                      </span>
                       <input
                         type="date"
                         className="w-full p-3 border rounded-xl"
                         value={String((financeCenter as any).billing?.lastPaidAt || "")}
-                        onChange={(e) => updateBilling(financeCenter.id, { lastPaidAt: e.target.value })}
+                        onChange={(e) =>
+                          updateBilling(financeCenter.id, { lastPaidAt: e.target.value })
+                        }
                       />
                     </label>
 
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Notas internas</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Notas internas
+                      </span>
                       <textarea
                         className="w-full p-3 border rounded-xl min-h-[120px]"
                         value={String((financeCenter as any).billing?.notes || "")}
@@ -1469,7 +1628,9 @@ const handleInviteCenterAdmin = async () => {
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold text-slate-800">Comunicación</h1>
-              <p className="text-slate-500">Avisos a administradores (registro local) + plantilla de correo.</p>
+              <p className="text-slate-500">
+                Avisos a administradores (registro local) + plantilla de correo.
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -1489,7 +1650,10 @@ const handleInviteCenterAdmin = async () => {
                       ))}
                     </select>
                     <div className="text-xs text-slate-400 mt-1">
-                      Admin: {(commCenter as any)?.adminEmail ? (commCenter as any).adminEmail : "— (configúralo en Centros)"}
+                      Admin:{" "}
+                      {(commCenter as any)?.adminEmail
+                        ? (commCenter as any).adminEmail
+                        : "— (configúralo en Centros)"}
                     </div>
                   </label>
 
@@ -1541,6 +1705,23 @@ const handleInviteCenterAdmin = async () => {
                     />
                   </label>
 
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border">
+                    <input
+                      type="checkbox"
+                      checked={commSendEmail}
+                      onChange={(e) => setCommSendEmail(e.target.checked)}
+                      className="w-5 h-5 accent-indigo-600"
+                    />
+                    <div>
+                      <span className="block font-bold text-slate-700">
+                        Generar plantilla para email
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        Envío real por correo: idealmente Cloud Function.
+                      </span>
+                    </div>
+                  </label>
+
                   <div className="flex gap-3 flex-wrap">
                     <button
                       type="button"
@@ -1590,16 +1771,22 @@ const handleInviteCenterAdmin = async () => {
 
                 <div className="space-y-4">
                   <div className="p-4 bg-slate-50 rounded-2xl border">
-                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">Vista previa (email)</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                      Vista previa (email)
+                    </div>
                     <pre className="whitespace-pre-wrap text-xs text-slate-700 bg-white border rounded-xl p-3 min-h-[200px]">
                       {emailTemplate}
                     </pre>
                   </div>
 
                   <div className="p-4 bg-slate-50 rounded-2xl border">
-                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">Historial (centro)</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                      Historial (centro)
+                    </div>
                     {commHistory.length === 0 ? (
-                      <div className="text-sm text-slate-500">No hay avisos registrados para este centro.</div>
+                      <div className="text-sm text-slate-500">
+                        No hay avisos registrados para este centro.
+                      </div>
                     ) : (
                       <>
                         <div className="space-y-2">
