@@ -71,11 +71,11 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           </div>
 
           <p className="text-[11px] text-slate-500 mt-4">
-            Si esto ocurre tras “invitar administrador”, revisa también OAuth domains autorizados (Auth → Settings).
+            Si esto ocurre tras “invitar administrador”, revisa también OAuth domains autorizados
+            (Auth → Settings).
           </p>
         </div>
       </div>
     );
   }
 }
-

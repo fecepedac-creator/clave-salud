@@ -50,13 +50,16 @@ export function useInvite() {
         if (status === "claimed") throw new Error("Esta invitación ya fue utilizada.");
         if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
-        const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+        const emailLower = String(inv.emailLower || "")
+          .trim()
+          .toLowerCase();
         if (!emailLower) throw new Error("Invitación inválida: falta correo.");
 
         const expiresAt = inv.expiresAt;
         if (expiresAt && typeof expiresAt.toDate === "function") {
           const exp = expiresAt.toDate();
-          if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
+          if (exp.getTime() < Date.now())
+            throw new Error("Esta invitación expiró. Solicita una nueva.");
         }
 
         setInviteEmail(emailLower);
@@ -87,7 +90,9 @@ export function useInvite() {
       if (!user?.uid) throw new Error("Debes iniciar sesión para aceptar la invitación.");
 
       const uid = user.uid as string;
-      const emailUser = String(user.email || "").trim().toLowerCase();
+      const emailUser = String(user.email || "")
+        .trim()
+        .toLowerCase();
       if (!emailUser) throw new Error("Tu cuenta no tiene correo. Usa una cuenta con email.");
 
       const invRef = doc(db, "invites", token);
@@ -96,10 +101,13 @@ export function useInvite() {
 
       const inv: any = invSnap.data() || {};
       const status = String(inv.status || "").toLowerCase();
-      if (status === "claimed" || status === "accepted") throw new Error("Esta invitación ya fue utilizada.");
+      if (status === "claimed" || status === "accepted")
+        throw new Error("Esta invitación ya fue utilizada.");
       if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
-      const emailLower = String(inv.emailLower || "").trim().toLowerCase();
+      const emailLower = String(inv.emailLower || "")
+        .trim()
+        .toLowerCase();
       if (!emailLower) throw new Error("Invitación inválida: falta correo.");
       if (emailLower !== emailUser) {
         throw new Error(`Esta invitación es para ${emailLower}. Inicia sesión con ese correo.`);
@@ -108,7 +116,8 @@ export function useInvite() {
       const expiresAt = inv.expiresAt;
       if (expiresAt && typeof expiresAt.toDate === "function") {
         const exp = expiresAt.toDate();
-        if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
+        if (exp.getTime() < Date.now())
+          throw new Error("Esta invitación expiró. Solicita una nueva.");
       }
 
       const centerId = String(inv.centerId || "").trim();
@@ -125,8 +134,8 @@ export function useInvite() {
       const prevCenters: string[] = Array.isArray(existing.centers)
         ? existing.centers
         : Array.isArray(existing.centros)
-        ? existing.centros
-        : [];
+          ? existing.centros
+          : [];
       const prevRoles: string[] = Array.isArray(existing.roles) ? existing.roles : [];
 
       const nextCenters = Array.from(new Set([...prevCenters, centerId])).filter(Boolean);
@@ -141,7 +150,7 @@ export function useInvite() {
           centers: nextCenters,
           centros: nextCenters,
           roles: nextRoles,
-          activeCenterId: existing.activeCenterId ?? (nextCenters[0] ?? null),
+          activeCenterId: existing.activeCenterId ?? nextCenters[0] ?? null,
           displayName: existing.displayName ?? user.displayName ?? "",
           photoURL: existing.photoURL ?? user.photoURL ?? "",
           updatedAt: serverTimestamp(),

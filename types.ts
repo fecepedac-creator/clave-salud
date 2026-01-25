@@ -1,4 +1,3 @@
-
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -6,32 +5,32 @@ export interface MedicalCenter {
   logoUrl?: string; // Emoji or URL
   primaryColor: string; // Tailwind color name (e.g., 'teal', 'blue', 'indigo')
   createdAt: string;
-  
+
   // --- SaaS Configuration ---
   isActive: boolean; // If false, access is blocked
   isPinned?: boolean; // To pin important centers to top
   maxUsers: number; // Limit number of doctors
   allowedRoles: AnyRole[]; // Only these roles can be created // Only these roles can be created
   modules: {
-      dental: boolean; // Enables Odontogram
-      prescriptions: boolean; // Enables Prescription Manager
-      agenda: boolean; // Enables Appointment Scheduling
-  }
+    dental: boolean; // Enables Odontogram
+    prescriptions: boolean; // Enables Prescription Manager
+    agenda: boolean; // Enables Appointment Scheduling
+  };
 
   // --- CRM & Legal ---
   legalInfo?: {
-      rut: string;
-      representativeName: string;
-      representativePhone: string; // For WhatsApp
-      email: string;
-      address?: string;
+    rut: string;
+    representativeName: string;
+    representativePhone: string; // For WhatsApp
+    email: string;
+    address?: string;
   };
   subscription?: {
-      planName: string;
-      price: number;
-      currency: 'UF' | 'CLP';
-      lastPaymentDate?: string;
-      status: 'active' | 'late' | 'suspended';
+    planName: string;
+    price: number;
+    currency: "UF" | "CLP";
+    lastPaymentDate?: string;
+    status: "active" | "late" | "suspended";
   };
 }
 
@@ -42,7 +41,7 @@ export interface AuditLogEntry {
   actorUid?: string;
   actorName: string; // Who did it
   actorRole: string;
-  action: 'create' | 'update' | 'delete' | 'login' | 'access';
+  action: "create" | "update" | "delete" | "login" | "access";
   details: string; // "Created consultation for Juan Perez"
   targetId?: string; // ID of the patient or appointment affected
 }
@@ -56,7 +55,7 @@ export interface Medication {
 
 export interface Allergy {
   id: string;
-  type: 'Farmaco' | 'Alimento' | 'Otro';
+  type: "Farmaco" | "Alimento" | "Otro";
   substance: string;
   reaction: string;
 }
@@ -64,14 +63,20 @@ export interface Allergy {
 export interface Attachment {
   id: string;
   name: string;
-  type: 'image' | 'pdf' | 'other';
+  type: "image" | "pdf" | "other";
   date: string;
-  url: string; 
+  url: string;
 }
 
 export interface Prescription {
   id: string;
-  type: 'Receta Médica' | 'Receta Retenida' | 'Interconsulta' | 'Certificado' | 'Indicaciones' | 'Solicitud de Examen';
+  type:
+    | "Receta Médica"
+    | "Receta Retenida"
+    | "Interconsulta"
+    | "Certificado"
+    | "Indicaciones"
+    | "Solicitud de Examen";
   content: string;
   createdAt: string;
 }
@@ -80,7 +85,7 @@ export interface ClinicalTemplate {
   id: string;
   title: string;
   content: string;
-  roles?: RoleId[]; 
+  roles?: RoleId[];
 }
 
 // NEW INTERFACE FOR CUSTOM EXAMS
@@ -100,40 +105,40 @@ export interface ExamProfile {
 }
 
 export interface ToothState {
-  id: number; 
-  status: 'Sano' | 'Caries' | 'Obturado' | 'Ausente' | 'Endodoncia' | 'Corona' | 'Extraccion_Ind';
+  id: number;
+  status: "Sano" | "Caries" | "Obturado" | "Ausente" | "Endodoncia" | "Corona" | "Extraccion_Ind";
   notes?: string;
 }
 
 export interface Consultation {
   id: string;
-  date: string; 
-  
+  date: string;
+
   weight?: string;
   height?: string;
   bmi?: string;
   bloodPressure?: string;
   hgt?: string;
-  
+
   // --- New Anthropometry Fields ---
   waist?: string; // Cintura
-  hip?: string;   // Cadera
+  hip?: string; // Cadera
 
   // --- Dynamic Exams ---
   exams?: Record<string, string>; // Stores values like { 'hba1c': '7.5', 'creatinina': '1.2' }
 
   reason: string;
-  anamnesis: string; 
-  physicalExam: string; 
-  diagnosis: string; 
-  
+  anamnesis: string;
+  physicalExam: string;
+  diagnosis: string;
+
   dentalMap?: ToothState[];
-  
-  prescriptions: Prescription[]; 
+
+  prescriptions: Prescription[];
   professionalName: string;
   professionalId: string;
-  professionalRole: ProfessionalRole; 
-  
+  professionalRole: ProfessionalRole;
+
   nextControlDate?: string;
   nextControlReason?: string;
   reminderActive?: boolean;
@@ -145,60 +150,60 @@ export interface Patient {
   rut: string;
   fullName: string;
   birthDate: string;
-  gender: 'Masculino' | 'Femenino' | 'Otro';
+  gender: "Masculino" | "Femenino" | "Otro";
   email?: string;
   phone?: string;
   address?: string;
   commune?: string;
-  
+
   occupation?: string;
   livingWith?: string[];
 
   // --- Bio-Markers Subscription ---
   activeExams?: string[]; // List of exam IDs (e.g., ['hba1c', 'tsh'])
 
-  medicalHistory: string[]; 
+  medicalHistory: string[];
   medicalHistoryDetails?: string;
   cancerDetails?: string;
-  
+
   surgicalHistory: string[];
   surgicalHistoryDetails?: string;
   herniaDetails?: string;
-  
-  smokingStatus: 'No fumador' | 'Ex fumador' | 'Fumador actual';
+
+  smokingStatus: "No fumador" | "Ex fumador" | "Fumador actual";
   cigarettesPerDay?: number;
   yearsSmoking?: number;
   packYearsIndex?: number;
 
-  alcoholStatus: 'No consumo' | 'Ocasional' | 'Frecuente';
-  alcoholFrequency?: '1-2 veces/sem' | '3-5 veces/sem' | 'Todos los días';
+  alcoholStatus: "No consumo" | "Ocasional" | "Frecuente";
+  alcoholFrequency?: "1-2 veces/sem" | "3-5 veces/sem" | "Todos los días";
 
-  drugUse?: 'No' | 'Si';
+  drugUse?: "No" | "Si";
   drugDetails?: string;
-  
+
   medications: Medication[];
   allergies: Allergy[];
-  
+
   consultations: Consultation[];
   attachments: Attachment[];
-  
+
   lastUpdated: string;
 }
 
 export interface Appointment {
   id: string;
   centerId: string; // Multi-tenant ID
-  doctorId: string; 
+  doctorId: string;
   doctorUid?: string;
-  date: string; 
-  time: string; 
+  date: string;
+  time: string;
   patientName: string;
   patientRut: string;
   patientId?: string;
   patientPhone?: string;
   bookedAt?: any;
   cancelledAt?: any;
-  status: 'available' | 'booked';
+  status: "available" | "booked";
 }
 
 export interface Preadmission {
@@ -215,43 +220,39 @@ export interface Preadmission {
   source?: "public" | "staff";
   submittedByUid?: string | null;
   createdAt?: any;
-  status?: 'pending' | 'approved' | 'rejected';
+  status?: "pending" | "approved" | "rejected";
 }
 
 export interface AgendaConfig {
   slotDuration: number;
-  startTime: string; 
+  startTime: string;
   endTime: string;
 }
 
 export type RoleId =
-  | 'ADMIN_CENTRO'
-  | 'ADMINISTRATIVO'
-  | 'MEDICO'
-  | 'ENFERMERA'
-  | 'TENS'
-  | 'NUTRICIONISTA'
-  | 'PSICOLOGO'
-  | 'KINESIOLOGO'
-  | 'TERAPEUTA_OCUPACIONAL'
-  | 'FONOAUDIOLOGO'
-  | 'PODOLOGO'
-  | 'TECNOLOGO_MEDICO'
-  | 'ASISTENTE_SOCIAL'
-  | 'PREPARADOR_FISICO'
-  | 'MATRONA'
-  | 'ODONTOLOGO'
-  | 'QUIMICO_FARMACEUTICO';
+  | "ADMIN_CENTRO"
+  | "ADMINISTRATIVO"
+  | "MEDICO"
+  | "ENFERMERA"
+  | "TENS"
+  | "NUTRICIONISTA"
+  | "PSICOLOGO"
+  | "KINESIOLOGO"
+  | "TERAPEUTA_OCUPACIONAL"
+  | "FONOAUDIOLOGO"
+  | "PODOLOGO"
+  | "TECNOLOGO_MEDICO"
+  | "ASISTENTE_SOCIAL"
+  | "PREPARADOR_FISICO"
+  | "MATRONA"
+  | "ODONTOLOGO"
+  | "QUIMICO_FARMACEUTICO";
 
 /**
  * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
  * Mantener compatibilidad con roles legacy definidos en RoleId.
  */
-export type CanonicalRole =
-  | "super_admin"
-  | "center_admin"
-  | "admin"
-  | "doctor";
+export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor";
 
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
@@ -259,13 +260,12 @@ export type CanonicalRole =
  */
 export type AnyRole = RoleId | CanonicalRole | "superadmin" | "Administrador" | "Admin";
 
-
 /**
  * @deprecated Mantener por compatibilidad. Usar RoleId.
  */
 export type ProfessionalRole = RoleId;
 
-export interface Doctor { 
+export interface Doctor {
   id: string;
   centerId: string; // Multi-tenant ID
   rut: string;
