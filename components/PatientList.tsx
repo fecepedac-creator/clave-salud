@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState, useContext } from 'react';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
-import { Search, Plus, User } from 'lucide-react';
-import { Patient } from '../types';
-import { db } from '../firebase';
-import { CenterContext } from '../CenterContext';
+import React, { useEffect, useMemo, useState, useContext } from "react";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { Search, Plus, User } from "lucide-react";
+import { Patient } from "../types";
+import { db } from "../firebase";
+import { CenterContext } from "../CenterContext";
 
 type Props = {
   /** Si lo pasas, se usa en vez de leer desde Firestore */
@@ -17,7 +17,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   const { activeCenterId } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
   const [remotePatients, setRemotePatients] = useState<Patient[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
 
   // Leer desde Firestore solo si no llegan patients por props
   useEffect(() => {
@@ -27,8 +27,8 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       return;
     }
 
-    const baseRef = collection(db, 'centers', activeCenterId, 'patients');
-    const q = query(baseRef, orderBy('fullName', 'asc'));
+    const baseRef = collection(db, "centers", activeCenterId, "patients");
+    const q = query(baseRef, orderBy("fullName", "asc"));
 
     const unsub = onSnapshot(
       q,
@@ -58,14 +58,14 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
     const s = search.trim().toLowerCase();
     if (!s) return data;
     return data.filter((p) => {
-      const name = (p.fullName ?? '').toLowerCase();
-      const rut = (p.rut ?? '').toLowerCase();
+      const name = (p.fullName ?? "").toLowerCase();
+      const rut = (p.rut ?? "").toLowerCase();
       return name.includes(s) || rut.includes(s);
     });
   }, [data, search]);
 
   return (
-    <div className={className ?? ''}>
+    <div className={className ?? ""}>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <User className="w-5 h-5 text-slate-500" />
@@ -104,7 +104,9 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-6 text-slate-500">
-            {activeCenterId ? 'No hay pacientes registrados en este centro.' : 'Selecciona un centro para ver pacientes.'}
+            {activeCenterId
+              ? "No hay pacientes registrados en este centro."
+              : "Selecciona un centro para ver pacientes."}
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -116,11 +118,11 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
                   className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
                 >
                   <div>
-                    <div className="font-bold text-slate-800">{p.fullName || 'Sin nombre'}</div>
-                    <div className="text-sm text-slate-500">{p.rut || 'Sin RUT'}</div>
+                    <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
+                    <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
                   </div>
                   <div className="text-sm text-slate-500">
-                    {p.commune ? `Comuna: ${p.commune}` : ''}
+                    {p.commune ? `Comuna: ${p.commune}` : ""}
                   </div>
                 </button>
               </li>

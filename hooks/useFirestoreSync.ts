@@ -32,7 +32,10 @@ export function useFirestoreSync(
       unsubCenters = onSnapshot(
         collection(db, "centers"),
         (snap) => {
-          const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+          const items = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          })) as MedicalCenter[];
           setCenters(items);
         },
         (error) => {
@@ -54,7 +57,8 @@ export function useFirestoreSync(
 
     const unsubPatients = onSnapshot(
       collection(db, "centers", activeCenterId, "patients"),
-      (snap) => setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
+      (snap) =>
+        setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
       () => setPatients([])
     );
 
@@ -65,17 +69,24 @@ export function useFirestoreSync(
       doctorsCollection,
       (snap) => {
         const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
-        const activeOnly = items.filter((doctor) => doctor.active !== false && (doctor as any).activo !== false);
+        const activeOnly = items.filter(
+          (doctor) => doctor.active !== false && (doctor as any).activo !== false
+        );
         setDoctors(activeOnly);
       },
       () => setDoctors([])
     );
 
     const apptCollection = collection(db, "centers", activeCenterId, "appointments");
-    const apptQuery = auth.currentUser ? apptCollection : query(apptCollection, where("status", "==", "available"));
+    const apptQuery = auth.currentUser
+      ? apptCollection
+      : query(apptCollection, where("status", "==", "available"));
     const unsubAppts = onSnapshot(
       apptQuery,
-      (snap) => setAppointments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]),
+      (snap) =>
+        setAppointments(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]
+        ),
       (error) => {
         console.error("appointments snapshot error", error);
         setAppointments([]);
@@ -84,13 +95,17 @@ export function useFirestoreSync(
 
     const unsubLogs = onSnapshot(
       collection(db, "centers", activeCenterId, "auditLogs"),
-      (snap) => setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
+      (snap) =>
+        setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
       () => setAuditLogs([])
     );
 
     const unsubPreadmissions = onSnapshot(
       collection(db, "centers", activeCenterId, "preadmissions"),
-      (snap) => setPreadmissions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]),
+      (snap) =>
+        setPreadmissions(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]
+        ),
       () => setPreadmissions([])
     );
 

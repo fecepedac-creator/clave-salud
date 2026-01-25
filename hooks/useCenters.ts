@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { db, auth } from "../firebase";
-import {
-  collection,
-  doc,
-  documentId,
-  getDoc,
-  onSnapshot,
-  query,
-  where,
-} from "firebase/firestore";
+import { collection, doc, documentId, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { MedicalCenter } from "../types";
 import { INITIAL_CENTERS } from "../constants";
 import { CenterModules } from "../CenterContext";
@@ -52,7 +44,7 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
       setCenters(INITIAL_CENTERS);
       return;
     }
-    let unsubscribers: Array<() => void> = [];
+    const unsubscribers: Array<() => void> = [];
     let cancelled = false;
 
     const run = async () => {
@@ -62,7 +54,10 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
             query(collection(db, "centers"), where("isActive", "==", true)),
             (snap) => {
               if (cancelled) return;
-              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+              const items = snap.docs.map((d) => ({
+                id: d.id,
+                ...(d.data() as any),
+              })) as MedicalCenter[];
               setCenters(items);
             },
             () => {
@@ -82,27 +77,32 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
 
         const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
         const roles = rolesRaw
-          .map((r: any) => String(r ?? "").trim().toLowerCase())
+          .map((r: any) =>
+            String(r ?? "")
+              .trim()
+              .toLowerCase()
+          )
           .filter(Boolean);
 
         const centersRaw: any[] = Array.isArray(profile?.centros)
           ? profile.centros
           : Array.isArray(profile?.centers)
-          ? profile.centers
-          : [];
+            ? profile.centers
+            : [];
         const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
 
         const isSuper =
-          isSuperAdminClaim ||
-          roles.includes("super_admin") ||
-          roles.includes("superadmin");
+          isSuperAdminClaim || roles.includes("super_admin") || roles.includes("superadmin");
 
         if (isSuper) {
           const unsub = onSnapshot(
             query(collection(db, "centers")),
             (snap) => {
               if (cancelled) return;
-              const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalCenter[];
+              const items = snap.docs.map((d) => ({
+                id: d.id,
+                ...(d.data() as any),
+              })) as MedicalCenter[];
               setCenters(items);
             },
             () => {
@@ -130,7 +130,7 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
             (snap) => {
               if (cancelled) return;
               snap.docs.forEach((d) => {
-                all[d.id] = ({ id: d.id, ...(d.data() as any) } as any);
+                all[d.id] = { id: d.id, ...(d.data() as any) } as any;
               });
               const merged = Object.values(all);
               setCenters(merged);

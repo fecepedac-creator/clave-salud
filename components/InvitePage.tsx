@@ -56,13 +56,15 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       const inv = (snap.data() || {}) as InviteData;
 
       const status = (inv.status || "pending").toLowerCase() as InviteData["status"];
-      if (status === "claimed" || status === "accepted") throw new Error("Esta invitación ya fue utilizada.");
+      if (status === "claimed" || status === "accepted")
+        throw new Error("Esta invitación ya fue utilizada.");
       if (status === "revoked") throw new Error("Esta invitación fue revocada.");
 
       const expiresAt: any = (inv as any).expiresAt;
       if (expiresAt && typeof expiresAt.toDate === "function") {
         const exp = expiresAt.toDate();
-        if (exp.getTime() < Date.now()) throw new Error("Esta invitación expiró. Solicita una nueva.");
+        if (exp.getTime() < Date.now())
+          throw new Error("Esta invitación expiró. Solicita una nueva.");
       }
 
       if (!inv.centerId) throw new Error("Invitación inválida: falta centerId.");
@@ -110,12 +112,16 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
 
     const user = auth.currentUser;
     if (!user) {
-      setError("Para aceptar la invitación debes iniciar sesión con Google usando el correo invitado.");
+      setError(
+        "Para aceptar la invitación debes iniciar sesión con Google usando el correo invitado."
+      );
       return;
     }
 
     if (lower(user.email || "") !== inviteEmailLower) {
-      setError(`Sesión incorrecta: estás con ${lower(user.email || "")} pero la invitación es para ${inviteEmailLower}.`);
+      setError(
+        `Sesión incorrecta: estás con ${lower(user.email || "")} pero la invitación es para ${inviteEmailLower}.`
+      );
       return;
     }
 
