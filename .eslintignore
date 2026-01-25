@@ -2,6 +2,6 @@ node_modules
 dist
 build
 .firebase
-functions/lib
+functions
 *.config.js
 *.config.cjs
