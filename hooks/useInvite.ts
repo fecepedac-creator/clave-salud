@@ -194,6 +194,7 @@ export function useInvite() {
     inviteToken,
     setInviteToken,
     inviteLoading,
+    setInviteLoading,
     inviteError,
     setInviteError,
     inviteEmail,
