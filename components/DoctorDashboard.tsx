@@ -60,9 +60,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     patients, doctorName, doctorId, role, agendaConfig, savedTemplates, currentUser,
     onUpdatePatient, onUpdateDoctor, onLogout, appointments, onUpdateAppointments, onLogActivity, isReadOnly = false, isSyncingAppointments = false 
 }) => {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'patients' | 'agenda' | 'reminders' | 'settings'>('patients');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
+  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
 
   // --- contexto del centro ---
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
