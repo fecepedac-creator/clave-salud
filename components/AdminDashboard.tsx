@@ -6,7 +6,7 @@ import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } f
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, getDoc, Timestamp, deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -267,16 +267,53 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         if (window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")) {
             if (db) {
                 try {
-                    await setDoc(
-                        doc(db, 'centers', centerId, 'staff', id),
-                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-                        { merge: true }
-                    );
-                    await setDoc(
-                        doc(db, 'centers', centerId, 'publicStaff', id),
-                        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-                        { merge: true }
-                    );
+                    // Try to deactivate the staff document (for accepted professionals)
+                    const staffRef = doc(db, 'centers', centerId, 'staff', id);
+                    const staffSnap = await getDoc(staffRef);
+                    
+                    if (staffSnap.exists()) {
+                        // Staff member exists - deactivate them
+                        await setDoc(
+                            staffRef,
+                            { active: false, activo: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                            { merge: true }
+                        );
+                        
+                        // Also update publicStaff for syncPublicStaff trigger
+                        await setDoc(
+                            doc(db, 'centers', centerId, 'publicStaff', id),
+                            { active: false, activo: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
+                            { merge: true }
+                        );
+                        showToast("Profesional desactivado exitosamente.", "success");
+                    } else {
+                        // Staff member doesn't exist yet - they may have a pending invite
+                        // Revoke any pending invites for this email
+                        const doctor = doctors.find(d => d.id === id);
+                        if (doctor?.email) {
+                            const emailLower = doctor.email.toLowerCase();
+                            const qInv = query(
+                                collection(db, 'invites'),
+                                where('emailLower', '==', emailLower),
+                                where('centerId', '==', centerId),
+                                where('status', '==', 'pending')
+                            );
+                            const invSnap = await getDocs(qInv);
+                            
+                            if (!invSnap.empty) {
+                                for (const invDoc of invSnap.docs) {
+                                    await setDoc(
+                                        doc(db, 'invites', invDoc.id),
+                                        { status: 'revoked', revokedAt: serverTimestamp() },
+                                        { merge: true }
+                                    );
+                                }
+                                showToast("Invitación revocada exitosamente.", "success");
+                            } else {
+                                showToast("Profesional eliminado de la lista local.", "info");
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.error("deactivateStaff", error);
                     showToast("No se pudo desactivar el profesional en Firestore.", "error");
@@ -284,7 +321,6 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                 }
             }
             onUpdateDoctors(doctors.filter(d => d.id !== id));
-            showToast("Profesional eliminado.", "info");
         }
     };
 
