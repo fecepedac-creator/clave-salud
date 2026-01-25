@@ -5,6 +5,7 @@ import { MEDICAL_HISTORY_OPTIONS, SURGICAL_HISTORY_OPTIONS, LIVING_WITH_OPTIONS,
 import { validateRUT, formatRUT, generateId, capitalizeWords, sanitizeText, formatChileanPhone, extractChileanPhoneDigits } from '../utils';
 import { CenterContext } from '../CenterContext';
 import { Check, Plus, Trash2, ArrowRight, ArrowLeft, Save, AlertCircle, User, Activity, Pill, Users, MapPin } from 'lucide-react';
+import LogoHeader from './LogoHeader';
 
 interface PatientFormProps {
   onSave: (patient: Patient) => void;
@@ -262,8 +263,13 @@ const PatientForm: React.FC<PatientFormProps> = ({
   return (
     <div className="max-w-4xl mx-auto min-h-screen sm:min-h-0 sm:my-8 pb-20">
       
+      {/* Logo Header */}
+      <div className="bg-white px-6 py-4 sm:rounded-t-3xl border-b border-slate-100">
+        <LogoHeader size="md" showText={true} />
+      </div>
+
       {/* Progress Bar */}
-      <div className="bg-white sticky top-0 z-20 px-6 py-4 shadow-sm sm:rounded-t-3xl border-b border-slate-100 mb-6">
+      <div className="bg-white sticky top-0 z-20 px-6 py-4 shadow-sm border-b border-slate-100 mb-6">
          <div className="flex justify-between items-center mb-2">
              <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Progreso del Registro</span>
              <span className="text-blue-600 font-bold">Paso {step} de 3</span>

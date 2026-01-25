@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import LogoHeader from "./LogoHeader";
 
 type InviteData = {
   emailLower?: string;
@@ -200,6 +201,9 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6">
+        <div className="mb-4">
+          <LogoHeader size="md" showText={true} />
+        </div>
         <h1 className="text-xl font-bold">Invitación a ClaveSalud</h1>
         <p className="text-sm text-slate-400 mt-1">
           Inicia sesión con el correo invitado y acepta la invitación.

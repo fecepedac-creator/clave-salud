@@ -4,6 +4,7 @@ import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
+import LogoHeader from "./components/LogoHeader";
 import {
   extractChileanPhoneDigits,
   formatChileanPhone,
@@ -515,6 +516,9 @@ const App: React.FC = () => {
     return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-4xl">
+          <div className="mb-6">
+            <LogoHeader size="md" showText={true} />
+          </div>
           <button
             onClick={() => setView("patient-menu" as ViewMode)}
             className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
@@ -815,14 +819,8 @@ const App: React.FC = () => {
           </button>
 
           <div className="flex flex-col gap-10 mt-4">
-            <div className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}>
-              {isDoc ? (
-                <Stethoscope className="w-10 h-10" />
-              ) : centerLogoUrl ? (
-                <img src={centerLogoUrl} alt={`Logo de ${activeCenter?.name ?? "centro médico"}`} className="w-12 h-12 object-contain" />
-              ) : (
-                <ShieldCheck className="w-10 h-10" />
-              )}
+            <div className="mb-2">
+              <LogoHeader size="md" showText={true} className="mx-auto w-fit" />
             </div>
             <h2 className="text-3xl font-bold text-center text-slate-800">{isDoc ? "Acceso Profesional" : "Acceso Administrativo"}</h2>
 
@@ -860,6 +858,9 @@ const App: React.FC = () => {
     const content = (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+          <div className="mb-6">
+            <LogoHeader size="md" showText={true} className="mb-4" />
+          </div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
               <Lock className="w-6 h-6 text-slate-700" />

@@ -19,6 +19,7 @@ import PrintPreviewModal from './PrintPreviewModal';
 import AutocompleteInput from './AutocompleteInput';
 import Odontogram from './Odontogram';
 import BioMarkers from './BioMarkers';
+import LogoHeader from './LogoHeader';
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -543,6 +544,7 @@ useEffect(() => {
               <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full">
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
+              <LogoHeader size="sm" showText={true} />
               <div>
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                     {selectedPatient.fullName}
@@ -788,13 +790,7 @@ useEffect(() => {
           {/* Header */}
           <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-8 py-4 flex justify-between items-center sticky top-0 z-20 flex-shrink-0">
               <div className="flex items-center gap-3">
-                  <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
-                      <ShieldCheck className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <div>
-                      <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-                      <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
-                  </div>
+                  <LogoHeader size="md" showText={true} />
               </div>
               <div className="flex items-center gap-2">
                   <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">
