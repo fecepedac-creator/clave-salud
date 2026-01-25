@@ -110,6 +110,20 @@ export const capitalizeWords = (str: string | undefined): string => {
   return str.toLowerCase().replace(/(?:^|\s)\S/g, function(a) { return a.toUpperCase(); });
 };
 
+/**
+ * Formatea un nombre de persona con iniciales mayúsculas
+ * Ejemplo: "JUAN PABLO PEREZ" -> "Juan Pablo Perez"
+ * Ejemplo: "maría josé" -> "María José"
+ */
+export const formatPersonName = (value?: string | null): string => {
+  if (!value) return '';
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
+};
+
 export const normalizePhone = (phone: string): string => {
   if (!phone) return '';
   // Remove spaces, dashes, parentheses
