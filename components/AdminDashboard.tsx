@@ -9,7 +9,14 @@ import {
   ProfessionalRole,
   Preadmission,
 } from "../types";
-import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } from "../utils";
+import {
+  generateId,
+  formatRUT,
+  getStandardSlots,
+  downloadJSON,
+  fileToBase64,
+  formatPersonName,
+} from "../utils";
 import {
   Users,
   Calendar,
@@ -727,15 +734,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Header */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-4">
-          <LogoHeader size="sm" showText={false} />
-          <div className="h-6 w-px bg-slate-600" />
-          <div className="bg-indigo-500 p-2 rounded-lg">
-            <Database className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white">Panel de Administración</h1>
-            <p className="text-xs text-indigo-400 font-mono tracking-wider">MODO SUPERUSUARIO</p>
-          </div>
+          <LogoHeader size="md" showText={true} />
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -831,7 +830,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <div>
                       <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                        {doc.fullName}
+                        {formatPersonName(doc.fullName)}
                         {doc.isAdmin && (
                           <span className="bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                             <ShieldCheck className="w-3 h-3" /> Admin

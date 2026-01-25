@@ -13,7 +13,14 @@ import {
   ExamProfile,
   ExamDefinition,
 } from "../types";
-import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone } from "../utils";
+import {
+  calculateAge,
+  generateId,
+  sanitizeText,
+  base64ToBlob,
+  normalizePhone,
+  formatPersonName,
+} from "../utils";
 import {
   COMMON_DIAGNOSES,
   DEFAULT_TEMPLATES,
@@ -666,17 +673,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-4">
-            <LogoHeader size="sm" showText={false} />
-            <div className="h-6 w-px bg-slate-200" />
             <button
               onClick={() => setSelectedPatient(null)}
               className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full"
             >
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
+            <LogoHeader size="sm" showText={true} />
             <div>
               <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                {selectedPatient.fullName}
+                {formatPersonName(selectedPatient.fullName)}
                 <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">
                   {selectedPatient.rut}
                 </span>
@@ -1230,7 +1236,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             >
                               <td className="p-5">
                                 <div className="font-bold text-slate-800 text-base">
-                                  {p.fullName}
+                                  {formatPersonName(p.fullName)}
                                 </div>
                                 <div className="text-xs text-slate-400 font-medium md:hidden">
                                   {p.rut}
@@ -1782,7 +1788,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
                   <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
                   <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
-                    <p className="font-bold text-slate-800">{slotModal.appointment.patientName}</p>
+                    <p className="font-bold text-slate-800">
+                      {formatPersonName(slotModal.appointment.patientName)}
+                    </p>
                     <p className="text-sm text-slate-500">
                       {slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}
                     </p>
