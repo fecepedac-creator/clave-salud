@@ -15,10 +15,13 @@ import {
   Megaphone,
   CheckCircle,
   XCircle,
+  Copy,
 } from "lucide-react";
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
+import LogoHeader from './LogoHeader';
+import { formatPersonName } from '../utils';
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -98,6 +101,82 @@ type StoredNotification = {
   title: string;
   body: string;
   sendEmail: boolean;
+};
+
+const MESSAGE_TEMPLATES: Record<NotificationType, { title: string; body: string }> = {
+  billing: {
+    title: "Aviso de pago pendiente — Regularice su situación",
+    body: `Estimado(a) administrador(a),
+
+Le escribimos desde ClaveSalud para informarle que la cuota correspondiente a este mes no se encuentra cancelada.
+
+Le solicitamos amablemente regularizar su situación financiera a la brevedad para evitar interrupciones en el servicio.
+
+Métodos de pago disponibles:
+• Transferencia bancaria
+• Tarjeta de crédito/débito
+
+Si ya realizó el pago, por favor ignore este mensaje o contáctenos para confirmar la recepción.
+
+Para cualquier consulta o plan de pago, estamos disponibles en soporte@clavesalud.cl
+
+Agradecemos su preferencia.
+
+Atentamente,
+Equipo ClaveSalud`,
+  },
+  incident: {
+    title: "Aviso de mantenimiento programado",
+    body: `Estimado(a) administrador(a),
+
+Le informamos que realizaremos un mantenimiento programado en nuestra plataforma.
+
+Fecha: [COMPLETAR]
+Horario: [COMPLETAR]
+Duración estimada: [COMPLETAR]
+
+Durante este período, el servicio podría presentar intermitencias o no estar disponible temporalmente.
+
+Recomendamos guardar cualquier trabajo en progreso antes del horario indicado.
+
+Disculpe las molestias que esto pueda ocasionar.
+
+Atentamente,
+Equipo ClaveSalud`,
+  },
+  security: {
+    title: "Alerta de seguridad importante",
+    body: `Estimado(a) administrador(a),
+
+Por motivos de seguridad, le informamos sobre una actualización importante en nuestra plataforma.
+
+[DESCRIBIR LA SITUACIÓN DE SEGURIDAD]
+
+Acciones recomendadas:
+• Cambiar su contraseña si no lo ha hecho recientemente
+• Verificar los accesos de su equipo
+• Reportar cualquier actividad sospechosa
+
+Si tiene consultas, contáctenos inmediatamente a seguridad@clavesalud.cl
+
+Atentamente,
+Equipo ClaveSalud`,
+  },
+  info: {
+    title: "Novedades de ClaveSalud",
+    body: `Estimado(a) administrador(a),
+
+Nos complace informarle sobre las últimas novedades en ClaveSalud.
+
+[DESCRIBIR NOVEDADES O ACTUALIZACIONES]
+
+Esperamos que estas mejoras sean de su agrado y contribuyan al mejor funcionamiento de su centro.
+
+Para más información, visite nuestra documentación o contáctenos.
+
+Atentamente,
+Equipo ClaveSalud`,
+  },
 };
 
 function loadNotifications(): StoredNotification[] {
@@ -236,6 +315,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [commTitle, setCommTitle] = useState("");
   const [commBody, setCommBody] = useState("");
   const [commSendEmail, setCommSendEmail] = useState(true);
+  const [historyPage, setHistoryPage] = useState(0);
+  const HISTORY_PER_PAGE = 10;
 
   const [notifRefreshTick, setNotifRefreshTick] = useState(0);
   const commHistory = useMemo(() => {
@@ -244,6 +325,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       .filter((n) => n.centerId === commCenterId)
       .sort((a, b) => (a.createdAtISO < b.createdAtISO ? 1 : -1));
   }, [commCenterId, notifRefreshTick]);
+
+  React.useEffect(() => {
+    const template = MESSAGE_TEMPLATES[commType];
+    if (template) {
+      setCommTitle(template.title);
+      setCommBody(template.body);
+    }
+  }, [commType]);
+
+  React.useEffect(() => {
+    setHistoryPage(0);
+  }, [commCenterId]);
 
   const resetLogoState = () => {
     if (logoPreview) {
@@ -687,7 +780,7 @@ const handleInviteCenterAdmin = async () => {
 
       <main className="p-8 max-w-6xl mx-auto">
         <div className="flex justify-end mb-6">
-          <img src={CORPORATE_LOGO} alt="ClaveSalud" className="h-10 w-auto" />
+          <LogoHeader size="md" showText={true} className="[&>div:first-child]:shadow-primary-500/30" />
         </div>
 
         {/* GENERAL */}
@@ -1448,37 +1541,39 @@ const handleInviteCenterAdmin = async () => {
                     />
                   </label>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border">
-                    <input
-                      type="checkbox"
-                      checked={commSendEmail}
-                      onChange={(e) => setCommSendEmail(e.target.checked)}
-                      className="w-5 h-5 accent-indigo-600"
-                    />
-                    <div>
-                      <span className="block font-bold text-slate-700">Generar plantilla para email</span>
-                      <span className="text-xs text-slate-400">Envío real por correo: idealmente Cloud Function.</span>
-                    </div>
-                  </label>
-
                   <div className="flex gap-3 flex-wrap">
                     <button
                       type="button"
                       className="px-5 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow inline-flex items-center gap-2"
                       onClick={handleSendNotification}
                     >
-                      <Megaphone className="w-5 h-5" /> Enviar aviso
+                      <Megaphone className="w-5 h-5" /> Registrar aviso
                     </button>
 
                     <button
                       type="button"
-                      className="px-5 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 shadow inline-flex items-center gap-2"
+                      className="px-5 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 shadow inline-flex items-center gap-2"
                       onClick={() => {
-                        navigator.clipboard?.writeText(emailTemplate);
-                        showToast("Plantilla de correo copiada", "success");
+                        const gmailUrl = buildGmailComposeUrl(
+                          selectedCenter?.adminEmail || "",
+                          commTitle,
+                          emailTemplate
+                        );
+                        window.open(gmailUrl, "_blank");
                       }}
                     >
-                      <Mail className="w-5 h-5" /> Copiar email
+                      <Mail className="w-5 h-5" /> Enviar con Gmail
+                    </button>
+
+                    <button
+                      type="button"
+                      className="px-5 py-3 rounded-xl bg-slate-600 text-white font-bold hover:bg-slate-700 shadow inline-flex items-center gap-2"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(emailTemplate);
+                        showToast("Texto copiado al portapapeles", "success");
+                      }}
+                    >
+                      <Copy className="w-5 h-5" /> Copiar texto
                     </button>
                   </div>
                 </div>
@@ -1496,26 +1591,52 @@ const handleInviteCenterAdmin = async () => {
                     {commHistory.length === 0 ? (
                       <div className="text-sm text-slate-500">No hay avisos registrados para este centro.</div>
                     ) : (
-                      <div className="space-y-2">
-                        {commHistory.slice(0, 10).map((n) => (
-                          <div key={n.id} className="bg-white border rounded-xl p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="font-bold text-slate-800 text-sm">{n.title}</div>
-                              <span className="text-[11px] text-slate-400">
-                                {new Date(n.createdAtISO).toLocaleString()}
-                              </span>
+                      <>
+                        <div className="space-y-2">
+                          {commHistory.slice(historyPage * HISTORY_PER_PAGE, (historyPage + 1) * HISTORY_PER_PAGE).map((n) => (
+                            <div key={n.id} className="bg-white border rounded-xl p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-bold text-slate-800 text-sm">{n.title}</div>
+                                <span className="text-[11px] text-slate-400">
+                                  {new Date(n.createdAtISO).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500 flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">{n.type}</span>
+                                <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">{n.severity}</span>
+                                <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">
+                                  {n.sendEmail ? "con email" : "solo interno"}
+                                </span>
+                              </div>
+                              <div className="mt-2 text-sm text-slate-700">{n.body}</div>
                             </div>
-                            <div className="mt-1 text-xs text-slate-500 flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">{n.type}</span>
-                              <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">{n.severity}</span>
-                              <span className="px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">
-                                {n.sendEmail ? "con email" : "solo interno"}
-                              </span>
-                            </div>
-                            <div className="mt-2 text-sm text-slate-700">{n.body}</div>
+                          ))}
+                        </div>
+                        
+                        {commHistory.length > HISTORY_PER_PAGE && (
+                          <div className="mt-3 flex items-center justify-between">
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 text-sm font-bold text-slate-600 hover:text-slate-800 disabled:opacity-30"
+                              disabled={historyPage === 0}
+                              onClick={() => setHistoryPage(p => p - 1)}
+                            >
+                              ← Anterior
+                            </button>
+                            <span className="text-xs text-slate-400">
+                              Página {historyPage + 1} de {Math.ceil(commHistory.length / HISTORY_PER_PAGE)}
+                            </span>
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 text-sm font-bold text-slate-600 hover:text-slate-800 disabled:opacity-30"
+                              disabled={(historyPage + 1) * HISTORY_PER_PAGE >= commHistory.length}
+                              onClick={() => setHistoryPage(p => p + 1)}
+                            >
+                              Siguiente →
+                            </button>
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      </>
                     )}
                     <div className="mt-3">
                       <button

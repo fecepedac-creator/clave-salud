@@ -4,6 +4,7 @@ import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
+import LogoHeader from "./components/LogoHeader";
 import {
   extractChileanPhoneDigits,
   formatChileanPhone,
@@ -1144,7 +1145,10 @@ const App: React.FC = () => {
       >
         <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.04),_transparent_55%)]" />
-        {authUser && !isSuperAdminClaim && (
+        {authUser && 
+         !isSuperAdminClaim && 
+         authUser.email && 
+         ['fecepedac@gmail.com', 'dr.felipecepeda@gmail.com'].includes(authUser.email.toLowerCase()) && (
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
               Convertirme en SuperAdmin
