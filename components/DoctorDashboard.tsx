@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { Patient, Consultation, Attachment, Appointment, Prescription, AgendaConfig, ClinicalTemplate, Doctor, ProfessionalRole, AuditLogEntry, ExamProfile, ExamDefinition } from '../types';
-import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone } from '../utils';
+import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone, formatPersonName } from '../utils';
 import { COMMON_DIAGNOSES, DEFAULT_TEMPLATES, EXAM_PROFILES, TRACKED_EXAMS_OPTIONS } from '../constants';
 import { Search, Plus, User, Calendar, ChevronRight, LogOut, Save, ShieldCheck, X, AlertCircle, ExternalLink, FileText, Bell, UsersRound, CalendarCheck, AlarmClock, MessageCircle, Clock, ArrowUpDown, Filter, Settings, Trash2, Edit, Activity, RefreshCw, Layers, CheckSquare, Square, KeyRound, Shield, TestTube } from 'lucide-react';
 import { useToast } from './Toast';
@@ -114,14 +114,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
     : '';
   const centerName = activeCenter?.name || 'Centro Médico';
-  const formatPersonName = (value?: string | null) => {
-    if (!value) return '';
-    return value
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
-  };
   const normalizeRut = (value?: string | null) => String(value ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
   const handleOpenPatientFromAppointment = (appointment: Appointment) => {
     const foundById = appointment.patientId
@@ -547,7 +539,7 @@ useEffect(() => {
               <LogoHeader size="sm" showText={true} />
               <div>
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    {selectedPatient.fullName}
+                    {formatPersonName(selectedPatient.fullName)}
                     <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">{selectedPatient.rut}</span>
                 </h1>
                 <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
@@ -903,7 +895,7 @@ useEffect(() => {
                                                   return (
                                                       <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedPatient(p)}>
                                                           <td className="p-5">
-                                                              <div className="font-bold text-slate-800 text-base">{p.fullName}</div>
+                                                              <div className="font-bold text-slate-800 text-base">{formatPersonName(p.fullName)}</div>
                                                               <div className="text-xs text-slate-400 font-medium md:hidden">{p.rut}</div>
                                                           </td>
                                                           <td className="p-5 hidden md:table-cell">
@@ -1314,7 +1306,7 @@ useEffect(() => {
                               <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
                                   <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
                                   <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
-                                      <p className="font-bold text-slate-800">{slotModal.appointment.patientName}</p>
+                                      <p className="font-bold text-slate-800">{formatPersonName(slotModal.appointment.patientName)}</p>
                                       <p className="text-sm text-slate-500">{slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}</p>
                                       <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
                                           {slotModal.appointment.date} - {slotModal.appointment.time}

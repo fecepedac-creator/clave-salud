@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { CenterContext } from '../CenterContext';
 import { Doctor, Appointment, Patient, AgendaConfig, AuditLogEntry, ProfessionalRole, Preadmission } from '../types';
-import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } from '../utils';
+import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64, formatPersonName } from '../utils';
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
@@ -674,7 +674,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                                                {doc.fullName}
+                                                {formatPersonName(doc.fullName)}
                                                 {doc.isAdmin && <span className="bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Admin</span>}
                                             </h3>
                                             <div className="flex items-center gap-2 mt-1">
