@@ -26,7 +26,7 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint --if-present
-        continue-on-error: true  # No bloquear por warnings iniciales
+        continue-on-error: true  # Don't block for initial warnings
 
       - name: Check TypeScript
         run: npx tsc --noEmit
@@ -56,7 +56,7 @@ jobs:
       - name: Run ESLint (functions)
         working-directory: ./functions
         run: npm run lint
-        continue-on-error: true  # No bloquear por warnings o errores de config iniciales
+        continue-on-error: true  # Don't block for initial warnings or config errors
 
       - name: Build functions
         working-directory: ./functions

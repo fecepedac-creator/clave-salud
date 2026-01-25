@@ -24,4 +24,4 @@ jobs:
 
       - name: Check formatting with Prettier
         run: npm run format:check --if-present
-        continue-on-error: true  # No bloquear inicialmente
+        continue-on-error: true  # Don't block initially
