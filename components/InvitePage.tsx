@@ -207,7 +207,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="mb-4">
+        <div className="mb-6">
           <LogoHeader size="md" showText={true} />
         </div>
         <h1 className="text-xl font-bold">Invitación a ClaveSalud</h1>

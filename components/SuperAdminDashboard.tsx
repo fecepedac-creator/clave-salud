@@ -632,7 +632,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     <div className="min-h-screen bg-slate-50 font-sans pl-64">
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full fixed left-0 top-0 border-r border-slate-800 z-50">
         <div className="p-6 border-b border-slate-800">
-          <LogoHeader size="sm" showText={true} />
+          <LogoHeader size="sm" showText={true} className="mb-3" />
+          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-emerald-500">
+            <Shield className="w-3 h-3" /> Super Admin
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
