@@ -138,44 +138,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 // Persistencia (Firestore): en el modelo definitivo NO se escribe a colección raíz 'doctors'.
 // El alta de profesionales se hace mediante INVITACIÓN por email. Al aceptar el invite,
 // la app (o una Cloud Function) crea centers/{centerId}/staff/{uid}.
+// IMPORTANTE: NO se crean documentos staff directamente aquí para evitar inconsistencias
+// con el UID del usuario autenticado. Los documentos staff se crean SOLO al aceptar invite.
 const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
 
-    const staffId = doctor.id || generateId();
     const emailLower = (doctor.email || '').toLowerCase();
-
-    await setDoc(
-        doc(db, 'centers', centerId, 'staff', staffId),
-        {
-            ...doctor,
-            id: staffId,
-            centerId,
-            emailLower,
-            active: doctor.active ?? true,
-            updatedAt: serverTimestamp(),
-            createdAt: (doctor as any).createdAt ?? serverTimestamp()
-        },
-        { merge: true }
-    );
-
-    await setDoc(
-        doc(db, 'centers', centerId, 'publicStaff', staffId),
-        {
-            id: staffId,
-            centerId,
-            fullName: doctor.fullName ?? '',
-            role: doctor.role ?? '',
-            specialty: doctor.specialty ?? '',
-            photoUrl: doctor.photoUrl ?? '',
-            agendaConfig: doctor.agendaConfig ?? null,
-            active: doctor.active ?? true,
-            updatedAt: serverTimestamp(),
-            createdAt: (doctor as any).createdAt ?? serverTimestamp()
-        },
-        { merge: true }
-    );
-
-    if (!emailLower) return;
+    if (!emailLower) {
+        throw new Error('El correo electrónico es requerido para crear la invitación');
+    }
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
     const qInv = query(
@@ -186,12 +157,16 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
     );
 
     const snap = await getDocs(qInv);
-    if (!snap.empty) return;
+    if (!snap.empty) {
+        throw new Error('Ya existe una invitación pendiente para este correo en este centro');
+    }
 
     // Rol de acceso al sistema (no confundir con ProfessionalRole clínico)
     const accessRole = doctor.isAdmin ? 'center_admin' : 'doctor';
 
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+    
+    // Guardar datos del profesional en la invitación para usarlos al aceptar
     await setDoc(doc(db, 'invites', generateId()), {
         emailLower,
         email: doctor.email,
@@ -201,7 +176,17 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         status: 'pending',
         expiresAt: Timestamp.fromDate(expires),
         createdAt: serverTimestamp(),
-        createdByUid: 'centerAdmin' // (opcional) ideal: uid real en el futuro
+        createdByUid: 'centerAdmin', // (opcional) ideal: uid real en el futuro
+        // Datos del profesional para usar al aceptar la invitación
+        profileData: {
+            fullName: doctor.fullName,
+            rut: doctor.rut,
+            specialty: doctor.specialty,
+            photoUrl: doctor.photoUrl,
+            agendaConfig: doctor.agendaConfig,
+            role: doctor.role,
+            isAdmin: doctor.isAdmin
+        }
     });
 };
     const handleSaveDoctor = async () => {
@@ -224,31 +209,50 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
         }
 
         if (currentDoctor.id) {
-            // Edit
+            // Edit existing staff member (already has a UID-based staff document)
             const updated = doctors.map(d => d.id === currentDoctor.id ? currentDoctor as Doctor : d);
             onUpdateDoctors(updated);
             try {
-                await persistDoctorToFirestore(currentDoctor as Doctor);
+                // Update the staff document directly (using their UID)
+                await setDoc(
+                    doc(db, 'centers', centerId, 'staff', currentDoctor.id),
+                    {
+                        fullName: currentDoctor.fullName,
+                        rut: currentDoctor.rut,
+                        email: currentDoctor.email,
+                        emailLower: (currentDoctor.email || '').toLowerCase(),
+                        specialty: currentDoctor.specialty,
+                        photoUrl: currentDoctor.photoUrl,
+                        agendaConfig: currentDoctor.agendaConfig,
+                        role: currentDoctor.role,
+                        isAdmin: currentDoctor.isAdmin,
+                        active: currentDoctor.active ?? true,
+                        updatedAt: serverTimestamp()
+                    },
+                    { merge: true }
+                );
                 showToast("Profesional actualizado.", "success");
-            } catch (e) {
-                console.error("persistDoctorToFirestore", e);
-                showToast("No se pudo guardar el profesional en Firestore.", "error");
+            } catch (e: any) {
+                console.error("updateStaffDocument", e);
+                showToast(e?.message || "No se pudo actualizar el profesional.", "error");
             }
         } else {
-            // Create
+            // Create new professional - only create invitation
             const newDoc: Doctor = {
                 ...currentDoctor as Doctor,
-                id: generateId(),
-                centerId: centerId, // Ensure doctor is created in this center
-                agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' } // Default config
+                id: generateId(), // temporary ID for local state
+                centerId: centerId,
+                agendaConfig: { slotDuration: 20, startTime: '08:00', endTime: '21:00' }
             };
-            onUpdateDoctors([...doctors, newDoc]);
+            
             try {
                 await persistDoctorToFirestore(newDoc);
-                showToast("Profesional creado exitosamente.", "success");
-            } catch (e) {
+                showToast(`Invitación enviada a ${newDoc.email}. El profesional debe aceptar la invitación para completar su registro.`, "success");
+                // Note: Don't add to local doctors list - they'll appear after accepting invite
+            } catch (e: any) {
                 console.error("persistDoctorToFirestore", e);
-                showToast("No se pudo guardar el profesional en Firestore.", "error");
+                showToast(e?.message || "No se pudo crear la invitación.", "error");
+                return;
             }
         }
         setIsEditingDoctor(false);

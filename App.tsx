@@ -896,6 +896,7 @@ const App: React.FC = () => {
           const cId = String((inv as any).centerId || "").trim();
           const rId = String((inv as any).role || "").trim() || "staff";
           const eLower = String((inv as any).emailLower || emailUser).trim().toLowerCase();
+          const profileData = (inv as any).profileData || {};
 
           if (cId) {
             await setDoc(
@@ -908,9 +909,18 @@ const App: React.FC = () => {
                 active: true,
                 activo: true,
                 createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
                 inviteToken: inv.id,
                 invitedBy: (inv as any).invitedBy ?? null,
                 invitedAt: (inv as any).createdAt ?? null,
+                // Include profile data from invite
+                fullName: profileData.fullName ?? "",
+                rut: profileData.rut ?? "",
+                specialty: profileData.specialty ?? "",
+                photoUrl: profileData.photoUrl ?? "",
+                agendaConfig: profileData.agendaConfig ?? null,
+                professionalRole: profileData.role ?? (inv as any).professionalRole ?? "",
+                isAdmin: profileData.isAdmin ?? false,
               },
               { merge: true }
             );
@@ -1002,6 +1012,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     if (!centerId) throw new Error("Invitación inválida: falta centerId.");
 
     const role = String(inv.role || "center_admin").trim() || "center_admin";
+    const profileData = inv.profileData || {};
 
     // users/{uid} union roles/centers
     const uRef = doc(db, "users", uid);
@@ -1036,7 +1047,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
       { merge: true }
     );
 
-    // staff membership (active + compat)
+    // staff membership with profile data from invite
     await setDoc(
       doc(db, "centers", centerId, "staff", uid),
       {
@@ -1047,9 +1058,18 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
         active: true,
         activo: true,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         inviteToken: token,
         invitedBy: inv.invitedBy ?? null,
         invitedAt: inv.createdAt ?? null,
+        // Include profile data from invite
+        fullName: profileData.fullName ?? "",
+        rut: profileData.rut ?? "",
+        specialty: profileData.specialty ?? "",
+        photoUrl: profileData.photoUrl ?? "",
+        agendaConfig: profileData.agendaConfig ?? null,
+        professionalRole: profileData.role ?? inv.professionalRole ?? "",
+        isAdmin: profileData.isAdmin ?? false,
       },
       { merge: true }
     );
