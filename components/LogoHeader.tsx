@@ -38,9 +38,7 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
         <div
           className={`${sizes[size]} bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200`}
         >
-          <span className={`text-white font-bold ${size === "sm" ? "text-xs" : "text-sm"}`}>
-            CS
-          </span>
+          <span className={`text-white font-bold ${textSizes[size]}`}>CS</span>
         </div>
       )}
 
