@@ -138,6 +138,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [bookingRut, setBookingRut] = useState("");
   const [bookingName, setBookingName] = useState("");
   const [bookingPhone, setBookingPhone] = useState("");
+  const [centerLogoError, setCenterLogoError] = useState(false);
 
   // --- STATE FOR AUDIT LOGS (LAZY LOADED) ---
   const [fetchedLogs, setFetchedLogs] = useState<AuditLogEntry[]>([]);
@@ -740,21 +741,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeCenter?.logoUrl && (
             <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
               <span className="text-slate-400 text-xs font-medium">Centro:</span>
-              <img
-                src={activeCenter.logoUrl}
-                alt={`Logo ${activeCenter.name}`}
-                className="h-8 w-auto max-w-[120px] object-contain rounded"
-                onError={(e) => {
-                  // Fallback to center name if logo fails to load
-                  const target = e.currentTarget;
-                  const fallbackSpan = target.nextElementSibling as HTMLElement | null;
-                  if (fallbackSpan && fallbackSpan.tagName === "SPAN") {
-                    target.style.display = "none";
-                    fallbackSpan.style.display = "block";
-                  }
-                }}
-              />
-              <span className="text-slate-300 text-sm font-bold hidden">{activeCenter.name}</span>
+              {!centerLogoError ? (
+                <img
+                  src={activeCenter.logoUrl}
+                  alt={`Logo ${activeCenter.name}`}
+                  className="h-8 w-auto max-w-[120px] object-contain rounded"
+                  onError={() => setCenterLogoError(true)}
+                />
+              ) : (
+                <span className="text-slate-300 text-sm font-bold">{activeCenter.name}</span>
+              )}
             </div>
           )}
           <button

@@ -137,6 +137,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+  const [centerLogoError, setCenterLogoError] = useState(false);
 
   // --- contexto del centro ---
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
@@ -1064,21 +1065,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           {activeCenter?.logoUrl && (
             <div className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
               <span className="text-slate-500 text-xs font-medium">Centro:</span>
-              <img
-                src={activeCenter.logoUrl}
-                alt={`Logo ${activeCenter.name}`}
-                className="h-8 w-auto max-w-[120px] object-contain rounded"
-                onError={(e) => {
-                  // Fallback to center name if logo fails to load
-                  const target = e.currentTarget;
-                  const fallbackSpan = target.nextElementSibling as HTMLElement | null;
-                  if (fallbackSpan && fallbackSpan.tagName === "SPAN") {
-                    target.style.display = "none";
-                    fallbackSpan.style.display = "block";
-                  }
-                }}
-              />
-              <span className="text-slate-700 text-sm font-bold hidden">{activeCenter.name}</span>
+              {!centerLogoError ? (
+                <img
+                  src={activeCenter.logoUrl}
+                  alt={`Logo ${activeCenter.name}`}
+                  className="h-8 w-auto max-w-[120px] object-contain rounded"
+                  onError={() => setCenterLogoError(true)}
+                />
+              ) : (
+                <span className="text-slate-700 text-sm font-bold">{activeCenter.name}</span>
+              )}
             </div>
           )}
           <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 interface LogoHeaderProps {
   size?: "sm" | "md" | "lg";
@@ -11,6 +11,8 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
   showText = true,
   className = "",
 }) => {
+  const [logoError, setLogoError] = useState(false);
+
   const sizes = {
     sm: "h-6 w-6",
     md: "h-8 w-8",
@@ -25,20 +27,22 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <img
-        src="/assets/logo.png"
-        alt="ClaveSalud Logo"
-        className={`${sizes[size]} object-contain`}
-        onError={(e) => {
-          // Fallback to CS text if image fails to load
-          const target = e.currentTarget;
-          target.style.display = "none";
-          const fallback = document.createElement("div");
-          fallback.className = `${sizes[size]} bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200`;
-          fallback.innerHTML = `<span class="text-white font-bold ${size === "sm" ? "text-xs" : "text-sm"}">CS</span>`;
-          target.parentNode?.insertBefore(fallback, target);
-        }}
-      />
+      {!logoError ? (
+        <img
+          src="/assets/logo.png"
+          alt="ClaveSalud Logo"
+          className={`${sizes[size]} object-contain`}
+          onError={() => setLogoError(true)}
+        />
+      ) : (
+        <div
+          className={`${sizes[size]} bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200`}
+        >
+          <span className={`text-white font-bold ${size === "sm" ? "text-xs" : "text-sm"}`}>
+            CS
+          </span>
+        </div>
+      )}
 
       {showText && (
         <div className="flex flex-col">
