@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Appointment, AgendaConfig } from '../types';
-import { getStandardSlots, getDaysInMonth } from '../utils';
+import { getStandardSlots, getDaysInMonth, formatPersonName } from '../utils';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 interface AgendaViewProps {
@@ -153,7 +153,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                                 <div className="flex items-center gap-4">
                                                     <div className="bg-white px-3 py-1 rounded-lg font-bold text-blue-600 shadow-sm border border-blue-100">{apt.time}</div>
                                                     <div>
-                                                        <h4 className="font-bold text-lg text-slate-800">{apt.patientName}</h4>
+                                                        <h4 className="font-bold text-lg text-slate-800">{formatPersonName(apt.patientName)}</h4>
                                                         <p className="text-sm text-slate-500">{apt.patientRut} • {apt.patientPhone}</p>
                                                     </div>
                                                 </div>

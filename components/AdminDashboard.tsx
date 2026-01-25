@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { CenterContext } from '../CenterContext';
 import { Doctor, Appointment, Patient, AgendaConfig, AuditLogEntry, ProfessionalRole, Preadmission } from '../types';
-import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64 } from '../utils';
+import { generateId, formatRUT, getStandardSlots, downloadJSON, fileToBase64, formatPersonName } from '../utils';
 import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit, Lock, Mail, GraduationCap, X, Check, Download, ChevronLeft, ChevronRight, Database, QrCode, Share2, Copy, Settings, Upload, MessageCircle, AlertTriangle, ShieldCheck, FileClock, Shield, Briefcase, Camera, User } from 'lucide-react';
 import { useToast } from './Toast';
 import { db } from '../firebase';
 import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, getDoc, Timestamp, deleteDoc } from 'firebase/firestore';
+import LogoHeader from './LogoHeader';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -597,13 +598,7 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
 
             {/* Header */}
             <nav className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex justify-between items-center sticky top-0 z-30">
-                <div className="flex items-center gap-4">
-                    <div className="bg-indigo-500 p-2 rounded-lg"><Database className="w-6 h-6 text-white"/></div>
-                    <div>
-                        <h1 className="text-xl font-bold text-white">Panel de Administración</h1>
-                        <p className="text-xs text-indigo-400 font-mono tracking-wider">MODO SUPERUSUARIO</p>
-                    </div>
-                </div>
+                <LogoHeader size="md" showText={true} className="[&>div:first-child]:shadow-primary-500/30" />
                 <div className="flex items-center gap-4">
                      <button onClick={() => setShowShareModal(true)} className="flex items-center gap-2 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700">
                         <Share2 className="w-4 h-4"/> Compartir App
@@ -670,14 +665,14 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
                                     <div className="flex items-center gap-4">
                                         <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden border-2 ${doc.isAdmin ? 'border-indigo-500' : 'border-slate-600'} bg-slate-700`}>
                                             {doc.photoUrl ? (
-                                                <img src={doc.photoUrl} className="w-full h-full object-cover" alt={doc.fullName} />
+                                                <img src={doc.photoUrl} className="w-full h-full object-cover" alt={formatPersonName(doc.fullName)} />
                                             ) : (
-                                                <span className="text-slate-300">{doc.fullName.charAt(0)}</span>
+                                                <span className="text-slate-300">{formatPersonName(doc.fullName).charAt(0)}</span>
                                             )}
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                                                {doc.fullName}
+                                                {formatPersonName(doc.fullName)}
                                                 {doc.isAdmin && <span className="bg-indigo-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Admin</span>}
                                             </h3>
                                             <div className="flex items-center gap-2 mt-1">

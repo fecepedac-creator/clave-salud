@@ -8,6 +8,7 @@ import {
   extractChileanPhoneDigits,
   formatChileanPhone,
   formatRUT,
+  formatPersonName,
   generateId,
   getDaysInMonth,
   getStandardSlots,
@@ -409,7 +410,7 @@ const App: React.FC = () => {
                       <div>
                         <p className="text-sm text-slate-500">Profesional</p>
                         <p className="text-base font-bold text-slate-700">
-                          {doctor?.fullName || "Profesional"}
+                          {formatPersonName(doctor?.fullName) || "Profesional"}
                         </p>
                       </div>
                       <div className="flex items-center justify-between text-sm text-slate-600">
@@ -564,10 +565,10 @@ const App: React.FC = () => {
                       className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left flex items-center gap-6 bg-white shadow-sm hover:shadow-md"
                     >
                       <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shrink-0">
-                        <span className="font-bold text-indigo-700 text-xl">{docu.fullName?.charAt(0) ?? "?"}</span>
+                        <span className="font-bold text-indigo-700 text-xl">{formatPersonName(docu.fullName)?.charAt(0) ?? "?"}</span>
                       </div>
                       <div>
-                        <span className="font-bold text-xl text-slate-700 block">{docu.fullName}</span>
+                        <span className="font-bold text-xl text-slate-700 block">{formatPersonName(docu.fullName)}</span>
                         <span className="text-sm text-slate-500 font-medium">{docu.specialty}</span>
                       </div>
                     </button>
@@ -1301,7 +1302,7 @@ const App: React.FC = () => {
         doctors.find((doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower) ||
         null;
       const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
-      const resolvedDoctorName = matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+      const resolvedDoctorName = formatPersonName(matchedDoctor?.fullName ?? currentUser.fullName) ?? currentUser.email ?? "Profesional";
       const mergedCurrentUser = matchedDoctor
         ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
         : currentUser;

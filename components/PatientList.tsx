@@ -4,6 +4,7 @@ import { Search, Plus, User } from 'lucide-react';
 import { Patient } from '../types';
 import { db } from '../firebase';
 import { CenterContext } from '../CenterContext';
+import { formatPersonName } from '../utils';
 
 type Props = {
   /** Si lo pasas, se usa en vez de leer desde Firestore */
@@ -116,7 +117,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
                   className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
                 >
                   <div>
-                    <div className="font-bold text-slate-800">{p.fullName || 'Sin nombre'}</div>
+                    <div className="font-bold text-slate-800">{formatPersonName(p.fullName) || 'Sin nombre'}</div>
                     <div className="text-sm text-slate-500">{p.rut || 'Sin RUT'}</div>
                   </div>
                   <div className="text-sm text-slate-500">

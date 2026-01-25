@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { Patient, Consultation, Attachment, Appointment, Prescription, AgendaConfig, ClinicalTemplate, Doctor, ProfessionalRole, AuditLogEntry, ExamProfile, ExamDefinition } from '../types';
-import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone } from '../utils';
+import { calculateAge, generateId, sanitizeText, base64ToBlob, normalizePhone, formatPersonName } from '../utils';
 import { COMMON_DIAGNOSES, DEFAULT_TEMPLATES, EXAM_PROFILES, TRACKED_EXAMS_OPTIONS } from '../constants';
 import { Search, Plus, User, Calendar, ChevronRight, LogOut, Save, ShieldCheck, X, AlertCircle, ExternalLink, FileText, Bell, UsersRound, CalendarCheck, AlarmClock, MessageCircle, Clock, ArrowUpDown, Filter, Settings, Trash2, Edit, Activity, RefreshCw, Layers, CheckSquare, Square, KeyRound, Shield, TestTube } from 'lucide-react';
 import { useToast } from './Toast';
@@ -19,6 +19,7 @@ import PrintPreviewModal from './PrintPreviewModal';
 import AutocompleteInput from './AutocompleteInput';
 import Odontogram from './Odontogram';
 import BioMarkers from './BioMarkers';
+import LogoHeader from './LogoHeader';
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -543,9 +544,10 @@ useEffect(() => {
               <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full">
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
+              <LogoHeader size="sm" showText={false} />
               <div>
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    {selectedPatient.fullName}
+                    {formatPersonName(selectedPatient.fullName)}
                     <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">{selectedPatient.rut}</span>
                 </h1>
                 <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
@@ -787,15 +789,7 @@ useEffect(() => {
       <div className="flex flex-col h-screen font-sans">
           {/* Header */}
           <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-8 py-4 flex justify-between items-center sticky top-0 z-20 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                  <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
-                      <ShieldCheck className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <div>
-                      <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-                      <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
-                  </div>
-              </div>
+              <LogoHeader size="md" showText={true} />
               <div className="flex items-center gap-2">
                   <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
@@ -907,7 +901,7 @@ useEffect(() => {
                                                   return (
                                                       <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedPatient(p)}>
                                                           <td className="p-5">
-                                                              <div className="font-bold text-slate-800 text-base">{p.fullName}</div>
+                                                              <div className="font-bold text-slate-800 text-base">{formatPersonName(p.fullName)}</div>
                                                               <div className="text-xs text-slate-400 font-medium md:hidden">{p.rut}</div>
                                                           </td>
                                                           <td className="p-5 hidden md:table-cell">
