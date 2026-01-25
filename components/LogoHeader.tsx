@@ -29,6 +29,15 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
         src="/assets/logo.png"
         alt="ClaveSalud Logo"
         className={`${sizes[size]} object-contain`}
+        onError={(e) => {
+          // Fallback to CS text if image fails to load
+          const target = e.currentTarget;
+          target.style.display = "none";
+          const fallback = document.createElement("div");
+          fallback.className = `${sizes[size]} bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200`;
+          fallback.innerHTML = `<span class="text-white font-bold ${size === "sm" ? "text-xs" : "text-sm"}">CS</span>`;
+          target.parentNode?.insertBefore(fallback, target);
+        }}
       />
 
       {showText && (

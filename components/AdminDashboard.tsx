@@ -740,21 +740,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeCenter?.logoUrl && (
             <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
               <span className="text-slate-400 text-xs font-medium">Centro:</span>
-              <img 
-                src={activeCenter.logoUrl} 
-                alt={`Logo ${activeCenter.name}`} 
+              <img
+                src={activeCenter.logoUrl}
+                alt={`Logo ${activeCenter.name}`}
                 className="h-8 w-auto max-w-[120px] object-contain rounded"
                 onError={(e) => {
-                  // Fallback if logoUrl is not a valid URL (e.g., emoji)
-                  e.currentTarget.style.display = 'none';
-                  if (e.currentTarget.nextSibling) {
-                    (e.currentTarget.nextSibling as HTMLElement).style.display = 'block';
+                  // Fallback to center name if logo fails to load
+                  const target = e.currentTarget;
+                  const fallbackSpan = target.nextElementSibling as HTMLElement | null;
+                  if (fallbackSpan && fallbackSpan.tagName === "SPAN") {
+                    target.style.display = "none";
+                    fallbackSpan.style.display = "block";
                   }
                 }}
               />
-              <span className="text-slate-300 text-sm font-bold hidden">
-                {activeCenter.logoUrl}
-              </span>
+              <span className="text-slate-300 text-sm font-bold hidden">{activeCenter.name}</span>
             </div>
           )}
           <button
