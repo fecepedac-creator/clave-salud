@@ -4,6 +4,7 @@ import PatientForm from "./components/PatientForm";
 import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
+import LogoHeader from "./components/LogoHeader";
 import {
   extractChileanPhoneDigits,
   formatChileanPhone,
@@ -30,7 +31,12 @@ import {
 import { useToast } from "./components/Toast";
 import { CenterContext, CenterModules } from "./CenterContext";
 import { auth } from "./firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from "firebase/auth";
 import { useAuth } from "./hooks/useAuth";
 import { useCenters } from "./hooks/useCenters";
 import { useFirestoreSync } from "./hooks/useFirestoreSync";
@@ -39,7 +45,13 @@ import { useBooking } from "./hooks/useBooking";
 import { useCrudOperations } from "./hooks/useCrudOperations";
 
 function isValidCenter(c: any): c is MedicalCenter {
-  return !!c && typeof c === "object" && typeof (c as any).id === "string" && (c as any).id.length > 0 && typeof (c as any).name === "string";
+  return (
+    !!c &&
+    typeof c === "object" &&
+    typeof (c as any).id === "string" &&
+    (c as any).id.length > 0 &&
+    typeof (c as any).name === "string"
+  );
 }
 
 const ASSET_BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
@@ -53,7 +65,9 @@ const App: React.FC = () => {
   const { showToast } = useToast();
   const [demoMode, setDemoMode] = useState(false);
   const [view, setView] = useState<ViewMode>("home" as ViewMode);
-  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>("center-portal" as ViewMode);
+  const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
+    "center-portal" as ViewMode
+  );
   const [isSyncingAppointments, setIsSyncingAppointments] = useState(false);
 
   const {
@@ -76,8 +90,18 @@ const App: React.FC = () => {
     handleRedirectResult,
   } = useAuth();
 
-  const { centers, setCenters, activeCenterId, setActiveCenterId, activeCenter, updateModules } = useCenters(demoMode, isSuperAdminClaim);
-  const { patients, setPatients, doctors, setDoctors, appointments, setAppointments, auditLogs, preadmissions } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters);
+  const { centers, setCenters, activeCenterId, setActiveCenterId, activeCenter, updateModules } =
+    useCenters(demoMode, isSuperAdminClaim);
+  const {
+    patients,
+    setPatients,
+    doctors,
+    setDoctors,
+    appointments,
+    setAppointments,
+    auditLogs,
+    preadmissions,
+  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters);
   const {
     inviteToken,
     setInviteToken,
@@ -97,7 +121,20 @@ const App: React.FC = () => {
     inviteDone,
     acceptInviteForUser,
   } = useInvite();
-  const { updatePatient, deletePatient, updateStaff, deleteStaff, updateAppointment, deleteAppointment, syncAppointments: hookSyncAppointments, updateAuditLog, updateCenter, deleteCenter, createPreadmission, approvePreadmission } = useCrudOperations(activeCenterId, appointments, showToast);
+  const {
+    updatePatient,
+    deletePatient,
+    updateStaff,
+    deleteStaff,
+    updateAppointment,
+    deleteAppointment,
+    syncAppointments: hookSyncAppointments,
+    updateAuditLog,
+    updateCenter,
+    deleteCenter,
+    createPreadmission,
+    approvePreadmission,
+  } = useCrudOperations(activeCenterId, appointments, showToast);
   const {
     bookingStep,
     setBookingStep,
@@ -137,14 +174,53 @@ const App: React.FC = () => {
     showToast
   );
 
-  const syncAppointments = useCallback((nextAppointments: Appointment[]) => hookSyncAppointments(nextAppointments, setIsSyncingAppointments), [hookSyncAppointments]);
-  const handleSuperAdminLogin = useCallback((targetView: ViewMode) => hookHandleSuperAdminLogin(targetView, (user, view, centerId) => { setCurrentUser(user); setView(view); if (centerId) setActiveCenterId(centerId); }), [hookHandleSuperAdminLogin, setCurrentUser, setActiveCenterId]);
-  const handleSuperAdminGoogleLogin = useCallback(() => hookHandleSuperAdminGoogleLogin(() => setView("superadmin-dashboard" as any), handleSuperAdminUnauthorized), [hookHandleSuperAdminGoogleLogin, handleSuperAdminUnauthorized]);
-  const handleGoogleLogin = useCallback((targetView: ViewMode) => hookHandleGoogleLogin(targetView, (user) => { setCurrentUser(user); setPostCenterSelectView(targetView); setView("select-center" as any); }), [hookHandleGoogleLogin, setCurrentUser]);
-  const handleLogout = useCallback(async () => { await hookHandleLogout(); setActiveCenterId(""); setView("home" as ViewMode); }, [hookHandleLogout, setActiveCenterId]);
+  const syncAppointments = useCallback(
+    (nextAppointments: Appointment[]) =>
+      hookSyncAppointments(nextAppointments, setIsSyncingAppointments),
+    [hookSyncAppointments]
+  );
+  const handleSuperAdminLogin = useCallback(
+    (targetView: ViewMode) =>
+      hookHandleSuperAdminLogin(targetView, (user, view, centerId) => {
+        setCurrentUser(user);
+        setView(view);
+        if (centerId) setActiveCenterId(centerId);
+      }),
+    [hookHandleSuperAdminLogin, setCurrentUser, setActiveCenterId]
+  );
+  const handleSuperAdminGoogleLogin = useCallback(
+    () =>
+      hookHandleSuperAdminGoogleLogin(
+        () => setView("superadmin-dashboard" as any),
+        handleSuperAdminUnauthorized
+      ),
+    [hookHandleSuperAdminGoogleLogin, handleSuperAdminUnauthorized]
+  );
+  const handleGoogleLogin = useCallback(
+    (targetView: ViewMode) =>
+      hookHandleGoogleLogin(targetView, (user) => {
+        setCurrentUser(user);
+        setPostCenterSelectView(targetView);
+        setView("select-center" as any);
+      }),
+    [hookHandleGoogleLogin, setCurrentUser]
+  );
+  const handleLogout = useCallback(async () => {
+    await hookHandleLogout();
+    setActiveCenterId("");
+    setView("home" as ViewMode);
+  }, [hookHandleLogout, setActiveCenterId]);
 
-  useEffect(() => { if (!inviteToken && window.location.pathname.toLowerCase().startsWith("/invite")) setView("invite" as any); }, [inviteToken]);
-  useEffect(() => { handleRedirectResult(() => setView("superadmin-dashboard" as any), handleSuperAdminUnauthorized); }, [handleRedirectResult, handleSuperAdminUnauthorized]);
+  useEffect(() => {
+    if (!inviteToken && window.location.pathname.toLowerCase().startsWith("/invite"))
+      setView("invite" as any);
+  }, [inviteToken]);
+  useEffect(() => {
+    handleRedirectResult(
+      () => setView("superadmin-dashboard" as any),
+      handleSuperAdminUnauthorized
+    );
+  }, [handleRedirectResult, handleSuperAdminUnauthorized]);
 
   const centerCtxValue = useMemo(() => {
     const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
@@ -183,7 +259,10 @@ const App: React.FC = () => {
       isApplyingPopStateRef.current = true;
       if (nextCenterId) {
         if (nextCenterId !== activeCenterIdRef.current) setActiveCenterId(nextCenterId);
-        if (viewRef.current === ("home" as ViewMode) || viewRef.current === ("select-center" as ViewMode)) {
+        if (
+          viewRef.current === ("home" as ViewMode) ||
+          viewRef.current === ("select-center" as ViewMode)
+        ) {
           setView("center-portal" as ViewMode);
         }
       } else {
@@ -201,7 +280,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isApplyingPopStateRef.current) return;
-    const nextPath = view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+    const nextPath =
+      view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
     if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
       lastPathRef.current = nextPath;
@@ -254,7 +334,9 @@ const App: React.FC = () => {
               <UserRound className="w-12 h-12 text-blue-600" />
             </div>
             <h3 className="font-bold text-3xl text-slate-800">Soy Paciente</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">Reserva de horas y ficha clínica</p>
+            <p className="text-slate-500 mt-2 font-medium text-lg">
+              Reserva de horas y ficha clínica
+            </p>
           </button>
 
           <button
@@ -282,208 +364,221 @@ const App: React.FC = () => {
     );
   };
 
-  const renderPatientMenu = () => renderCenterBackdrop(
-    <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-      <div className="max-w-4xl w-full">
-        <button
-          onClick={() => setView("center-portal" as ViewMode)}
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" /> Volver
-        </button>
-
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-slate-800">¿Qué deseas realizar?</h2>
-          <p className="text-slate-500 mt-2 text-xl">Selecciona una opción para continuar</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+  const renderPatientMenu = () =>
+    renderCenterBackdrop(
+      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+        <div className="max-w-4xl w-full">
           <button
-            onClick={() => {
-              setBookingStep(0);
-              setView("patient-booking" as ViewMode);
-            }}
-            className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-indigo-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+            onClick={() => setView("center-portal" as ViewMode)}
+            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
           >
-            <div className="w-24 h-24 bg-indigo-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-              <CalendarPlus className="w-12 h-12 text-indigo-600" />
-            </div>
-            <h3 className="font-bold text-3xl text-slate-800">Solicitar Hora</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">Agendar cita con especialistas</p>
+            <ArrowLeft className="w-5 h-5" /> Volver
           </button>
 
-          <button
-            onClick={() => setView("patient-form" as ViewMode)}
-            className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-          >
-            <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-              <AlertCircle className="w-12 h-12 text-blue-600" />
-            </div>
-            <h3 className="font-bold text-3xl text-slate-800">Completar Antecedentes</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">Pre-ingreso y ficha clínica</p>
-          </button>
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-slate-800">¿Qué deseas realizar?</h2>
+            <p className="text-slate-500 mt-2 text-xl">Selecciona una opción para continuar</p>
+          </div>
 
-          <button
-            onClick={() => setView("patient-cancel" as ViewMode)}
-            className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-rose-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-          >
-            <div className="w-24 h-24 bg-rose-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-              <AlertCircle className="w-12 h-12 text-rose-500" />
-            </div>
-            <h3 className="font-bold text-3xl text-slate-800">Cancelar Hora</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">Libera una cita agendada</p>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPatientCancel = () => renderCenterBackdrop(
-    <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-      <div className="max-w-xl w-full">
-        <button
-          onClick={() => setView("patient-menu" as ViewMode)}
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" /> Volver
-        </button>
-
-        <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
-          <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
-          <p className="text-slate-500 text-center mb-8">
-            Ingresa tu RUT y teléfono para ver tus horas agendadas.
-          </p>
-
-          <div className="space-y-6">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">RUT</label>
-              <input
-                className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
-                value={cancelRut}
-                onChange={(e) => setCancelRut(formatRUT(e.target.value))}
-                placeholder="12.345.678-9"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Teléfono</label>
-              <div className="flex items-center gap-2">
-                <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
-                  +56 9
-                </span>
-                <input
-                  className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
-                  value={cancelPhoneDigits}
-                  onChange={(e) => setCancelPhoneDigits(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                  placeholder="12345678"
-                />
-              </div>
-            </div>
-
-            {cancelError && (
-              <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm">
-                {cancelError}
-              </div>
-            )}
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <button
-              onClick={handleLookupAppointments}
-              disabled={cancelLoading}
-              className="w-full bg-rose-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-rose-700 shadow-lg transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => {
+                setBookingStep(0);
+                setView("patient-booking" as ViewMode);
+              }}
+              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-indigo-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
             >
-              {cancelLoading ? "Buscando..." : "Buscar Horas"}
+              <div className="w-24 h-24 bg-indigo-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                <CalendarPlus className="w-12 h-12 text-indigo-600" />
+              </div>
+              <h3 className="font-bold text-3xl text-slate-800">Solicitar Hora</h3>
+              <p className="text-slate-500 mt-2 font-medium text-lg">
+                Agendar cita con especialistas
+              </p>
             </button>
 
-            {cancelResults.length > 0 && (
-              <div className="pt-6 border-t border-slate-200 space-y-4">
-                <h3 className="text-lg font-bold text-slate-700 text-center">Tus horas agendadas</h3>
-                {cancelResults.map((appointment) => {
-                  const doctor = doctors.find(
-                    (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
-                  );
-                  return (
-                    <div
-                      key={appointment.id}
-                      className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-3"
-                    >
-                      <div>
-                        <p className="text-sm text-slate-500">Profesional</p>
-                        <p className="text-base font-bold text-slate-700">
-                          {doctor?.fullName || "Profesional"}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between text-sm text-slate-600">
-                        <span>{appointment.date}</span>
-                        <span className="font-bold">{appointment.time}</span>
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          onClick={() => cancelPatientAppointment(appointment)}
-                          className="flex-1 bg-rose-600 text-white py-2 rounded-xl font-bold hover:bg-rose-700"
-                        >
-                          Anular
-                        </button>
-                        <button
-                          onClick={() => handleReschedule(appointment)}
-                          className="flex-1 bg-slate-900 text-white py-2 rounded-xl font-bold hover:bg-slate-800"
-                        >
-                          Cambiar fecha
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            <button
+              onClick={() => setView("patient-form" as ViewMode)}
+              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+            >
+              <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                <AlertCircle className="w-12 h-12 text-blue-600" />
               </div>
-            )}
+              <h3 className="font-bold text-3xl text-slate-800">Completar Antecedentes</h3>
+              <p className="text-slate-500 mt-2 font-medium text-lg">Pre-ingreso y ficha clínica</p>
+            </button>
+
+            <button
+              onClick={() => setView("patient-cancel" as ViewMode)}
+              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-rose-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
+            >
+              <div className="w-24 h-24 bg-rose-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                <AlertCircle className="w-12 h-12 text-rose-500" />
+              </div>
+              <h3 className="font-bold text-3xl text-slate-800">Cancelar Hora</h3>
+              <p className="text-slate-500 mt-2 font-medium text-lg">Libera una cita agendada</p>
+            </button>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
 
-  const renderPatientForm = () => renderCenterBackdrop(
-    <div className="min-h-screen pb-12">
-      <div className="max-w-4xl mx-auto pt-6 px-4">
-        <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center drop-shadow-sm">
-          Ficha de Pre-Ingreso
-        </h2>
-        <PatientForm
-          onSave={async (patient: Patient) => {
-            const exists = patients.find((p) => p.rut === patient.rut);
-            const payload = exists
-              ? { ...patient, id: exists.id, centerId: activeCenterId }
-              : { ...patient, centerId: activeCenterId };
-            if (!auth.currentUser) {
-              try {
-                await createPreadmission({
-                  patientDraft: payload,
-                  contact: {
-                    name: patient.fullName,
-                    rut: patient.rut,
-                    phone: patient.phone,
-                    email: patient.email,
-                  },
-                });
-                showToast("Preingreso recibido. Te contactaremos.", "success");
-                setView("patient-menu" as ViewMode);
-              } catch (error) {
-                console.error("createPreadmission", error);
-                showToast("No se pudo enviar el preingreso.", "error");
-              }
-              return;
-            }
-            updatePatient(payload);
-            showToast("Ficha actualizada correctamente", "success");
-            setView("patient-menu" as ViewMode);
-          }}
-          onCancel={() => setView("patient-menu" as ViewMode)}
-          existingPatients={patients}
-          existingPreadmissions={preadmissions}
-          prefillContact={prefillContact}
-        />
+  const renderPatientCancel = () =>
+    renderCenterBackdrop(
+      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
+        <div className="max-w-xl w-full">
+          <button
+            onClick={() => setView("patient-menu" as ViewMode)}
+            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" /> Volver
+          </button>
+
+          <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
+            <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
+            <p className="text-slate-500 text-center mb-8">
+              Ingresa tu RUT y teléfono para ver tus horas agendadas.
+            </p>
+
+            <div className="space-y-6">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                  RUT
+                </label>
+                <input
+                  className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                  value={cancelRut}
+                  onChange={(e) => setCancelRut(formatRUT(e.target.value))}
+                  placeholder="12.345.678-9"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                  Teléfono
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
+                    +56 9
+                  </span>
+                  <input
+                    className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
+                    value={cancelPhoneDigits}
+                    onChange={(e) =>
+                      setCancelPhoneDigits(e.target.value.replace(/\D/g, "").slice(0, 8))
+                    }
+                    placeholder="12345678"
+                  />
+                </div>
+              </div>
+
+              {cancelError && (
+                <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm">
+                  {cancelError}
+                </div>
+              )}
+
+              <button
+                onClick={handleLookupAppointments}
+                disabled={cancelLoading}
+                className="w-full bg-rose-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-rose-700 shadow-lg transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {cancelLoading ? "Buscando..." : "Buscar Horas"}
+              </button>
+
+              {cancelResults.length > 0 && (
+                <div className="pt-6 border-t border-slate-200 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-700 text-center">
+                    Tus horas agendadas
+                  </h3>
+                  {cancelResults.map((appointment) => {
+                    const doctor = doctors.find(
+                      (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
+                    );
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-3"
+                      >
+                        <div>
+                          <p className="text-sm text-slate-500">Profesional</p>
+                          <p className="text-base font-bold text-slate-700">
+                            {doctor?.fullName || "Profesional"}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between text-sm text-slate-600">
+                          <span>{appointment.date}</span>
+                          <span className="font-bold">{appointment.time}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={() => cancelPatientAppointment(appointment)}
+                            className="flex-1 bg-rose-600 text-white py-2 rounded-xl font-bold hover:bg-rose-700"
+                          >
+                            Anular
+                          </button>
+                          <button
+                            onClick={() => handleReschedule(appointment)}
+                            className="flex-1 bg-slate-900 text-white py-2 rounded-xl font-bold hover:bg-slate-800"
+                          >
+                            Cambiar fecha
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+
+  const renderPatientForm = () =>
+    renderCenterBackdrop(
+      <div className="min-h-screen pb-12">
+        <div className="max-w-4xl mx-auto pt-6 px-4">
+          <h2 className="text-3xl font-bold text-slate-800 mb-8 text-center drop-shadow-sm">
+            Ficha de Pre-Ingreso
+          </h2>
+          <PatientForm
+            onSave={async (patient: Patient) => {
+              const exists = patients.find((p) => p.rut === patient.rut);
+              const payload = exists
+                ? { ...patient, id: exists.id, centerId: activeCenterId }
+                : { ...patient, centerId: activeCenterId };
+              if (!auth.currentUser) {
+                try {
+                  await createPreadmission({
+                    patientDraft: payload,
+                    contact: {
+                      name: patient.fullName,
+                      rut: patient.rut,
+                      phone: patient.phone,
+                      email: patient.email,
+                    },
+                  });
+                  showToast("Preingreso recibido. Te contactaremos.", "success");
+                  setView("patient-menu" as ViewMode);
+                } catch (error) {
+                  console.error("createPreadmission", error);
+                  showToast("No se pudo enviar el preingreso.", "error");
+                }
+                return;
+              }
+              updatePatient(payload);
+              showToast("Ficha actualizada correctamente", "success");
+              setView("patient-menu" as ViewMode);
+            }}
+            onCancel={() => setView("patient-menu" as ViewMode)}
+            existingPatients={patients}
+            existingPreadmissions={preadmissions}
+            prefillContact={prefillContact}
+          />
+        </div>
+      </div>
+    );
 
   const renderBooking = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
@@ -496,36 +591,44 @@ const App: React.FC = () => {
     const dateStr = bookingDate.toISOString().split("T")[0];
 
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-    const availableSlotsForDay =
-      selectedDoctorForBooking
-        ? getStandardSlots(dateStr, selectedDoctorForBooking.id, selectedDoctorForBooking.agendaConfig)
-            .map((slot: any) => {
-              const existing = appointments.find(
-                (a) =>
-                  appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-                  a.date === dateStr &&
-                  a.time === slot.time &&
-                  a.status === "available"
-              );
-              return existing ? { ...slot, appointmentId: existing.id } : null;
-            })
-            .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
-        : [];
+    const availableSlotsForDay = selectedDoctorForBooking
+      ? getStandardSlots(
+          dateStr,
+          selectedDoctorForBooking.id,
+          selectedDoctorForBooking.agendaConfig
+        )
+          .map((slot: any) => {
+            const existing = appointments.find(
+              (a) =>
+                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
+                a.date === dateStr &&
+                a.time === slot.time &&
+                a.status === "available"
+            );
+            return existing ? { ...slot, appointmentId: existing.id } : null;
+          })
+          .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
+      : [];
 
     return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-4xl">
-          <button
-            onClick={() => setView("patient-menu" as ViewMode)}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" /> Volver
-          </button>
+          <div className="flex items-center justify-between mb-8">
+            <LogoHeader size="sm" showText={true} />
+            <button
+              onClick={() => setView("patient-menu" as ViewMode)}
+              className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold bg-white/50 px-4 py-2 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" /> Volver
+            </button>
+          </div>
 
           {/* Step 0: Rol */}
           {bookingStep === 0 && (
             <div className="animate-fadeIn">
-              <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">Selecciona Especialidad</h3>
+              <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">
+                Selecciona Especialidad
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {uniqueRoles.map((r) => (
                   <button
@@ -542,7 +645,9 @@ const App: React.FC = () => {
                   </button>
                 ))}
                 {uniqueRoles.length === 0 && (
-                  <p className="text-center text-slate-400 col-span-2">No hay especialistas disponibles.</p>
+                  <p className="text-center text-slate-400 col-span-2">
+                    No hay especialistas disponibles.
+                  </p>
                 )}
               </div>
             </div>
@@ -551,27 +656,33 @@ const App: React.FC = () => {
           {/* Step 1: Profesional */}
           {bookingStep === 1 && (
             <div className="animate-fadeIn">
-              <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">Seleccione Profesional</h3>
+              <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">
+                Seleccione Profesional
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {doctorsForRole.map((docu) => (
-                    <button
-                      key={docu.id}
-                      onClick={() => {
-                        setSelectedDoctorForBooking(docu);
-                        setSelectedSlot(null);
-                        setBookingStep(2);
-                      }}
-                      className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left flex items-center gap-6 bg-white shadow-sm hover:shadow-md"
-                    >
-                      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shrink-0">
-                        <span className="font-bold text-indigo-700 text-xl">{docu.fullName?.charAt(0) ?? "?"}</span>
-                      </div>
-                      <div>
-                        <span className="font-bold text-xl text-slate-700 block">{docu.fullName}</span>
-                        <span className="text-sm text-slate-500 font-medium">{docu.specialty}</span>
-                      </div>
-                    </button>
-                  ))}
+                  <button
+                    key={docu.id}
+                    onClick={() => {
+                      setSelectedDoctorForBooking(docu);
+                      setSelectedSlot(null);
+                      setBookingStep(2);
+                    }}
+                    className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left flex items-center gap-6 bg-white shadow-sm hover:shadow-md"
+                  >
+                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shrink-0">
+                      <span className="font-bold text-indigo-700 text-xl">
+                        {docu.fullName?.charAt(0) ?? "?"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-xl text-slate-700 block">
+                        {docu.fullName}
+                      </span>
+                      <span className="text-sm text-slate-500 font-medium">{docu.specialty}</span>
+                    </div>
+                  </button>
+                ))}
                 {doctorsForRole.length === 0 && (
                   <div className="col-span-2 text-center text-slate-400">
                     No hay profesionales disponibles para esta especialidad.
@@ -616,7 +727,13 @@ const App: React.FC = () => {
 
               <div className="bg-white/90 backdrop-blur-sm rounded-3xl border border-white shadow-xl p-6">
                 <div className="grid grid-cols-7 gap-3 mb-3 text-center text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                  <div>Lun</div><div>Mar</div><div>Mie</div><div>Jue</div><div>Vie</div><div>Sab</div><div>Dom</div>
+                  <div>Lun</div>
+                  <div>Mar</div>
+                  <div>Mie</div>
+                  <div>Jue</div>
+                  <div>Vie</div>
+                  <div>Sab</div>
+                  <div>Dom</div>
                 </div>
 
                 <div className="grid grid-cols-7 gap-3">
@@ -647,10 +764,10 @@ const App: React.FC = () => {
                           isSelected
                             ? "bg-indigo-600 text-white border-indigo-600 shadow-lg scale-110 z-10"
                             : isPast
-                            ? "bg-slate-50 text-slate-300 border-transparent cursor-not-allowed opacity-50"
-                            : availableCount > 0
-                            ? "bg-white text-emerald-700 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 hover:scale-105 font-bold cursor-pointer shadow-sm"
-                            : "bg-white text-slate-300 border-slate-100 cursor-not-allowed",
+                              ? "bg-slate-50 text-slate-300 border-transparent cursor-not-allowed opacity-50"
+                              : availableCount > 0
+                                ? "bg-white text-emerald-700 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 hover:scale-105 font-bold cursor-pointer shadow-sm"
+                                : "bg-white text-slate-300 border-slate-100 cursor-not-allowed",
                         ].join(" ")}
                       >
                         <span className="text-base">{day.getDate()}</span>
@@ -664,7 +781,11 @@ const App: React.FC = () => {
 
                 <div className="mt-8">
                   <h4 className="text-xl font-extrabold text-slate-800 mb-4 text-center capitalize">
-                    {bookingDate.toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })}
+                    {bookingDate.toLocaleDateString("es-CL", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}
                   </h4>
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
@@ -672,7 +793,11 @@ const App: React.FC = () => {
                       <button
                         key={slot.time}
                         onClick={() => {
-                          setSelectedSlot({ date: dateStr, time: slot.time, appointmentId: slot.appointmentId });
+                          setSelectedSlot({
+                            date: dateStr,
+                            time: slot.time,
+                            appointmentId: slot.appointmentId,
+                          });
                           setBookingStep(3);
                         }}
                         className="py-4 bg-white border-2 border-emerald-100 text-emerald-700 font-bold rounded-2xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm hover:shadow-lg text-lg"
@@ -703,21 +828,29 @@ const App: React.FC = () => {
           {/* Step 3: Datos paciente */}
           {bookingStep === 3 && selectedDoctorForBooking && selectedSlot && (
             <div className="animate-fadeIn max-w-lg mx-auto">
-              <h3 className="text-3xl font-bold text-slate-800 mb-6 text-center">Confirmar Reserva</h3>
+              <h3 className="text-3xl font-bold text-slate-800 mb-6 text-center">
+                Confirmar Reserva
+              </h3>
 
               <div className="bg-white/90 backdrop-blur-sm rounded-3xl border border-white shadow-xl p-8 space-y-6">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">RUT Paciente</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                    RUT Paciente
+                  </label>
                   <input
                     className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold text-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
                     value={bookingData.rut}
-                    onChange={(e) => setBookingData({ ...bookingData, rut: formatRUT(e.target.value) })}
+                    onChange={(e) =>
+                      setBookingData({ ...bookingData, rut: formatRUT(e.target.value) })
+                    }
                     placeholder="12.345.678-9"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Nombre Completo</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                    Nombre Completo
+                  </label>
                   <input
                     className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
                     value={bookingData.name}
@@ -727,7 +860,9 @@ const App: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">Teléfono</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                    Teléfono
+                  </label>
                   <div className="flex items-center gap-2">
                     <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
                       +56 9
@@ -736,7 +871,10 @@ const App: React.FC = () => {
                       className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
                       value={bookingData.phoneDigits}
                       onChange={(e) =>
-                        setBookingData({ ...bookingData, phoneDigits: e.target.value.replace(/\D/g, "").slice(0, 8) })
+                        setBookingData({
+                          ...bookingData,
+                          phoneDigits: e.target.value.replace(/\D/g, "").slice(0, 8),
+                        })
                       }
                       placeholder="12345678"
                     />
@@ -775,7 +913,8 @@ const App: React.FC = () => {
               <h3 className="text-4xl font-bold text-slate-800 mb-3">¡Reserva Exitosa!</h3>
               <p className="text-slate-500 text-xl">Su hora ha sido agendada correctamente.</p>
               <p className="text-slate-400 mt-3 text-sm">
-                Si necesitas anular o cambiar la fecha, usa la opción “Cancelar Hora” en el menú de pacientes.
+                Si necesitas anular o cambiar la fecha, usa la opción “Cancelar Hora” en el menú de
+                pacientes.
               </p>
               <button
                 onClick={resetBooking}
@@ -809,39 +948,82 @@ const App: React.FC = () => {
     const centerLogoUrl = (activeCenter as any)?.logoUrl as string | undefined;
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}>
-          <button onClick={() => setView("center-portal" as ViewMode)} className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors">
+        <div
+          className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}
+        >
+          <button
+            onClick={() => setView("center-portal" as ViewMode)}
+            className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors"
+          >
             <ArrowLeft className="w-6 h-6" />
           </button>
 
           <div className="flex flex-col gap-10 mt-4">
-            <div className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}>
+            <div className="flex justify-center mb-4">
+              <LogoHeader size="md" showText={true} />
+            </div>
+            <div
+              className={`w-20 h-20 ${isDoc ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-600"} rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-inner`}
+            >
               {isDoc ? (
                 <Stethoscope className="w-10 h-10" />
               ) : centerLogoUrl ? (
-                <img src={centerLogoUrl} alt={`Logo de ${activeCenter?.name ?? "centro médico"}`} className="w-12 h-12 object-contain" />
+                <img
+                  src={centerLogoUrl}
+                  alt={`Logo de ${activeCenter?.name ?? "centro médico"}`}
+                  className="w-12 h-12 object-contain"
+                />
               ) : (
                 <ShieldCheck className="w-10 h-10" />
               )}
             </div>
-            <h2 className="text-3xl font-bold text-center text-slate-800">{isDoc ? "Acceso Profesional" : "Acceso Administrativo"}</h2>
+            <h2 className="text-3xl font-bold text-center text-slate-800">
+              {isDoc ? "Acceso Profesional" : "Acceso Administrativo"}
+            </h2>
 
             <div className="space-y-6 max-w-sm mx-auto w-full">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700" placeholder="nombre@centro.cl" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700"
+                  placeholder="nombre@centro.cl"
+                />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Contraseña</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors" placeholder="••••••••" />
+                <label className="text-xs font-bold text-slate-400 uppercase ml-1">
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors"
+                  placeholder="••••••••"
+                />
               </div>
-              {error && <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
-              <button onClick={() => handleSuperAdminLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)} className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}>
+              {error && (
+                <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">
+                  {error}
+                </p>
+              )}
+              <button
+                onClick={() =>
+                  handleSuperAdminLogin(
+                    (isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode
+                  )
+                }
+                className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}
+              >
                 Ingresar
               </button>
 
               <button
-                onClick={() => handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)}
+                onClick={() =>
+                  handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)
+                }
                 className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
               >
                 Continuar con Google
@@ -860,6 +1042,9 @@ const App: React.FC = () => {
     const content = (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+          <div className="mb-6">
+            <LogoHeader size="md" showText={true} />
+          </div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
               <Lock className="w-6 h-6 text-slate-700" />
@@ -900,8 +1085,8 @@ const App: React.FC = () => {
     const allowed: string[] = Array.isArray(currentUser?.centros)
       ? currentUser.centros
       : Array.isArray(currentUser?.centers)
-      ? currentUser.centers
-      : [];
+        ? currentUser.centers
+        : [];
     const available = centers.filter((c) => allowed.includes(c.id));
 
     return (
@@ -909,7 +1094,11 @@ const App: React.FC = () => {
         <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-extrabold text-slate-800">Selecciona un centro</h2>
-            <button type="button" onClick={handleLogout} className="text-sm font-semibold text-slate-500 hover:text-slate-800">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+            >
               Cerrar sesión
             </button>
           </div>
@@ -932,14 +1121,20 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden flex items-center justify-center">
                       {(c as any).logoUrl ? (
-                        <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+                        <img
+                          src={(c as any).logoUrl}
+                          alt={`Logo de ${c.name}`}
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <Building2 className="w-6 h-6 text-slate-700" />
                       )}
                     </div>
                     <div className="flex-1">
                       <div className="font-extrabold text-slate-900">{c.name}</div>
-                      <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
+                      <div className="text-slate-500 text-sm">
+                        {c.commune ?? c.region ?? "Chile"}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -1043,25 +1238,39 @@ const App: React.FC = () => {
                     if (!inviteEmail) throw new Error("Ingresa un correo.");
 
                     if (isSignup) {
-                      if (invitePassword.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
-                      if (invitePassword !== invitePassword2) throw new Error("Las contraseñas no coinciden.");
+                      if (invitePassword.length < 8)
+                        throw new Error("La contraseña debe tener al menos 8 caracteres.");
+                      if (invitePassword !== invitePassword2)
+                        throw new Error("Las contraseñas no coinciden.");
 
                       try {
-                        const cred = await createUserWithEmailAndPassword(auth, inviteEmail, invitePassword);
+                        const cred = await createUserWithEmailAndPassword(
+                          auth,
+                          inviteEmail,
+                          invitePassword
+                        );
                         await acceptInviteForUser(token, cred.user);
                         showToast("Cuenta creada y invitación aceptada", "success");
                       } catch (e: any) {
                         if (e?.code === "auth/email-already-in-use") {
                           setInviteMode("signin");
-                          throw new Error("Este correo ya existe. Inicia sesión para aceptar la invitación.");
+                          throw new Error(
+                            "Este correo ya existe. Inicia sesión para aceptar la invitación."
+                          );
                         }
                         if (e?.code === "auth/operation-not-allowed") {
-                          throw new Error("Email/Password no está habilitado en Firebase Auth. Habilítalo en Console → Auth → Método de acceso.");
+                          throw new Error(
+                            "Email/Password no está habilitado en Firebase Auth. Habilítalo en Console → Auth → Método de acceso."
+                          );
                         }
                         throw e;
                       }
                     } else {
-                      const cred = await signInWithEmailAndPassword(auth, inviteEmail, invitePassword);
+                      const cred = await signInWithEmailAndPassword(
+                        auth,
+                        inviteEmail,
+                        invitePassword
+                      );
                       await acceptInviteForUser(token, cred.user);
                       showToast("Invitación aceptada", "success");
                     }
@@ -1145,7 +1354,10 @@ const App: React.FC = () => {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.04),_transparent_55%)]" />
         {authUser && !isSuperAdminClaim && (
           <div className="fixed bottom-4 right-4 z-50">
-            <button onClick={bootstrapSuperAdmin} className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700">
+            <button
+              onClick={bootstrapSuperAdmin}
+              className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700"
+            >
               Convertirme en SuperAdmin
             </button>
           </div>
@@ -1170,16 +1382,21 @@ const App: React.FC = () => {
                 className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(15,23,42,0.16)]"
               />
               <h1 className="text-4xl md:text-5xl font-extrabold">
-                <span className="text-sky-600">Clave</span><span className="text-teal-700">Salud</span>
+                <span className="text-sky-600">Clave</span>
+                <span className="text-teal-700">Salud</span>
               </h1>
             </div>
-            <p className="text-slate-500 mt-3 text-lg">Ficha clínica digital para equipos de salud.</p>
+            <p className="text-slate-500 mt-3 text-lg">
+              Ficha clínica digital para equipos de salud.
+            </p>
           </div>
 
           <div className="rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
             <div className="text-center mb-6">
               <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
-              <p className="text-slate-500 text-sm">Selecciona un centro para ingresar a su portal.</p>
+              <p className="text-slate-500 text-sm">
+                Selecciona un centro para ingresar a su portal.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1195,15 +1412,23 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
                       {(c as any).logoUrl ? (
-                        <img src={(c as any).logoUrl} alt={`Logo de ${c.name}`} className="w-full h-full object-cover" />
+                        <img
+                          src={(c as any).logoUrl}
+                          alt={`Logo de ${c.name}`}
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <Building2 className="w-7 h-7 text-slate-700" />
                       )}
                     </div>
 
                     <div className="flex-1">
-                      <div className="font-extrabold text-slate-900 text-lg leading-tight">{c.name}</div>
-                      <div className="text-slate-500 text-sm">{c.commune ?? c.region ?? "Chile"}</div>
+                      <div className="font-extrabold text-slate-900 text-lg leading-tight">
+                        {c.name}
+                      </div>
+                      <div className="text-slate-500 text-sm">
+                        {c.commune ?? c.region ?? "Chile"}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-5 text-sm font-bold text-slate-700 inline-flex items-center gap-2">
@@ -1235,28 +1460,56 @@ const App: React.FC = () => {
 
   const renderByView = () => {
     if (view === ("invite" as any))
-      return <CenterContext.Provider value={centerCtxValue}>{renderInviteRegister()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderInviteRegister()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("center-portal" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderCenterPortal()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderCenterPortal()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("patient-menu" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderPatientMenu()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderPatientMenu()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("patient-cancel" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderPatientCancel()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderPatientCancel()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("patient-form" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderPatientForm()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderPatientForm()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("patient-booking" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>
+      );
 
     if (view === ("doctor-login" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>
+      );
 
     if (view === ("superadmin-login" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderSuperAdminLogin()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderSuperAdminLogin()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("superadmin-dashboard" as ViewMode)) {
       return (
@@ -1284,24 +1537,43 @@ const App: React.FC = () => {
     }
 
     if (view === ("admin-login" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>
+      );
 
     if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
 
     if (view === ("select-center" as ViewMode))
-      return <CenterContext.Provider value={centerCtxValue}>{renderSelectCenter()}</CenterContext.Provider>;
+      return (
+        <CenterContext.Provider value={centerCtxValue}>
+          {renderSelectCenter()}
+        </CenterContext.Provider>
+      );
 
     if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
       const currentUid = currentUser?.uid ?? currentUser?.id;
-      const currentEmailLower = String(currentUser?.email ?? "").trim().toLowerCase();
+      const currentEmailLower = String(currentUser?.email ?? "")
+        .trim()
+        .toLowerCase();
       const matchedDoctor =
         doctors.find((doc) => doc.id === currentUid) ||
         doctors.find((doc) => (doc as any).uid === currentUid) ||
-        doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
-        doctors.find((doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower) ||
+        doctors.find(
+          (doc) =>
+            String(doc.email ?? "")
+              .trim()
+              .toLowerCase() === currentEmailLower
+        ) ||
+        doctors.find(
+          (doc) =>
+            String((doc as any).emailLower ?? "")
+              .trim()
+              .toLowerCase() === currentEmailLower
+        ) ||
         null;
       const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
-      const resolvedDoctorName = matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+      const resolvedDoctorName =
+        matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
       const mergedCurrentUser = matchedDoctor
         ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
         : currentUser;
@@ -1358,7 +1630,9 @@ const App: React.FC = () => {
             }}
             isSyncingAppointments={isSyncingAppointments}
             patients={patients}
-            onUpdatePatients={(newPatients: Patient[]) => newPatients.forEach((p) => updatePatient(p))}
+            onUpdatePatients={(newPatients: Patient[]) =>
+              newPatients.forEach((p) => updatePatient(p))
+            }
             preadmissions={preadmissions}
             onApprovePreadmission={approvePreadmission}
             onLogout={handleLogout}

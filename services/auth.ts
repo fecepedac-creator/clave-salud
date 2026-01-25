@@ -68,7 +68,11 @@ export async function upsertBasicUserProfile(user: User) {
   };
 
   if (!snap.exists()) {
-    await setDoc(ref, { ...base, roles: [], centros: [], createdAt: serverTimestamp() }, { merge: true });
+    await setDoc(
+      ref,
+      { ...base, roles: [], centros: [], createdAt: serverTimestamp() },
+      { merge: true }
+    );
   } else {
     await setDoc(ref, base, { merge: true });
   }
@@ -82,6 +86,10 @@ export async function isSuperAdmin(user: User): Promise<boolean> {
 
   const profile = await getUserProfile(user.uid);
   const rolesRaw = (profile?.roles ?? []) as string[];
-  const roles = rolesRaw.map((r) => String(r ?? "").trim().toLowerCase());
+  const roles = rolesRaw.map((r) =>
+    String(r ?? "")
+      .trim()
+      .toLowerCase()
+  );
   return roles.includes("super_admin");
 }
