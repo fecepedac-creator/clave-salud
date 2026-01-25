@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint --if-present
+        continue-on-error: true  # Don't block for initial warnings
+
+      - name: Check TypeScript
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Build application
+        run: npm run build
+
+  functions:
+    name: Build Cloud Functions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: ./functions
+        run: npm ci
+
+      - name: Run ESLint (functions)
+        working-directory: ./functions
+        run: npm run lint
+        continue-on-error: true  # Don't block for initial warnings or config errors
+
+      - name: Build functions
+        working-directory: ./functions
+        run: npm run build
