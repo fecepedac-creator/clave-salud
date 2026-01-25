@@ -7,6 +7,7 @@ import { Users, Calendar, Plus, Trash2, Save, LogOut, Search, Clock, Phone, Edit
 import { useToast } from './Toast';
 import { db } from '../firebase';
 import { collection, query, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, where, getDocs, getDoc, Timestamp, deleteDoc } from 'firebase/firestore';
+import LogoHeader from './LogoHeader';
 
 interface AdminDashboardProps {
     centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -598,6 +599,8 @@ const persistDoctorToFirestore = async (doctor: Doctor) => {
             {/* Header */}
             <nav className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex justify-between items-center sticky top-0 z-30">
                 <div className="flex items-center gap-4">
+                    <LogoHeader size="sm" showText={false} />
+                    <div className="h-6 w-px bg-slate-600" />
                     <div className="bg-indigo-500 p-2 rounded-lg"><Database className="w-6 h-6 text-white"/></div>
                     <div>
                         <h1 className="text-xl font-bold text-white">Panel de Administración</h1>

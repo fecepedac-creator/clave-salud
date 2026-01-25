@@ -19,6 +19,7 @@ import PrintPreviewModal from './PrintPreviewModal';
 import AutocompleteInput from './AutocompleteInput';
 import Odontogram from './Odontogram';
 import BioMarkers from './BioMarkers';
+import LogoHeader from './LogoHeader';
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -540,6 +541,8 @@ useEffect(() => {
         
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-4">
+              <LogoHeader size="sm" showText={false} />
+              <div className="h-6 w-px bg-slate-200" />
               <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full">
                 <ChevronRight className="w-5 h-5 rotate-180" />
               </button>
@@ -788,6 +791,8 @@ useEffect(() => {
           {/* Header */}
           <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-8 py-4 flex justify-between items-center sticky top-0 z-20 flex-shrink-0">
               <div className="flex items-center gap-3">
+                  <LogoHeader size="sm" showText={false} />
+                  <div className="h-6 w-px bg-slate-200" />
                   <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
                       <ShieldCheck className="w-6 h-6 text-slate-600" />
                   </div>
