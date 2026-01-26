@@ -337,7 +337,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const filteredPatients = patients.filter((p) => {
     // Filter by active center first
     if (activeCenterId && p.centerId !== activeCenterId) return false;
-    
+
     // Show if linked to this professional OR if filtering by all
     const nameMatch =
       p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || p.rut.includes(searchTerm);
