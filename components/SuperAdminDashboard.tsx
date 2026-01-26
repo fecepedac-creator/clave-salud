@@ -155,6 +155,30 @@ function buildCopyEmailText(to: string, subject: string, body: string) {
   return [`Para: ${to}`, `Asunto: ${subject}`, "", body].join("\n");
 }
 
+// Predefined message templates
+const MESSAGE_TEMPLATES = {
+  cobranza: {
+    title: "Recordatorio de Pago Pendiente",
+    body: "Estimado/a administrador/a,\n\nLe recordamos que tiene un pago pendiente correspondiente al servicio de ClaveSalud. Le solicitamos regularizar su situación a la brevedad para mantener la continuidad del servicio.\n\nPara más información o coordinación de pago, puede contactarnos respondiendo este mensaje.\n\nAtentamente,\nEquipo ClaveSalud"
+  },
+  info: {
+    title: "Comunicado Informativo",
+    body: "Estimado/a administrador/a,\n\nLe informamos que [descripción de la información importante].\n\n[Detalles adicionales si es necesario]\n\nPara cualquier consulta, estamos disponibles.\n\nAtentamente,\nEquipo ClaveSalud"
+  },
+  fiesta: {
+    title: "¡Felices Fiestas!",
+    body: "Estimado/a administrador/a,\n\nEn estas fechas especiales, queremos extenderles nuestros mejores deseos. ¡Felices fiestas para usted y todo su equipo!\n\nAgradecemos su confianza en ClaveSalud.\n\nCon los mejores deseos,\nEquipo ClaveSalud"
+  },
+  bienvenida: {
+    title: "¡Bienvenido a ClaveSalud!",
+    body: "Estimado/a administrador/a,\n\n¡Bienvenido/a a ClaveSalud! Estamos muy contentos de que su centro forme parte de nuestra plataforma.\n\nEn los próximos días, nuestro equipo estará disponible para ayudarle con cualquier consulta o necesidad durante la configuración inicial.\n\nAtentamente,\nEquipo ClaveSalud"
+  },
+  mantenimiento: {
+    title: "Aviso de Mantenimiento Programado",
+    body: "Estimado/a administrador/a,\n\nLe informamos que realizaremos un mantenimiento programado en la plataforma ClaveSalud el día [fecha] entre las [hora inicio] y [hora fin].\n\nDurante este período, el sistema podría presentar interrupciones temporales. Agradecemos su comprensión.\n\nAtentamente,\nEquipo ClaveSalud"
+  }
+} as const;
+
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   centers,
   doctors,
@@ -237,6 +261,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [commTitle, setCommTitle] = useState("");
   const [commBody, setCommBody] = useState("");
   const [commSendEmail, setCommSendEmail] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+
+  // Handler to apply selected template
+  const handleApplyTemplate = (templateKey: string) => {
+    if (templateKey && templateKey in MESSAGE_TEMPLATES) {
+      const template = MESSAGE_TEMPLATES[templateKey as keyof typeof MESSAGE_TEMPLATES];
+      setCommTitle(template.title);
+      setCommBody(template.body);
+      setSelectedTemplate(templateKey);
+    } else {
+      setSelectedTemplate("");
+    }
+  };
 
   const [notifRefreshTick, setNotifRefreshTick] = useState(0);
   const commHistory = useMemo(() => {
@@ -1594,6 +1631,25 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   </div>
 
                   <label className="block">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Plantilla Predefinida</span>
+                    <select
+                      className="w-full p-3 border rounded-xl bg-white"
+                      value={selectedTemplate}
+                      onChange={(e) => handleApplyTemplate(e.target.value)}
+                    >
+                      <option value="">-- Seleccionar plantilla (opcional) --</option>
+                      <option value="cobranza">Cobranza - Recordatorio de pago</option>
+                      <option value="info">Información general</option>
+                      <option value="fiesta">Saludo por fiestas</option>
+                      <option value="bienvenida">Bienvenida a nuevos centros</option>
+                      <option value="mantenimiento">Mantenimiento programado</option>
+                    </select>
+                    <div className="text-xs text-slate-400 mt-1">
+                      Seleccione una plantilla para autocompletar título y mensaje. Puede editarlos después.
+                    </div>
+                  </label>
+
+                  <label className="block">
                     <span className="text-xs font-bold text-slate-400 uppercase">Título</span>
                     <input
                       className="w-full p-3 border rounded-xl"
@@ -1649,6 +1705,30 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     >
                       <Mail className="w-5 h-5" /> Copiar email
                     </button>
+
+                    {commCenter && (commCenter as any).adminEmail && commTitle && commBody && (
+                      <button
+                        type="button"
+                        className="px-5 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 shadow inline-flex items-center gap-2"
+                        onClick={() => {
+                          const adminEmail = (commCenter as any).adminEmail?.trim() || "";
+                          const centerName = commCenter.name || "Centro";
+                          const subject =
+                            commType === "billing"
+                              ? `ClaveSalud — Aviso de facturación (${centerName})`
+                              : commType === "incident"
+                                ? `ClaveSalud — Incidencia operativa (${centerName})`
+                                : commType === "security"
+                                  ? `ClaveSalud — Aviso de seguridad (${centerName})`
+                                  : `ClaveSalud — Información (${centerName})`;
+                          const body = `Hola,\n\n${commTitle}\n\n${commBody}\n\n—\nPor favor, si necesitas soporte o más información, responde este correo.\n\n— Equipo ClaveSalud`;
+                          const gmailUrl = buildGmailComposeUrl(adminEmail, subject, body);
+                          window.open(gmailUrl, "_blank");
+                        }}
+                      >
+                        <Mail className="w-5 h-5" /> Abrir en Gmail
+                      </button>
+                    )}
                   </div>
                 </div>
 
