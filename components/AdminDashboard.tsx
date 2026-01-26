@@ -97,6 +97,12 @@ const ROLE_LABELS: Record<string, string> = {
   Odontologo: "Odontólogo",
   Matrona: "Matrona",
   Nutricionista: "Nutricionista",
+  Administrativo: "Administrativo (Secretaría)",
+  TENS: "TENS (Técnico en Enfermería)",
+  TecnologoMedico: "Tecnólogo Médico",
+  AsistenteSocial: "Asistente Social",
+  PreparadorFisico: "Preparador Físico",
+  QuimicoFarmaceutico: "Químico Farmacéutico",
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({

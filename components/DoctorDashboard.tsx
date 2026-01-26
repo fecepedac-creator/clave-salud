@@ -750,7 +750,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             {/* MAIN CONTENT */}
             <section className="lg:col-span-9 h-full overflow-y-auto bg-slate-50/30 p-6 lg:p-10">
               {!isCreatingConsultation && (
-                <div className="flex justify-between items-end mb-8">
+                <div className="flex flex-wrap justify-between items-end gap-4 mb-8">
                   <div>
                     <h2 className="text-3xl font-bold text-slate-800">Historial Clínico</h2>
                     <p className="text-slate-500 text-base mt-1 flex items-center gap-2">
