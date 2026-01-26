@@ -204,14 +204,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       })
     : "";
   const centerName = activeCenter?.name || "Centro Médico";
-  const formatPersonName = (value?: string | null) => {
-    if (!value) return "";
-    return value
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .replace(/\b([a-záéíóúñü])/g, (match) => match.toUpperCase());
-  };
   const normalizeRut = (value?: string | null) =>
     String(value ?? "")
       .replace(/[^0-9kK]/g, "")
@@ -1051,11 +1043,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-8 py-4 flex justify-between items-center sticky top-0 z-20 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <LogoHeader size="sm" showText={false} />
-          <div className="h-6 w-px bg-slate-200" />
-          <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
-            <ShieldCheck className="w-6 h-6 text-slate-600" />
-          </div>
+          <LogoHeader size="md" showText={false} />
           <div>
             <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
             <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>

@@ -841,7 +841,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           alt={doc.fullName}
                         />
                       ) : (
-                        <span className="text-slate-300">{doc.fullName.charAt(0)}</span>
+                        <span className="text-slate-300">{doc.fullName?.charAt(0) ?? "?"}</span>
                       )}
                     </div>
                     <div>
