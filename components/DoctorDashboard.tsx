@@ -1124,7 +1124,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             className={`flex-1 px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}
           >
             {/* CONTENT: PATIENTS LIST */}
-            {activeTab === "patients" && moduleGuards.patients && (
+            {activeTab === "patients" && (
               <div className="h-full bg-white/80 backdrop-blur-md rounded-3xl border border-white/50 shadow-xl overflow-hidden flex flex-col animate-fadeIn">
                 {/* Toolbar */}
                 <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-white/50 flex-shrink-0">
@@ -1364,7 +1364,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             )}
 
             {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
-            {activeTab === "settings" && moduleGuards.settings && (
+            {activeTab === "settings" && (
               <div className="w-full animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
                 <div className="lg:col-span-12 bg-blue-50 border border-blue-100 text-blue-900 rounded-3xl p-6 flex items-start gap-4 shadow-sm">
                   <ShieldCheck className="w-6 h-6 text-blue-500 mt-0.5" />
