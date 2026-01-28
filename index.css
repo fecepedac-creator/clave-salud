@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@config "./tailwind.config.cjs";
 
 /* Si quieres, aquí abajo puedes dejar tus estilos propios (los que tenías antes) */
 

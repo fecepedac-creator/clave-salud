@@ -64,7 +64,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import { collection, addDoc, serverTimestamp, doc, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { useAuditLog } from "../hooks/useAuditLog";
 
@@ -147,7 +147,94 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
 
+  // Load WhatsApp templates configured by Center Admin (fallback to defaults)
+  useEffect(() => {
+    const loadTemplates = async () => {
+      if (!activeCenterId) return;
+      try {
+        const whatsappRef = doc(db, "centers", activeCenterId, "settings", "whatsapp");
+        const snap = await getDoc(whatsappRef);
+        const data = snap.exists() ? (snap.data() as any) : null;
+
+        const templatesRaw = Array.isArray(data?.templates) ? data.templates : null;
+        if (!templatesRaw) {
+          setWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES);
+          return;
+        }
+
+        const parsed: WhatsAppTemplate[] = templatesRaw
+          .map((t: any, i: number) => ({
+            id: String(t.id ?? i),
+            title: String(t.title ?? "Plantilla"),
+            body: String(t.body ?? ""),
+            enabled: Boolean(t.enabled ?? true),
+          }))
+          .filter((t: WhatsAppTemplate) => t.body.trim().length > 0);
+
+        setWhatsAppTemplates(parsed.length ? parsed : DEFAULT_WHATSAPP_TEMPLATES);
+      } catch (err) {
+        // If something fails, we keep defaults (do not block UI)
+        setWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES);
+      }
+    };
+
+    loadTemplates();
+  }, [activeCenterId]);
+
+  // Close WhatsApp menu on outside click / escape
+  useEffect(() => {
+    const onDocClick = () => setWhatsAppMenuForPatientId(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setWhatsAppMenuForPatientId(null);
+    };
+    document.addEventListener("click", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   // --- helpers ---
+
+  const safeAgeLabel = (birthDate?: string) => {
+    if (!birthDate) return "-";
+    const age = calculateAge(birthDate);
+    return Number.isFinite(age) ? `${age} años` : "-";
+  };
+
+
+  const getNextControlDateFromPatient = (p: Patient): Date | null => {
+    const lastConsult = p.consultations?.[0]
+      ? [...p.consultations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      : null;
+    const raw = lastConsult?.nextControlDate || "";
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const buildWhatsAppText = (templateBody: string, p: Patient) => {
+    const centerName = activeCenter?.name ?? "Centro Médico";
+    const nextCtrl = getNextControlDateFromPatient(p);
+    const nextCtrlStr = nextCtrl ? nextCtrl.toLocaleDateString("es-CL") : "";
+    return templateBody
+      .replaceAll("{patientName}", formatPersonName(p.fullName) || "Paciente")
+      .replaceAll("{centerName}", centerName)
+      .replaceAll("{nextControlDate}", nextCtrlStr);
+  };
+
+  const openWhatsApp = (p: Patient, templateBody: string) => {
+    const phone = normalizePhone(p.phone || "");
+    if (!phone) {
+      showToast("Paciente sin teléfono registrado.", "warning");
+      return;
+    }
+    const text = buildWhatsAppText(templateBody, p);
+    const waPhone = phone.replaceAll("+", "");
+    const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
   const getEmptyConsultation = (): Partial<Consultation> => ({
     weight: "",
     height: "",
@@ -345,6 +432,43 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [pwdState, setPwdState] = useState({ current: "", new: "", confirm: "" });
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
+
+  // --- WhatsApp templates (per center) ---
+  type WhatsAppTemplate = {
+    id: string;
+    title: string;
+    body: string;
+    enabled: boolean;
+  };
+
+  const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
+    {
+      id: "reminder",
+      title: "Recordatorio control",
+      body:
+        "Hola {patientName}, le recordamos su control el {nextControlDate} en {centerName}. Si desea confirmar, responda a este mensaje. Si necesita reagendar, indíquenos un horario alternativo.",
+      enabled: true,
+    },
+    {
+      id: "confirm",
+      title: "Confirmación asistencia",
+      body:
+        "Hola {patientName}, desde {centerName} queremos confirmar su asistencia al control del {nextControlDate}. ¿Confirma su asistencia?",
+      enabled: true,
+    },
+    {
+      id: "reschedule",
+      title: "Reagendar",
+      body:
+        "Hola {patientName}, desde {centerName}. Vimos que tiene un control próximo ({nextControlDate}). Si no puede asistir, indíquenos por favor un horario alternativo para reagendar.",
+      enabled: true,
+    },
+  ];
+
+  const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplate[]>(
+    DEFAULT_WHATSAPP_TEMPLATES
+  );
+  const [whatsAppMenuForPatientId, setWhatsAppMenuForPatientId] = useState<string | null>(null);
 
   // --- COMBINED EXAM OPTIONS (Default + Custom) ---
   const allExamOptions = useMemo(() => {
@@ -746,7 +870,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               </h1>
               <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
                 <span>
-                  {calculateAge(selectedPatient.birthDate)} años • {selectedPatient.gender}
+                  {safeAgeLabel(selectedPatient.birthDate)} • {selectedPatient.gender}
                 </span>
                 {/* Fallback empty array to prevent BioMarkers crash */}
                 <BioMarkers
@@ -1232,7 +1356,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           }
                           const newP: Patient = {
                             id: generateId(),
-                            centerId: "", // Will be set by context/app
+                            centerId: activeCenterId || "", // Set from active center (fallback empty)
                             rut: "",
                             fullName: "Nuevo Paciente",
                             birthDate: new Date().toISOString(),
@@ -1312,7 +1436,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               </td>
                               <td className="p-5 hidden md:table-cell">
                                 <div className="text-slate-600 font-medium">
-                                  {calculateAge(p.birthDate)} años
+                                  {safeAgeLabel(p.birthDate)}
                                 </div>
                                 <div className="text-xs text-slate-400 font-mono">{p.rut}</div>
                               </td>
@@ -1343,10 +1467,69 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                   <span className="text-slate-300">-</span>
                                 )}
                               </td>
-                              <td className="p-5 text-right">
-                                <button className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors">
-                                  <ChevronRight className="w-5 h-5" />
-                                </button>
+                              
+                              <td className="p-5 text-right relative">
+                                <div className="flex items-center justify-end gap-2">
+                                  {(() => {
+                                    const nextCtrl = getNextControlDateFromPatient(p);
+                                    const canWhatsapp = Boolean(nextCtrl) && Boolean(p.phone);
+                                    if (!canWhatsapp) return null;
+
+                                    return (
+                                      <div className="relative">
+                                        <button
+                                          className="text-green-700 hover:bg-green-50 p-2 rounded-lg transition-colors"
+                                          title="Enviar recordatorio por WhatsApp"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setWhatsAppMenuForPatientId(
+                                              whatsAppMenuForPatientId === p.id ? null : p.id
+                                            );
+                                          }}
+                                        >
+                                          <MessageCircle className="w-5 h-5" />
+                                        </button>
+
+                                        {whatsAppMenuForPatientId === p.id && (
+                                          <div
+                                            className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <div className="px-3 py-2 text-xs font-bold text-slate-500 bg-slate-50">
+                                              Plantillas WhatsApp
+                                            </div>
+                                            <div className="p-1">
+                                              {whatsAppTemplates
+                                                .filter((t) => t.enabled)
+                                                .map((t) => (
+                                                  <button
+                                                    key={t.id}
+                                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-700"
+                                                    onClick={() => {
+                                                      openWhatsApp(p, t.body);
+                                                      setWhatsAppMenuForPatientId(null);
+                                                    }}
+                                                  >
+                                                    {t.title}
+                                                  </button>
+                                                ))}
+                                              {whatsAppTemplates.filter((t) => t.enabled).length ===
+                                                0 && (
+                                                <div className="px-3 py-2 text-sm text-slate-500">
+                                                  No hay plantillas activas.
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+
+                                  <button className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors">
+                                    <ChevronRight className="w-5 h-5" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1935,3 +2118,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     </div>
   );
 };
+
+
+export default ProfessionalDashboard;

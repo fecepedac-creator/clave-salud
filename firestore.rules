@@ -131,6 +131,15 @@ service cloud.firestore {
       allow create: if isSuperAdmin();
       allow update, delete: if isSuperAdmin();
 
+      // -------------------- Center Settings (private) --------------------
+      // Example docs:
+      // centers/{centerId}/settings/whatsapp   -> WhatsApp templates per center
+      match /settings/{settingId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+
       match /staff/{staffUid} {
         allow read: if signedIn() && (
           isSuperAdmin()

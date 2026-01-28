@@ -7,6 +7,7 @@ import {
   AgendaConfig,
   AuditLogEntry,
   ProfessionalRole,
+  WhatsAppTemplate,
   Preadmission,
 } from "../types";
 import {
@@ -52,7 +53,7 @@ import {
   User,
 } from "lucide-react";
 import { useToast } from "./Toast";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import {
   collection,
   query,
@@ -128,7 +129,107 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (activeTab === "audit" && !isModuleEnabled("audit")) setActiveTab("doctors");
   }, [activeTab, isModuleEnabled]);
 
-  // --- STATE FOR DOCTORS MANAGEMENT ---
+  
+  // --- WHATSAPP TEMPLATES (per center) ---
+  const DEFAULT_WA_TEMPLATES: WhatsAppTemplate[] = [
+    {
+      id: "reminder",
+      title: "Recordatorio de control",
+      body: "Estimado/a {patientName}, le recordamos su control programado para el {nextControlDate} en {centerName}. Si no puede asistir, por favor responda a este mensaje para reagendar.",
+      enabled: true,
+    },
+    {
+      id: "confirm",
+      title: "Confirmar asistencia",
+      body: "Estimado/a {patientName}, ¿podría confirmar su asistencia al control del {nextControlDate} en {centerName}? Responda SI para confirmar o NO para reagendar.",
+      enabled: true,
+    },
+    {
+      id: "reschedule",
+      title: "Reagendar",
+      body: "Estimado/a {patientName}, si necesita reagendar su control del {nextControlDate} en {centerName}, indíquenos una fecha/horario alternativo y le ayudaremos.",
+      enabled: true,
+    },
+  ];
+
+  const [waTemplates, setWaTemplates] = useState<WhatsAppTemplate[]>(DEFAULT_WA_TEMPLATES);
+  const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
+  const [waTemplatesSaving, setWaTemplatesSaving] = useState(false);
+
+  useEffect(() => {
+    // Load templates for active center
+    const load = async () => {
+      if (!db || !activeCenterId) return;
+      setWaTemplatesLoading(true);
+      try {
+        const ref = doc(db, "centers", activeCenterId, "settings", "whatsapp");
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          if (Array.isArray(data.templates) && data.templates.length > 0) {
+            setWaTemplates(data.templates);
+          } else {
+            setWaTemplates(DEFAULT_WA_TEMPLATES);
+          }
+        } else {
+          setWaTemplates(DEFAULT_WA_TEMPLATES);
+        }
+      } catch (e) {
+        console.error("load wa templates", e);
+        setWaTemplates(DEFAULT_WA_TEMPLATES);
+      } finally {
+        setWaTemplatesLoading(false);
+      }
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCenterId]);
+
+  const saveWaTemplates = async () => {
+    if (!db || !activeCenterId) return;
+    setWaTemplatesSaving(true);
+    try {
+      const ref = doc(db, "centers", activeCenterId, "settings", "whatsapp");
+      await setDoc(
+        ref,
+        {
+          templates: waTemplates.map((t) => ({
+            id: t.id,
+            title: t.title,
+            body: t.body,
+            enabled: t.enabled !== false,
+          })),
+          updatedAt: serverTimestamp(),
+          updatedBy: auth.currentUser?.uid || null,
+        },
+        { merge: true }
+      );
+      showToast("Plantillas de WhatsApp guardadas.", "success");
+    } catch (e) {
+      console.error("save wa templates", e);
+      showToast("No se pudieron guardar las plantillas.", "error");
+    } finally {
+      setWaTemplatesSaving(false);
+    }
+  };
+
+  const addWaTemplate = () => {
+    setWaTemplates((prev) => [
+      ...prev,
+      {
+        id: `tpl_${Date.now()}`,
+        title: "Nueva plantilla",
+        body: "Estimado/a {patientName}, ...",
+        enabled: true,
+      },
+    ]);
+  };
+
+  const removeWaTemplate = (id: string) => {
+    setWaTemplates((prev) => prev.filter((t) => t.id !== id));
+  };
+
+// --- STATE FOR DOCTORS MANAGEMENT ---
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
@@ -804,6 +905,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Calendar className="w-4 h-4" /> Configurar Agenda
           </button>
+          <button
+            onClick={() => setActiveTab("whatsapp")}
+            disabled={!hasActiveCenter}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
+          >
+            <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
+          </button>
+
           <button
             onClick={() => setActiveTab("audit")}
             disabled={!hasActiveCenter}

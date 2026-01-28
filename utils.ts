@@ -71,9 +71,13 @@ export const validateRUT = (rut: string): boolean => {
   return dv === dvCalculado;
 };
 
-export const calculateAge = (birthDate: string): number => {
-  const today = new Date();
+export const calculateAge = (birthDate?: string | null): number | null => {
+  if (!birthDate) return null;
+
   const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return null;
+
+  const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {

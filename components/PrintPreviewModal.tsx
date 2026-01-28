@@ -98,7 +98,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                   </div>
                   <div>
                     <span className="font-bold uppercase text-xs text-slate-500 mr-2">Edad:</span>{" "}
-                    {calculateAge(selectedPatient.birthDate)} años
+                    {(calculateAge(selectedPatient.birthDate) ?? "-")} años
                   </div>
                   <div>
                     <span className="font-bold uppercase text-xs text-slate-500 mr-2">

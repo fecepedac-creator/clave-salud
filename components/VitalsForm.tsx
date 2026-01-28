@@ -222,7 +222,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
 }) => {
   // Auto-Calculate VFG if Creatinine is present
   const creatinina = parseFloat(newConsultation.exams?.["creatinina"] || "0");
-  const age = calculateAge(patientBirthDate);
+  const age = calculateAge(patientBirthDate) ?? 0;
   const vfg = calculateMDRD(creatinina, age, patientGender);
 
   const displayedVFG = vfg ? vfg.toString() : "";

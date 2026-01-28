@@ -322,3 +322,12 @@ export type ViewMode =
   | "select-center"
   | "superadmin-login"
   | "superadmin-dashboard";
+
+
+// -------------------- WhatsApp Templates (per center) --------------------
+export type WhatsAppTemplate = {
+  id: string;
+  title: string;
+  body: string;
+  enabled?: boolean;
+};
