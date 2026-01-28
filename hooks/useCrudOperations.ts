@@ -134,9 +134,17 @@ export function useCrudOperations(
       if (!requireCenter("registrar auditoría")) return;
       const id = payload?.id ?? generateId();
       const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
+      const timestamp = payload.timestamp ?? new Date().toISOString();
       await setDoc(
         doc(db, "centers", activeCenterId, "auditLogs", id),
-        { ...payload, actorUid, id, centerId: activeCenterId },
+        {
+          ...payload,
+          actorUid,
+          id,
+          centerId: activeCenterId,
+          timestamp,
+          createdAt: serverTimestamp(),
+        },
         { merge: true }
       );
     },
