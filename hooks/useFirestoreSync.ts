@@ -111,16 +111,24 @@ export function useFirestoreSync(
       }
     );
 
-    const logsQuery = query(
-      collection(db, "centers", activeCenterId, "auditLogs"),
-      orderBy("timestamp", "desc"),
-      limit(50)
-    );
+    const logsCollection = collection(db, "centers", activeCenterId, "auditLogs");
+    const logsQuery = query(logsCollection, orderBy("timestamp", "desc"), limit(50));
+    const fallbackLogsQuery = query(logsCollection, orderBy("createdAt", "desc"), limit(50));
+    let fallbackUnsub: (() => void) | null = null;
     const unsubLogs = onSnapshot(
       logsQuery,
       (snap) =>
         setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
-      () => setAuditLogs([])
+      () => {
+        fallbackUnsub = onSnapshot(
+          fallbackLogsQuery,
+          (snap) =>
+            setAuditLogs(
+              snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]
+            ),
+          () => setAuditLogs([])
+        );
+      }
     );
 
     const unsubPreadmissions = onSnapshot(
@@ -138,6 +146,7 @@ export function useFirestoreSync(
       unsubDoctors();
       unsubAppts();
       unsubLogs();
+      fallbackUnsub?.();
       unsubPreadmissions();
     };
   }, [activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters]);

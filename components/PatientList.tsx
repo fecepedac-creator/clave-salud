@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useState, useContext } from "react";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  DocumentData,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  QueryDocumentSnapshot,
+  query,
+  startAfter,
+} from "firebase/firestore";
 import { Search, Plus, User } from "lucide-react";
 import { Patient } from "../types";
 import { db } from "../firebase";
@@ -18,6 +28,12 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   const hasActiveCenter = Boolean(activeCenterId);
   const [remotePatients, setRemotePatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [orderField, setOrderField] = useState<"fullName" | "lastUpdated">("fullName");
+  const [orderDirection, setOrderDirection] = useState<"asc" | "desc">("asc");
+  const pageSize = 25;
 
   // Leer desde Firestore solo si no llegan patients por props
   useEffect(() => {
@@ -28,29 +44,63 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
     }
 
     const baseRef = collection(db, "centers", activeCenterId, "patients");
-    const q = query(baseRef, orderBy("fullName", "asc"));
+    setLastDoc(null);
+    setHasMore(false);
+    setOrderField("fullName");
+    setOrderDirection("asc");
+    const q = query(baseRef, orderBy("fullName", "asc"), limit(pageSize));
+    const fallbackQuery = query(baseRef, orderBy("lastUpdated", "desc"), limit(pageSize));
 
+    let fallbackUnsub: (() => void) | null = null;
     const unsub = onSnapshot(
       q,
       (snap) => {
         const rows: Patient[] = [];
         snap.forEach((d) => rows.push(d.data() as Patient));
         setRemotePatients(rows);
+        setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+        setHasMore(snap.docs.length === pageSize);
       },
       () => {
         // Si falla orderBy por índice, igual mostramos sin crashear:
-        const q2 = query(baseRef);
-        const unsub2 = onSnapshot(q2, (snap2) => {
+        setOrderField("lastUpdated");
+        setOrderDirection("desc");
+        fallbackUnsub = onSnapshot(fallbackQuery, (snap2) => {
           const rows2: Patient[] = [];
           snap2.forEach((d) => rows2.push(d.data() as Patient));
           setRemotePatients(rows2);
+          setLastDoc(snap2.docs[snap2.docs.length - 1] ?? null);
+          setHasMore(snap2.docs.length === pageSize);
         });
-        return () => unsub2();
       }
     );
 
-    return () => unsub();
-  }, [activeCenterId, patients]);
+    return () => {
+      unsub();
+      fallbackUnsub?.();
+    };
+  }, [activeCenterId, pageSize, patients]);
+
+  const handleLoadMore = async () => {
+    if (!activeCenterId || !lastDoc || !hasMore || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const baseRef = collection(db, "centers", activeCenterId, "patients");
+      const moreQuery = query(
+        baseRef,
+        orderBy(orderField, orderDirection),
+        startAfter(lastDoc),
+        limit(pageSize)
+      );
+      const snap = await getDocs(moreQuery);
+      const rows = snap.docs.map((d) => d.data() as Patient);
+      setRemotePatients((prev) => [...prev, ...rows]);
+      setLastDoc(snap.docs[snap.docs.length - 1] ?? lastDoc);
+      setHasMore(snap.docs.length === pageSize);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const data = patients ?? remotePatients;
 
@@ -101,35 +151,49 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="p-6 text-slate-500">
-            {activeCenterId
-              ? "No hay pacientes registrados en este centro."
-              : "Selecciona un centro para ver pacientes."}
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {filtered.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect?.(p)}
-                  className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
-                >
-                  <div>
-                    <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
-                    <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
-                  </div>
-                  <div className="text-sm text-slate-500">
-                    {p.commune ? `Comuna: ${p.commune}` : ""}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="p-6 text-slate-500">
+              {activeCenterId
+                ? "No hay pacientes registrados en este centro."
+                : "Selecciona un centro para ver pacientes."}
+            </div>
+          ) : (
+            <>
+              <ul className="divide-y divide-slate-100">
+                {filtered.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect?.(p)}
+                      className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
+                        <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        {p.commune ? `Comuna: ${p.commune}` : ""}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {!patients && hasMore && (
+                <div className="p-4 flex justify-center border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingMore ? "Cargando..." : "Ver más"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
       <div className="mt-3 text-xs text-slate-500">
         Los datos se leen desde Firebase (Firestore) en tiempo real para el centro activo.
