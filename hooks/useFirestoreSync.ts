@@ -115,21 +115,15 @@ export function useFirestoreSync(
     const logsQuery = query(logsCollection, orderBy("timestamp", "desc"), limit(50));
     const fallbackLogsQuery = query(logsCollection, orderBy("createdAt", "desc"), limit(50));
     let fallbackUnsub: (() => void) | null = null;
-    const unsubLogs = onSnapshot(
-      logsQuery,
-      (snap) =>
-        setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
-      () => {
-        fallbackUnsub = onSnapshot(
-          fallbackLogsQuery,
-          (snap) =>
-            setAuditLogs(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]
-            ),
-          () => setAuditLogs([])
-        );
-      }
-    );
+    let usingFallback = false;
+    const handleLogsSnapshot = (snap: any) =>
+      setAuditLogs(snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]);
+    const handleLogsError = () => {
+      if (usingFallback) return;
+      usingFallback = true;
+      fallbackUnsub = onSnapshot(fallbackLogsQuery, handleLogsSnapshot, () => setAuditLogs([]));
+    };
+    const unsubLogs = onSnapshot(logsQuery, handleLogsSnapshot, handleLogsError);
 
     const unsubPreadmissions = onSnapshot(
       collection(db, "centers", activeCenterId, "preadmissions"),
