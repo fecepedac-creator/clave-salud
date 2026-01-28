@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "../firebase";
-import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  DocumentData,
+  limit,
+  onSnapshot,
+  orderBy,
+  QuerySnapshot,
+  query,
+  where,
+} from "firebase/firestore";
 import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 
@@ -116,8 +125,8 @@ export function useFirestoreSync(
     const fallbackLogsQuery = query(logsCollection, orderBy("createdAt", "desc"), limit(50));
     let fallbackUnsub: (() => void) | null = null;
     let usingFallback = false;
-    const handleLogsSnapshot = (snap: any) =>
-      setAuditLogs(snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]);
+    const handleLogsSnapshot = (snap: QuerySnapshot<DocumentData>) =>
+      setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]);
     const handleLogsError = () => {
       if (usingFallback) return;
       usingFallback = true;

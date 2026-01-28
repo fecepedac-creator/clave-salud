@@ -79,7 +79,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       unsub();
       fallbackUnsub?.();
     };
-  }, [activeCenterId, pageSize, patients]);
+  }, [activeCenterId, patients]);
 
   const handleLoadMore = async () => {
     if (!activeCenterId || !lastDoc || !hasMore || isLoadingMore) return;
@@ -95,7 +95,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
       const snap = await getDocs(moreQuery);
       const rows = snap.docs.map((d) => d.data() as Patient);
       setRemotePatients((prev) => [...prev, ...rows]);
-      setLastDoc(snap.docs[snap.docs.length - 1] ?? lastDoc);
+      setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
       setHasMore(snap.docs.length === pageSize);
     } finally {
       setIsLoadingMore(false);
