@@ -69,6 +69,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
+import WhatsappTemplatesManager from "./WhatsappTemplatesManager";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -114,12 +115,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   logs,
   onLogActivity,
 }) => {
-  const [activeTab, setActiveTab] = useState<"doctors" | "agenda" | "audit" | "preadmissions">(
-    "doctors"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "doctors" | "agenda" | "audit" | "preadmissions" | "whatsapp"
+  >("doctors");
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
+  const resolvedCenterId = activeCenterId || centerId;
   // --- defensive module guard ---
   useEffect(() => {
     if (activeTab === "agenda" && !isModuleEnabled("agenda")) setActiveTab("doctors");
@@ -818,6 +820,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <User className="w-4 h-4" /> Preingresos
           </button>
+          <button
+            onClick={() => setActiveTab("whatsapp")}
+            disabled={!hasActiveCenter}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
+          >
+            <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
+          </button>
         </div>
 
         {/* DOCTORS MANAGEMENT */}
@@ -1417,6 +1427,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* WHATSAPP TEMPLATES */}
+        {activeTab === "whatsapp" && (
+          <div className="animate-fadeIn">
+            <WhatsappTemplatesManager
+              centerId={resolvedCenterId}
+              centerName={activeCenter?.name || "Centro Médico"}
+            />
           </div>
         )}
 

@@ -88,6 +88,13 @@ export interface ClinicalTemplate {
   roles?: RoleId[];
 }
 
+export interface WhatsappTemplate {
+  id: string;
+  title: string;
+  body: string;
+  enabled: boolean;
+}
+
 // NEW INTERFACE FOR CUSTOM EXAMS
 export interface ExamDefinition {
   id: string;

@@ -12,6 +12,7 @@ import {
   AuditLogEntry,
   ExamProfile,
   ExamDefinition,
+  WhatsappTemplate,
 } from "../types";
 import {
   calculateAge,
@@ -20,6 +21,7 @@ import {
   base64ToBlob,
   normalizePhone,
   formatPersonName,
+  applyWhatsappTemplate,
 } from "../utils";
 import {
   COMMON_DIAGNOSES,
@@ -62,7 +64,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 // Sub-components
@@ -195,6 +197,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     isOpen: false,
     appointment: null,
   });
+  const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsappTemplate[]>([]);
+  const [whatsappTemplatesError, setWhatsappTemplatesError] = useState<string | null>(null);
 
   const slotDateLabel = slotModal.appointment?.date
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString("es-CL", {
@@ -249,6 +253,40 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const confirmWhatsappUrl = slotModal.appointment
     ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(confirmWhatsappMessage)}`
     : "#";
+
+  useEffect(() => {
+    if (!db || !activeCenterId) {
+      setWhatsappTemplates([]);
+      setWhatsappTemplatesError(null);
+      return;
+    }
+
+    const docRef = doc(db, "centers", activeCenterId, "settings", "whatsapp");
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        const data = snapshot.data();
+        setWhatsappTemplates(
+          Array.isArray(data?.templates) ? (data?.templates as WhatsappTemplate[]) : []
+        );
+        setWhatsappTemplatesError(null);
+      },
+      (error) => {
+        const message =
+          error.code === "permission-denied"
+            ? "Sin permisos para leer plantillas de WhatsApp."
+            : "Error cargando plantillas de WhatsApp.";
+        setWhatsappTemplatesError(message);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeCenterId]);
+
+  const enabledWhatsappTemplates = useMemo(
+    () => whatsappTemplates.filter((template) => template.enabled),
+    [whatsappTemplates]
+  );
 
   // New Consultation State
   const [newConsultation, setNewConsultation] =
@@ -1828,6 +1866,42 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     >
                       <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
                     </a>
+                    <div className="pt-2 border-t border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+                        Plantillas del centro
+                      </p>
+                      {whatsappTemplatesError && (
+                        <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
+                      )}
+                      {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
+                        <div className="text-xs text-slate-400">
+                          No hay plantillas habilitadas.
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2">
+                        {enabledWhatsappTemplates.map((template) => {
+                          const templateMessage = applyWhatsappTemplate(template.body, {
+                            patientName: patientDisplayName,
+                            nextControlDate: slotDateLabel,
+                            centerName,
+                          });
+                          const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
+                            templateMessage
+                          )}`;
+                          return (
+                            <a
+                              key={template.id}
+                              href={templateUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
+                            >
+                              <MessageCircle className="w-4 h-4" /> {template.title}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

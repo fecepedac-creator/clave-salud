@@ -160,6 +160,11 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /settings/{settingId} {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
       match /patients/{patientId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
