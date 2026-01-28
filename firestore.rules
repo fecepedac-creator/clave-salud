@@ -254,11 +254,10 @@ service cloud.firestore {
       }
 
       match /auditLogs/{logId} {
-        allow read: if signedIn() && canViewAudit(centerId);
-        allow create: if signedIn()
-          && request.resource.data.actorUid == uid()
-          && (isSuperAdmin() || isStaff(centerId));
-        allow update, delete: if false;
+        // Only staff and superadmins can read audit logs
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        // No direct writes from client - only through Cloud Functions
+        allow create, update, delete: if false;
       }
     }
 

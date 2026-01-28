@@ -66,6 +66,7 @@ import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebase";
+import { useAuditLog } from "../hooks/useAuditLog";
 
 // Sub-components
 import VitalsForm from "./VitalsForm";
@@ -133,6 +134,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   isSyncingAppointments = false,
 }) => {
   const { showToast } = useToast();
+  const { logAccess } = useAuditLog();
   const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings">(
     "patients"
   );
@@ -212,6 +214,27 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     String(value ?? "")
       .replace(/[^0-9kK]/g, "")
       .toUpperCase();
+  
+  // Helper function to handle patient selection with audit logging
+  const handleSelectPatient = async (patient: Patient) => {
+    setSelectedPatient(patient);
+    
+    // Log patient access for audit trail (DS 41 MINSAL)
+    if (activeCenterId && patient.id) {
+      try {
+        await logAccess({
+          centerId: activeCenterId,
+          resourceType: "patient",
+          resourcePath: `centers/${activeCenterId}/patients/${patient.id}`,
+          patientId: patient.id,
+        });
+      } catch (error) {
+        // Silently fail - audit logging should not block user workflow
+        console.error("Failed to log patient access:", error);
+      }
+    }
+  };
+  
   const handleOpenPatientFromAppointment = (appointment: Appointment) => {
     const foundById = appointment.patientId
       ? patients.find((patient) => patient.id === appointment.patientId)
@@ -224,7 +247,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const resolvedPatient = foundById ?? foundByRut ?? null;
 
     if (resolvedPatient) {
-      setSelectedPatient(resolvedPatient);
+      handleSelectPatient(resolvedPatient);
       setActiveTab("patients");
       return;
     }
@@ -1277,7 +1300,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             <tr
                               key={p.id}
                               className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                              onClick={() => setSelectedPatient(p)}
+                              onClick={() => handleSelectPatient(p)}
                             >
                               <td className="p-5">
                                 <div className="font-bold text-slate-800 text-base">

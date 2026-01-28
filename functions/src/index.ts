@@ -2,6 +2,7 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
+import { LogAccessRequest, LogAccessResult, AuditLogData } from "./types";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -437,4 +438,154 @@ export const backfillPublicStaff = functions.https.onCall(async (data, context) 
 
   return { ok: true, centersProcessed, staffProcessed, failures };
 });
+
+/**
+ * logAccess - Cloud Function para registrar accesos a datos clínicos
+ * 
+ * Implementa trazabilidad de accesos conforme al DS 41 MINSAL con:
+ * - Deduplicación: un acceso por recurso/usuario cada 60 segundos
+ * - Solo accesible por staff o superadmins autenticados
+ * - Timestamps del servidor para integridad
+ */
+export const logAccess = functions.https.onCall(async (data: LogAccessRequest, context): Promise<LogAccessResult> => {
+  requireAuth(context);
   
+  const uid = context.auth!.uid;
+  const emailLower = lowerEmailFromContext(context);
+  
+  // Validar campos requeridos
+  const centerId = String(data?.centerId || "").trim();
+  const resourceType = String(data?.resourceType || "").trim();
+  const resourcePath = String(data?.resourcePath || "").trim();
+  
+  if (!centerId) {
+    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  }
+  if (!resourceType) {
+    throw new functions.https.HttpsError("invalid-argument", "resourceType es requerido.");
+  }
+  if (!resourcePath) {
+    throw new functions.https.HttpsError("invalid-argument", "resourcePath es requerido.");
+  }
+  
+  // Validar que el resourceType sea válido
+  const validResourceTypes = ["patient", "consultation", "appointment"];
+  if (!validResourceTypes.includes(resourceType)) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `resourceType debe ser uno de: ${validResourceTypes.join(", ")}`
+    );
+  }
+  
+  // Verificar permisos: debe ser staff del centro o superadmin
+  const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
+  const staffSnap = await staffRef.get();
+  
+  const isStaffMember = staffSnap.exists && (
+    staffSnap.get("active") === true || 
+    staffSnap.get("activo") === true
+  );
+  
+  if (!isSuperAdmin(context) && !isStaffMember) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "No tiene permisos para acceder a este centro."
+    );
+  }
+  
+  // Obtener rol del usuario
+  const staffData = staffSnap.data() as any;
+  const role = staffData?.role || "unknown";
+  
+  // Deduplicación: crear un ID basado en usuario + recurso
+  const dedupeKey = `${uid}_${resourcePath}`;
+  const dedupeDocRef = db
+    .collection("centers")
+    .doc(centerId)
+    .collection("auditLogs")
+    .doc(`dedupe_${dedupeKey.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+  
+  try {
+    // Usar transacción para verificar deduplicación atómica
+    const result = await db.runTransaction(async (transaction) => {
+      const dedupeSnap = await transaction.get(dedupeDocRef);
+      
+      // Si existe un log reciente (menos de 60 segundos), no crear uno nuevo
+      if (dedupeSnap.exists) {
+        const lastTimestamp = dedupeSnap.get("timestamp");
+        if (lastTimestamp?.toMillis) {
+          const timeSinceLastLog = Date.now() - lastTimestamp.toMillis();
+          if (timeSinceLastLog < 60000) { // 60 segundos
+            functions.logger.info("logAccess deduplicated", {
+              centerId,
+              uid,
+              resourcePath,
+              timeSinceLastLog,
+            });
+            return { logged: false };
+          }
+        }
+      }
+      
+      // Crear el log de auditoría
+      const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+      
+      const auditLogData: AuditLogData = {
+        type: "ACCESS",
+        actorUid: uid,
+        actorEmail: emailLower,
+        actorRole: role,
+        resourceType: resourceType as any,
+        resourcePath,
+        timestamp: serverTimestamp(),
+      };
+      
+      // Añadir campos opcionales si están presentes
+      if (data.patientId) {
+        auditLogData.patientId = String(data.patientId).trim();
+      }
+      if (data.ip) {
+        auditLogData.ip = String(data.ip).trim();
+      }
+      if (data.userAgent) {
+        auditLogData.userAgent = String(data.userAgent).trim();
+      }
+      
+      // Escribir el log y actualizar el documento de deduplicación
+      transaction.set(auditLogRef, auditLogData);
+      transaction.set(dedupeDocRef, {
+        timestamp: serverTimestamp(),
+        resourcePath,
+        actorUid: uid,
+      }, { merge: true });
+      
+      functions.logger.info("logAccess created", {
+        centerId,
+        uid,
+        role,
+        resourceType,
+        resourcePath,
+      });
+      
+      return { logged: true };
+    });
+    
+    return {
+      ok: true,
+      logged: result.logged,
+      message: result.logged ? "Acceso registrado." : "Acceso ya registrado recientemente.",
+    };
+  } catch (error) {
+    functions.logger.error("logAccess error", {
+      centerId,
+      uid,
+      resourcePath,
+      error: String(error),
+    });
+    throw new functions.https.HttpsError(
+      "internal",
+      "Error al registrar el acceso."
+    );
+  }
+});
+
