@@ -136,7 +136,7 @@ export function useCrudOperations(
       const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
       await setDoc(
         doc(db, "centers", activeCenterId, "auditLogs", id),
-        { ...payload, actorUid, id, centerId: activeCenterId },
+        { ...payload, actorUid, id, centerId: activeCenterId, timestamp: serverTimestamp() },
         { merge: true }
       );
     },

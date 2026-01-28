@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "../firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 
@@ -55,8 +55,13 @@ export function useFirestoreSync(
       };
     }
 
-    const unsubPatients = onSnapshot(
+    const patientsQuery = query(
       collection(db, "centers", activeCenterId, "patients"),
+      orderBy("lastUpdated", "desc"),
+      limit(400)
+    );
+    const unsubPatients = onSnapshot(
+      patientsQuery,
       (snap) =>
         setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
       () => setPatients([])
@@ -78,9 +83,22 @@ export function useFirestoreSync(
     );
 
     const apptCollection = collection(db, "centers", activeCenterId, "appointments");
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 30);
+    const startDateStr = startDate.toISOString().split("T")[0];
+    const endDateStr = endDate.toISOString().split("T")[0];
+    const baseApptQuery = [
+      where("date", ">=", startDateStr),
+      where("date", "<=", endDateStr),
+      orderBy("date", "asc"),
+      orderBy("time", "asc"),
+      limit(500),
+    ];
     const apptQuery = auth.currentUser
-      ? apptCollection
-      : query(apptCollection, where("status", "==", "available"));
+      ? query(apptCollection, ...baseApptQuery)
+      : query(apptCollection, where("status", "==", "available"), ...baseApptQuery);
     const unsubAppts = onSnapshot(
       apptQuery,
       (snap) =>
@@ -93,8 +111,13 @@ export function useFirestoreSync(
       }
     );
 
-    const unsubLogs = onSnapshot(
+    const logsQuery = query(
       collection(db, "centers", activeCenterId, "auditLogs"),
+      orderBy("timestamp", "desc"),
+      limit(50)
+    );
+    const unsubLogs = onSnapshot(
+      logsQuery,
       (snap) =>
         setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]),
       () => setAuditLogs([])
