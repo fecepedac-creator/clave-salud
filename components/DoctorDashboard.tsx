@@ -909,6 +909,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           onClose={() => setIsPrintModalOpen(false)}
           docs={docsToPrint}
           doctorName={doctorName}
+          centerName={activeCenter?.name}
+          centerLogoUrl={activeCenter?.logoUrl}
           selectedPatient={selectedPatient}
         />
 
