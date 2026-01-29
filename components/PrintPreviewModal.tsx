@@ -11,6 +11,13 @@ interface PrintPreviewModalProps {
   selectedPatient: Patient | null;
 }
 
+/**
+ * NOTE:
+ * - El tamaño de impresión se controla vía @page.
+ * - Esta vista está optimizada para documentos "pequeños" (A5).
+ * - Para que el diálogo de impresión NO quede en blanco, NO debemos ocultar #root,
+ *   porque este modal vive dentro de #root.
+ */
 const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   isOpen,
   onClose,
@@ -25,6 +32,11 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     month: "long",
     year: "numeric",
   });
+
+  // TODO (mejora futura): hacer que estos datos vengan desde el perfil del profesional/centro
+  const doctorRut = "16.459.999-1";
+  const doctorSpecialty = "MEDICINA INTERNA";
+  const doctorInstitution = "Universidad Católica del Maule";
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
@@ -65,16 +77,21 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                   <h1 className="text-2xl font-serif font-bold text-slate-900 tracking-wide uppercase">
                     {doctorName}
                   </h1>
-                  <div className="text-sm text-slate-700 font-serif mt-1">
+                  {/* RUT debajo del nombre (como pediste) */}
+                  <p className="text-xs font-mono font-bold text-slate-600 mt-1">
+                    RUT: {doctorRut}
+                  </p>
+
+                  <div className="text-sm text-slate-700 font-serif mt-3">
                     <p className="font-bold uppercase tracking-wider text-xs mb-0.5">
                       Especialidad
                     </p>
-                    <p className="text-lg">MEDICINA INTERNA</p>
-                    <p className="italic text-slate-500">Universidad Católica del Maule</p>
+                    <p className="text-lg">{doctorSpecialty}</p>
+                    <p className="italic text-slate-500">{doctorInstitution}</p>
                   </div>
                 </div>
+
                 <div className="text-right">
-                  <p className="text-sm font-mono font-bold text-slate-600">RUT: 16.459.999-1</p>
                   <div className="border-2 border-slate-900 px-4 py-1 mt-2 inline-block rounded">
                     <h2 className="text-lg font-bold font-serif text-slate-900 uppercase">
                       {doc.type}
@@ -93,11 +110,15 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <span className="text-lg">{selectedPatient.fullName}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-xs text-slate-500 mr-2">RUT:</span>{" "}
+                    <span className="font-bold uppercase text-xs text-slate-500 mr-2">
+                      RUT:
+                    </span>{" "}
                     <span className="font-mono text-base">{selectedPatient.rut}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-xs text-slate-500 mr-2">Edad:</span>{" "}
+                    <span className="font-bold uppercase text-xs text-slate-500 mr-2">
+                      Edad:
+                    </span>{" "}
                     {(calculateAge(selectedPatient.birthDate) ?? "-")} años
                   </div>
                   <div>
@@ -112,7 +133,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
               {/* 3. Prescription Body */}
               <div className="flex-1 relative font-serif">
-                <span className="text-4xl font-bold font-serif text-slate-900 block mb-6">Rp.</span>
+                <span className="text-4xl font-bold font-serif text-slate-900 block mb-6">
+                  Rp.
+                </span>
                 <div className="text-xl leading-relaxed text-slate-900 whitespace-pre-wrap pl-8 border-l-2 border-slate-100 min-h-[300px] print:border-l-slate-300">
                   {doc.content}
                 </div>
@@ -133,48 +156,69 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                   <div className="w-64 border-t-2 border-slate-800 mb-2"></div>
                   <p className="font-bold text-slate-900 text-sm">{doctorName}</p>
                   <p className="text-xs text-slate-500 uppercase">Médico Cirujano</p>
-                  <p className="text-xs text-slate-500 font-mono">16.459.999-1</p>
+                  <p className="text-xs text-slate-500 font-mono">{doctorRut}</p>
                 </div>
               </footer>
             </div>
           ))}
         </div>
       </div>
+
       <style>{`
-                @media print {
-                    @page { 
-                        size: letter; 
-                        margin: 0; 
-                    }
-                    body { 
-                        background: white; 
-                        -webkit-print-color-adjust: exact;
-                    }
-                    #root { display: none; }
-                    .print\\:block { display: block !important; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }
-                    
-                    /* Robust Document Styling for Print */
-                    .print-document {
-                        width: 100% !important;
-                        height: 100vh !important;
-                        max-width: none !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                        border-radius: 0 !important;
-                        margin: 0 !important;
-                        padding: 2.5cm !important; /* Standard print margin */
-                        page-break-after: always;
-                        break-after: page;
-                        position: relative !important;
-                        overflow: hidden !important;
-                    }
-                    
-                    /* Prevent breaking inside critical elements */
-                    .print\\:break-inside-avoid {
-                        break-inside: avoid;
-                    }
-                }
-            `}</style>
+        @media print {
+          /* A5 para documentos clínicos "pequeños" */
+          @page { 
+            size: A5; 
+            margin: 0; 
+          }
+
+          html, body {
+            background: white;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            height: auto !important;
+          }
+
+          /* Importante: NO ocultar #root, porque este modal vive dentro de #root.
+             Si lo ocultas, la vista previa de impresión queda en blanco. */
+          /* #root { display: none; } */
+
+          .print\\:block {
+            display: block !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 9999;
+          }
+
+          /* Documento: márgenes internos adecuados para A5 */
+          .print-document {
+            width: 100% !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+
+            /* Para A5, 10–12mm suele verse mejor que 2.5cm */
+            padding: 12mm !important;
+
+            /* Evitar forzar 100vh (a veces rompe el preview) */
+            height: auto !important;
+            min-height: auto !important;
+
+            page-break-after: always;
+            break-after: page;
+            position: relative !important;
+            overflow: visible !important;
+          }
+
+          .print\\:break-inside-avoid {
+            break-inside: avoid;
+          }
+        }
+      `}</style>
     </div>
   );
 };
