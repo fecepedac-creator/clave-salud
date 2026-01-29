@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
 import { generateId } from "../utils";
-import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles } from "lucide-react";
+import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles, FileText } from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
 import AutocompleteInput from "./AutocompleteInput";
 
@@ -10,6 +10,7 @@ interface PrescriptionManagerProps {
   onAddPrescription: (doc: Prescription) => void;
   onRemovePrescription: (id: string) => void;
   onPrint: (docs: Prescription[]) => void;
+  onOpenClinicalReport?: () => void;
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
 }
@@ -19,6 +20,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   onAddPrescription,
   onRemovePrescription,
   onPrint,
+  onOpenClinicalReport,
   templates,
   role,
 }) => {
@@ -97,15 +99,26 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
         <h4 className="text-amber-900 font-bold text-lg uppercase tracking-wider flex items-center gap-2">
           <FilePlus className="w-5 h-5" /> Documentos Clínicos
         </h4>
-        {prescriptions && prescriptions.length > 1 && (
-          <button
-            type="button"
-            onClick={() => onPrint(prescriptions)}
-            className="bg-white text-amber-600 hover:bg-amber-100 border border-amber-200 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
-          >
-            <Copy className="w-4 h-4" /> Imprimir Todo (Lote)
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onOpenClinicalReport && (
+            <button
+              type="button"
+              onClick={onOpenClinicalReport}
+              className="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
+            >
+              <FileText className="w-4 h-4" /> Informe Clínico
+            </button>
+          )}
+          {prescriptions && prescriptions.length > 1 && (
+            <button
+              type="button"
+              onClick={() => onPrint(prescriptions)}
+              className="bg-white text-amber-600 hover:bg-amber-100 border border-amber-200 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
+            >
+              <Copy className="w-4 h-4" /> Imprimir Todo (Lote)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Input Area */}

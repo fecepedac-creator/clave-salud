@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
-import { Patient, Consultation, ProfessionalRole } from "../types";
+import React, { useEffect, useMemo, useState } from "react";
+import { Patient, Consultation, ProfessionalRole, ExamDefinition } from "../types";
 import { calculateAge, formatPersonName } from "../utils";
-import { CORPORATE_LOGO } from "../constants";
+import { TRACKED_EXAMS_OPTIONS } from "../constants";
 import { FileText, Printer, X } from "lucide-react";
 
 type Props = {
@@ -12,50 +12,236 @@ type Props = {
   centerLogoUrl?: string;
   professionalName: string;
   professionalRole: ProfessionalRole;
+  professionalRegistry?: string;
+  examDefinitions?: ExamDefinition[];
 };
 
 const toDateOnly = (iso: string) => iso.split("T")[0];
 
-const buildDraftFromConsultations = (patient: Patient, consultations: Consultation[]) => {
-  const blocks: string[] = [];
+const MISSING_RECORD = "No consta en el registro";
 
-  blocks.push(`Identificación del paciente: ${formatPersonName(patient.fullName)} (RUT: ${patient.rut}).`);
-  const age = calculateAge(patient.birthDate);
-  blocks.push(`Edad: ${age ?? "-"} años. Sexo: ${patient.gender}.`);
+const ensureValue = (value?: string | null) => {
+  const trimmed = (value ?? "").trim();
+  return trimmed.length > 0 ? trimmed : MISSING_RECORD;
+};
 
-  blocks.push("");
-  blocks.push("Resumen de atenciones incluidas:");
+const buildExamLabelMap = (customExams: ExamDefinition[] = []) => {
+  const map = new Map<string, string>();
+  TRACKED_EXAMS_OPTIONS.forEach((exam) => map.set(exam.id, exam.label));
+  customExams.forEach((exam) => map.set(exam.id, exam.label));
+  return map;
+};
 
-  consultations
+const buildClinicalEncountersJSON = (
+  consultations: Consultation[],
+  examLabelMap: Map<string, string>
+) => {
+  return consultations
     .slice()
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .forEach((c, idx) => {
-      const dateStr = new Date(c.date).toLocaleDateString("es-CL");
-      const parts: string[] = [];
-      if (c.reason) parts.push(`Motivo: ${c.reason}`);
-      if (c.anamnesis) parts.push(`Anamnesis: ${c.anamnesis}`);
-      if (c.physicalExam) parts.push(`Examen físico: ${c.physicalExam}`);
-      if (c.diagnosis) parts.push(`Diagnóstico: ${c.diagnosis}`);
-
-      // Evitar duplicidad evidente: remover frases repetidas exactas
-      const uniq = Array.from(new Set(parts.map((p) => p.trim()).filter(Boolean)));
-
-      blocks.push("");
-      blocks.push(`${idx + 1}) Atención ${dateStr}`);
-      if (uniq.length === 0) {
-        blocks.push("— Sin información clínica registrada en los campos principales.");
-      } else {
-        uniq.forEach((u) => blocks.push(`- ${u}`));
+    .map((c) => {
+      const findings: string[] = [];
+      if (c.anamnesis) findings.push(`Anamnesis: ${c.anamnesis}`);
+      if (c.physicalExam) findings.push(`Examen físico: ${c.physicalExam}`);
+      if (c.exams && Object.keys(c.exams).length > 0) {
+        Object.entries(c.exams).forEach(([key, value]) => {
+          if (!value) return;
+          const label = examLabelMap.get(key) || key;
+          findings.push(`Examen ${label}: ${value}`);
+        });
       }
+
+      const planItems: string[] = [];
+      if (Array.isArray(c.prescriptions) && c.prescriptions.length > 0) {
+        c.prescriptions.forEach((p) => {
+          if (!p.content) return;
+          planItems.push(`${p.type}: ${p.content}`);
+        });
+      }
+      if (c.nextControlDate || c.nextControlReason) {
+        const controlLabel = c.nextControlDate
+          ? `Próximo control: ${c.nextControlDate}`
+          : "Próximo control";
+        const reason = c.nextControlReason ? ` (${c.nextControlReason})` : "";
+        planItems.push(`${controlLabel}${reason}`);
+      }
+
+      return {
+        fecha: toDateOnly(c.date),
+        motivo: ensureValue(c.reason),
+        hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
+        diagnostico: ensureValue(c.diagnosis),
+        procedimientos: MISSING_RECORD,
+        indicacionesPlan: planItems.length > 0 ? planItems : [MISSING_RECORD],
+      };
     });
+};
 
-  blocks.push("");
-  blocks.push("Comentario clínico (editable):");
-  blocks.push(
-    "Este borrador se generó a partir de los datos registrados en la ficha clínica. Ajuste, corrija o complemente según corresponda."
-  );
+const buildPrompt = (params: {
+  patient: Patient;
+  centerName: string;
+  professionalName: string;
+  professionalRole: ProfessionalRole;
+  professionalRegistry?: string;
+  reportObjective: string;
+  startDate: string;
+  endDate: string;
+  clinicalEncountersJSON: string;
+}) => {
+  const age = calculateAge(params.patient.birthDate);
+  const ageLabel = Number.isFinite(age) ? String(age) : MISSING_RECORD;
+  const reportObjective = ensureValue(params.reportObjective);
 
-  return blocks.join("\n");
+  return `Actúa como un profesional de la salud redactando un INFORME CLÍNICO FORMAL,
+destinado a ser presentado ante otros profesionales de salud o instituciones administrativas.
+El informe debe ser claro, objetivo, ordenado cronológicamente y basado EXCLUSIVAMENTE en la información entregada.
+NO inventes datos. Si falta información: “No consta en el registro”.
+
+Contexto del paciente:
+- Nombre: ${formatPersonName(params.patient.fullName)}
+- RUT: ${params.patient.rut}
+- Fecha nacimiento: ${params.patient.birthDate} (Edad: ${ageLabel})
+- Sexo: ${params.patient.gender}
+- Centro médico: ${params.centerName}
+
+Profesional tratante:
+- Nombre: ${params.professionalName}
+- Rol: ${params.professionalRole}
+- Registro profesional: ${params.professionalRegistry || "No informado"}
+
+Objetivo del informe:
+${reportObjective}
+
+Atenciones incluidas: entre ${params.startDate} y ${params.endDate}
+Datos estructurados:
+${params.clinicalEncountersJSON}
+
+Estructura obligatoria:
+1. Identificación del paciente
+2. Antecedentes clínicos relevantes (solo si constan)
+3. Resumen cronológico de atenciones
+4. Evolución clínica / funcional (solo si se desprende)
+5. Tratamientos o intervenciones realizadas
+6. Conclusión clínica y recomendaciones (solo si se desprenden)
+
+Al final agregar EXACTO:
+“Borrador asistido por IA. Requiere revisión clínica.”`;
+};
+
+const buildDeterministicReport = (params: {
+  patient: Patient;
+  centerName: string;
+  professionalName: string;
+  professionalRole: ProfessionalRole;
+  reportObjective: string;
+  startDate: string;
+  endDate: string;
+  encounters: ReturnType<typeof buildClinicalEncountersJSON>;
+}) => {
+  const age = calculateAge(params.patient.birthDate);
+  const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
+  const reportObjective = ensureValue(params.reportObjective);
+
+  const lines: string[] = [];
+  lines.push("1. Identificación del paciente");
+  lines.push(`Nombre: ${formatPersonName(params.patient.fullName)}`);
+  lines.push(`RUT: ${params.patient.rut}`);
+  lines.push(`Fecha nacimiento: ${params.patient.birthDate} (Edad: ${ageLabel})`);
+  lines.push(`Sexo: ${params.patient.gender}`);
+  lines.push(`Centro médico: ${params.centerName}`);
+  lines.push("");
+  lines.push("Objetivo del informe:");
+  lines.push(reportObjective);
+  lines.push("");
+  lines.push("2. Antecedentes clínicos relevantes");
+
+  const antecedents: string[] = [];
+  if (params.patient.medicalHistory?.length) {
+    antecedents.push(`Antecedentes médicos: ${params.patient.medicalHistory.join(", ")}`);
+  }
+  if (params.patient.medicalHistoryDetails) {
+    antecedents.push(`Detalle antecedentes médicos: ${params.patient.medicalHistoryDetails}`);
+  }
+  if (params.patient.surgicalHistory?.length) {
+    antecedents.push(`Antecedentes quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
+  }
+  if (params.patient.surgicalHistoryDetails) {
+    antecedents.push(`Detalle antecedentes quirúrgicos: ${params.patient.surgicalHistoryDetails}`);
+  }
+  if (params.patient.cancerDetails) {
+    antecedents.push(`Antecedentes oncológicos: ${params.patient.cancerDetails}`);
+  }
+  if (params.patient.drugDetails) {
+    antecedents.push(`Consumo de drogas: ${params.patient.drugDetails}`);
+  }
+  if (params.patient.allergies?.length) {
+    const allergyItems = params.patient.allergies.map(
+      (a) => `${a.type}: ${a.substance}${a.reaction ? ` (${a.reaction})` : ""}`
+    );
+    antecedents.push(`Alergias: ${allergyItems.join("; ")}`);
+  }
+  if (params.patient.medications?.length) {
+    const meds = params.patient.medications.map(
+      (m) => `${m.name} ${m.dose} ${m.frequency}`.trim()
+    );
+    antecedents.push(`Medicaciones: ${meds.join("; ")}`);
+  }
+
+  if (antecedents.length === 0) {
+    lines.push(MISSING_RECORD);
+  } else {
+    antecedents.forEach((item) => lines.push(`- ${item}`));
+  }
+
+  lines.push("");
+  lines.push("3. Resumen cronológico de atenciones");
+  if (params.encounters.length === 0) {
+    lines.push(MISSING_RECORD);
+  } else {
+    lines.push(`Atenciones incluidas: entre ${params.startDate} y ${params.endDate}`);
+    params.encounters.forEach((encounter, idx) => {
+      lines.push("");
+      lines.push(`${idx + 1}) Fecha: ${encounter.fecha}`);
+      lines.push(`- Motivo: ${encounter.motivo}`);
+      const findings = Array.isArray(encounter.hallazgosRelevantes)
+        ? encounter.hallazgosRelevantes.join(" | ")
+        : encounter.hallazgosRelevantes;
+      lines.push(`- Hallazgos relevantes: ${findings}`);
+      lines.push(`- Diagnóstico: ${encounter.diagnostico}`);
+      lines.push(`- Procedimientos: ${encounter.procedimientos}`);
+      const plan = Array.isArray(encounter.indicacionesPlan)
+        ? encounter.indicacionesPlan.join(" | ")
+        : encounter.indicacionesPlan;
+      lines.push(`- Indicaciones/Plan: ${plan}`);
+    });
+  }
+
+  lines.push("");
+  lines.push("4. Evolución clínica / funcional");
+  lines.push(MISSING_RECORD);
+  lines.push("");
+  lines.push("5. Tratamientos o intervenciones realizadas");
+
+  const treatments: string[] = [];
+  params.encounters.forEach((encounter) => {
+    if (Array.isArray(encounter.indicacionesPlan)) {
+      treatments.push(...encounter.indicacionesPlan.filter((item) => item !== MISSING_RECORD));
+    }
+  });
+
+  if (treatments.length === 0) {
+    lines.push(MISSING_RECORD);
+  } else {
+    treatments.forEach((item) => lines.push(`- ${item}`));
+  }
+
+  lines.push("");
+  lines.push("6. Conclusión clínica y recomendaciones");
+  lines.push(MISSING_RECORD);
+  lines.push("");
+  lines.push("Borrador asistido por IA. Requiere revisión clínica.");
+
+  return lines.join("\n");
 };
 
 const ClinicalReportModal: React.FC<Props> = ({
@@ -66,8 +252,15 @@ const ClinicalReportModal: React.FC<Props> = ({
   centerLogoUrl,
   professionalName,
   professionalRole,
+  professionalRegistry,
+  examDefinitions,
 }) => {
   const consultations = patient?.consultations || [];
+
+  const examLabelMap = useMemo(
+    () => buildExamLabelMap(examDefinitions),
+    [examDefinitions]
+  );
 
   const minDate = useMemo(() => {
     if (consultations.length === 0) return "";
@@ -89,8 +282,18 @@ const ClinicalReportModal: React.FC<Props> = ({
 
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
-  const [title, setTitle] = useState<string>("Informe Clínico");
+  const [reportObjective, setReportObjective] = useState<string>("");
   const [draft, setDraft] = useState<string>("");
+  const [draftPrompt, setDraftPrompt] = useState<string>("");
+
+  useEffect(() => {
+    if (!isOpen || !patient) return;
+    setFrom(minDate);
+    setTo(maxDate);
+    setDraft("");
+    setReportObjective("");
+    setDraftPrompt("");
+  }, [isOpen, patient?.id, minDate, maxDate]);
 
   const filtered = useMemo(() => {
     if (!patient) return [];
@@ -105,15 +308,40 @@ const ClinicalReportModal: React.FC<Props> = ({
     });
   }, [patient, from, to, minDate, maxDate]);
 
-  const canPrint = Boolean(patient) && filtered.length > 0;
+  const canPrint = Boolean(patient) && draft.trim().length > 0;
 
   const handleGenerate = () => {
     if (!patient) return;
-    if (filtered.length === 0) {
-      setDraft("");
-      return;
-    }
-    setDraft(buildDraftFromConsultations(patient, filtered));
+    const f = from || minDate || MISSING_RECORD;
+    const t = to || maxDate || MISSING_RECORD;
+    const encounters = buildClinicalEncountersJSON(filtered, examLabelMap);
+    const clinicalEncountersJSON = JSON.stringify(encounters, null, 2);
+    const prompt = buildPrompt({
+      patient,
+      centerName,
+      professionalName,
+      professionalRole,
+      professionalRegistry,
+      reportObjective,
+      startDate: f,
+      endDate: t,
+      clinicalEncountersJSON,
+    });
+
+    // Hook listo para IA: el prompt queda disponible para integración futura.
+    setDraftPrompt(prompt);
+    setDraft(
+      buildDeterministicReport({
+        patient,
+        centerName,
+        professionalName,
+        professionalRole,
+        reportObjective,
+        startDate: f,
+        endDate: t,
+        encounters,
+      })
+    );
   };
 
   if (!isOpen || !patient) return null;
@@ -130,9 +358,6 @@ const ClinicalReportModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
             <h3 className="font-bold text-lg">Informe Clínico</h3>
-            <span className="text-xs text-white/60">
-              Borrador asistido por IA. Requiere revisión clínica.
-            </span>
           </div>
           <div className="flex gap-2">
             <button
@@ -140,7 +365,7 @@ const ClinicalReportModal: React.FC<Props> = ({
               disabled={!canPrint}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
             >
-              <Printer className="w-4 h-4" /> Imprimir / PDF
+              <Printer className="w-4 h-4" /> Imprimir / Exportar PDF
             </button>
             <button
               onClick={onClose}
@@ -155,11 +380,15 @@ const ClinicalReportModal: React.FC<Props> = ({
         <div className="p-5 border-b border-slate-100 bg-white print:hidden">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 items-end">
             <div className="lg:col-span-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Título</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-semibold"
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Objetivo del informe
+              </label>
+              <textarea
+                value={reportObjective}
+                onChange={(e) => setReportObjective(e.target.value)}
+                rows={3}
+                placeholder="Describe el objetivo clínico o administrativo del informe."
+                className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-medium text-slate-700"
               />
             </div>
 
@@ -213,9 +442,14 @@ const ClinicalReportModal: React.FC<Props> = ({
               className="mt-1 w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-medium text-slate-700"
             />
             <p className="mt-2 text-xs text-slate-400">
-              Nota: en esta versión el borrador se genera automáticamente desde los datos registrados.
-              La integración con IA puede habilitarse en una siguiente iteración.
+              Nota: el borrador se genera usando los datos registrados y el prompt institucional.
+              La integración con IA puede habilitarse sin afectar este flujo.
             </p>
+            {draftPrompt && (
+              <p className="mt-1 text-xs text-slate-400">
+                Prompt listo para integración IA (no visible al imprimir).
+              </p>
+            )}
           </div>
         </div>
 
@@ -225,15 +459,12 @@ const ClinicalReportModal: React.FC<Props> = ({
             {/* Header with logos */}
             <header className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-4">
               <div className="flex items-center gap-3">
-                <img src={CORPORATE_LOGO} alt="ClaveSalud" className="h-10 w-auto" />
+                <img src="/assets/logo.png" alt="ClaveSalud" className="h-10 w-auto" />
               </div>
               <div className="text-center flex-1">
                 <h1 className="text-xl font-extrabold text-slate-900 uppercase tracking-wide">
-                  {title || "Informe Clínico"}
+                  Informe Clínico
                 </h1>
-                <p className="text-xs text-slate-500 mt-1">
-                  Borrador asistido por IA. Requiere revisión clínica.
-                </p>
                 {dateRangeLabel ? (
                   <p className="text-xs text-slate-500 mt-1">Rango: {dateRangeLabel}</p>
                 ) : null}
@@ -283,7 +514,8 @@ const ClinicalReportModal: React.FC<Props> = ({
                 Contenido
               </h2>
               <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900 border-l-2 border-slate-200 pl-4">
-                {draft || "— No hay borrador generado. Vuelve a la vista de edición y presiona 'Generar borrador'."}
+                {draft ||
+                  "— No hay borrador generado. Vuelve a la vista de edición y presiona 'Generar borrador'."}
               </div>
             </section>
 
@@ -309,21 +541,20 @@ const ClinicalReportModal: React.FC<Props> = ({
         @media print {
           @page {
             size: A4;
-            margin: 0;
+            margin: 12mm;
           }
           body {
             background: white;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          #root { display: none; }
           .print\:block { display: block !important; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }
           .print-document {
             width: 100% !important;
             max-width: none !important;
             box-shadow: none !important;
             margin: 0 !important;
-            padding: 2.2cm !important;
+            padding: 0 !important;
             page-break-after: always;
             break-after: page;
           }

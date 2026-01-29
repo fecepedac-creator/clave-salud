@@ -76,6 +76,7 @@ import ConsultationHistory from "./ConsultationHistory";
 import AgendaView from "./AgendaView";
 import PatientSidebar from "./PatientSidebar";
 import PrintPreviewModal from "./PrintPreviewModal";
+import ClinicalReportModal from "./ClinicalReportModal";
 import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
 import BioMarkers from "./BioMarkers";
@@ -338,6 +339,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // Printing State
   const [docsToPrint, setDocsToPrint] = useState<Prescription[]>([]);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
 
   // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -912,6 +914,18 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           selectedPatient={selectedPatient}
         />
 
+        <ClinicalReportModal
+          isOpen={isClinicalReportOpen}
+          onClose={() => setIsClinicalReportOpen(false)}
+          patient={selectedPatient}
+          centerName={activeCenter?.name ?? "Centro Médico"}
+          centerLogoUrl={activeCenter?.logoUrl}
+          professionalName={doctorName}
+          professionalRole={role}
+          professionalRegistry={currentUser?.rut}
+          examDefinitions={currentUser?.customExams}
+        />
+
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <button
@@ -1164,6 +1178,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               setDocsToPrint(docs);
                               setIsPrintModalOpen(true);
                             }}
+                            onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
                             templates={myTemplates}
                             role={role}
                           />
