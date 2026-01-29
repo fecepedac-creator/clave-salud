@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { db, auth } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { Appointment, Doctor, Patient, ViewMode } from "../types";
 import {
   extractChileanPhoneDigits,
@@ -99,20 +99,51 @@ export function useBooking(
       (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
     );
     const patientId = existingPatient?.id ?? generateId();
-    const bookedAppointment: Appointment = {
-      ...slotAppointment,
-      status: "booked",
-      patientName: name,
-      patientRut: formattedRut,
-      patientId,
-      patientPhone: phone,
-      bookedAt: serverTimestamp(),
-    };
+    
+    // For public booking (no auth), use explicit field update without merge
+    if (!auth.currentUser) {
+      await updateDoc(
+        doc(db, "centers", activeCenterId, "appointments", selectedSlot.appointmentId),
+        {
+          status: "booked",
+          patientName: name,
+          patientRut: formattedRut,
+          patientId,
+          patientPhone: phone,
+          bookedAt: serverTimestamp(),
+        }
+      );
+      
+      const bookedAppointment: Appointment = {
+        ...slotAppointment,
+        status: "booked",
+        patientName: name,
+        patientRut: formattedRut,
+        patientId,
+        patientPhone: phone,
+        bookedAt: serverTimestamp(),
+      };
+      
+      setAppointments((prev) =>
+        prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
+      );
+    } else {
+      // For authenticated users, use the normal updateAppointment flow
+      const bookedAppointment: Appointment = {
+        ...slotAppointment,
+        status: "booked",
+        patientName: name,
+        patientRut: formattedRut,
+        patientId,
+        patientPhone: phone,
+        bookedAt: serverTimestamp(),
+      };
 
-    await updateAppointment(bookedAppointment);
-    setAppointments((prev) =>
-      prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
-    );
+      await updateAppointment(bookedAppointment);
+      setAppointments((prev) =>
+        prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
+      );
+    }
 
     if (activeCenterId && !existingPatient) {
       const patientPayload: Patient = {

@@ -84,7 +84,13 @@ service cloud.firestore {
         && request.resource.data.time == resource.data.time
         && request.resource.data.patientName is string
         && request.resource.data.patientRut is string
-        && request.resource.data.patientPhone is string;
+        && request.resource.data.patientPhone is string
+        && publicBookingOnlyAllowedFields();
+    }
+
+    function publicBookingOnlyAllowedFields() {
+      let allowedFields = ['status', 'patientName', 'patientRut', 'patientId', 'patientPhone', 'patientEmail', 'bookedAt', 'bookedBy', 'centerId', 'doctorId', 'doctorUid', 'date', 'time', 'id'];
+      return request.resource.data.keys().hasOnly(allowedFields);
     }
 
     function isPublicPatientCreate(centerId) {
@@ -144,10 +150,19 @@ service cloud.firestore {
         allow update: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
-          || (uid() == staffUid)
+          || (
+            uid() == staffUid
+            && onlyAllowedFieldsChanged()
+          )
         );
 
         allow delete: if false;
+      }
+
+      function onlyAllowedFieldsChanged() {
+        let allowedFields = ['fullName', 'photoUrl', 'phone', 'specialty', 'professionalRole', 'bio', 'agendaConfig'];
+        let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+        return changedKeys.hasOnly(allowedFields);
       }
 
       match /publicStaff/{staffUid} {

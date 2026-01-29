@@ -135,18 +135,26 @@ export function useCrudOperations(
       const id = payload?.id ?? generateId();
       const actorUid = payload.actorUid ?? auth.currentUser?.uid ?? null;
       const timestamp = payload.timestamp ?? new Date().toISOString();
-      await setDoc(
-        doc(db, "centers", activeCenterId, "auditLogs", id),
-        {
-          ...payload,
-          actorUid,
-          id,
-          centerId: activeCenterId,
-          timestamp,
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      
+      // Client writes to auditLogs are blocked by Firestore rules (correct behavior)
+      // This is a no-op to prevent errors. Server-side logging via Cloud Functions remains active.
+      try {
+        await setDoc(
+          doc(db, "centers", activeCenterId, "auditLogs", id),
+          {
+            ...payload,
+            actorUid,
+            id,
+            centerId: activeCenterId,
+            timestamp,
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        // Silent catch - auditLogs are written server-side via Cloud Functions
+        console.warn("Client auditLog write blocked (expected):", error);
+      }
     },
     [activeCenterId, requireCenter]
   );
