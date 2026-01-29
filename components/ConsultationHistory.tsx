@@ -119,7 +119,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
               <div className="md:col-span-4 flex flex-col gap-4">
                 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
                   <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">
-                    Biometría
+                    Antropometría
                   </p>
                   <div className="grid grid-cols-2 gap-y-6 text-center">
                     <div>

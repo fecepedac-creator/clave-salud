@@ -22,6 +22,7 @@ import {
   normalizePhone,
   formatPersonName,
   applyWhatsappTemplate,
+  openEmailCompose,
 } from "../utils";
 import {
   COMMON_DIAGNOSES,
@@ -234,6 +235,65 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const waPhone = phone.replaceAll("+", "");
     const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // --- Email (Gmail compose) ---
+  const sendConsultationByEmail = (consultation: Consultation) => {
+    if (!selectedPatient) {
+      showToast("Paciente no seleccionado.", "warning");
+      return;
+    }
+
+    const patientEmail = (selectedPatient.email || "").trim();
+    if (!patientEmail) {
+      showToast("Paciente sin email registrado.", "warning");
+      return;
+    }
+
+    const dateStr = new Date(consultation.date).toLocaleDateString("es-CL");
+    const subject = `Atención ${formatPersonName(selectedPatient.fullName)} - ${dateStr}`;
+
+    const lines: string[] = [];
+    lines.push("ATENCIÓN CLÍNICA (resumen)");
+    lines.push("");
+    lines.push(`Paciente: ${formatPersonName(selectedPatient.fullName)}`);
+    lines.push(`RUT: ${selectedPatient.rut || "-"}`);
+    lines.push(`Fecha: ${dateStr}`);
+    lines.push(`Profesional: Dr. ${consultation.professionalName || "-"}`);
+    lines.push("");
+    lines.push(`Motivo: ${consultation.reason || "-"}`);
+    lines.push(`Diagnóstico / Hipótesis: ${consultation.diagnosis || "-"}`);
+    lines.push("");
+    if (consultation.anamnesis) {
+      lines.push("Anamnesis:");
+      lines.push(consultation.anamnesis);
+      lines.push("");
+    }
+    if (consultation.physicalExam) {
+      lines.push("Examen físico:");
+      lines.push(consultation.physicalExam);
+      lines.push("");
+    }
+
+    // Datos breves si existen
+    const vitals: string[] = [];
+    if (consultation.weight) vitals.push(`Peso: ${consultation.weight} kg`);
+    if (consultation.height) vitals.push(`Talla: ${consultation.height} cm`);
+    if (consultation.bmi) vitals.push(`IMC: ${consultation.bmi}`);
+    if (consultation.bloodPressure) vitals.push(`PA: ${consultation.bloodPressure}`);
+    if (consultation.hgt) vitals.push(`HGT: ${consultation.hgt}`);
+    if (vitals.length) {
+      lines.push("Signos / antropometría:");
+      lines.push(vitals.join(" | "));
+      lines.push("");
+    }
+
+    const ok = openEmailCompose({
+      to: patientEmail,
+      subject,
+      body: lines.join("\n"),
+    });
+    if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
   const getEmptyConsultation = (): Partial<Consultation> => ({
     weight: "",
@@ -1032,6 +1092,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           onChange={(e) =>
                             setNewConsultation({ ...newConsultation, anamnesis: e.target.value })
                           }
+                          spellCheck={true}
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
                         />
                       </div>
@@ -1048,6 +1109,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                 physicalExam: e.target.value,
                               })
                             }
+                            spellCheck={true}
                             className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
                           />
                         </div>
@@ -1212,7 +1274,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     setDocsToPrint(docs);
                     setIsPrintModalOpen(true);
                   }}
-                  onSendEmail={() => showToast("Abriendo correo...", "info")}
+                  onSendEmail={(c) => {
+                    showToast("Abriendo correo...", "info");
+                    sendConsultationByEmail(c);
+                  }}
                 />
               )}
             </section>
