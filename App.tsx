@@ -69,6 +69,8 @@ const App: React.FC = () => {
     "center-portal" as ViewMode
   );
   const [isSyncingAppointments, setIsSyncingAppointments] = useState(false);
+  const [previewCenterId, setPreviewCenterId] = useState("");
+  const [previewRole, setPreviewRole] = useState("");
 
   const {
     authUser,
@@ -211,6 +213,52 @@ const App: React.FC = () => {
     setView("home" as ViewMode);
   }, [hookHandleLogout, setActiveCenterId]);
 
+  const PREVIEW_CENTER_KEY = "__previewCenterId";
+  const PREVIEW_ROLE_KEY = "__previewRole";
+
+  const isPreviewRoleAdmin = useCallback((role: string) => {
+    return role === "ADMIN_CENTRO" || role === "ADMINISTRATIVO";
+  }, []);
+
+  const resolvePreviewView = useCallback(
+    (role: string): ViewMode =>
+      (isPreviewRoleAdmin(role) ? "admin-dashboard" : "doctor-dashboard") as ViewMode,
+    [isPreviewRoleAdmin]
+  );
+
+  const loadPreviewState = useCallback(() => {
+    if (typeof window === "undefined") return;
+    setPreviewCenterId(window.localStorage.getItem(PREVIEW_CENTER_KEY) ?? "");
+    setPreviewRole(window.localStorage.getItem(PREVIEW_ROLE_KEY) ?? "");
+  }, []);
+
+  const isPreviewActive = Boolean(previewCenterId && previewRole);
+
+  const handleStartPreview = useCallback(
+    (centerId: string, role: string) => {
+      if (!centerId || !role) return;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(PREVIEW_CENTER_KEY, centerId);
+        window.localStorage.setItem(PREVIEW_ROLE_KEY, role);
+      }
+      setPreviewCenterId(centerId);
+      setPreviewRole(role);
+      if (centerId !== activeCenterId) setActiveCenterId(centerId);
+      setView(resolvePreviewView(role));
+    },
+    [activeCenterId, resolvePreviewView, setActiveCenterId]
+  );
+
+  const handleExitPreview = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(PREVIEW_CENTER_KEY);
+      window.localStorage.removeItem(PREVIEW_ROLE_KEY);
+    }
+    setPreviewCenterId("");
+    setPreviewRole("");
+    window.location.reload();
+  }, []);
+
   useEffect(() => {
     if (!inviteToken && window.location.pathname.toLowerCase().startsWith("/invite"))
       setView("invite" as any);
@@ -221,6 +269,22 @@ const App: React.FC = () => {
       handleSuperAdminUnauthorized
     );
   }, [handleRedirectResult, handleSuperAdminUnauthorized]);
+
+  useEffect(() => {
+    loadPreviewState();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === PREVIEW_CENTER_KEY || event.key === PREVIEW_ROLE_KEY) {
+        loadPreviewState();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [loadPreviewState]);
+
+  useEffect(() => {
+    if (!previewCenterId) return;
+    if (previewCenterId !== activeCenterId) setActiveCenterId(previewCenterId);
+  }, [activeCenterId, previewCenterId, setActiveCenterId]);
 
   const centerCtxValue = useMemo(() => {
     const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
@@ -1504,6 +1568,11 @@ const App: React.FC = () => {
             doctors={doctors}
             demoMode={demoMode}
             onToggleDemo={() => setDemoMode((d) => !d)}
+            canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true}
+            previewCenterId={previewCenterId}
+            previewRole={previewRole}
+            onStartPreview={handleStartPreview}
+            onExitPreview={handleExitPreview}
             onLogout={() => {
               setCurrentUser(null);
               setActiveCenterId("");
@@ -1535,9 +1604,21 @@ const App: React.FC = () => {
         </CenterContext.Provider>
       );
 
-    if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
-      const currentUid = currentUser?.uid ?? currentUser?.id;
-      const currentEmailLower = String(currentUser?.email ?? "")
+    const previewUser =
+      isPreviewActive && authUser
+        ? {
+            id: authUser.uid,
+            uid: authUser.uid,
+            fullName: authUser.displayName ?? authUser.email ?? "Preview",
+            email: authUser.email ?? "preview@local",
+            role: previewRole,
+          }
+        : null;
+    const userForView = currentUser ?? previewUser;
+
+    if (view === ("doctor-dashboard" as ViewMode) && userForView) {
+      const currentUid = userForView?.uid ?? userForView?.id;
+      const currentEmailLower = String(userForView?.email ?? "")
         .trim()
         .toLowerCase();
       const matchedDoctor =
@@ -1556,19 +1637,20 @@ const App: React.FC = () => {
               .toLowerCase() === currentEmailLower
         ) ||
         null;
-      const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
+      const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
       const resolvedDoctorName =
-        matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+        matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
       const mergedCurrentUser = matchedDoctor
-        ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
-        : currentUser;
+        ? ({ ...userForView, ...matchedDoctor, id: resolvedDoctorId } as any)
+        : userForView;
+      const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
       return (
         <CenterContext.Provider value={centerCtxValue}>
           <ProfessionalDashboard
             patients={patients}
             doctorName={resolvedDoctorName}
             doctorId={resolvedDoctorId}
-            role={mergedCurrentUser.role}
+            role={effectiveRole}
             agendaConfig={matchedDoctor?.agendaConfig ?? currentUser.agendaConfig}
             savedTemplates={matchedDoctor?.savedTemplates ?? currentUser.savedTemplates}
             currentUser={mergedCurrentUser}
@@ -1582,54 +1664,64 @@ const App: React.FC = () => {
             }}
             isSyncingAppointments={isSyncingAppointments}
             onLogActivity={(action: any, details: string, targetId?: string) => {
+              if (isPreviewActive) return;
               const log: AuditLogEntry = {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? currentUser.id,
-                actorName: currentUser.fullName ?? "Usuario",
-                actorRole: currentUser.role ?? "Profesional",
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Profesional",
                 action,
                 details,
                 targetId,
               } as any;
               updateAuditLog(log);
             }}
-            isReadOnly={false}
+            isReadOnly={isPreviewActive}
           />
         </CenterContext.Provider>
       );
     }
 
-    if (view === ("admin-dashboard" as ViewMode) && currentUser) {
+    if (view === ("admin-dashboard" as ViewMode) && userForView) {
       return (
         <CenterContext.Provider value={centerCtxValue}>
           <AdminDashboard
             centerId={activeCenterId}
             doctors={doctors}
-            onUpdateDoctors={(newDocs: Doctor[]) => newDocs.forEach((d) => updateStaff(d))}
+            onUpdateDoctors={(newDocs: Doctor[]) => {
+              if (isPreviewActive) return;
+              newDocs.forEach((d) => updateStaff(d));
+            }}
             appointments={appointments}
             onUpdateAppointments={(newAppts: Appointment[]) => {
+              if (isPreviewActive) return;
               setAppointments(newAppts);
               syncAppointments(newAppts);
             }}
             isSyncingAppointments={isSyncingAppointments}
             patients={patients}
-            onUpdatePatients={(newPatients: Patient[]) =>
-              newPatients.forEach((p) => updatePatient(p))
-            }
+            onUpdatePatients={(newPatients: Patient[]) => {
+              if (isPreviewActive) return;
+              newPatients.forEach((p) => updatePatient(p));
+            }}
             preadmissions={preadmissions}
-            onApprovePreadmission={approvePreadmission}
+            onApprovePreadmission={(p) => {
+              if (isPreviewActive) return;
+              approvePreadmission(p);
+            }}
             onLogout={handleLogout}
             logs={auditLogs}
             onLogActivity={(action: any, details: string, targetId?: string) => {
+              if (isPreviewActive) return;
               const log: AuditLogEntry = {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? currentUser.id,
-                actorName: currentUser.fullName ?? "Usuario",
-                actorRole: currentUser.role ?? "Admin",
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Admin",
                 action,
                 details,
                 targetId,
@@ -1648,7 +1740,22 @@ const App: React.FC = () => {
     );
   };
 
-  return renderByView();
+  return (
+    <>
+      {renderByView()}
+      {isPreviewActive && (
+        <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleExitPreview}
+            className="px-4 py-3 rounded-xl bg-rose-600 text-white font-bold shadow-lg hover:bg-rose-700"
+          >
+            Salir de Preview
+          </button>
+        </div>
+      )}
+    </>
+  );
 };
 
 export default App;
