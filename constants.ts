@@ -92,6 +92,7 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
       "FONOAUDIOLOGO",
     ],
     modules: { dental: true, prescriptions: true, agenda: true },
+    features: { anthropometryEnabled: false },
     legalInfo: {
       rut: "76.123.456-7",
       representativeName: "Dr. Felipe Cepeda",
@@ -119,6 +120,7 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
     maxUsers: 5,
     allowedRoles: ["ODONTOLOGO", "ENFERMERA"], // Only Dental roles
     modules: { dental: true, prescriptions: true, agenda: true },
+    features: { anthropometryEnabled: false },
     legalInfo: {
       rut: "77.999.888-K",
       representativeName: "Dra. Ana Molar",

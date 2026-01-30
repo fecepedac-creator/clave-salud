@@ -61,6 +61,14 @@ service cloud.firestore {
       return isStaff(centerId) && staffRole(centerId) == "doctor";
     }
 
+    function canUpdateAnthropometryFeature(centerId) {
+      return isCenterAdmin(centerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["features"])
+        && request.resource.data.features is map
+        && request.resource.data.features.keys().hasOnly(["anthropometryEnabled"])
+        && request.resource.data.features.anthropometryEnabled is bool;
+    }
+
     function canViewAudit(centerId) {
       return isSuperAdmin() || isCenterAdmin(centerId);
     }
@@ -129,7 +137,8 @@ service cloud.firestore {
       allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
         || resource.data.isActive == true;
       allow create: if isSuperAdmin();
-      allow update, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || canUpdateAnthropometryFeature(centerId);
+      allow delete: if isSuperAdmin();
 
       // -------------------- Center Settings (private) --------------------
       // Example docs:

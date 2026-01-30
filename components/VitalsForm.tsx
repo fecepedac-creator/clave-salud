@@ -13,6 +13,7 @@ interface VitalsFormProps {
   patientGender: string;
   examOptions?: ExamDefinition[];
   role?: ProfessionalRole; // Added Role to condition visibility
+  anthropometryEnabled?: boolean;
 }
 
 // Data shape for the chart
@@ -219,6 +220,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
   patientGender,
   examOptions = [],
   role,
+  anthropometryEnabled = false,
 }) => {
   // Auto-Calculate VFG if Creatinine is present
   const creatinina = parseFloat(newConsultation.exams?.["creatinina"] || "0");
@@ -279,6 +281,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
 
   // Visibility for Anthropometry
   const showAnthropometry = ["Nutricionista", "Medico", "Enfermera"].includes(role || "");
+  const isAnthropometryEnabled = anthropometryEnabled === true;
 
   return (
     <div className="flex flex-col gap-6">
@@ -288,35 +291,43 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
           <Activity className="w-5 h-5" /> Signos Vitales y Antropometría
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-          <VitalsInput
-            label="Peso"
-            value={newConsultation.weight}
-            onChange={(e) => onChange("weight", e.target.value)}
-            placeholder="00"
-            unit="kg"
-            historyData={getStandardHistory("weight")}
-            type="number"
-          />
-          <VitalsInput
-            label="Talla"
-            value={newConsultation.height}
-            onChange={(e) => onChange("height", e.target.value)}
-            placeholder="000"
-            unit="cm"
-            historyData={getStandardHistory("height")}
-            type="number"
-          />
+          {isAnthropometryEnabled ? (
+            <>
+              <VitalsInput
+                label="Peso"
+                value={newConsultation.weight}
+                onChange={(e) => onChange("weight", e.target.value)}
+                placeholder="00"
+                unit="kg"
+                historyData={getStandardHistory("weight")}
+                type="number"
+              />
+              <VitalsInput
+                label="Talla"
+                value={newConsultation.height}
+                onChange={(e) => onChange("height", e.target.value)}
+                placeholder="000"
+                unit="cm"
+                historyData={getStandardHistory("height")}
+                type="number"
+              />
 
-          <div className="bg-white border-2 border-slate-200 rounded-xl flex flex-col justify-center items-center h-[66px] mt-8 shadow-sm">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">
-              IMC
-            </span>
-            <span
-              className={`font-bold text-xl leading-none ${Number(newConsultation.bmi) > 25 ? "text-orange-500" : "text-slate-800"}`}
-            >
-              {newConsultation.bmi || "-"}
-            </span>
-          </div>
+              <div className="bg-white border-2 border-slate-200 rounded-xl flex flex-col justify-center items-center h-[66px] mt-8 shadow-sm">
+                <span className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">
+                  IMC
+                </span>
+                <span
+                  className={`font-bold text-xl leading-none ${Number(newConsultation.bmi) > 25 ? "text-orange-500" : "text-slate-800"}`}
+                >
+                  {newConsultation.bmi || "-"}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="col-span-2 md:col-span-3 flex items-center justify-center rounded-xl border border-blue-200 bg-blue-100/60 px-4 py-5 text-center text-sm font-semibold text-blue-700">
+              Debe activarse desde Administración del Centro
+            </div>
+          )}
 
           {/* BP Chart uses Systolic only for trend */}
           <VitalsInput
@@ -341,7 +352,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
         </div>
 
         {/* Extended Anthropometry for Nutritionists */}
-        {showAnthropometry && (
+        {isAnthropometryEnabled && showAnthropometry && (
           <div className="mt-8 pt-6 border-t border-blue-200/50">
             <div className="flex items-center gap-2 mb-4 text-blue-800 font-bold text-sm uppercase">
               <Ruler className="w-4 h-4" /> Mediciones Adicionales
