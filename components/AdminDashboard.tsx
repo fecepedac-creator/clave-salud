@@ -129,6 +129,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (activeTab === "audit" && !isModuleEnabled("audit")) setActiveTab("doctors");
   }, [activeTab, isModuleEnabled]);
 
+  const [anthropometryEnabled, setAnthropometryEnabled] = useState(false);
+  const [anthropometrySaving, setAnthropometrySaving] = useState(false);
+
+  useEffect(() => {
+    setAnthropometryEnabled(Boolean(activeCenter?.features?.anthropometryEnabled));
+  }, [activeCenter?.features?.anthropometryEnabled]);
+
+  const handleAnthropometryToggle = async (nextValue: boolean) => {
+    if (!db || !resolvedCenterId) return;
+    const previousValue = anthropometryEnabled;
+    setAnthropometryEnabled(nextValue);
+    setAnthropometrySaving(true);
+    try {
+      await setDoc(
+        doc(db, "centers", resolvedCenterId),
+        { features: { anthropometryEnabled: nextValue } },
+        { merge: true }
+      );
+      showToast(
+        nextValue
+          ? "Antropometría activada para el centro."
+          : "Antropometría desactivada para el centro.",
+        "success"
+      );
+    } catch (e) {
+      console.error("update anthropometry flag", e);
+      setAnthropometryEnabled(previousValue);
+      showToast("No se pudo actualizar Antropometría.", "error");
+    } finally {
+      setAnthropometrySaving(false);
+    }
+  };
   
   // --- WHATSAPP TEMPLATES (per center) ---
   const DEFAULT_WA_TEMPLATES: WhatsAppTemplate[] = [
@@ -942,9 +974,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* DOCTORS MANAGEMENT */}
         {activeTab === "doctors" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fadeIn">
-            {/* List */}
-            <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Configuración del Centro</h3>
+                  <p className="text-sm text-slate-400">
+                    Controla módulos específicos para el equipo clínico.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAnthropometryToggle(!anthropometryEnabled)}
+                  disabled={!hasActiveCenter || anthropometrySaving}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${anthropometryEnabled ? "bg-emerald-500" : "bg-slate-600"} ${!hasActiveCenter || anthropometrySaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  aria-pressed={anthropometryEnabled}
+                  aria-label="Activar Antropometría"
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${anthropometryEnabled ? "translate-x-6" : "translate-x-1"}`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-200">Activar Antropometría</p>
+                  <p className="text-xs text-slate-400">
+                    Permite registrar peso, talla, IMC y mediciones adicionales.
+                  </p>
+                </div>
+                <span
+                  className={`text-xs font-bold uppercase px-2 py-1 rounded ${anthropometryEnabled ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700 text-slate-300"}`}
+                >
+                  {anthropometryEnabled ? "Activo" : "Inactivo"}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* List */}
+              <div className="lg:col-span-2 space-y-4">
               {doctors.map((doc) => (
                 <div
                   key={doc.id}
@@ -1185,6 +1254,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           </div>
+        </div>
         )}
 
         {/* AGENDA MANAGEMENT */}

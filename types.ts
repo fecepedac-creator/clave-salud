@@ -16,6 +16,9 @@ export interface MedicalCenter {
     prescriptions: boolean; // Enables Prescription Manager
     agenda: boolean; // Enables Appointment Scheduling
   };
+  features?: {
+    anthropometryEnabled?: boolean;
+  };
 
   // --- CRM & Legal ---
   legalInfo?: {
