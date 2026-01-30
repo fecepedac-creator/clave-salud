@@ -148,6 +148,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // --- contexto del centro ---
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
+  const anthropometryEnabled = Boolean(activeCenter?.features?.anthropometryEnabled);
 
   // Load WhatsApp templates configured by Center Admin (fallback to defaults)
   useEffect(() => {
@@ -1067,6 +1068,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         patientGender={selectedPatient.gender} // NEW
                         examOptions={allExamOptions} // PASS DYNAMIC OPTIONS
                         role={role} // PASS ROLE
+                        anthropometryEnabled={anthropometryEnabled}
                       />
                     )}
 
