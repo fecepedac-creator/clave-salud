@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   LogOut,
@@ -69,6 +69,11 @@ interface SuperAdminDashboardProps {
   doctors: Doctor[];
   demoMode: boolean;
   onToggleDemo: () => void;
+  canUsePreview?: boolean;
+  previewCenterId?: string;
+  previewRole?: string;
+  onStartPreview?: (centerId: string, role: string) => void;
+  onExitPreview?: () => void;
 
   onUpdateCenters: (centers: MedicalCenter[]) => Promise<void> | void;
   onDeleteCenter: (id: string) => Promise<void> | void;
@@ -184,6 +189,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   doctors,
   demoMode,
   onToggleDemo,
+  canUsePreview = false,
+  previewCenterId,
+  previewRole,
+  onStartPreview,
+  onExitPreview,
   onUpdateCenters,
   onDeleteCenter,
   onUpdateDoctors, // reservado
@@ -191,6 +201,21 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const previewRoles = useMemo(
+    () =>
+      ROLE_CATALOG.filter((role) => !["ADMIN_CENTRO", "ADMINISTRATIVO"].includes(role.id)),
+    []
+  );
+  const [previewCenterSelection, setPreviewCenterSelection] = useState(previewCenterId ?? "");
+  const [previewRoleSelection, setPreviewRoleSelection] = useState(previewRole ?? "");
+
+  useEffect(() => {
+    setPreviewCenterSelection(previewCenterId ?? "");
+  }, [previewCenterId]);
+
+  useEffect(() => {
+    setPreviewRoleSelection(previewRole ?? "");
+  }, [previewRole]);
 
   // Centros
   const [editingCenter, setEditingCenter] = useState<CenterExt | null>(null);
@@ -777,6 +802,89 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 (Admin SDK) o un flujo de invitación controlado.
               </p>
             </div>
+
+            {canUsePreview && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex flex-col gap-1 mb-6">
+                  <h2 className="text-xl font-bold text-slate-800">Preview de Roles</h2>
+                  <p className="text-sm text-slate-500">
+                    Simula dashboards por rol y centro sin crear usuarios ni cambiar login.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                      Centro
+                    </label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-700"
+                      value={previewCenterSelection}
+                      onChange={(e) => setPreviewCenterSelection(e.target.value)}
+                    >
+                      <option value="">Selecciona un centro</option>
+                      {centers.map((center) => (
+                        <option key={center.id} value={center.id}>
+                          {center.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                      Rol clínico
+                    </label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-700"
+                      value={previewRoleSelection}
+                      onChange={(e) => setPreviewRoleSelection(e.target.value)}
+                    >
+                      <option value="">Selecciona un rol</option>
+                      {previewRoles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!previewCenterSelection || !previewRoleSelection) {
+                          showToast("Selecciona un centro y un rol para activar preview.", "error");
+                          return;
+                        }
+                        onStartPreview?.(previewCenterSelection, previewRoleSelection);
+                        showToast("Preview activado. Abriendo dashboard.", "success");
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700"
+                    >
+                      Activar preview
+                    </button>
+                    {previewCenterId && previewRole && (
+                      <button
+                        type="button"
+                        onClick={onExitPreview}
+                        className="w-full px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200"
+                      >
+                        Salir de preview
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {previewCenterId && previewRole && (
+                  <div className="mt-4 text-xs text-slate-500">
+                    Preview activo en{" "}
+                    <span className="font-semibold text-slate-700">{previewCenterId}</span> con rol{" "}
+                    <span className="font-semibold text-slate-700">{previewRole}</span>.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
