@@ -1604,9 +1604,21 @@ const App: React.FC = () => {
         </CenterContext.Provider>
       );
 
-    if (view === ("doctor-dashboard" as ViewMode) && currentUser) {
-      const currentUid = currentUser?.uid ?? currentUser?.id;
-      const currentEmailLower = String(currentUser?.email ?? "")
+    const previewUser =
+      isPreviewActive && authUser
+        ? {
+            id: authUser.uid,
+            uid: authUser.uid,
+            fullName: authUser.displayName ?? authUser.email ?? "Preview",
+            email: authUser.email ?? "preview@local",
+            role: previewRole,
+          }
+        : null;
+    const userForView = currentUser ?? previewUser;
+
+    if (view === ("doctor-dashboard" as ViewMode) && userForView) {
+      const currentUid = userForView?.uid ?? userForView?.id;
+      const currentEmailLower = String(userForView?.email ?? "")
         .trim()
         .toLowerCase();
       const matchedDoctor =
@@ -1625,12 +1637,12 @@ const App: React.FC = () => {
               .toLowerCase() === currentEmailLower
         ) ||
         null;
-      const resolvedDoctorId = matchedDoctor?.id ?? currentUser.id;
+      const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
       const resolvedDoctorName =
-        matchedDoctor?.fullName ?? currentUser.fullName ?? currentUser.email ?? "Profesional";
+        matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
       const mergedCurrentUser = matchedDoctor
-        ? ({ ...currentUser, ...matchedDoctor, id: resolvedDoctorId } as any)
-        : currentUser;
+        ? ({ ...userForView, ...matchedDoctor, id: resolvedDoctorId } as any)
+        : userForView;
       const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
       return (
         <CenterContext.Provider value={centerCtxValue}>
@@ -1652,13 +1664,14 @@ const App: React.FC = () => {
             }}
             isSyncingAppointments={isSyncingAppointments}
             onLogActivity={(action: any, details: string, targetId?: string) => {
+              if (isPreviewActive) return;
               const log: AuditLogEntry = {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? currentUser.id,
-                actorName: currentUser.fullName ?? "Usuario",
-                actorRole: currentUser.role ?? "Profesional",
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Profesional",
                 action,
                 details,
                 targetId,
@@ -1671,7 +1684,7 @@ const App: React.FC = () => {
       );
     }
 
-    if (view === ("admin-dashboard" as ViewMode) && currentUser) {
+    if (view === ("admin-dashboard" as ViewMode) && userForView) {
       return (
         <CenterContext.Provider value={centerCtxValue}>
           <AdminDashboard
@@ -1706,9 +1719,9 @@ const App: React.FC = () => {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? currentUser.id,
-                actorName: currentUser.fullName ?? "Usuario",
-                actorRole: currentUser.role ?? "Admin",
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Admin",
                 action,
                 details,
                 targetId,
