@@ -1399,7 +1399,7 @@ const App: React.FC = () => {
   const renderHomeDirectory = () => {
     return (
       <div
-        className="home-hero relative min-h-dvh w-full flex flex-col items-center justify-center px-4 py-10 pb-16"
+        className="home-hero relative min-h-dvh w-full flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-x-hidden"
         style={
           {
             "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
@@ -1502,7 +1502,7 @@ const App: React.FC = () => {
 
   const renderCenterBackdrop = (children: React.ReactNode) => (
     <div
-      className="center-hero relative min-h-dvh w-full overflow-hidden"
+      className="center-hero relative min-h-dvh w-full overflow-x-hidden"
       style={
         {
           "--center-hero-image": `image-set(url("${CENTER_BG_SRC}") type("image/webp"), url("${CENTER_BG_FALLBACK_SRC}") type("image/png"))`,
