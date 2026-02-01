@@ -1468,7 +1468,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ).length;
 
                   // Past Day Check
-                  const isPast = day < today;
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0);
+                  const isPast = day < now;
 
                   return (
                     <button

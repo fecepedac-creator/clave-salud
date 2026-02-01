@@ -4,11 +4,12 @@
 /* Si quieres, aquí abajo puedes dejar tus estilos propios (los que tenías antes) */
 
 .home-hero {
-  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.86), rgba(239, 246, 255, 0.68)),
+  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.4), rgba(239, 246, 255, 0.2)),
     var(--home-hero-image);
   background-size: cover;
-  background-position: center top;
+  background-position: center center;
   background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 .center-hero {
