@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [3/3] Deploying to Firebase Hosting...
-call npm exec firebase deploy
+call npx --yes -p firebase-tools firebase deploy
 if %errorlevel% neq 0 (
     echo Error during deploy!
     echo Ensure you are logged in with 'npx firebase login'
