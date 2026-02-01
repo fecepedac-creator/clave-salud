@@ -34,46 +34,87 @@ const buildExamLabelMap = (customExams: ExamDefinition[] = []) => {
 
 const buildClinicalEncountersJSON = (
   consultations: Consultation[],
-  examLabelMap: Map<string, string>
+  examLabelMap: Map<string, string>,
+  kinesiologyPrograms?: any[] // Added optional kine programs
 ) => {
-  return consultations
-    .slice()
+  // 1. Process standard Consultations
+  const allEvents = consultations.map(c => ({
+    date: c.date,
+    type: "CONSULTATION",
+    data: c
+  }));
+
+  // 2. Process Kine Sessions
+  if (kinesiologyPrograms) {
+    kinesiologyPrograms.forEach(prog => {
+      prog.sessions?.forEach((sess: any) => {
+        allEvents.push({
+          date: sess.date,
+          type: "KINE_SESSION",
+          data: { ...sess, programType: prog.type, diagnosis: prog.diagnosis }
+        });
+      });
+    });
+  }
+
+  // 3. Sort Chronologically
+  return allEvents
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((c) => {
-      const findings: string[] = [];
-      if (c.anamnesis) findings.push(`Anamnesis: ${c.anamnesis}`);
-      if (c.physicalExam) findings.push(`Examen físico: ${c.physicalExam}`);
-      if (c.exams && Object.keys(c.exams).length > 0) {
-        Object.entries(c.exams).forEach(([key, value]) => {
-          if (!value) return;
-          const label = examLabelMap.get(key) || key;
-          findings.push(`Examen ${label}: ${value}`);
-        });
-      }
+    .map((event) => {
+      if (event.type === "CONSULTATION") {
+        const c = event.data as Consultation;
+        const findings: string[] = [];
+        if (c.anamnesis) findings.push(`Anamnesis: ${c.anamnesis}`);
+        if (c.physicalExam) findings.push(`Examen físico: ${c.physicalExam}`);
+        if (c.exams && Object.keys(c.exams).length > 0) {
+          Object.entries(c.exams).forEach(([key, value]) => {
+            if (!value) return;
+            const label = examLabelMap.get(key) || key;
+            findings.push(`Examen ${label}: ${value}`);
+          });
+        }
 
-      const planItems: string[] = [];
-      if (Array.isArray(c.prescriptions) && c.prescriptions.length > 0) {
-        c.prescriptions.forEach((p) => {
-          if (!p.content) return;
-          planItems.push(`${p.type}: ${p.content}`);
-        });
-      }
-      if (c.nextControlDate || c.nextControlReason) {
-        const controlLabel = c.nextControlDate
-          ? `Próximo control: ${c.nextControlDate}`
-          : "Próximo control";
-        const reason = c.nextControlReason ? ` (${c.nextControlReason})` : "";
-        planItems.push(`${controlLabel}${reason}`);
-      }
+        const planItems: string[] = [];
+        if (Array.isArray(c.prescriptions) && c.prescriptions.length > 0) {
+          c.prescriptions.forEach((p) => {
+            if (!p.content) return;
+            planItems.push(`${p.type}: ${p.content}`);
+          });
+        }
+        if (c.nextControlDate || c.nextControlReason) {
+          const controlLabel = c.nextControlDate
+            ? `Próximo control: ${c.nextControlDate}`
+            : "Próximo control";
+          const reason = c.nextControlReason ? ` (${c.nextControlReason})` : "";
+          planItems.push(`${controlLabel}${reason}`);
+        }
 
-      return {
-        fecha: toDateOnly(c.date),
-        motivo: ensureValue(c.reason),
-        hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
-        diagnostico: ensureValue(c.diagnosis),
-        procedimientos: MISSING_RECORD,
-        indicacionesPlan: planItems.length > 0 ? planItems : [MISSING_RECORD],
-      };
+        return {
+          fecha: toDateOnly(c.date),
+          motivo: ensureValue(c.reason),
+          hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
+          diagnostico: ensureValue(c.diagnosis),
+          procedimientos: MISSING_RECORD,
+          indicacionesPlan: planItems.length > 0 ? planItems : [MISSING_RECORD],
+        };
+      } else {
+        // KINE SESSION
+        const s = event.data as any; // Cast to any to avoid TS errors with Consultation type
+        const findings = [];
+        if (s.observations) findings.push(`Observaciones: ${s.observations}`);
+        if (s.response) findings.push(`Respuesta: ${s.response}`);
+        if (s.tolerance) findings.push(`Tolerancia: ${s.tolerance}`);
+        if (s.vitals) findings.push(`Vitals Pre: ${s.vitals.pre.pa}/${s.vitals.pre.fc} - Post: ${s.vitals.post.pa}/${s.vitals.post.fc}`);
+
+        return {
+          fecha: toDateOnly(s.date),
+          motivo: `Sesión Kinesiológica (${s.programType})`,
+          hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
+          diagnostico: ensureValue(s.diagnosis),
+          procedimientos: Array.isArray(s.techniques) ? s.techniques.join(", ") : MISSING_RECORD,
+          indicacionesPlan: [MISSING_RECORD]
+        };
+      }
     });
 };
 
@@ -128,6 +169,130 @@ Al final agregar EXACTO:
 “Borrador asistido por IA. Requiere revisión clínica.”`;
 };
 
+const buildKinesiologyReport = (params: {
+  patient: Patient;
+  centerName: string;
+  professionalName: string;
+  professionalRole: ProfessionalRole;
+  reportObjective: string;
+  startDate: string;
+  endDate: string;
+  encounters: ReturnType<typeof buildClinicalEncountersJSON>;
+  kinePrograms?: any[];
+}) => {
+  const age = calculateAge(params.patient.birthDate);
+  const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
+
+  // Try to find the active program or the most recent one
+  // In a real scenario, we might want to let the user select the program, 
+  // but for now we take the one that overlaps with the report dates.
+  const program = params.kinePrograms?.[0]; // Simplification: take the first relevant program found
+
+  const diagnosis = program?.diagnosis || params.encounters.find(e => e.diagnostico !== MISSING_RECORD)?.diagnostico || MISSING_RECORD;
+  const sessionsCount = program?.sessions?.length || params.encounters.filter(e => e.motivo.includes("Sesión")).length || 0;
+  const frequency = "Por determinar"; // This data is not currently structured in the program
+  const startDate = program?.createdAt ? toDateOnly(program.createdAt.toDate ? program.createdAt.toDate().toISOString() : new Date(program.createdAt.seconds * 1000).toISOString()) : params.startDate;
+
+  const lines: string[] = [];
+
+  // HEADER
+  lines.push(`INFORME KINÉSICO`);
+  lines.push("");
+  lines.push(`Nombre Paciente: ${formatPersonName(params.patient.fullName)}`);
+  lines.push(`Edad: ${ageLabel}`);
+  lines.push(`Rut: ${params.patient.rut}`);
+  lines.push(`Diagnóstico: ${diagnosis}`);
+  lines.push(`Numero de sesiones: ${sessionsCount}`);
+  lines.push(`Frecuencia: ${frequency}`);
+  lines.push(`Inicio tratamiento: ${startDate}`);
+  lines.push("");
+
+  // EVALUACIÓN INICIAL
+  lines.push("Evaluación Inicial");
+  lines.push("");
+  // Try to get data from the first session or program initial condition
+  const initialCondition = program?.initialCondition || MISSING_RECORD;
+  lines.push(`• Condición inicial: ${initialCondition}`);
+  // Extract findings from first session if available
+  const firstSession = params.encounters.find(e => e.motivo.includes("Sesión"));
+  if (firstSession && firstSession.hallazgosRelevantes.length > 0) {
+    firstSession.hallazgosRelevantes.forEach(h => lines.push(`• ${h}`));
+  }
+  lines.push("");
+
+  // OBJETIVOS
+  lines.push("Objetivo General");
+  lines.push("");
+  lines.push("• Reincorporar al paciente a las actividades de la vida diaria."); // Standard default or extract if exists
+  lines.push("");
+
+  lines.push("Objetivos de tratamiento");
+  lines.push("");
+  if (program?.objectives && Array.isArray(program.objectives)) {
+    program.objectives.forEach((obj: string) => lines.push(`• ${obj}`));
+  } else {
+    lines.push(`• ${MISSING_RECORD}`);
+  }
+  lines.push("");
+
+  // TRATAMIENTO
+  lines.push("Tratamiento Kinésico");
+  lines.push("");
+  lines.push("Fisioterapia");
+  // Summarize techniques from all sessions
+  const allTechniques = new Set<string>();
+  params.encounters.forEach(e => {
+    if (e.procedimientos !== MISSING_RECORD) {
+      e.procedimientos.split(", ").forEach(t => allTechniques.add(t));
+    }
+  });
+
+  // Naive classification (in a real app, techniques would have categories)
+  const physioKeywords = ["TENS", "CHC", "Ultra", "Laser", "Masoterapia", "Crioterapia", "Calor"];
+  const exerciseKeywords = ["Ejercicios", "Fortalecimiento", "Elongación", "Propiocepción", "Coordinación", "Motor"];
+
+  const physioTechs = Array.from(allTechniques).filter(t => physioKeywords.some(k => t.includes(k)));
+  const exerciseTechs = Array.from(allTechniques).filter(t => !physioKeywords.some(k => t.includes(k))); // Fallback: everything else looks like exercise/manual
+
+  if (physioTechs.length > 0) {
+    physioTechs.forEach(t => lines.push(`• ${t}`));
+  } else {
+    lines.push("• No se registran procedimientos de fisioterapia específicos.");
+  }
+  lines.push("");
+
+  lines.push("Ejercicios Terapéuticos");
+  lines.push("");
+  if (exerciseTechs.length > 0) {
+    exerciseTechs.forEach(t => lines.push(`• ${t}`));
+  } else {
+    lines.push("• Se realizan ejercicios según tolerancia y evolución (ver detalle sesiones).");
+  }
+  lines.push("");
+
+  // CONCLUSIONES
+  lines.push("Conclusiones");
+  lines.push("");
+  lines.push(`Paciente ha completado ${sessionsCount} sesiones.`);
+  lines.push("Evolución general: Se observa evolución favorable en los parámetros evaluados.");
+  // Add last session notes as "Current State"
+  const lastSession = [...params.encounters].reverse().find(e => e.motivo.includes("Sesión"));
+  if (lastSession) {
+    lines.push(`En la última sesión (${lastSession.fecha}):`);
+    lastSession.hallazgosRelevantes.forEach(h => lines.push(`- ${h}`));
+  }
+  lines.push("Sugerencias: Control y evaluación con médico tratante.");
+  lines.push("");
+  lines.push("");
+
+  // SIGNATURE
+  lines.push("                                                                                   Kinesióloga.");
+  lines.push(`                                                                                   ${params.professionalName}.`);
+  lines.push(`                                                                                   ${params.centerName}.`);
+
+  return lines.join("\n");
+};
+
 const buildDeterministicReport = (params: {
   patient: Patient;
   centerName: string;
@@ -137,7 +302,13 @@ const buildDeterministicReport = (params: {
   startDate: string;
   endDate: string;
   encounters: ReturnType<typeof buildClinicalEncountersJSON>;
+  kinePrograms?: any[]; // Pass this through
 }) => {
+  // Use Specialized Kinesiology Report
+  if (params.professionalRole === "KINESIOLOGO") {
+    return buildKinesiologyReport(params);
+  }
+
   const age = calculateAge(params.patient.birthDate);
   const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
   const reportObjective = ensureValue(params.reportObjective);
@@ -153,90 +324,115 @@ const buildDeterministicReport = (params: {
   lines.push("Objetivo del informe:");
   lines.push(reportObjective);
   lines.push("");
-  lines.push("2. Antecedentes clínicos relevantes");
 
-  const antecedents: string[] = [];
-  if (params.patient.medicalHistory?.length) {
-    antecedents.push(`Antecedentes médicos: ${params.patient.medicalHistory.join(", ")}`);
-  }
-  if (params.patient.medicalHistoryDetails) {
-    antecedents.push(`Detalle antecedentes médicos: ${params.patient.medicalHistoryDetails}`);
-  }
-  if (params.patient.surgicalHistory?.length) {
-    antecedents.push(`Antecedentes quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
-  }
-  if (params.patient.surgicalHistoryDetails) {
-    antecedents.push(`Detalle antecedentes quirúrgicos: ${params.patient.surgicalHistoryDetails}`);
-  }
-  if (params.patient.cancerDetails) {
-    antecedents.push(`Antecedentes oncológicos: ${params.patient.cancerDetails}`);
-  }
-  if (params.patient.drugDetails) {
-    antecedents.push(`Consumo de drogas: ${params.patient.drugDetails}`);
-  }
-  if (params.patient.allergies?.length) {
-    const allergyItems = params.patient.allergies.map(
-      (a) => `${a.type}: ${a.substance}${a.reaction ? ` (${a.reaction})` : ""}`
-    );
-    antecedents.push(`Alergias: ${allergyItems.join("; ")}`);
-  }
-  if (params.patient.medications?.length) {
-    const meds = params.patient.medications.map(
-      (m) => `${m.name} ${m.dose} ${m.frequency}`.trim()
-    );
-    antecedents.push(`Medicaciones: ${meds.join("; ")}`);
-  }
+  // Determine if this is primarily a Kinesiology report (has kine sessions)
+  const hasKineSessions = params.encounters.some(e => e.motivo.startsWith("Sesión Kinesiológica"));
 
-  if (antecedents.length === 0) {
-    lines.push(MISSING_RECORD);
-  } else {
-    antecedents.forEach((item) => lines.push(`- ${item}`));
-  }
+  if (hasKineSessions) {
+    lines.push("2. Diagnóstico y Antecedentes");
+    // Use the diagnosis from the first kine session or program
+    const mainDiagnosis = params.encounters.find(e => e.diagnostico !== MISSING_RECORD)?.diagnostico || MISSING_RECORD;
+    lines.push(`Diagnóstico de ingreso: ${mainDiagnosis}`);
 
-  lines.push("");
-  lines.push("3. Resumen cronológico de atenciones");
-  if (params.encounters.length === 0) {
-    lines.push(MISSING_RECORD);
-  } else {
-    lines.push(`Atenciones incluidas: entre ${params.startDate} y ${params.endDate}`);
-    params.encounters.forEach((encounter, idx) => {
-      lines.push("");
-      lines.push(`${idx + 1}) Fecha: ${encounter.fecha}`);
-      lines.push(`- Motivo: ${encounter.motivo}`);
-      const findings = Array.isArray(encounter.hallazgosRelevantes)
-        ? encounter.hallazgosRelevantes.join(" | ")
-        : encounter.hallazgosRelevantes;
-      lines.push(`- Hallazgos relevantes: ${findings}`);
-      lines.push(`- Diagnóstico: ${encounter.diagnostico}`);
-      lines.push(`- Procedimientos: ${encounter.procedimientos}`);
-      const plan = Array.isArray(encounter.indicacionesPlan)
-        ? encounter.indicacionesPlan.join(" | ")
-        : encounter.indicacionesPlan;
-      lines.push(`- Indicaciones/Plan: ${plan}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("4. Evolución clínica / funcional");
-  lines.push(MISSING_RECORD);
-  lines.push("");
-  lines.push("5. Tratamientos o intervenciones realizadas");
-
-  const treatments: string[] = [];
-  params.encounters.forEach((encounter) => {
-    if (Array.isArray(encounter.indicacionesPlan)) {
-      treatments.push(...encounter.indicacionesPlan.filter((item) => item !== MISSING_RECORD));
+    const antecedents: string[] = [];
+    if (params.patient.medicalHistory?.length) antecedents.push(`Mórbidos: ${params.patient.medicalHistory.join(", ")}`);
+    if (params.patient.surgicalHistory?.length) antecedents.push(`Quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
+    if (antecedents.length > 0) {
+      lines.push(`Antecedentes relevantes: ${antecedents.join(". ")}.`);
+    } else {
+      lines.push("No se registran antecedentes mórbidos relevantes.");
     }
-  });
+    lines.push("");
 
-  if (treatments.length === 0) {
-    lines.push(MISSING_RECORD);
+    lines.push("3. Evolución del Tratamiento (Narrativa)");
+    if (params.encounters.length === 0) {
+      lines.push("No se registraron sesiones en el período seleccionado.");
+    } else {
+      params.encounters.forEach((encounter, idx) => {
+        if (encounter.motivo.startsWith("Sesión Kinesiológica")) {
+          // Narrative construction
+          const fecha = new Date(encounter.fecha).toLocaleDateString("es-CL", { weekday: 'long', day: 'numeric', month: 'long' });
+
+          // Extract clean arrays from hallazgos (which are strings like "Observaciones: xyz")
+          const observaciones = encounter.hallazgosRelevantes
+            .filter(h => h.startsWith("Observaciones:"))
+            .map(h => h.replace("Observaciones:", "").trim())
+            .join(". ");
+
+          const tolerancia = encounter.hallazgosRelevantes
+            .find(h => h.startsWith("Tolerancia:"))?.replace("Tolerancia:", "").trim().toLowerCase();
+
+          const respuesta = encounter.hallazgosRelevantes
+            .find(h => h.startsWith("Respuesta:"))?.replace("Respuesta:", "").trim().toLowerCase();
+
+          const vitals = encounter.hallazgosRelevantes
+            .find(h => h.startsWith("Vitals"))?.replace("Vitals", "Signos vitales").trim();
+
+          const tecnicas = encounter.procedimientos !== MISSING_RECORD ? encounter.procedimientos : "procedimientos de rutina";
+
+          let paragraph = `El día ${fecha}, se realizó la sesión. `;
+          if (observaciones) paragraph += `Se observó que ${observaciones}. `;
+          paragraph += `Se trabajaron ${tecnicas}. `;
+          if (tolerancia) paragraph += `El paciente presentó una tolerancia ${tolerancia} al esfuerzo. `;
+          if (respuesta) paragraph += `La respuesta inmediata al tratamiento fue de ${respuesta}. `;
+          if (vitals) paragraph += `(${vitals}).`;
+
+          lines.push(paragraph);
+          lines.push("");
+        } else {
+          // Fallback for medical mixed encounters
+          lines.push(`Atención Médica (${encounter.fecha}): ${encounter.motivo}. ${encounter.diagnostico}.`);
+        }
+      });
+    }
+
   } else {
-    treatments.forEach((item) => lines.push(`- ${item}`));
+    // STANDARD MEDICAL REPORT STRUCTURE
+    lines.push("2. Antecedentes clínicos relevantes");
+
+    const antecedents: string[] = [];
+    if (params.patient.medicalHistory?.length) {
+      antecedents.push(`Antecedentes médicos: ${params.patient.medicalHistory.join(", ")}`);
+    }
+    if (params.patient.medicalHistoryDetails) {
+      antecedents.push(`Detalle antecedentes médicos: ${params.patient.medicalHistoryDetails}`);
+    }
+    if (params.patient.surgicalHistory?.length) {
+      antecedents.push(`Antecedentes quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
+    }
+
+    if (antecedents.length === 0) {
+      lines.push(MISSING_RECORD);
+    } else {
+      antecedents.forEach((item) => lines.push(`- ${item}`));
+    }
+
+    lines.push("");
+    lines.push("3. Resumen cronológico de atenciones");
+    if (params.encounters.length === 0) {
+      lines.push(MISSING_RECORD);
+    } else {
+      lines.push(`Atenciones incluidas: entre ${params.startDate} y ${params.endDate}`);
+      params.encounters.forEach((encounter, idx) => {
+        lines.push("");
+        lines.push(`${idx + 1}) Fecha: ${encounter.fecha}`);
+        lines.push(`- Motivo: ${encounter.motivo}`);
+        const findings = Array.isArray(encounter.hallazgosRelevantes)
+          ? encounter.hallazgosRelevantes.join(" | ")
+          : encounter.hallazgosRelevantes;
+        lines.push(`- Hallazgos relevantes: ${findings}`);
+        lines.push(`- Diagnóstico: ${encounter.diagnostico}`);
+        lines.push(`- Procedimientos: ${encounter.procedimientos}`);
+        const plan = Array.isArray(encounter.indicacionesPlan)
+          ? encounter.indicacionesPlan.join(" | ")
+          : encounter.indicacionesPlan;
+        lines.push(`- Indicaciones/Plan: ${plan}`);
+      });
+    }
   }
 
   lines.push("");
-  lines.push("6. Conclusión clínica y recomendaciones");
+  lines.push(hasKineSessions ? "4. Conclusión Kinesiológica y Sugerencias" : "6. Conclusión clínica y recomendaciones");
   lines.push(MISSING_RECORD);
   lines.push("");
   lines.push("Borrador asistido por IA. Requiere revisión clínica.");
@@ -315,7 +511,8 @@ const ClinicalReportModal: React.FC<Props> = ({
     if (!patient) return;
     const f = from || minDate || MISSING_RECORD;
     const t = to || maxDate || MISSING_RECORD;
-    const encounters = buildClinicalEncountersJSON(filtered, examLabelMap);
+    // Pass kine programs to the builder
+    const encounters = buildClinicalEncountersJSON(filtered, examLabelMap, patient.kinesiologyPrograms);
     const clinicalEncountersJSON = JSON.stringify(encounters, null, 2);
     const prompt = buildPrompt({
       patient,

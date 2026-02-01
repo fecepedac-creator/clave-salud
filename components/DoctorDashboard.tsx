@@ -30,8 +30,10 @@ import {
   EXAM_PROFILES,
   TRACKED_EXAMS_OPTIONS,
 } from "../constants";
+import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import {
   Search,
+  Book,
   Plus,
   User,
   Calendar,
@@ -62,6 +64,7 @@ import {
   KeyRound,
   Shield,
   TestTube,
+  History,
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
@@ -86,6 +89,8 @@ import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
+import { StartProgramModal, SessionModal } from "./KinesiologyModals";
+import { KinesiologyProgram, KinesiologySession } from "../types";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -152,10 +157,59 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [centerLogoError, setCenterLogoError] = useState(false);
 
+  // State for Catalog
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
+
+  const handleImportTemplate = async (template: ClinicalTemplate) => {
+    if (!currentUser || !currentUser.id) return;
+    try {
+      const newT: ClinicalTemplate = {
+        id: generateId(),
+        userId: currentUser.id,
+        title: template.title, // Keep original title
+        content: template.content,
+        category: template.category,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Add to current doctor templates
+      const updatedTemplates = [...(currentUser.savedTemplates || []), newT];
+      const updatedDoctor = { ...currentUser, savedTemplates: updatedTemplates };
+
+      onUpdateDoctor(updatedDoctor);
+      showToast("Plantilla importada correctamente", "success");
+      setIsCatalogOpen(false);
+    } catch (e) {
+      console.error("Error importing template:", e);
+      showToast("Error al importar plantilla", "error");
+    }
+  };
+
+  // Dedicated Save Handler
+  const handleSavePatient = () => {
+    if (!selectedPatient) return;
+    try {
+      onUpdatePatient(selectedPatient);
+      onLogActivity(
+        "update",
+        `Actualizó datos ficha de ${selectedPatient.fullName}`,
+        selectedPatient.id
+      );
+      showToast("Datos guardados correctamente.", "success");
+    } catch (err) {
+      console.error("Error saving patient:", err);
+      showToast("Error al guardar (revise consola)", "error");
+    }
+    setIsEditingPatient(false);
+  };
+
+
+
+  // --- contexto del centro ---
   // --- contexto del centro ---
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
-  const anthropometryEnabled = Boolean(activeCenter?.features?.anthropometryEnabled);
 
   // Load WhatsApp templates configured by Center Admin (fallback to defaults)
   useEffect(() => {
@@ -221,8 +275,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-        )[0]
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0]
       : null;
     const raw = lastConsult?.nextControlDate || "";
     if (!raw) return null;
@@ -342,16 +396,24 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // --- módulos del centro (SuperAdmin) ---
   const moduleGuards = useMemo(
-    () => ({
-      patients: isModuleEnabled ? isModuleEnabled("patients") : true,
-      agenda: isModuleEnabled ? isModuleEnabled("agenda") : true,
-      prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
-      vitals: isModuleEnabled ? isModuleEnabled("vitals") : true,
-      exams: isModuleEnabled ? isModuleEnabled("exams") : true,
-      dental: isModuleEnabled ? isModuleEnabled("dental") : true,
-      settings: isModuleEnabled ? isModuleEnabled("settings") : true,
-    }),
-    [isModuleEnabled]
+    () => {
+      // Calculate individual flags
+      const vitalsBase = isModuleEnabled ? isModuleEnabled("vitals") : true;
+      const vitalsUserPref = currentUser.preferences?.vitalsEnabled;
+      // If user has a preference, use it. Otherwise use center config.
+      const vitalsEffective = vitalsUserPref !== undefined ? vitalsUserPref : vitalsBase;
+
+      return {
+        patients: isModuleEnabled ? isModuleEnabled("patients") : true,
+        agenda: isModuleEnabled ? isModuleEnabled("agenda") : true,
+        prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
+        vitals: vitalsEffective,
+        exams: isModuleEnabled ? isModuleEnabled("exams") : true,
+        dental: isModuleEnabled ? isModuleEnabled("dental") : true,
+        settings: isModuleEnabled ? isModuleEnabled("settings") : true,
+      };
+    },
+    [isModuleEnabled, currentUser]
   );
   // Edit Mode State
   const [isEditingPatient, setIsEditingPatient] = useState(false);
@@ -380,21 +442,21 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const slotDateLabel = slotModal.appointment?.date
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString("es-CL", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
     : "";
   const centerName = activeCenter?.name || "Centro Médico";
   const normalizeRut = (value?: string | null) =>
     String(value ?? "")
       .replace(/[^0-9kK]/g, "")
       .toUpperCase();
-  
+
   // Helper function to handle patient selection with audit logging
   const handleSelectPatient = async (patient: Patient) => {
     setSelectedPatient(patient);
-    
+
     // Log patient access for audit trail (DS 41 MINSAL)
     if (activeCenterId && patient.id) {
       logAccessSafe(logAccess, {
@@ -406,7 +468,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       });
     }
   };
-  
+
   const handleOpenPatientFromAppointment = (appointment: Appointment) => {
     const foundById = appointment.patientId
       ? patients.find((patient) => patient.id === appointment.patientId)
@@ -560,6 +622,72 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // New Consultation State
   const [newConsultation, setNewConsultation] =
     useState<Partial<Consultation>>(getEmptyConsultation());
+
+  // --- KINESIOLOGY STATE ---
+  const [isKineProgramModalOpen, setIsKineProgramModalOpen] = useState(false);
+  const [isKineSessionModalOpen, setIsKineSessionModalOpen] = useState(false);
+  const [selectedKineProgram, setSelectedKineProgram] = useState<KinesiologyProgram | null>(null);
+  const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
+
+  const handleCreateKineProgram = async (programData: Partial<KinesiologyProgram>) => {
+    if (!selectedPatient || !activeCenterId) return;
+
+    const newProgram: KinesiologyProgram = {
+      id: generateId(),
+      patientId: selectedPatient.id,
+      type: programData.type!,
+      diagnosis: programData.diagnosis!,
+      clinicalCondition: programData.clinicalCondition || "",
+      objectives: programData.objectives || [],
+      totalSessions: programData.totalSessions || 10,
+      sessions: [],
+      createdAt: new Date().toISOString(),
+      status: "active",
+      professionalName: doctorName,
+    };
+
+    // Update Local
+    const updatedPrograms = [newProgram, ...(selectedPatient.kinesiologyPrograms || [])];
+    const updatedPatient = { ...selectedPatient, kinesiologyPrograms: updatedPrograms, lastUpdated: new Date().toISOString() };
+
+    // Update Firestore logic to be safe would require saving the whole patient or subcollection
+    // For now assuming we save within patient object or handle via onUpdatePatient which likely saves the patient document
+    onUpdatePatient(updatedPatient);
+    setSelectedPatient(updatedPatient);
+
+    // Audit
+    onLogActivity("create", `Inició programa ${newProgram.type}`, selectedPatient.id);
+  };
+
+  const handleSaveKineSession = async (sessionData: Partial<KinesiologySession>) => {
+    if (!selectedPatient || !selectedKineProgram) return;
+
+    const newSession: KinesiologySession = {
+      id: generateId(),
+      date: sessionData.date || new Date().toISOString(),
+      sessionNumber: sessionData.sessionNumber!,
+      techniques: sessionData.techniques || [],
+      tolerance: sessionData.tolerance || "Buena",
+      response: sessionData.response || "Mejoría",
+      observations: sessionData.observations || "",
+      vitals: sessionData.vitals,
+      oxygenation: sessionData.oxygenation,
+    };
+
+    // Update Program
+    const updatedPrograms = (selectedPatient.kinesiologyPrograms || []).map(p => {
+      if (p.id === selectedKineProgram.id) {
+        return { ...p, sessions: [...(p.sessions || []), newSession] };
+      }
+      return p;
+    });
+
+    const updatedPatient = { ...selectedPatient, kinesiologyPrograms: updatedPrograms, lastUpdated: new Date().toISOString() };
+
+    onUpdatePatient(updatedPatient);
+    setSelectedPatient(updatedPatient);
+    onLogActivity("update", `Registró sesión kinesiológica ${newSession.sessionNumber}`, selectedPatient.id);
+  };
 
   // Templates State
   const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>([]);
@@ -1000,16 +1128,17 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   };
 
   // UI Helpers based on Role
-  const canSeeVitals = ["Medico", "Enfermera", "Kinesiologo", "Matrona", "Nutricionista"].includes(
+  // UI Helpers based on Role
+  const canSeeVitals = ["MEDICO", "ENFERMERA", "KINESIOLOGO", "MATRONA", "NUTRICIONISTA", "PREPARADOR_FISICO"].includes(
     role
   );
   // Prescriber Logic: Only Medico, Odontologo, Matrona can prescribe drugs/exams
-  const canPrescribeDrugs = ["Medico", "Odontologo", "Matrona"].includes(role);
+  const canPrescribeDrugs = ["MEDICO", "ODONTOLOGO", "MATRONA"].includes(role);
   // Only Medico and Odontologo can issue licenses. Matronas cannot.
-  const canIssueLicense = ["Medico", "Odontologo"].includes(role);
+  const canIssueLicense = ["MEDICO", "ODONTOLOGO"].includes(role);
 
-  const isDentist = role === "Odontologo";
-  const isPsych = role === "Psicologo";
+  const isDentist = role === "ODONTOLOGO";
+  const isPsych = role === "PSICOLOGO";
 
   // --- RENDER SELECTED PATIENT ---
   if (selectedPatient) {
@@ -1092,6 +1221,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           examDefinitions={currentUser?.customExams}
         />
 
+
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <button
@@ -1102,60 +1232,118 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             </button>
             <LogoHeader size="sm" showText={true} />
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                {formatPersonName(selectedPatient.fullName)}
-                <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">
-                  {selectedPatient.rut}
-                </span>
-              </h1>
-              <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                <span>
-                  {safeAgeLabel(selectedPatient.birthDate)} • {selectedPatient.gender}
-                </span>
-                {/* Fallback empty array to prevent BioMarkers crash */}
-                <BioMarkers
-                  activeExams={selectedPatient.activeExams || []}
-                  consultations={selectedPatientConsultations}
-                  examOptions={allExamOptions} // Pass dynamic options
-                />
-              </div>
+              {isEditingPatient ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors"
+                      value={selectedPatient.fullName}
+                      onChange={(e) =>
+                        setSelectedPatient({ ...selectedPatient, fullName: e.target.value })
+                      }
+                      placeholder="Nombre Completo"
+                    />
+                    <input
+                      className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors"
+                      value={selectedPatient.rut}
+                      onChange={(e) =>
+                        setSelectedPatient({ ...selectedPatient, rut: e.target.value })
+                      }
+                      placeholder="RUT"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <input
+                      type="date"
+                      className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
+                      value={selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""}
+                      onChange={(e) =>
+                        setSelectedPatient({ ...selectedPatient, birthDate: e.target.value })
+                      }
+                    />
+                    <select
+                      className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
+                      value={selectedPatient.gender}
+                      onChange={(e) =>
+                        setSelectedPatient({ ...selectedPatient, gender: e.target.value })
+                      }
+                    >
+                      <option value="Masculino">Masculino</option>
+                      <option value="Femenino">Femenino</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 group">
+                    {formatPersonName(selectedPatient.fullName)}
+                    <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">
+                      {selectedPatient.rut}
+                    </span>
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => setIsEditingPatient(true)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-full"
+                        title="Editar datos básicos"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                  </h1>
+                  <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                    <span>
+                      {safeAgeLabel(selectedPatient.birthDate)} • {selectedPatient.gender}
+                    </span>
+                    <BioMarkers
+                      activeExams={selectedPatient.activeExams || []}
+                      consultations={selectedPatientConsultations}
+                      examOptions={allExamOptions}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <PatientDetail
-              patient={selectedPatient}
-              centerId={activeCenterId}
-              center={activeCenter ?? null}
-              consultations={selectedPatientConsultations}
-              generatedBy={{ name: doctorName, rut: currentUser?.rut, role }}
-              onUpdatePatient={(nextPatient) => {
-                onUpdatePatient(nextPatient);
-                setSelectedPatient(nextPatient);
-              }}
-            />
+            {isEditingPatient ? (
+              <button
+                type="button"
+                onClick={handleSavePatient}
+                className="bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors"
+                title="Guardar cambios"
+              >
+                <Save className="w-5 h-5" /> Guardar Cambios
+              </button>
+            ) : (
+              <PatientDetail
+                patient={selectedPatient}
+                centerId={activeCenterId}
+                center={activeCenter ?? null}
+                consultations={selectedPatientConsultations}
+                generatedBy={{ name: doctorName, rut: currentUser?.rut, role }}
+                onUpdatePatient={(nextPatient) => {
+                  onUpdatePatient(nextPatient);
+                  setSelectedPatient(nextPatient);
+                }}
+              />
+            )}
           </div>
         </header>
 
         <main className="flex-1 overflow-hidden">
           <div className="h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
             {/* SIDEBAR */}
+            {/* Refactored Toggle Logic */}
             <PatientSidebar
               selectedPatient={selectedPatient}
               isEditingPatient={isEditingPatient}
               toggleEditPatient={() => {
                 if (isEditingPatient) {
-                  onUpdatePatient(selectedPatient);
-                  // LOG ACTIVITY
-                  onLogActivity({
-                    action: "PATIENT_UPDATE",
-                    entityType: "patient",
-                    entityId: selectedPatient.id,
-                    patientId: selectedPatient.id,
-                    details: `Actualizó datos ficha de ${selectedPatient.fullName}`,
-                  });
-                  showToast("Guardado", "success");
+                  handleSavePatient();
+                } else {
+                  setIsEditingPatient(true);
                 }
-                setIsEditingPatient(!isEditingPatient);
               }}
               handleEditPatientField={(f, v) => setSelectedPatient({ ...selectedPatient, [f]: v })}
               onFileUpload={(e) => {
@@ -1203,7 +1391,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       atenciones registradas
                     </p>
                   </div>
-                  {!isReadOnly && (
+                  {!isReadOnly && role !== "KINESIOLOGO" && (
                     <button
                       onClick={() => setIsCreatingConsultation(true)}
                       disabled={!hasActiveCenter}
@@ -1213,8 +1401,209 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <Plus className="w-6 h-6" /> Nueva Atención
                     </button>
                   )}
+
+                  {/* KINESIOLOGY ACTIONS */}
+                  {!isReadOnly && role === "KINESIOLOGO" && (
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setIsKineProgramModalOpen(true)}
+                        disabled={!hasActiveCenter}
+                        className="bg-indigo-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-6 h-6" /> Nuevo Programa
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* KINESIOLOGY DASHBOARD OVERVIEW */}
+              {role === "KINESIOLOGO" && !isCreatingConsultation && (selectedPatient.kinesiologyPrograms?.length || 0) > 0 && (
+                <div className="mb-8 space-y-4">
+                  <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">Programas Activos</h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    {selectedPatient.kinesiologyPrograms?.map(prog => (
+                      <div key={prog.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}>
+                                {prog.type}
+                              </span>
+                              <span className="text-xs text-slate-400 font-medium">{new Date(prog.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
+                            <p className="text-slate-500 text-sm">{prog.sessions?.length || 0} / {prog.totalSessions} Sesiones realizadas</p>
+                          </div>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setExpandedProgramId(expandedProgramId === prog.id ? null : prog.id)}
+                              className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id ? "bg-slate-100 text-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                }`}
+                            >
+                              <History className="w-4 h-4" /> {expandedProgramId === prog.id ? "Ocultar Historial" : "Ver Historial"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedKineProgram(prog);
+                                setIsKineSessionModalOpen(true);
+                              }}
+                              className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2"
+                            >
+                              <Activity className="w-4 h-4" /> Registrar Sesión
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* EXPANDED HISTORY */}
+                        {expandedProgramId === prog.id && (
+                          <div className="border-t border-slate-100 pt-4 animate-fadeIn">
+                            <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Historial de Sesiones</h5>
+                            {(!prog.sessions || prog.sessions.length === 0) ? (
+                              <p className="text-sm text-slate-400 italic">No hay sesiones registradas aún.</p>
+                            ) : (
+                              <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                                {prog.sessions
+                                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Newest first
+                                  .map((session, idx) => (
+                                    <div key={session.id || idx} className="relative pl-8">
+                                      <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
+                                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                        <div className="flex justify-between items-start mb-2">
+                                          <span className="font-bold text-slate-700 text-sm">Sesión #{session.sessionNumber}</span>
+                                          <span className="text-xs text-slate-400">{new Date(session.date).toLocaleDateString()}</span>
+                                        </div>
+                                        <div className="text-sm text-slate-600 space-y-1">
+                                          {session.observations && <p><strong className="text-slate-500">Obs:</strong> {session.observations}</p>}
+                                          {session.techniques && session.techniques.length > 0 && <p><strong className="text-slate-500">Técnicas:</strong> {session.techniques.join(", ")}</p>}
+                                          <div className="flex gap-4 mt-2">
+                                            {session.tolerance && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Tol: {session.tolerance}</span>}
+                                            {session.response && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Resp: {session.response}</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* KINESIOLOGY UNIFIED DASHBOARD: Clinical Docs & Next Control inline */}
+              {role === "KINESIOLOGO" && !isCreatingConsultation && (
+                <div className="space-y-8 animate-fadeIn">
+
+                  {/* Document Manager */}
+                  <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
+                    <PrescriptionManager
+                      prescriptions={newConsultation.prescriptions || []}
+                      onAddPrescription={(doc) =>
+                        setNewConsultation((prev) => ({
+                          ...prev,
+                          prescriptions: [...(prev.prescriptions || []), doc],
+                        }))
+                      }
+                      onRemovePrescription={(id) =>
+                        setNewConsultation({
+                          ...newConsultation,
+                          prescriptions: newConsultation.prescriptions?.filter(
+                            (p) => p.id !== id
+                          ),
+                        })
+                      }
+                      onPrint={(docs) => {
+                        setDocsToPrint(docs);
+                        setIsPrintModalOpen(true);
+                      }}
+                      onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
+                      templates={myTemplates}
+                      role={role}
+                      currentDiagnosis={selectedPatient.kinesiologyPrograms?.[0]?.diagnosis || ""}
+                    />
+                  </div>
+
+                  {/* Next Control */}
+                  <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h4 className="text-secondary-900 font-bold text-lg uppercase tracking-wider mb-6 flex items-center gap-2">
+                      <Calendar className="w-5 h-5" /> Próximo Control
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div>
+                        <label className="block text-lg font-bold text-slate-700 mb-3">
+                          Fecha Estimada
+                        </label>
+                        <input
+                          type="date"
+                          value={newConsultation.nextControlDate}
+                          onChange={(e) =>
+                            setNewConsultation({
+                              ...newConsultation,
+                              nextControlDate: e.target.value,
+                            })
+                          }
+                          className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-lg font-bold text-slate-700 mb-3">
+                          Indicaciones / Requisitos
+                        </label>
+                        <input
+                          placeholder="Ej: Traer radiografía..."
+                          value={newConsultation.nextControlReason}
+                          onChange={(e) =>
+                            setNewConsultation({
+                              ...newConsultation,
+                              nextControlReason: e.target.value,
+                            })
+                          }
+                          className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-4 pb-12">
+                    <button
+                      onClick={handleCreateConsultation}
+                      disabled={!hasActiveCenter || ((!newConsultation.prescriptions?.length) && (!newConsultation.nextControlDate))}
+                      className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save className="w-6 h-6" /> Guardar Gestión / Documentos
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* MODALS FOR KINE */}
+              {role === "KINESIOLOGO" && (
+                <>
+                  <StartProgramModal
+                    isOpen={isKineProgramModalOpen}
+                    onClose={() => setIsKineProgramModalOpen(false)}
+                    onConfirm={handleCreateKineProgram}
+                  />
+                  {selectedKineProgram && (
+                    <SessionModal
+                      isOpen={isKineSessionModalOpen}
+                      onClose={() => {
+                        setIsKineSessionModalOpen(false);
+                        setSelectedKineProgram(null);
+                      }}
+                      program={selectedKineProgram}
+                      sessionNumber={(selectedKineProgram.sessions?.length || 0) + 1}
+                      onSave={handleSaveKineSession}
+                    />
+                  )}
+                </>
+              )
+              }
 
               {isCreatingConsultation ? (
                 <div className="bg-white rounded-2xl shadow-xl border border-slate-200 animate-slideUp">
@@ -1248,7 +1637,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         patientGender={selectedPatient.gender} // NEW
                         examOptions={allExamOptions} // PASS DYNAMIC OPTIONS
                         role={role} // PASS ROLE
-                        anthropometryEnabled={anthropometryEnabled}
+                        anthropometryEnabled={moduleGuards.vitals}
                       />
                     )}
 
@@ -1345,10 +1734,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           <PrescriptionManager
                             prescriptions={newConsultation.prescriptions || []}
                             onAddPrescription={(doc) =>
-                              setNewConsultation({
-                                ...newConsultation,
-                                prescriptions: [...(newConsultation.prescriptions || []), doc],
-                              })
+                              setNewConsultation((prev) => ({
+                                ...prev,
+                                prescriptions: [...(prev.prescriptions || []), doc],
+                              }))
                             }
                             onRemovePrescription={(id) =>
                               setNewConsultation({
@@ -1366,6 +1755,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
                             templates={myTemplates}
                             role={role}
+                            currentDiagnosis={newConsultation.diagnosis}
                           />
 
                           {!canPrescribeDrugs && (
@@ -1747,7 +2137,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                   <span className="text-slate-300">-</span>
                                 )}
                               </td>
-                              
+
                               <td className="p-5 text-right relative">
                                 <div className="flex items-center justify-end gap-2">
                                   {(() => {
@@ -1795,10 +2185,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                                 ))}
                                               {whatsAppTemplates.filter((t) => t.enabled).length ===
                                                 0 && (
-                                                <div className="px-3 py-2 text-sm text-slate-500">
-                                                  No hay plantillas activas.
-                                                </div>
-                                              )}
+                                                  <div className="px-3 py-2 text-sm text-slate-500">
+                                                    No hay plantillas activas.
+                                                  </div>
+                                                )}
                                             </div>
                                           </div>
                                         )}
@@ -1902,243 +2292,294 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* 1. EXAM PROFILES EDITOR */}
-                <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
-                  <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
-                  </h3>
-
-                  <div className="flex-1 overflow-hidden flex flex-col gap-6">
-                    {/* List */}
-                    <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4">
-                      {myExamProfiles.length === 0 && (
-                        <p className="text-slate-400 italic text-sm text-center py-4">
-                          No tiene perfiles configurados.
-                        </p>
-                      )}
-                      {myExamProfiles.map((profile) => (
-                        <div
-                          key={profile.id}
-                          className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-emerald-200 transition-all shadow-sm group"
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <h4 className="font-bold text-slate-700 text-sm">{profile.label}</h4>
-                              <p className="text-xs text-slate-400">
-                                {profile.description || "Sin descripción"}
-                              </p>
-                            </div>
-                            {!isReadOnly && (
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => handleEditProfile(profile)}
-                                  className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
-                                >
-                                  <Edit className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProfile(profile.id)}
-                                  className="p-1.5 hover:bg-red-50 text-red-500 rounded"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {profile.exams.map((ex) => {
-                              const def = allExamOptions.find((o) => o.id === ex);
-                              const label = def ? def.label.split("(")[0] : ex;
-                              return (
-                                <span
-                                  key={ex}
-                                  className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase"
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                {/* 0. GENERAL PREFERENCES */}
+                <div className="lg:col-span-12 bg-white/90 backdrop-blur-sm p-6 rounded-3xl border border-white shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-rose-100 text-rose-600 p-3 rounded-2xl">
+                      <Activity className="w-6 h-6" />
                     </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Módulo de Signos Vitales</h3>
+                      <p className="text-sm text-slate-500 max-w-xl">
+                        Habilita los campos de peso, talla, presión arterial y otros datos antropométricos en el formulario de nueva consulta.
+                        <span className="font-bold text-slate-700 ml-1">
+                          (Anula la configuración del centro)
+                        </span>
+                      </p>
+                    </div>
+                  </div>
 
-                    {/* Editor Form */}
-                    {!isReadOnly && (
-                      <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <div className="flex gap-2">
-                          <div className="flex-1 space-y-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase">
-                              Nombre Perfil
-                            </label>
-                            <input
-                              className="w-full p-2 border rounded-lg text-sm"
-                              placeholder="Ej: Control Diabetes"
-                              value={tempProfile.label}
-                              onChange={(e) =>
-                                setTempProfile({ ...tempProfile, label: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase">
-                              Descripción
-                            </label>
-                            <input
-                              className="w-full p-2 border rounded-lg text-sm"
-                              placeholder="Opcional..."
-                              value={tempProfile.description}
-                              onChange={(e) =>
-                                setTempProfile({ ...tempProfile, description: e.target.value })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        {/* Checkbox Grid */}
-                        <div>
-                          <label className="text-xs font-bold text-slate-400 uppercase block mb-1">
-                            Seleccionar Exámenes
-                          </label>
-                          <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
-                            {allExamOptions
-                              .filter((e) => !e.readOnly)
-                              .map((opt) => (
-                                <button
-                                  key={opt.id}
-                                  onClick={() => toggleExamInTempProfile(opt.id)}
-                                  className={`text-xs text-left px-2 py-1 rounded flex items-center gap-2 transition-colors ${tempProfile.exams.includes(opt.id) ? "bg-emerald-50 text-emerald-700 font-bold" : "text-slate-600 hover:bg-slate-50"}`}
-                                >
-                                  {tempProfile.exams.includes(opt.id) ? (
-                                    <CheckSquare className="w-3 h-3" />
-                                  ) : (
-                                    <Square className="w-3 h-3" />
-                                  )}
-                                  <span className="truncate">{opt.label}</span>
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={handleSaveProfile}
-                            className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm"
-                          >
-                            {isEditingProfileId ? "Guardar Cambios" : "Crear Perfil"}
-                          </button>
-                          {isEditingProfileId && (
-                            <button
-                              onClick={() => {
-                                setIsEditingProfileId(null);
-                                setTempProfile({ id: "", label: "", exams: [], description: "" });
-                              }}
-                              className="px-3 py-2 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 text-sm"
-                            >
-                              Cancelar
-                            </button>
-                          )}
-                        </div>
-                        <button
-                          onClick={handleResetProfiles}
-                          className="w-full text-xs text-slate-400 hover:text-emerald-600 flex justify-center items-center gap-1 mt-1"
-                        >
-                          <RefreshCw className="w-3 h-3" /> Restaurar predeterminados
-                        </button>
-                      </div>
-                    )}
+                  <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                    <button
+                      onClick={() => {
+                        onUpdateDoctor({ ...currentUser, preferences: { ...currentUser.preferences, vitalsEnabled: true } });
+                        showToast("Signos vitales ACTIVADOS (Preferencia personal)", "success");
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${moduleGuards.vitals ? "bg-white text-emerald-600 shadow-sm border border-emerald-100" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      Activado
+                    </button>
+                    <button
+                      onClick={() => {
+                        onUpdateDoctor({ ...currentUser, preferences: { ...currentUser.preferences, vitalsEnabled: false } });
+                        showToast("Signos vitales DESACTIVADOS (Preferencia personal)", "info");
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!moduleGuards.vitals ? "bg-white text-rose-600 shadow-sm border border-rose-100" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      Desactivado
+                    </button>
                   </div>
                 </div>
+
+                {/* 1. EXAM PROFILES EDITOR */}
+                {role !== "KINESIOLOGO" && (
+                  <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
+                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                      <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
+                    </h3>
+
+                    <div className="flex-1 overflow-hidden flex flex-col gap-6">
+                      {/* List */}
+                      <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4">
+                        {myExamProfiles.length === 0 && (
+                          <p className="text-slate-400 italic text-sm text-center py-4">
+                            No tiene perfiles configurados.
+                          </p>
+                        )}
+                        {myExamProfiles.map((profile) => (
+                          <div
+                            key={profile.id}
+                            className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-emerald-200 transition-all shadow-sm group"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <h4 className="font-bold text-slate-700 text-sm">{profile.label}</h4>
+                                <p className="text-xs text-slate-400">
+                                  {profile.description || "Sin descripción"}
+                                </p>
+                              </div>
+                              {!isReadOnly && (
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => handleEditProfile(profile)}
+                                    className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProfile(profile.id)}
+                                    className="p-1.5 hover:bg-red-50 text-red-500 rounded"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {profile.exams.map((ex) => {
+                                const def = allExamOptions.find((o) => o.id === ex);
+                                const label = def ? def.label.split("(")[0] : ex;
+                                return (
+                                  <span
+                                    key={ex}
+                                    className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase"
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Editor Form */}
+                      {!isReadOnly && (
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                          <div className="flex gap-2">
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs font-bold text-slate-400 uppercase">
+                                Nombre Perfil
+                              </label>
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="Ej: Control Diabetes"
+                                value={tempProfile.label}
+                                onChange={(e) =>
+                                  setTempProfile({ ...tempProfile, label: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs font-bold text-slate-400 uppercase">
+                                Descripción
+                              </label>
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="Opcional..."
+                                value={tempProfile.description}
+                                onChange={(e) =>
+                                  setTempProfile({ ...tempProfile, description: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {/* Checkbox Grid */}
+                          <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase block mb-1">
+                              Seleccionar Exámenes
+                            </label>
+                            <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
+                              {allExamOptions
+                                .filter((e) => !e.readOnly)
+                                .map((opt) => (
+                                  <button
+                                    key={opt.id}
+                                    onClick={() => toggleExamInTempProfile(opt.id)}
+                                    className={`text-xs text-left px-2 py-1 rounded flex items-center gap-2 transition-colors ${tempProfile.exams.includes(opt.id) ? "bg-emerald-50 text-emerald-700 font-bold" : "text-slate-600 hover:bg-slate-50"}`}
+                                  >
+                                    {tempProfile.exams.includes(opt.id) ? (
+                                      <CheckSquare className="w-3 h-3" />
+                                    ) : (
+                                      <Square className="w-3 h-3" />
+                                    )}
+                                    <span className="truncate">{opt.label}</span>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={handleSaveProfile}
+                              className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                            >
+                              {isEditingProfileId ? "Guardar Cambios" : "Crear Perfil"}
+                            </button>
+                            {isEditingProfileId && (
+                              <button
+                                onClick={() => {
+                                  setIsEditingProfileId(null);
+                                  setTempProfile({ id: "", label: "", exams: [], description: "" });
+                                }}
+                                className="px-3 py-2 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 text-sm"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleResetProfiles}
+                            className="w-full text-xs text-slate-400 hover:text-emerald-600 flex justify-center items-center gap-1 mt-1"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Restaurar predeterminados
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* 1.5 CUSTOM EXAM CREATION (NEW) */}
                 <div className="lg:col-span-6 space-y-8">
                   {/* NEW: CREATE CUSTOM EXAM */}
-                  <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-auto">
-                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen
-                    </h3>
-                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
-                      <p className="text-xs text-purple-700 mb-2">
-                        Cree un examen personalizado si no está en la lista estándar.
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          className="flex-1 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
-                          placeholder="Nombre (ej: Estradiol)"
-                          value={newCustomExam.label}
-                          onChange={(e) =>
-                            setNewCustomExam({ ...newCustomExam, label: e.target.value })
-                          }
-                        />
-                        <input
-                          className="w-24 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
-                          placeholder="Unidad"
-                          value={newCustomExam.unit}
-                          onChange={(e) =>
-                            setNewCustomExam({ ...newCustomExam, unit: e.target.value })
-                          }
-                        />
-                      </div>
-                      <select
-                        className="w-full p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500 bg-white"
-                        value={newCustomExam.category}
-                        onChange={(e) =>
-                          setNewCustomExam({ ...newCustomExam, category: e.target.value })
-                        }
-                      >
-                        <option value="">Seleccione Categoría</option>
-                        <option value="Metabólico">Metabólico</option>
-                        <option value="Hormonal">Hormonal</option>
-                        <option value="Hematológico">Hematológico</option>
-                        <option value="Cardíaco">Cardíaco</option>
-                        <option value="Otro">Otro</option>
-                      </select>
-                      <button
-                        onClick={handleCreateCustomExam}
-                        className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                      >
-                        Agregar a la Lista
-                      </button>
-                    </div>
-
-                    {/* LIST OF CUSTOM EXAMS */}
-                    {currentUser?.customExams && currentUser.customExams.length > 0 && (
-                      <div className="mt-4 border-t border-slate-100 pt-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
-                          Mis Exámenes Personalizados
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {currentUser.customExams.map((ex) => (
-                            <span
-                              key={ex.id}
-                              className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 border border-purple-200"
-                            >
-                              {ex.label} ({ex.unit})
-                              <button
-                                onClick={() => handleDeleteCustomExam(ex.id)}
-                                className="hover:text-red-500"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          ))}
+                  {role !== "KINESIOLOGO" && (
+                    <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-auto">
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen
+                      </h3>
+                      <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
+                        <p className="text-xs text-purple-700 mb-2">
+                          Cree un examen personalizado si no está en la lista estándar.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+                            placeholder="Nombre (ej: Estradiol)"
+                            value={newCustomExam.label}
+                            onChange={(e) =>
+                              setNewCustomExam({ ...newCustomExam, label: e.target.value })
+                            }
+                          />
+                          <input
+                            className="w-24 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+                            placeholder="Unidad"
+                            value={newCustomExam.unit}
+                            onChange={(e) =>
+                              setNewCustomExam({ ...newCustomExam, unit: e.target.value })
+                            }
+                          />
                         </div>
+                        <select
+                          className="w-full p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500 bg-white"
+                          value={newCustomExam.category}
+                          onChange={(e) =>
+                            setNewCustomExam({ ...newCustomExam, category: e.target.value })
+                          }
+                        >
+                          <option value="">Seleccione Categoría</option>
+                          <option value="Metabólico">Metabólico</option>
+                          <option value="Hormonal">Hormonal</option>
+                          <option value="Hematológico">Hematológico</option>
+                          <option value="Cardíaco">Cardíaco</option>
+                          <option value="Otro">Otro</option>
+                        </select>
+                        <button
+                          onClick={handleCreateCustomExam}
+                          className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                        >
+                          Agregar a la Lista
+                        </button>
                       </div>
-                    )}
-                  </div>
+
+                      {/* LIST OF CUSTOM EXAMS */}
+                      {currentUser?.customExams && currentUser.customExams.length > 0 && (
+                        <div className="mt-4 border-t border-slate-100 pt-4">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                            Mis Exámenes Personalizados
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {currentUser.customExams.map((ex) => (
+                              <span
+                                key={ex.id}
+                                className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 border border-purple-200"
+                              >
+                                {ex.label} ({ex.unit})
+                                <button
+                                  onClick={() => handleDeleteCustomExam(ex.id)}
+                                  className="hover:text-red-500"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* 2. CLINICAL TEMPLATES EDITOR */}
                   <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col min-h-[300px]">
-                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <FileText className="w-6 h-6 text-slate-400" /> Mis Plantillas Clínicas
-                    </h3>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <FileText className="w-6 h-6 text-slate-400" /> Mis Plantillas Clínicas
+                      </h3>
+                      <button
+                        onClick={() => setIsCatalogOpen(true)}
+                        className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
+                      >
+                        <Book className="w-3 h-3" /> Explorar Catálogo
+                      </button>
+                    </div>
 
                     <div className="flex-1 overflow-hidden flex flex-col gap-6">
                       {/* List */}
                       <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4 max-h-40">
                         {myTemplates.length === 0 && (
                           <p className="text-center text-slate-400 text-sm italic py-4">
-                            No tiene plantillas.
+                            No tiene plantillas. Importe desde el catálogo o cree una.
                           </p>
                         )}
                         {myTemplates.map((t) => (
@@ -2224,6 +2665,115 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* CATALOG MODAL */}
+                  {isCatalogOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
+                      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                          <div>
+                            <h3 className="font-bold text-lg text-slate-800">Catálogo de Plantillas</h3>
+                            <p className="text-xs text-slate-500">Importe plantillas estándar a su colección personal</p>
+                          </div>
+                          <button onClick={() => setIsCatalogOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                            <X className="w-5 h-5 text-slate-500" />
+                          </button>
+                        </div>
+
+                        <div className="p-4 border-b border-slate-100 bg-white space-y-3">
+                          {/* Search */}
+                          <div className="relative">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                            <input
+                              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500"
+                              placeholder="Buscar plantilla (ej: Amigdalitis, HTA)..."
+                              value={catalogSearch}
+                              onChange={(e) => setCatalogSearch(e.target.value)}
+                            />
+                          </div>
+
+                          {/* Category Filter Chips */}
+                          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                            {(role === "KINESIOLOGO"
+                              ? [
+                                { id: "all", label: "Todas" },
+                                { id: "Respiratoria", label: "Patología Respiratoria" },
+                                { id: "Musculoesquelética EE.SS", label: "Músculo Esquelética EE.SS" },
+                                { id: "Musculoesquelética EE.II", label: "Músculo Esquelética EE.II" },
+                                { id: "Columna", label: "Patología Columna" },
+                                { id: "Neurología", label: "Neurología" },
+                                { id: "Deporte", label: "Deporte" }
+                              ]
+                              : [
+                                { id: "all", label: "Todas" },
+                                { id: "Traumatología", label: "Traumatología" },
+                                { id: "Respiratorio", label: "Respiratorio" },
+                                { id: "Salud Mental", label: "Salud Mental" },
+                                { id: "Cirugía", label: "Cirugía" },
+                                { id: "Gastro", label: "Gastroenterología" },
+                                { id: "Diabetes", label: "Metabólico" }
+                              ]
+                            ).map(chip => (
+                              <button
+                                key={chip.id}
+                                onClick={() => setCatalogSearch(chip.id === "all" ? "" : chip.id)}
+                                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-bold border transition-colors ${(chip.id === "all" && catalogSearch === "") || (chip.id !== "all" && catalogSearch.includes(chip.id))
+                                  ? "bg-indigo-100 text-indigo-700 border-indigo-200"
+                                  : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                              >
+                                {chip.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+                          {DEFAULT_CLINICAL_TEMPLATES
+                            .filter(t => t.category !== 'certificate') // Hide certificates (they are global)
+                            // Filter by Role (Legacy check via roles array)
+                            .filter(t => !t.roles || t.roles.includes(role))
+                            .filter(t => {
+                              const searchLower = catalogSearch.toLowerCase();
+                              if (!searchLower) return true;
+
+                              // Check tags first (Robust filtering)
+                              if (t.tags && t.tags.some(tag => tag.toLowerCase().includes(searchLower))) {
+                                return true;
+                              }
+
+                              // Legacy manual mapping fallback for non-tagged templates
+                              if (searchLower === "respiratorio") return t.content.toLowerCase().includes("respiratoria") || t.title.toLowerCase().includes("resfrío") || t.title.toLowerCase().includes("amigdalitis");
+                              if (searchLower === "gastro") return t.content.toLowerCase().includes("gastro") || t.title.toLowerCase().includes("gastro");
+                              if (searchLower === "diabetes") return t.title.toLowerCase().includes("diabetes");
+                              if (searchLower === "salud mental") return t.title.toLowerCase().includes("ansiedad") || t.title.toLowerCase().includes("depresión");
+                              if (searchLower === "traumatología") return t.content.toLowerCase().includes("traumatología") || t.title.toLowerCase().includes("lumbago") || t.title.toLowerCase().includes("esguince");
+
+                              // General search
+                              return t.title.toLowerCase().includes(searchLower) || t.content.toLowerCase().includes(searchLower);
+                            })
+                            .map(t => (
+                              <div key={t.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2">
+                                <div className="flex justify-between items-start">
+                                  <span className="font-bold text-slate-800">{t.title}</span>
+                                  <button
+                                    onClick={() => handleImportTemplate(t)}
+                                    className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors"
+                                  >
+                                    Importar
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-500 line-clamp-2">{t.content}</p>
+                              </div>
+                            ))
+                          }
+                          {DEFAULT_CLINICAL_TEMPLATES.filter(t => t.category !== 'certificate').length === 0 && (
+                            <p className="text-center text-slate-400 text-sm py-4">No hay plantillas disponibles.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. ACCOUNT SECURITY (NEW) */}

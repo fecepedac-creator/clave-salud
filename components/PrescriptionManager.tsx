@@ -1,9 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
 import { generateId } from "../utils";
-import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles, FileText } from "lucide-react";
+import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles, FileText, CheckSquare } from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
+import { EXAM_MODULES } from "../constants/examCatalog";
+import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import AutocompleteInput from "./AutocompleteInput";
+import ExamSelectionModal from "./ExamSelectionModal";
 
 interface PrescriptionManagerProps {
   prescriptions: Prescription[];
@@ -14,6 +17,7 @@ interface PrescriptionManagerProps {
   onOpenExamOrders?: () => void;
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
+  currentDiagnosis?: string;
 }
 
 const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
@@ -25,11 +29,14 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   onOpenExamOrders,
   templates,
   role,
+  currentDiagnosis,
 }) => {
+
   // Authorization Logic
-  const canPrescribe = ["Medico", "Odontologo", "Matrona"].includes(role);
+  // Authorization Logic
+  const canPrescribe = ["MEDICO", "ODONTOLOGO", "MATRONA"].includes(role);
   // Matrona cannot prescribe controlled drugs (Receta Retenida)
-  const canPrescribeControlled = ["Medico", "Odontologo"].includes(role);
+  const canPrescribeControlled = ["MEDICO", "ODONTOLOGO"].includes(role);
 
   // Define available types with restrictions
   const allDocTypes = [
@@ -60,9 +67,111 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
     (canPrescribe ? "Receta Médica" : "Indicaciones") as any
   );
 
+  // Combine user templates with system certificates (System Indications are hidden/opt-in now)
+  const allTemplates = useMemo(() => {
+    const systemCertificates = (DEFAULT_CLINICAL_TEMPLATES || []).filter(
+      (t) => t.category === "certificate"
+    );
+    // User templates include their own created ones AND imported system indications
+    const combined = [...systemCertificates, ...(templates || [])];
+
+    // Filter based on document type
+    if (currentPrescriptionType === "Certificado") {
+      return combined.filter((t) => t.category === "certificate");
+    } else {
+      // For Indications, Recetas, etc., show indications or uncategorized
+      return combined.filter((t) => t.category === "indication" || !t.category);
+    }
+  }, [templates, currentPrescriptionType]);
+
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
   const [quickAddValue, setQuickAddValue] = useState("");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  const [pendingExamsMetadata, setPendingExamsMetadata] = useState<string[]>([]);
+
+  // Parse current text to find already listed exams could be complex, so we just append for now or start fresh.
+  // Ideally, we might parse lines, but for simplicity, we treat the text area as the source of truth.
+
+  // Auto-fill logic for Interconsulta
+  useEffect(() => {
+    if (currentPrescriptionType === "Interconsulta" && !currentPrescriptionText) {
+      const diagnosisText = currentDiagnosis ? currentDiagnosis : "[DIAGNÓSTICO]";
+      const autoText = `Estimado colega, favor evaluar al paciente suscrito con sospecha diagnóstica de ${diagnosisText}.\n\nSe adjuntan antecedentes clínicos relevantes:\n- `;
+      setCurrentPrescriptionText(autoText);
+    }
+  }, [currentPrescriptionType, currentDiagnosis]);
+
+  const handleExamSelection = (selectedExams: string[], otherText: string) => {
+    // Strategy: Group exams by correct module (Laboratory, Imaging, Cardio, etc.)
+    // and create SEPARATE prescriptions for each group immediately.
+
+    const buckets: Record<string, string[]> = {};
+    const fallbackCategory = "Laboratorio";
+
+    // Helper to identify category
+    const findCategory = (examName: string) => {
+      // 1. Clean suffixes like " con Contraste"
+      const cleanName = examName.replace(" con Contraste", "").trim();
+
+      // 2. Check manual group override: e.g. "My Exam (Radiografías)"
+      const groupMatch = examName.match(/\((.*?)\)$/);
+      if (groupMatch) {
+        const potentialGroup = groupMatch[1];
+        for (const mod of EXAM_MODULES) {
+          if (mod.groups.some(g => g.label === potentialGroup)) return mod.label;
+        }
+      }
+
+      // 3. Normal lookup
+      for (const mod of EXAM_MODULES) {
+        for (const grp of mod.groups) {
+          // Check if catalog item is part of the name (e.g. "TC Cerebro" matches "TC Cerebro con Contraste")
+          if (grp.items.includes(cleanName)) return mod.label;
+        }
+      }
+      return fallbackCategory;
+    };
+
+    selectedExams.forEach((exam) => {
+      const cat = findCategory(exam);
+      if (!buckets[cat]) buckets[cat] = [];
+      buckets[cat].push(exam);
+    });
+
+    // Handle "Other" text -> Add to first bucket or create "Otros"
+    if (otherText.trim()) {
+      const extras = otherText.split("\n").map(l => l.trim()).filter(Boolean);
+      if (extras.length > 0) {
+        // Add to 'Otros' or append to 'Laboratorio' if exists?
+        // User wants distinct sheets. Better to put unique things in "Otros" or "Laboratorio".
+        // Let's optimize: If we have "Laboratorio", add there. Else custom bucket.
+        const target = buckets["Laboratorio"] ? "Laboratorio" : "Otros Exámenes";
+        if (!buckets[target]) buckets[target] = [];
+        buckets[target].push(...extras);
+      }
+    }
+
+    // Generate Documents
+    Object.entries(buckets).forEach(([category, items]) => {
+      const titleHeader = `SOLICITUD DE EXÁMENES: ${category.toUpperCase()}`;
+      const body = items.map(i => `- ${i}`).join("\n");
+      const fullContent = `${titleHeader}\n\n${body}`;
+
+      const newDoc: Prescription = {
+        id: generateId(),
+        type: "Solicitud de Examen",
+        content: fullContent,
+        createdAt: new Date().toISOString(),
+        metadata: { selectedExams: items }
+      };
+      onAddPrescription(newDoc);
+    });
+
+    // Clear UI
+    setCurrentPrescriptionText("");
+    setPendingExamsMetadata([]);
+  };
 
   const handleAdd = () => {
     if (!currentPrescriptionText.trim()) return;
@@ -72,12 +181,14 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       type: currentPrescriptionType,
       content: currentPrescriptionText,
       createdAt: new Date().toISOString(),
+      metadata: pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined
     };
 
     onAddPrescription(newDoc);
 
     // Reset
     setCurrentPrescriptionText("");
+    setPendingExamsMetadata([]);
     // Reset type to default valid type
     setCurrentPrescriptionType((canPrescribe ? "Receta Médica" : "Indicaciones") as any);
   };
@@ -120,15 +231,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
               <FileText className="w-4 h-4" /> Informe Clínico
             </button>
           )}
-          {prescriptions && prescriptions.length > 1 && (
-            <button
-              type="button"
-              onClick={() => onPrint(prescriptions)}
-              className="bg-white text-amber-600 hover:bg-amber-100 border border-amber-200 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
-            >
-              <Copy className="w-4 h-4" /> Imprimir Todo (Lote)
-            </button>
-          )}
+
         </div>
       </div>
 
@@ -148,7 +251,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           </select>
 
           {/* Quick Insert Helper */}
-          {canPrescribe && (
+          {canPrescribe ? (
             <div className="flex-1 w-full relative group">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                 <Zap className="w-4 h-4 text-amber-400" />
@@ -162,10 +265,34 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
                 className="w-full pl-10 pr-4 py-3 border border-amber-200 rounded-lg text-sm bg-amber-50/30 focus:bg-white focus:border-amber-400 outline-none transition-colors h-[50px]"
               />
             </div>
+          ) : (
+            <div className="flex-1 w-full flex items-center">
+              <button
+                type="button"
+                onClick={() => handleQuickInsert("Nota: Seguir indicaciones farmacológicas indicadas por su médico tratante.")}
+                className="h-[50px] w-full px-4 bg-slate-100 text-slate-500 font-bold rounded-lg border border-slate-200 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                title="Insertar recordatorio farmacológico estándar"
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-slate-400" />
+                  <span>Insertar: "Seguir indicaciones médicas..."</span>
+                </div>
+              </button>
+            </div>
           )}
 
           {/* Template Button */}
-          <div className="relative">
+          <div className="relative flex gap-2">
+            {currentPrescriptionType === "Solicitud de Examen" && (
+              <button
+                type="button"
+                onClick={() => setIsExamModalOpen(true)}
+                className="h-[50px] px-4 bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200 hover:bg-emerald-200 transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                <CheckSquare className="w-4 h-4" /> Seleccionar Exámenes
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setShowTemplateSelector(!showTemplateSelector)}
@@ -173,13 +300,13 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
             >
               <Sparkles className="w-4 h-4" /> Plantillas
             </button>
-            {showTemplateSelector && templates && (
+            {showTemplateSelector && allTemplates && (
               <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 shadow-xl rounded-xl z-20 overflow-hidden animate-fadeIn">
                 <div className="p-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
                   Seleccionar Plantilla
                 </div>
                 <div className="max-h-60 overflow-y-auto">
-                  {templates.map((t) => (
+                  {allTemplates.map((t) => (
                     <button
                       key={t.id}
                       type="button"
@@ -189,7 +316,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
                       {t.title}
                     </button>
                   ))}
-                  {templates.length === 0 && (
+                  {allTemplates.length === 0 && (
                     <div className="p-4 text-sm text-slate-400 italic">
                       No hay plantillas configuradas.
                     </div>
@@ -205,6 +332,12 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
             )}
           </div>
         </div>
+
+        <ExamSelectionModal
+          isOpen={isExamModalOpen}
+          onClose={() => setIsExamModalOpen(false)}
+          onConfirm={handleExamSelection}
+        />
 
         <textarea
           placeholder={
@@ -233,6 +366,17 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       {/* List of Added Documents */}
       {prescriptions && prescriptions.length > 0 ? (
         <div className="space-y-3">
+          {prescriptions.length > 1 && (
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => onPrint(prescriptions)}
+                className="bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
+              >
+                <Printer className="w-4 h-4" /> Imprimir Todo ({prescriptions.length})
+              </button>
+            </div>
+          )}
           {prescriptions.map((doc) => (
             <div
               key={doc.id}

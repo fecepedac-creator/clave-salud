@@ -50,6 +50,7 @@ import {
   Briefcase,
   Camera,
   User,
+  Activity,
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { db, auth } from "../firebase";
@@ -122,9 +123,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   logs,
   onLogActivity,
 }) => {
-  const [activeTab, setActiveTab] = useState<
-    "doctors" | "agenda" | "audit" | "preadmissions" | "whatsapp" | "marketing"
-  >("doctors");
+  type AdminTab = "command_center" | "doctors" | "agenda" | "whatsapp" | "marketing" | "audit" | "preadmissions";
+  const [activeTab, setActiveTab] = useState<AdminTab>("doctors");
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
@@ -204,7 +204,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setAccessModeSaving(false);
     }
   };
-  
   // --- WHATSAPP TEMPLATES (per center) ---
   const DEFAULT_WA_TEMPLATES: WhatsAppTemplate[] = [
     {
@@ -304,7 +303,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setWaTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
-// --- STATE FOR DOCTORS MANAGEMENT ---
+  // --- STATE FOR DOCTORS MANAGEMENT ---
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
@@ -444,7 +443,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           status: "accepted",
           acceptedAt: serverTimestamp(),
           acceptedByUid: uid,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
 
@@ -930,31 +929,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
     const patientPayload: Patient = existingPatient
       ? {
-          ...existingPatient,
-          rut: bookingRut,
-          fullName: bookingName || existingPatient.fullName,
-          phone: bookingPhone || existingPatient.phone,
-          lastUpdated: new Date().toISOString(),
-        }
+        ...existingPatient,
+        rut: bookingRut,
+        fullName: bookingName || existingPatient.fullName,
+        phone: bookingPhone || existingPatient.phone,
+        lastUpdated: new Date().toISOString(),
+      }
       : {
-          id: generateId(),
-          centerId,
-          rut: bookingRut,
-          fullName: bookingName,
-          birthDate: "",
-          gender: "Otro",
-          phone: bookingPhone,
-          medicalHistory: [],
-          surgicalHistory: [],
-          smokingStatus: "No fumador",
-          alcoholStatus: "No consumo",
-          medications: [],
-          allergies: [],
-          consultations: [],
-          attachments: [],
-          lastUpdated: new Date().toISOString(),
-          active: true,
-        };
+        id: generateId(),
+        centerId,
+        rut: bookingRut,
+        fullName: bookingName,
+        birthDate: "",
+        gender: "Otro",
+        phone: bookingPhone,
+        medicalHistory: [],
+        surgicalHistory: [],
+        smokingStatus: "No fumador",
+        alcoholStatus: "No consumo",
+        medications: [],
+        allergies: [],
+        consultations: [],
+        attachments: [],
+        lastUpdated: new Date().toISOString(),
+        active: true,
+      };
     onUpdatePatients([patientPayload]);
 
     // LOG MANUAL BOOKING
@@ -1110,6 +1109,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-800 p-1 rounded-xl w-fit mb-8">
           <button
+            onClick={() => setActiveTab("command_center")}
+            disabled={!hasActiveCenter}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "command_center" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            <Activity className="w-4 h-4" /> Centro de Mando
+          </button>
+          <button
             onClick={() => setActiveTab("doctors")}
             className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
           >
@@ -1131,6 +1137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
           </button>
+
 
           <button
             onClick={() => setActiveTab("audit")}
@@ -1156,77 +1163,139 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Share2 className="w-4 h-4" /> Afiche RRSS
           </button>
-        </div>
+        </div >
+      </div >
 
-        {/* DOCTORS MANAGEMENT */}
-        {activeTab === "doctors" && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-white">Configuración del Centro</h3>
-                  <p className="text-sm text-slate-400">
-                    Controla módulos específicos para el equipo clínico.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleAnthropometryToggle(!anthropometryEnabled)}
-                  disabled={!hasActiveCenter || anthropometrySaving}
-                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${anthropometryEnabled ? "bg-emerald-500" : "bg-slate-600"} ${!hasActiveCenter || anthropometrySaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  aria-pressed={anthropometryEnabled}
-                  aria-label="Activar Antropometría"
-                >
-                  <span
-                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${anthropometryEnabled ? "translate-x-6" : "translate-x-1"}`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-200">Activar Antropometría</p>
-                  <p className="text-xs text-slate-400">
-                    Permite registrar peso, talla, IMC y mediciones adicionales.
-                  </p>
-                </div>
-                <span
-                  className={`text-xs font-bold uppercase px-2 py-1 rounded ${anthropometryEnabled ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700 text-slate-300"}`}
-                >
-                  {anthropometryEnabled ? "Activo" : "Inactivo"}
-                </span>
-              </div>
+      {/* COMMAND CENTER */}
+      {activeTab === "command_center" && (
+        <div className="animate-fadeIn space-y-8">
+          <h2 className="text-3xl font-bold text-white mb-6">Centro de Mando</h2>
 
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-200">Modo de acceso clínico</p>
-                  <p className="text-xs text-slate-400">
-                    Controla si toda la dotación puede ver fichas o solo el equipo tratante.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={accessMode}
-                    onChange={(e) =>
-                      handleAccessModeChange(e.target.value as "CENTER_WIDE" | "CARE_TEAM")
-                    }
-                    disabled={!hasActiveCenter || accessModeSaving}
-                    className="bg-slate-900 border border-slate-700 text-slate-100 rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="CENTER_WIDE">Centro completo</option>
-                    <option value="CARE_TEAM">Solo equipo tratante</option>
-                  </select>
-                  <span
-                    className={`text-xs font-bold uppercase px-2 py-1 rounded ${accessMode === "CARE_TEAM" ? "bg-amber-500/20 text-amber-300" : "bg-slate-700 text-slate-300"}`}
-                  >
-                    {accessMode === "CARE_TEAM" ? "Restringido" : "Abierto"}
-                  </span>
-                </div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Profesionales Hoy</h3>
+              <p className="text-4xl font-bold text-white">
+                {/* Unique doctors with appts today */}
+                {new Set(appointments.filter(a => a.date === today.toISOString().split("T")[0]).map(a => a.doctorId)).size}
+              </p>
             </div>
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Pacientes Agendados</h3>
+              <p className="text-4xl font-bold text-indigo-400">
+                {appointments.filter(a => a.date === today.toISOString().split("T")[0] && a.status === "booked").length}
+              </p>
+            </div>
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Solicitudes Pendientes</h3>
+              <p className="text-4xl font-bold text-emerald-400">
+                {sortedPreadmissions.length}
+              </p>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* List */}
-              <div className="lg:col-span-2 space-y-4">
+          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
+            <h3 className="text-xl font-bold text-white mb-6">Actividad del Día: {today.toLocaleDateString()}</h3>
+
+            {doctors.map(doc => {
+              const docAppts = appointments.filter(a => a.doctorId === doc.id && a.date === today.toISOString().split("T")[0]).sort((a, b) => a.time.localeCompare(b.time));
+              if (docAppts.length === 0) return null;
+
+              return (
+                <div key={doc.id} className="mb-8 last:mb-0">
+                  <h4 className="font-bold text-lg text-indigo-300 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    {doc.fullName}
+                  </h4>
+                  <div className="space-y-2">
+                    {docAppts.map(appt => (
+                      <div key={appt.id} className={`p-4 rounded-xl border flex items-center justify-between ${appt.status === 'booked' ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
+                        <div className="flex items-center gap-4">
+                          <span className="font-mono font-bold text-white">{appt.time}</span>
+                          <div>
+                            {appt.status === 'booked' ? (
+                              <>
+                                <p className="font-bold text-white">{appt.patientName}</p>
+                                <p className="text-xs text-slate-400">{appt.patientRut}</p>
+                              </>
+                            ) : (
+                              <span className="text-slate-500 italic">Disponible</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {appt.status === 'booked' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => window.open(`https://wa.me/569${appt.patientPhone?.replace(/\D/g, '').slice(-8)}`, '_blank')}
+                              className="p-2 bg-emerald-600/20 text-emerald-400 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
+                              title="Enviar WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setCancelModal({ isOpen: true, appointment: appt })}
+                              className="p-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition-colors"
+                              title="Cancelar Cita"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {doctors.every(doc => appointments.filter(a => a.doctorId === doc.id && a.date === today.toISOString().split("T")[0]).length === 0) && (
+              <p className="text-slate-500 text-center italic py-8">No hay citas programadas para hoy.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* DOCTORS MANAGEMENT */}
+      {activeTab === "doctors" && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-white">Configuración del Centro</h3>
+                <p className="text-sm text-slate-400">
+                  Controla módulos específicos para el equipo clínico.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAnthropometryToggle(!anthropometryEnabled)}
+                disabled={!hasActiveCenter || anthropometrySaving}
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${anthropometryEnabled ? "bg-emerald-500" : "bg-slate-600"} ${!hasActiveCenter || anthropometrySaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                aria-pressed={anthropometryEnabled}
+                aria-label="Activar Antropometría"
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${anthropometryEnabled ? "translate-x-6" : "translate-x-1"}`}
+                />
+              </button>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-slate-200">Activar Antropometría</p>
+                <p className="text-xs text-slate-400">
+                  Permite registrar peso, talla, IMC y mediciones adicionales.
+                </p>
+              </div>
+              <span
+                className={`text-xs font-bold uppercase px-2 py-1 rounded ${anthropometryEnabled ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700 text-slate-300"}`}
+              >
+                {anthropometryEnabled ? "Activo" : "Inactivo"}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* List */}
+            <div className="lg:col-span-2 space-y-4">
               {doctors.map((doc) => (
                 <div
                   key={doc.id}
@@ -1498,478 +1567,387 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
-        )}
+      )}
 
-        {/* AGENDA MANAGEMENT */}
-        {activeTab === "agenda" && isModuleEnabled("agenda") && (
-          <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ... (Existing Agenda Content) ... */}
-            {/* Sidebar Config */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
-                <select
-                  className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                >
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.fullName} ({ROLE_LABELS[d.role] || d.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* DYNAMIC SLOT CONFIG */}
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                  <Settings className="w-5 h-5" /> Configurar Bloques
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                      Duración (minutos)
-                    </label>
-                    <select
-                      className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                      value={tempConfig.slotDuration}
-                      onChange={(e) =>
-                        setTempConfig({ ...tempConfig, slotDuration: parseInt(e.target.value) })
-                      }
-                    >
-                      <option value={15}>15 minutos</option>
-                      <option value={20}>20 minutos</option>
-                      <option value={25}>25 minutos</option>
-                      <option value={30}>30 minutos</option>
-                      <option value={45}>45 minutos</option>
-                      <option value={60}>60 minutos</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                        Inicio
-                      </label>
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                        value={tempConfig.startTime}
-                        onChange={(e) =>
-                          setTempConfig({ ...tempConfig, startTime: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                        Fin
-                      </label>
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                        value={tempConfig.endTime}
-                        onChange={(e) => setTempConfig({ ...tempConfig, endTime: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleSaveConfig}
-                    className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-lg mt-2"
-                  >
-                    Guardar Configuración
-                  </button>
-                  {hasUnsavedConfig && (
-                    <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
-                      Cambios sin guardar. La grilla usa la configuración actualmente guardada.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <div className="flex justify-between items-center mb-6">
-                  <button
-                    onClick={() => handleMonthChange(-1)}
-                    className="p-2 hover:bg-slate-700 rounded-lg"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <span className="font-bold text-lg uppercase tracking-wide">
-                    {currentMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
-                  </span>
-                  <button
-                    onClick={() => handleMonthChange(1)}
-                    className="p-2 hover:bg-slate-700 rounded-lg"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-7 gap-2">
-                  {["L", "M", "M", "J", "V", "S", "D"].map((d) => (
-                    <div key={d} className="text-center text-xs font-bold text-slate-500 mb-2">
-                      {d}
-                    </div>
-                  ))}
-                  {getDaysInMonth(currentMonth).map((day, idx) => {
-                    if (!day) return <div key={idx}></div>;
-                    const dateStr = day.toISOString().split("T")[0];
-                    const isSelected = dateStr === selectedDate;
-                    // Count slots
-                    const slotsCount = appointments.filter(
-                      (a) =>
-                        ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId &&
-                        a.date === dateStr
-                    ).length;
-
-                    // Past Day Check
-                    const isPast = day < today;
-
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => handleDateClick(day)}
-                        className={`
-                                                    h-10 rounded-lg text-sm font-bold relative transition-all
-                                                    ${
-                                                      isSelected
-                                                        ? "bg-indigo-600 text-white shadow-lg scale-110 z-10"
-                                                        : isPast
-                                                          ? "bg-slate-900/50 text-slate-600 cursor-not-allowed border border-slate-800"
-                                                          : "bg-slate-900 text-slate-400 hover:bg-slate-700"
-                                                    }
-                                                `}
-                      >
-                        {day.getDate()}
-                        {slotsCount > 0 && !isPast && (
-                          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-emerald-400 rounded-full"></div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+      {/* AGENDA MANAGEMENT */}
+      {activeTab === "agenda" && isModuleEnabled("agenda") && (
+        <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* ... (Existing Agenda Content) ... */}
+          {/* Sidebar Config */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
+              <select
+                className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
+                value={selectedDoctorId}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+              >
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.fullName} ({ROLE_LABELS[d.role] || d.role})
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Main Agenda Grid */}
-            <div className="lg:col-span-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 min-h-[500px]">
-              {selectedDate ? (
-                <>
-                  <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
-                    <h3 className="text-2xl font-bold text-white capitalize">
-                      {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-CL", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                        Haga clic para abrir/cerrar bloques
-                      </span>
-                      {isSyncingAppointments && (
-                        <span className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/40 px-2 py-1 rounded-full">
-                          Guardando...
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-4">
-                    {getStandardSlots(
-                      selectedDate,
-                      selectedDoctorId,
-                      savedConfig ?? tempConfig
-                    ).map((slot) => {
-                      const realSlot = appointments.find(
-                        (a) =>
-                          ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId &&
-                          a.date === selectedDate &&
-                          a.time === slot.time
-                      );
-                      const isOpen = !!realSlot;
-                      const isBooked = realSlot?.status === "booked";
-
-                      // Slot past check
-                      const slotDate = new Date(selectedDate + "T00:00:00");
-                      const isPast = slotDate < today;
-
-                      return (
-                        <div key={slot.time} className="relative group">
-                          <button
-                            onClick={() => toggleSlot(slot.time)}
-                            disabled={isPast}
-                            className={`
-                                                                w-full py-4 rounded-xl border-2 font-bold text-lg transition-all flex flex-col items-center justify-center
-                                                                ${
-                                                                  isPast
-                                                                    ? "bg-slate-900/50 border-slate-800 text-slate-700 cursor-not-allowed"
-                                                                    : isBooked
-                                                                      ? "bg-indigo-900/50 border-indigo-500 text-indigo-300"
-                                                                      : isOpen
-                                                                        ? "bg-emerald-900/50 border-emerald-500 text-emerald-400"
-                                                                        : "bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500"
-                                                                }
-                                                            `}
-                          >
-                            {slot.time}
-                            <span className="text-[10px] uppercase mt-1">
-                              {isPast
-                                ? "Pasado"
-                                : isBooked
-                                  ? "Paciente"
-                                  : isOpen
-                                    ? "Disponible"
-                                    : "Cerrado"}
-                            </span>
-                          </button>
-
-                          {/* Quick Actions for Open Slot */}
-                          {isOpen && !isBooked && !isPast && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setBookingSlotId(realSlot.id);
-                              }}
-                              className="absolute -top-2 -right-2 bg-white text-slate-900 p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-400 hover:text-white"
-                              title="Agendar Manualmente"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          )}
-
-                          {/* Info for Booked Slot */}
-                          {isBooked && (
-                            <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white text-slate-900 p-3 rounded-xl shadow-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                              <p className="font-bold">{realSlot.patientName}</p>
-                              <p>{realSlot.patientRut}</p>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                  <Calendar className="w-16 h-16 mb-4 opacity-20" />
-                  <p>Seleccione un día en el calendario.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* PREADMISSIONS */}
-        {activeTab === "preadmissions" && (
-          <div className="animate-fadeIn">
-            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-white text-2xl flex items-center gap-2">
-                    <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
-                  </h3>
-                  <p className="text-slate-400 text-sm mt-2">
-                    Solicitudes enviadas sin autenticación o por el equipo.
-                  </p>
-                </div>
-                <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                  Total: {sortedPreadmissions.length}
-                </span>
-              </div>
-
+            {/* DYNAMIC SLOT CONFIG */}
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                <Settings className="w-5 h-5" /> Configurar Bloques
+              </h3>
               <div className="space-y-4">
-                {sortedPreadmissions.map((item) => {
-                  const date = resolvePreadmissionDate(item);
-                  const contactName =
-                    item.contact?.name || item.patientDraft?.fullName || "Paciente";
-                  const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
-                  const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
-                  const contactEmail = item.contact?.email || item.patientDraft?.email || "";
-                  const apptDate = item.appointmentDraft?.date;
-                  const apptTime = item.appointmentDraft?.time;
-                  const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                          <h4 className="text-lg font-bold text-white">{contactName}</h4>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
-                            {contactRut && <span className="font-mono">{contactRut}</span>}
-                            {date && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
-                            {sourceLabel}
-                          </span>
-                          <button
-                            onClick={() => onApprovePreadmission(item)}
-                            disabled={!hasActiveCenter}
-                            title={
-                              hasActiveCenter ? "Aprobar preingreso" : "Selecciona un centro activo"
-                            }
-                            className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Check className="w-4 h-4" /> Aprobar
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Phone className="w-4 h-4 text-emerald-400" />
-                          {contactPhone || "Sin teléfono"}
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Mail className="w-4 h-4 text-indigo-400" />
-                          {contactEmail || "Sin email"}
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Calendar className="w-4 h-4 text-blue-400" />
-                          {apptDate
-                            ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}`
-                            : "Sin hora solicitada"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {sortedPreadmissions.length === 0 && (
-                  <div className="text-center text-slate-500 italic py-12">
-                    No hay preingresos pendientes.
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                    Duración (minutos)
+                  </label>
+                  <select
+                    className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                    value={tempConfig.slotDuration}
+                    onChange={(e) =>
+                      setTempConfig({ ...tempConfig, slotDuration: parseInt(e.target.value) })
+                    }
+                  >
+                    <option value={15}>15 minutos</option>
+                    <option value={20}>20 minutos</option>
+                    <option value={25}>25 minutos</option>
+                    <option value={30}>30 minutos</option>
+                    <option value={45}>45 minutos</option>
+                    <option value={60}>60 minutos</option>
+                  </select>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                      Inicio
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                      value={tempConfig.startTime}
+                      onChange={(e) =>
+                        setTempConfig({ ...tempConfig, startTime: e.target.value })
+                      }
+                    />
                   </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                      Fin
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                      value={tempConfig.endTime}
+                      onChange={(e) => setTempConfig({ ...tempConfig, endTime: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleSaveConfig}
+                  className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-lg mt-2"
+                >
+                  Guardar Configuración
+                </button>
+                {hasUnsavedConfig && (
+                  <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
+                    Cambios sin guardar. La grilla usa la configuración actualmente guardada.
+                  </p>
                 )}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* WHATSAPP TEMPLATES */}
-        {activeTab === "whatsapp" && (
-          <div className="animate-fadeIn">
-            <WhatsappTemplatesManager
-              centerId={resolvedCenterId}
-              centerName={activeCenter?.name || "Centro Médico"}
-            />
-          </div>
-        )}
-
-        {/* MARKETING POSTERS */}
-        {activeTab === "marketing" && (
-          <div className="animate-fadeIn space-y-6">
-            <MarketingPosterModule
-              centerId={resolvedCenterId}
-              centerName={activeCenter?.name || "Centro Médico"}
-            />
-          </div>
-        )}
-
-        {/* AUDIT LOGS - LAZY LOADED ONLY */}
-        {activeTab === "audit" && isModuleEnabled("audit") && (
-          <div className="animate-fadeIn">
-            <AuditLogViewer
-              centerId={resolvedCenterId}
-              staff={doctors}
-              patients={patients}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* MANUAL BOOKING MODAL */}
-      {bookingSlotId && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          {/* ... (Existing Manual Booking Modal) ... */}
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full">
-            <h3 className="text-xl font-bold mb-4">Agendar Manualmente</h3>
-            <div className="space-y-4">
-              <input
-                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
-                placeholder="RUT Paciente"
-                value={bookingRut}
-                onChange={(e) => setBookingRut(formatRUT(e.target.value))}
-              />
-              <input
-                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
-                placeholder="Nombre Completo"
-                value={bookingName}
-                onChange={(e) => setBookingName(e.target.value)}
-              />
-              <input
-                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
-                placeholder="Teléfono"
-                value={bookingPhone}
-                onChange={(e) => setBookingPhone(e.target.value)}
-              />
-              <div className="flex gap-2 mt-4">
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <div className="flex justify-between items-center mb-6">
                 <button
-                  onClick={() => setBookingSlotId(null)}
-                  className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300"
+                  onClick={() => handleMonthChange(-1)}
+                  className="p-2 hover:bg-slate-700 rounded-lg"
                 >
-                  Cancelar
+                  <ChevronLeft className="w-5 h-5" />
                 </button>
+                <span className="font-bold text-lg uppercase tracking-wide">
+                  {currentMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+                </span>
                 <button
-                  onClick={handleManualBooking}
-                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg"
+                  onClick={() => handleMonthChange(1)}
+                  className="p-2 hover:bg-slate-700 rounded-lg"
                 >
-                  Confirmar
+                  <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
+              <div className="grid grid-cols-7 gap-2">
+                {["L", "M", "M", "J", "V", "S", "D"].map((d) => (
+                  <div key={d} className="text-center text-xs font-bold text-slate-500 mb-2">
+                    {d}
+                  </div>
+                ))}
+                {getDaysInMonth(currentMonth).map((day, idx) => {
+                  if (!day) return <div key={idx}></div>;
+                  const dateStr = day.toISOString().split("T")[0];
+                  const isSelected = dateStr === selectedDate;
+                  // Count slots
+                  const slotsCount = appointments.filter(
+                    (a) =>
+                      ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId &&
+                      a.date === dateStr
+                  ).length;
+
+                  // Past Day Check
+                  const isPast = day < today;
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => handleDateClick(day)}
+                      className={`
+                                                    h-10 rounded-lg text-sm font-bold relative transition-all
+                                                    ${isSelected
+                          ? "bg-indigo-600 text-white shadow-lg scale-110 z-10"
+                          : isPast
+                            ? "bg-slate-900/50 text-slate-600 cursor-not-allowed border border-slate-800"
+                            : "bg-slate-900 text-slate-400 hover:bg-slate-700"
+                        }
+                                                `}
+                    >
+                      {day.getDate()}
+                      {slotsCount > 0 && !isPast && (
+                        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-emerald-400 rounded-full"></div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Agenda Grid */}
+          <div className="lg:col-span-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 min-h-[500px]">
+            {selectedDate ? (
+              <>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
+                  <h3 className="text-2xl font-bold text-white capitalize">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-CL", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                      Haga clic para abrir/cerrar bloques
+                    </span>
+                    {isSyncingAppointments && (
+                      <span className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/40 px-2 py-1 rounded-full">
+                        Guardando...
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  {getStandardSlots(
+                    selectedDate,
+                    selectedDoctorId,
+                    savedConfig ?? tempConfig
+                  ).map((slot) => {
+                    const realSlot = appointments.find(
+                      (a) =>
+                        a.doctorId === selectedDoctorId &&
+                        a.date === selectedDate &&
+                        a.time === slot.time
+                    );
+                    const isOpen = !!realSlot;
+                    const isBooked = realSlot?.status === "booked";
+
+                    // Slot past check
+                    const slotDate = new Date(selectedDate + "T00:00:00");
+                    const isPast = slotDate < today;
+
+                    return (
+                      <div key={slot.time} className="relative group">
+                        <button
+                          onClick={() => toggleSlot(slot.time)}
+                          disabled={isPast}
+                          className={`
+                                                                w-full py-4 rounded-xl border-2 font-bold text-lg transition-all flex flex-col items-center justify-center
+                                                                ${isPast
+                              ? "bg-slate-900/50 border-slate-800 text-slate-700 cursor-not-allowed"
+                              : isBooked
+                                ? "bg-indigo-900/50 border-indigo-500 text-indigo-300"
+                                : isOpen
+                                  ? "bg-emerald-500 border-emerald-400 text-white shadow-md shadow-emerald-500/20"
+                                  : "bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500"
+                            }
+                                                            `}
+                        >
+                          {slot.time}
+                          <span className="text-[10px] uppercase mt-1">
+                            {isPast
+                              ? "Pasado"
+                              : isBooked
+                                ? "Paciente"
+                                : isOpen
+                                  ? "Disponible"
+                                  : "Cerrado"}
+                          </span>
+                        </button>
+
+                        {/* Quick Actions for Open Slot */}
+                        {isOpen && !isBooked && !isPast && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBookingSlotId(realSlot.id);
+                            }}
+                            className="absolute -top-2 -right-2 bg-white text-slate-900 p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-400 hover:text-white"
+                            title="Agendar Manualmente"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {/* Info for Booked Slot */}
+                        {isBooked && (
+                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white text-slate-900 p-3 rounded-xl shadow-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            <p className="font-bold">{realSlot.patientName}</p>
+                            <p>{realSlot.patientRut}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                <Calendar className="w-16 h-16 mb-4 opacity-20" />
+                <p>Seleccione un día en el calendario.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PREADMISSIONS */}
+      {activeTab === "preadmissions" && (
+        <div className="animate-fadeIn">
+          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-bold text-white text-2xl flex items-center gap-2">
+                  <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
+                </h3>
+                <p className="text-slate-400 text-sm mt-2">
+                  Solicitudes enviadas sin autenticación o por el equipo.
+                </p>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                Total: {sortedPreadmissions.length}
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {sortedPreadmissions.map((item) => {
+                const date = resolvePreadmissionDate(item);
+                const contactName =
+                  item.contact?.name || item.patientDraft?.fullName || "Paciente";
+                const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
+                const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
+                const contactEmail = item.contact?.email || item.patientDraft?.email || "";
+                const apptDate = item.appointmentDraft?.date;
+                const apptTime = item.appointmentDraft?.time;
+                const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
+
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-lg font-bold text-white">{contactName}</h4>
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
+                          {contactRut && <span className="font-mono">{contactRut}</span>}
+                          {date && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
+                          {sourceLabel}
+                        </span>
+                        <button
+                          onClick={() => onApprovePreadmission(item)}
+                          disabled={!hasActiveCenter}
+                          title={
+                            hasActiveCenter ? "Aprobar preingreso" : "Selecciona un centro activo"
+                          }
+                          className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Check className="w-4 h-4" /> Aprobar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Phone className="w-4 h-4 text-emerald-400" />
+                        {contactPhone || "Sin teléfono"}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Mail className="w-4 h-4 text-indigo-400" />
+                        {contactEmail || "Sin email"}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Calendar className="w-4 h-4 text-blue-400" />
+                        {apptDate
+                          ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}`
+                          : "Sin hora solicitada"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {sortedPreadmissions.length === 0 && (
+                <div className="text-center text-slate-500 italic py-12">
+                  No hay preingresos pendientes.
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* CANCEL MODAL */}
-      {cancelModal.isOpen && cancelModal.appointment && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          {/* ... (Existing Cancel Modal) ... */}
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-md w-full animate-fadeIn">
-            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle className="w-8 h-8 text-amber-600" />
-            </div>
-            <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
-              <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
-              <p className="text-slate-500">
-                {cancelModal.appointment.date} - {cancelModal.appointment.time}
-              </p>
-            </div>
-            <p className="text-sm text-slate-500 text-center mb-6">
-              Esta acción liberará el horario pero eliminará la reserva. Se recomienda avisar al
-              paciente.
-            </p>
+      {/* WHATSAPP TEMPLATES */}
+      {activeTab === "whatsapp" && (
+        <div className="animate-fadeIn">
+          <WhatsappTemplatesManager
+            centerId={resolvedCenterId}
+            centerName={activeCenter?.name || "Centro Médico"}
+          />
+        </div>
+      )}
 
-            <div className="space-y-3">
-              <button
-                onClick={() => handleConfirmCancellation(true)}
-                className="w-full bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 flex items-center justify-center gap-2 shadow-lg shadow-green-200"
-              >
-                <MessageCircle className="w-5 h-5" /> Cancelar y Notificar por WhatsApp
-              </button>
-              <button
-                onClick={() => handleConfirmCancellation(false)}
-                className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300"
-              >
-                Solo Cancelar Cita
-              </button>
-              <button
-                onClick={() => setCancelModal({ isOpen: false, appointment: null })}
-                className="w-full text-slate-400 font-bold py-2 hover:text-slate-600"
-              >
-                Volver Atrás
-              </button>
-            </div>
-          </div>
+      {/* MARKETING POSTERS */}
+      {activeTab === "marketing" && (
+        <div className="animate-fadeIn space-y-6">
+          <MarketingPosterModule
+            centerId={resolvedCenterId}
+            centerName={activeCenter?.name || "Centro Médico"}
+          />
+        </div>
+      )}
+
+      {/* AUDIT LOGS - LAZY LOADED ONLY */}
+      {activeTab === "audit" && isModuleEnabled("audit") && (
+        <div className="animate-fadeIn">
+          <AuditLogViewer
+            centerId={resolvedCenterId}
+            staff={doctors}
+            patients={patients}
+          />
         </div>
       )}
     </div>

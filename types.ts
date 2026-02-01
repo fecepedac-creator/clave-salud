@@ -127,13 +127,13 @@ export interface Attachment {
 export interface Prescription {
   id: string;
   type:
-    | "Receta Médica"
-    | "Receta Retenida"
-    | "Interconsulta"
-    | "Certificado"
-    | "Indicaciones"
-    | "Solicitud de Examen"
-    | "OrdenExamenes";
+  | "Receta Médica"
+  | "Receta Retenida"
+  | "Interconsulta"
+  | "Certificado"
+  | "Indicaciones"
+  | "Solicitud de Examen"
+  | "OrdenExamenes";
   content: string;
   createdAt: string;
   category?: "lab_general" | "inmuno" | "cardio" | "pulmonar" | "imagenes";
@@ -147,6 +147,10 @@ export interface Prescription {
   notes?: string;
   createdBy?: string;
   status?: "draft" | "final";
+  metadata?: {
+    selectedExams?: string[];
+    [key: string]: any;
+  };
 }
 
 export interface ClinicalTemplate {
@@ -154,6 +158,10 @@ export interface ClinicalTemplate {
   title: string;
   content: string;
   roles?: RoleId[];
+  userId?: string;
+  createdAt?: string;
+  category?: "indication" | "certificate";
+  tags?: string[];
 }
 
 export interface WhatsappTemplate {
@@ -197,6 +205,7 @@ export interface Consultation extends SoftDeletable {
   height?: string;
   bmi?: string;
   bloodPressure?: string;
+  heartRate?: string; // Frecuencia Cardiaca
   hgt?: string;
 
   // --- New Anthropometry Fields ---
@@ -269,9 +278,50 @@ export interface Patient extends SoftDeletable {
   allergies: Allergy[];
 
   consultations: Consultation[];
+  kinesiologyPrograms?: KinesiologyProgram[];
   attachments: Attachment[];
 
   lastUpdated: string;
+}
+
+export interface KinesiologyProgram {
+  id: string;
+  patientId: string;
+  type: "Kinesioterapia motora" | "Kinesioterapia respiratoria";
+  diagnosis: string;
+  clinicalCondition: string;
+  objectives: string[];
+  totalSessions: number;
+  sessions: KinesiologySession[]; // Embedded sessions or linked by ID? Embedded is easier for NoSQL.
+  createdAt: string;
+  status: "active" | "completed";
+  professionalName: string;
+}
+
+export interface KinesiologySession {
+  id: string;
+  date: string;
+  sessionNumber: number;
+
+  // Techniques (handled as string list)
+  techniques: string[];
+
+  // Motora Fields
+  vitals?: {
+    pre: { pa: string; fc: string };
+    post: { pa: string; fc: string };
+  };
+
+  // Respiratoria Fields
+  oxygenation?: {
+    pre: { sat: string; fc: string };
+    post: { sat: string; fc: string };
+  };
+  secretions?: "Si" | "No";
+
+  tolerance: "Buena" | "Regular" | "Mala";
+  response: "Mejoría" | "Igual" | "Empeora";
+  observations: string;
 }
 
 export interface Appointment extends SoftDeletable {
@@ -372,6 +422,10 @@ export interface Doctor {
   savedTemplates?: ClinicalTemplate[];
   savedExamProfiles?: ExamProfile[];
   customExams?: ExamDefinition[]; // NEW: Allows doctor to define their own exams
+  preferences?: {
+    vitalsEnabled?: boolean;
+    // can add more user-specific settings here
+  };
 }
 
 export interface CenterInvite {
