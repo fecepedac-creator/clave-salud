@@ -1041,13 +1041,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* Header */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex justify-between items-center sticky top-0 z-30">
-        <div className="flex items-center gap-4">
+      <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30">
+        <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
           <LogoHeader size="md" showText={true} />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           {activeCenter?.logoUrl && (
-            <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
+            <div className="hidden md:flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
               <span className="text-slate-400 text-xs font-medium">Centro:</span>
               {!centerLogoError ? (
                 <img
@@ -1074,9 +1074,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <ShieldCheck className="w-4 h-4" /> Política de conservación (15 años)
           </button>
 
-          <div className="flex gap-2">
-            <label className="flex items-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
-              <Upload className="w-4 h-4" /> Restaurar
+          <div className="flex gap-2 w-full md:w-auto justify-center">
+            <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
+              <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
               <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
             </label>
             <button
@@ -1084,47 +1084,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
                 showToast("Descargando backup...", "info");
               }}
-              className="flex items-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
             >
-              <Download className="w-4 h-4" /> Backup
+              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
+            </button>
+            <button
+              onClick={onLogout}
+              className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
-
           <LegalLinks
             onOpenTerms={() => onOpenLegal("terms")}
             onOpenPrivacy={() => onOpenLegal("privacy")}
             className="flex"
             buttonClassName="text-slate-400 hover:text-white"
           />
-          <button
-            onClick={onLogout}
-            className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> Salir
-          </button>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl w-fit mb-8">
+        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto">
           <button
             onClick={() => setActiveTab("command_center")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "command_center" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "command_center" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <Activity className="w-4 h-4" /> Centro de Mando
           </button>
           <button
             onClick={() => setActiveTab("doctors")}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
           >
             <Users className="w-4 h-4" /> Gestión de Profesionales
           </button>
           <button
             onClick={() => setActiveTab("agenda")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "agenda" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "agenda" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasActiveCenter ? "Configurar agenda" : "Selecciona un centro activo"}
           >
             <Calendar className="w-4 h-4" /> Configurar Agenda
@@ -1132,7 +1131,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setActiveTab("whatsapp")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
           >
             <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
@@ -1142,7 +1141,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setActiveTab("audit")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
           >
             <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
@@ -1150,7 +1149,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setActiveTab("preadmissions")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "preadmissions" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "preadmissions" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasActiveCenter ? "Preingresos" : "Selecciona un centro activo"}
           >
             <User className="w-4 h-4" /> Preingresos

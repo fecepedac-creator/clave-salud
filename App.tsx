@@ -1553,7 +1553,7 @@ const App: React.FC = () => {
   const renderHomeDirectory = () => {
     return (
       <div
-        className="home-hero relative min-h-dvh w-full flex flex-col items-center justify-center px-4 py-10 pb-16"
+        className="home-hero relative min-h-dvh w-full flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-x-hidden"
         style={
           {
             "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
