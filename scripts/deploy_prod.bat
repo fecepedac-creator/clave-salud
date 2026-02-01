@@ -15,6 +15,17 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
+echo [2.5/3] Building Cloud Functions...
+cd functions
+call npm install
+call npm run build
+cd ..
+if %errorlevel% neq 0 (
+    echo Error building functions!
+    pause
+    exit /b %errorlevel%
+)
+
 echo [3/3] Deploying to Firebase Hosting...
 call npx --yes -p firebase-tools firebase deploy
 if %errorlevel% neq 0 (
