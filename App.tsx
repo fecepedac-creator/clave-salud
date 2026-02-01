@@ -63,7 +63,7 @@ const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 
 const App: React.FC = () => {
   const { showToast } = useToast();
-  const [demoMode, setDemoMode] = useState(false);
+  const [demoMode, setDemoMode] = useState(true);
   const [view, setView] = useState<ViewMode>("home" as ViewMode);
   const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
     "center-portal" as ViewMode
@@ -103,7 +103,7 @@ const App: React.FC = () => {
     setAppointments,
     auditLogs,
     preadmissions,
-  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters);
+  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters, currentUser);
   const {
     inviteToken,
     setInviteToken,
@@ -123,6 +123,9 @@ const App: React.FC = () => {
     inviteDone,
     acceptInviteForUser,
   } = useInvite();
+  // Demo overrides
+  const [demoDoctorOverrides, setDemoDoctorOverrides] = useState<Record<string, Partial<Doctor>>>({});
+
   const {
     updatePatient,
     deletePatient,
@@ -136,7 +139,11 @@ const App: React.FC = () => {
     deleteCenter,
     createPreadmission,
     approvePreadmission,
-  } = useCrudOperations(activeCenterId, appointments, showToast);
+  } = useCrudOperations(
+    activeCenterId,
+    appointments as any, // Fix typing if needed, originally 'appointments' passed here?
+    showToast
+  );
   const {
     bookingStep,
     setBookingStep,
@@ -657,21 +664,21 @@ const App: React.FC = () => {
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const availableSlotsForDay = selectedDoctorForBooking
       ? getStandardSlots(
-          dateStr,
-          selectedDoctorForBooking.id,
-          selectedDoctorForBooking.agendaConfig
-        )
-          .map((slot: any) => {
-            const existing = appointments.find(
-              (a) =>
-                appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-                a.date === dateStr &&
-                a.time === slot.time &&
-                a.status === "available"
-            );
-            return existing ? { ...slot, appointmentId: existing.id } : null;
-          })
-          .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
+        dateStr,
+        selectedDoctorForBooking.id,
+        selectedDoctorForBooking.agendaConfig
+      )
+        .map((slot: any) => {
+          const existing = appointments.find(
+            (a) =>
+              appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
+              a.date === dateStr &&
+              a.time === slot.time &&
+              a.status === "available"
+          );
+          return existing ? { ...slot, appointmentId: existing.id } : null;
+        })
+        .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
       : [];
 
     return renderCenterBackdrop(
@@ -1584,7 +1591,7 @@ const App: React.FC = () => {
             onDeleteCenter={async (id) => {
               await deleteCenter(id);
             }}
-            onUpdateDoctors={async () => {}}
+            onUpdateDoctors={async () => { }}
           />
         </CenterContext.Provider>
       );
@@ -1604,21 +1611,23 @@ const App: React.FC = () => {
         </CenterContext.Provider>
       );
 
-    const previewUser =
-      isPreviewActive && authUser
+    const baseUser =
+      currentUser ||
+      (isPreviewActive
         ? {
-            id: authUser.uid,
-            uid: authUser.uid,
-            fullName: authUser.displayName ?? authUser.email ?? "Preview",
-            email: authUser.email ?? "preview@local",
-            role: previewRole,
-          }
-        : null;
-    const userForView = currentUser ?? previewUser;
+          id: authUser?.uid ?? "preview_user",
+          uid: authUser?.uid ?? "preview_user",
+          email: authUser?.email ?? "preview@demo.cl",
+          fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
+          role: previewRole || "MEDICO",
+          agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
+          savedTemplates: [],
+        }
+        : null);
 
-    if (view === ("doctor-dashboard" as ViewMode) && userForView) {
-      const currentUid = userForView?.uid ?? userForView?.id;
-      const currentEmailLower = String(userForView?.email ?? "")
+    if (view === ("doctor-dashboard" as ViewMode) && baseUser) {
+      const currentUid = baseUser.uid ?? baseUser.id;
+      const currentEmailLower = String(baseUser.email ?? "")
         .trim()
         .toLowerCase();
       const matchedDoctor =
@@ -1636,13 +1645,25 @@ const App: React.FC = () => {
               .trim()
               .toLowerCase() === currentEmailLower
         ) ||
+        // In preview mode, if we haven't matched by ID/Email, try to match by Role in current center
+        (isPreviewActive
+          ? doctors.find((doc) => doc.role === previewRole && doc.centerId === activeCenterId)
+          : null) ||
         null;
-      const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
+
+      const resolvedDoctorId = matchedDoctor?.id ?? baseUser.id;
       const resolvedDoctorName =
-        matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
+        matchedDoctor?.fullName ?? baseUser.fullName ?? baseUser.email ?? "Profesional";
+
+      const demoOverride =
+        isPreviewActive && demoDoctorOverrides[resolvedDoctorId]
+          ? demoDoctorOverrides[resolvedDoctorId]
+          : {};
+
       const mergedCurrentUser = matchedDoctor
-        ? ({ ...userForView, ...matchedDoctor, id: resolvedDoctorId } as any)
-        : userForView;
+        ? ({ ...baseUser, ...matchedDoctor, ...demoOverride, id: resolvedDoctorId } as any)
+        : ({ ...baseUser, ...demoOverride } as any);
+
       const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
       return (
         <CenterContext.Provider value={centerCtxValue}>
@@ -1651,11 +1672,28 @@ const App: React.FC = () => {
             doctorName={resolvedDoctorName}
             doctorId={resolvedDoctorId}
             role={effectiveRole}
-            agendaConfig={matchedDoctor?.agendaConfig ?? currentUser.agendaConfig}
-            savedTemplates={matchedDoctor?.savedTemplates ?? currentUser.savedTemplates}
+            agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
+            savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
             currentUser={mergedCurrentUser}
-            onUpdatePatient={(p: Patient) => updatePatient(p)}
-            onUpdateDoctor={(d: Doctor) => updateStaff(d)}
+            onUpdatePatient={(p: Patient) => {
+              if (isPreviewActive) {
+                setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
+              } else {
+                updatePatient(p);
+              }
+            }}
+            onUpdateDoctor={(d: Doctor) => {
+              if (isPreviewActive) {
+                const targetId = d.id;
+                setDemoDoctorOverrides((prev) => ({
+                  ...prev,
+                  [targetId]: { ...prev[targetId], ...d },
+                }));
+                showToast("Configuración guardada (Modo Demo - Temporal)", "success");
+              } else {
+                updateStaff(d);
+              }
+            }}
             onLogout={handleLogout}
             appointments={appointments}
             onUpdateAppointments={(newAppts: Appointment[]) => {
@@ -1664,27 +1702,30 @@ const App: React.FC = () => {
             }}
             isSyncingAppointments={isSyncingAppointments}
             onLogActivity={(action: any, details: string, targetId?: string) => {
-              if (isPreviewActive) return;
+              if (isPreviewActive) {
+                console.log("[Demo Log]", action, details);
+                return;
+              }
               const log: AuditLogEntry = {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? userForView.id,
-                actorName: userForView.fullName ?? "Usuario",
-                actorRole: userForView.role ?? "Profesional",
+                actorUid: auth.currentUser?.uid ?? baseUser.id,
+                actorName: baseUser.fullName ?? "Usuario",
+                actorRole: baseUser.role ?? "Profesional",
                 action,
                 details,
                 targetId,
               } as any;
               updateAuditLog(log);
             }}
-            isReadOnly={isPreviewActive}
+            isReadOnly={false}
           />
         </CenterContext.Provider>
       );
     }
 
-    if (view === ("admin-dashboard" as ViewMode) && userForView) {
+    if (view === ("admin-dashboard" as ViewMode) && baseUser) {
       return (
         <CenterContext.Provider value={centerCtxValue}>
           <AdminDashboard
@@ -1719,9 +1760,9 @@ const App: React.FC = () => {
                 id: generateId(),
                 centerId: activeCenterId,
                 timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? userForView.id,
-                actorName: userForView.fullName ?? "Usuario",
-                actorRole: userForView.role ?? "Admin",
+                actorUid: auth.currentUser?.uid ?? baseUser.id,
+                actorName: baseUser.fullName ?? "Usuario",
+                actorRole: baseUser.role ?? "Admin",
                 action,
                 details,
                 targetId,

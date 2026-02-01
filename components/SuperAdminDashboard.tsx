@@ -203,7 +203,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const previewRoles = useMemo(
     () =>
-      ROLE_CATALOG.filter((role) => !["ADMIN_CENTRO", "ADMINISTRATIVO"].includes(role.id)),
+      ROLE_CATALOG.filter((role) => !["ADMIN_CENTRO"].includes(role.id)),
     []
   );
   const [previewCenterSelection, setPreviewCenterSelection] = useState(previewCenterId ?? "");
@@ -312,7 +312,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (logoPreview) {
       try {
         URL.revokeObjectURL(logoPreview);
-      } catch {}
+      } catch { }
     }
     setLogoFile(null);
     setLogoPreview("");
@@ -535,9 +535,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const renderSidebarButton = (tab: Tab, label: string, icon?: React.ReactNode) => (
     <button
       onClick={() => setActiveTab(tab)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-        activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
-      }`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
+        }`}
     >
       <span className="flex items-center gap-2">
         {icon}
@@ -630,7 +629,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       const prev = await getDocs(prevQ);
       for (const d of prev.docs) {
-        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
+        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => { });
       }
 
       // 2) Crear invitación nueva
@@ -734,11 +733,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         <div className="p-4 space-y-4 border-t border-slate-800">
           <button
             onClick={onToggleDemo}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-              demoMode
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${demoMode
                 ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
                 : "bg-slate-800 border-slate-700 text-slate-500"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2">
               {demoMode ? (
@@ -924,11 +922,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         <div className="flex items-center gap-3 flex-wrap">
                           <h3 className="text-lg font-bold text-slate-800">{center.name}</h3>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              (center as any).isActive
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${(center as any).isActive
                                 ? "bg-green-100 text-green-700"
                                 : "bg-red-100 text-red-700"
-                            }`}
+                              }`}
                           >
                             {(center as any).isActive ? "Activo" : "Suspendido"}
                           </span>
@@ -1099,7 +1096,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             if (logoPreview) {
                               try {
                                 URL.revokeObjectURL(logoPreview);
-                              } catch {}
+                              } catch { }
                             }
 
                             if (!f) {
@@ -1137,7 +1134,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 if (logoPreview) {
                                   try {
                                     URL.revokeObjectURL(logoPreview);
-                                  } catch {}
+                                  } catch { }
                                 }
                                 setLogoPreview("");
 

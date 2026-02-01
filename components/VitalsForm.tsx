@@ -280,7 +280,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
   };
 
   // Visibility for Anthropometry
-  const showAnthropometry = ["Nutricionista", "Medico", "Enfermera"].includes(role || "");
+  const showAnthropometry = ["NUTRICIONISTA", "MEDICO", "ENFERMERA", "KINESIOLOGO", "PREPARADOR_FISICO"].includes(role || "");
   const isAnthropometryEnabled = anthropometryEnabled === true;
 
   return (
@@ -337,6 +337,15 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
             onChange={(e) => onChange("bloodPressure", e.target.value)}
             placeholder="120/80"
             historyData={getBPHistory()}
+          />
+
+          <VitalsInput
+            label="F. Cardiaca"
+            value={newConsultation.heartRate}
+            onChange={(e) => onChange("heartRate", e.target.value)}
+            placeholder="bpm"
+            unit="lpm"
+            type="number"
           />
 
           {/* Show HGT if not Nutritionist (usually they focus on anthro, but can keep it) OR explicitly for diabetic checks */}
@@ -400,7 +409,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
                     key={examId}
                     label={config.label}
                     value={displayedVFG}
-                    onChange={() => {}}
+                    onChange={() => { }}
                     unit={config.unit}
                     readOnly={true}
                     historyData={getExamHistory("vfg")}
