@@ -1463,7 +1463,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   // Count slots
                   const slotsCount = appointments.filter(
                     (a) =>
-                      ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId &&
+                      ((a as any).doctorUid == selectedDoctorId || a.doctorId === selectedDoctorId) &&
                       a.date === dateStr
                   ).length;
 
@@ -1529,7 +1529,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ).map((slot) => {
                     const realSlot = appointments.find(
                       (a) =>
-                        a.doctorId === selectedDoctorId &&
+                        ((a as any).doctorUid == selectedDoctorId || a.doctorId === selectedDoctorId) &&
                         a.date === selectedDate &&
                         a.time === slot.time
                     );
