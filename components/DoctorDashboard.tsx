@@ -90,6 +90,7 @@ import LogoHeader from "./LogoHeader";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
 import { StartProgramModal, SessionModal } from "./KinesiologyModals";
+import { ExamSheetsSection } from "./ExamSheetsSection";
 import { KinesiologyProgram, KinesiologySession } from "../types";
 
 interface ProfessionalDashboardProps {
@@ -389,6 +390,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     prescriptions: [],
     dentalMap: [],
     exams: {},
+    examSheets: [],
     nextControlDate: "",
     nextControlReason: "",
     reminderActive: false,
@@ -1626,6 +1628,26 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         Módulo de Signos Vitales deshabilitado por el administrador del centro.
                       </div>
                     )}
+                    {/* 1.5 Exam Sheets (New Tracking) */}
+                    {moduleGuards.exams && (
+                      <div className="mb-6">
+                        <ExamSheetsSection
+                          examSheets={newConsultation.examSheets || []}
+                          onChange={(sheets) =>
+                            setNewConsultation({ ...newConsultation, examSheets: sheets })
+                          }
+                          examOptions={allExamOptions}
+                          availableProfiles={
+                            currentUser?.savedExamProfiles?.length
+                              ? currentUser.savedExamProfiles
+                              : EXAM_PROFILES
+                          }
+                          consultationHistory={selectedPatient.consultations || []}
+                          legacyExams={newConsultation.exams}
+                        />
+                      </div>
+                    )}
+
                     {canSeeVitals && moduleGuards.vitals && (
                       <VitalsForm
                         newConsultation={newConsultation}

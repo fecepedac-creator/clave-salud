@@ -193,6 +193,12 @@ export interface ToothState {
   notes?: string;
 }
 
+export interface ExamSheet {
+  id: string;
+  date: string; // YYYY-MM-DD
+  exams: Record<string, string>;
+}
+
 export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
@@ -214,6 +220,7 @@ export interface Consultation extends SoftDeletable {
 
   // --- Dynamic Exams ---
   exams?: Record<string, string>; // Stores values like { 'hba1c': '7.5', 'creatinina': '1.2' }
+  examSheets?: ExamSheet[];
 
   reason: string;
   anamnesis: string;
