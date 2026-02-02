@@ -193,6 +193,12 @@ export interface ToothState {
   notes?: string;
 }
 
+export interface NailState {
+  id: string; // e.g. "L1" (Left 1, Big toe), "R5" (Right 5, Little toe)
+  status: "Sana" | "Onicomicosis" | "Onicocriptosis" | "Onicogrifosis" | "Ausente" | "Atrofica" | "Traumatica";
+  notes?: string;
+}
+
 export interface ExamSheet {
   id: string;
   date: string; // YYYY-MM-DD
@@ -228,6 +234,7 @@ export interface Consultation extends SoftDeletable {
   diagnosis: string;
 
   dentalMap?: ToothState[];
+  podogram?: NailState[];
 
   prescriptions: Prescription[];
   professionalName: string;

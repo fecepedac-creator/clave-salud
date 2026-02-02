@@ -23,6 +23,7 @@ import {
   formatPersonName,
   applyWhatsappTemplate,
   openEmailCompose,
+  getProfessionalPrefix,
 } from "../utils";
 import {
   COMMON_DIAGNOSES,
@@ -85,6 +86,7 @@ import ConsultationDetailModal from "./ConsultationDetailModal";
 import ExamOrderModal from "./ExamOrderModal";
 import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
+import Podogram from "./Podogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
@@ -339,7 +341,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     lines.push(`Paciente: ${formatPersonName(selectedPatient.fullName)}`);
     lines.push(`RUT: ${selectedPatient.rut || "-"}`);
     lines.push(`Fecha: ${dateStr}`);
-    lines.push(`Profesional: Dr. ${consultation.professionalName || "-"}`);
+    lines.push(`Profesional: ${getProfessionalPrefix(consultation.professionalRole)} ${consultation.professionalName || "-"}`);
     lines.push("");
     lines.push(`Motivo: ${consultation.reason || "-"}`);
     lines.push(`Diagnóstico / Hipótesis: ${consultation.diagnosis || "-"}`);
@@ -493,7 +495,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const patientDisplayName = formatPersonName(slotModal.appointment?.patientName) || "Paciente";
   const doctorFormattedName = formatPersonName(doctorName);
   const doctorDisplayName = doctorFormattedName
-    ? `el Dr. ${doctorFormattedName}`
+    ? `el/la ${getProfessionalPrefix(role)} ${doctorFormattedName}`
     : "el profesional asignado";
   const bookingUrl =
     typeof window !== "undefined" ? window.location.origin : "https://clavesalud-2.web.app";
@@ -767,10 +769,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // Load Doctor Data (Templates & Profiles)
   useEffect(() => {
-    // Templates
-    const nextTemplates = Array.isArray(savedTemplates)
+    // Templates: Ensure they are filtered by the current role even if they come from savedTemplates
+    const rawTemplates = Array.isArray(savedTemplates)
       ? savedTemplates
       : DEFAULT_TEMPLATES.filter((t) => t.roles?.includes(role));
+
+    // Safety check: Filter out templates that don't belong to this role
+    const nextTemplates = rawTemplates.filter(t => !t.roles || t.roles.includes(role));
 
     setMyTemplates((prev) =>
       sameById(prev, nextTemplates, ["title", "content"]) ? prev : nextTemplates
@@ -1141,6 +1146,92 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const isDentist = role === "ODONTOLOGO";
   const isPsych = role === "PSICOLOGO";
+  const isPodo = role === "PODOLOGO";
+  const isNutri = role === "NUTRICIONISTA";
+
+  const labels = useMemo(() => {
+    switch (role) {
+      case "PODOLOGO":
+        return {
+          reason: "Motivo de Atención Podológica",
+          anamnesis: "Anamnesis y Antecedentes (Calzado, Hábitos)",
+          physical: "Examen Físico de Pies y Miembros Inferiores",
+          diagnosis: "Diagnóstico Podológico / Hallazgos",
+        };
+      case "ASISTENTE_SOCIAL":
+        return {
+          reason: "Motivo de Intervención Social",
+          anamnesis: "Antecedentes Familiares y Redes de Apoyo",
+          physical: "Evaluación Socio-Económica / Vivienda",
+          diagnosis: "Diagnóstico Social e Informe de Situación",
+        };
+      case "PREPARADOR_FISICO":
+        return {
+          reason: "Objetivo de Entrenamiento / Consulta",
+          anamnesis: "Antecedentes Deportivos y Fitness (Lesiones)",
+          physical: "Evaluación de Condición Física (Tests)",
+          diagnosis: "Diagnóstico Funcional y Planificación",
+        };
+      case "QUIMICO_FARMACEUTICO":
+        return {
+          reason: "Motivo de Seguimiento Farmacoterapéutico",
+          anamnesis: "Conciliación de Medicamentos / Reacciones",
+          physical: "Seguimiento de Resultados y Adherencia",
+          diagnosis: "Problemas Relacionados con Medicamentos (PRM)",
+        };
+      case "TECNOLOGO_MEDICO":
+        return {
+          reason: "Motivo de Examen / Procedimiento",
+          anamnesis: "Antecedentes Clínicos Relevantes",
+          physical: "Condiciones Propias del Procedimiento Técnico",
+          diagnosis: "Impresión Técnica (Hallazgos)",
+        };
+      case "NUTRICIONISTA":
+        return {
+          reason: "Motivo de Consulta Nutricional",
+          anamnesis: "Anamnesis Alimentaria y Hábitos",
+          physical: "Evaluación Antropométrica (Cintura, Hip, Pliegues)",
+          diagnosis: "Diagnóstico Nutricional Integrado (DNI)",
+        };
+      case "PSICOLOGO":
+        return {
+          reason: "Motivo de Consulta / Relato",
+          anamnesis: "Desarrollo de la Sesión / Evolución",
+          physical: "",
+          diagnosis: "Hipótesis Diagnóstica / Foco Terapéutico",
+        };
+      case "ENFERMERA":
+      case "TENS":
+        return {
+          reason: "Motivo de Atención / Procedimiento",
+          anamnesis: "Antecedentes y Observaciones",
+          physical: "Evaluación de Enfermería / Estado General",
+          diagnosis: "Diagnóstico Enfermero / Procedimiento Realizado",
+        };
+      case "MATRONA":
+        return {
+          reason: "Motivo de Consulta Gineco-Obstétrica",
+          anamnesis: "Anamnesis y Antecedentes (AGO)",
+          physical: "Examen Físico Segmentario",
+          diagnosis: "Diagnóstico / Hipótesis",
+        };
+      case "FONOAUDIOLOGO":
+      case "TERAPEUTA_OCUPACIONAL":
+        return {
+          reason: "Motivo de Consulta / Derivación",
+          anamnesis: "Evaluación Clínica / Anamnesis",
+          physical: "Observaciones de Desempeño / Pruebas",
+          diagnosis: "Hipótesis Diagnóstica (CID/CIF)",
+        };
+      default:
+        return {
+          reason: "Motivo de Consulta",
+          anamnesis: "Anamnesis Próxima",
+          physical: "Examen Físico",
+          diagnosis: "Diagnóstico / Hipótesis",
+        };
+    }
+  }, [role]);
 
   // --- RENDER SELECTED PATIENT ---
   if (selectedPatient) {
@@ -1678,11 +1769,20 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       />
                     )}
 
+                    {isPodo && (
+                      <Podogram
+                        value={newConsultation.podogram || []}
+                        onChange={(val) =>
+                          setNewConsultation({ ...newConsultation, podogram: val })
+                        }
+                      />
+                    )}
+
                     {/* 3. Clinical Data (Adaptive) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="col-span-full">
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          Motivo de Consulta
+                          {labels.reason}
                         </label>
                         <input
                           value={newConsultation.reason}
@@ -1694,7 +1794,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       </div>
                       <div className={isPsych ? "col-span-full" : ""}>
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          {isPsych ? "Desarrollo de la Sesión / Evolución" : "Anamnesis Próxima"}
+                          {labels.anamnesis}
                         </label>
                         <textarea
                           value={newConsultation.anamnesis}
@@ -1705,10 +1805,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
                         />
                       </div>
-                      {!isPsych && (
+                      {labels.physical && (
                         <div>
                           <label className="block text-lg font-bold text-slate-700 mb-3">
-                            Examen Físico
+                            {labels.physical}
                           </label>
                           <textarea
                             value={newConsultation.physicalExam}
@@ -1725,7 +1825,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       )}
                       <div className="col-span-full">
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          Diagnóstico / Hipótesis
+                          {labels.diagnosis}
                         </label>
                         <AutocompleteInput
                           value={newConsultation.diagnosis || ""}
@@ -2353,8 +2453,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* 1. EXAM PROFILES EDITOR */}
-                {role !== "KINESIOLOGO" && (
+                {/* 1. EXAM PROFILES EDITOR - ONLY FOR MEDICO */}
+                {role === "MEDICO" && (
                   <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
                     <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
                       <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
@@ -2505,8 +2605,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
                 {/* 1.5 CUSTOM EXAM CREATION (NEW) */}
                 <div className="lg:col-span-6 space-y-8">
-                  {/* NEW: CREATE CUSTOM EXAM */}
-                  {role !== "KINESIOLOGO" && (
+                  {/* NEW: CREATE CUSTOM EXAM - ONLY FOR MEDICO */}
+                  {role === "MEDICO" && (
                     <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-auto">
                       <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
                         <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen

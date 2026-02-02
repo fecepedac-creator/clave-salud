@@ -69,7 +69,12 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
   // Combine user templates with system certificates (System Indications are hidden/opt-in now)
   const allTemplates = useMemo(() => {
-    const systemCertificates = (DEFAULT_CLINICAL_TEMPLATES || []).filter(
+    // 1. Filter System Templates by Role (if specified)
+    const roleFilteredSystem = (DEFAULT_CLINICAL_TEMPLATES || []).filter(
+      (t) => !t.roles || t.roles.includes(role) || (role === "MEDICO") // Medico sees all for now or specific ones
+    );
+
+    const systemCertificates = roleFilteredSystem.filter(
       (t) => t.category === "certificate"
     );
     // User templates include their own created ones AND imported system indications
@@ -80,9 +85,11 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       return combined.filter((t) => t.category === "certificate");
     } else {
       // For Indications, Recetas, etc., show indications or uncategorized
-      return combined.filter((t) => t.category === "indication" || !t.category);
+      const filtered = combined.filter((t) => t.category === "indication" || !t.category);
+      // Final safety: filter by role AGAIN for the combined list
+      return filtered.filter(t => !t.roles || t.roles.includes(role));
     }
-  }, [templates, currentPrescriptionType]);
+  }, [templates, currentPrescriptionType, role]);
 
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
   const [quickAddValue, setQuickAddValue] = useState("");

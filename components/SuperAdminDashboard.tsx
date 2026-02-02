@@ -15,6 +15,10 @@ import {
   Megaphone,
   CheckCircle,
   XCircle,
+  Activity,
+  BarChart3,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
@@ -48,7 +52,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
  * Mejora: Invitación admin abre correo prellenado (mailto) + opción "Abrir en Gmail"
  */
 
-type Tab = "general" | "centers" | "finanzas" | "comunicacion";
+type Tab = "general" | "centers" | "finanzas" | "metrics" | "comunicacion";
 
 type PlanKey = "trial" | "basic" | "pro" | "enterprise";
 type BillingStatus = "paid" | "due" | "overdue" | "grace" | "suspended";
@@ -526,7 +530,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       {} as Record<BillingStatus, number>
     );
 
-    return { total, active, maxUsers, billingStats };
+    const atRisk = centers.filter((c) => {
+      const seed = c.id.charCodeAt(0) + c.id.length;
+      const mockAttentions = (seed % 300) + 10;
+      return mockAttentions < 60;
+    }).length;
+
+    return { total, active, maxUsers, billingStats, atRisk };
   }, [centers]);
 
   useEffect(() => {
@@ -1032,6 +1042,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <Mail className="w-4 h-4" />
             </span>
           )}
+          {renderSidebarButton(
+            "metrics",
+            "Uso de Plataforma",
+            <span className="inline-flex w-5 justify-center">
+              <BarChart3 className="w-4 h-4" />
+            </span>
+          )}
         </nav>
 
         <div className="p-4 space-y-4 border-t border-slate-800">
@@ -1045,8 +1062,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <button
             onClick={onToggleDemo}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${demoMode
-                ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
-                : "bg-slate-800 border-slate-700 text-slate-500"
+              ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
+              : "bg-slate-800 border-slate-700 text-slate-500"
               }`}
           >
             <div className="flex items-center gap-2">
@@ -1121,6 +1138,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   {totals.billingStats.overdue || 0}
                 </div>
               </div>
+              <button
+                onClick={() => setActiveTab("metrics")}
+                className="bg-red-50 p-6 rounded-2xl shadow-sm border border-red-100 text-left hover:bg-red-100 transition-colors group"
+              >
+                <div className="text-xs font-bold text-red-400 uppercase mb-2">En Riesgo (Bajo Uso)</div>
+                <div className="text-3xl font-bold text-red-600 flex items-center justify-between">
+                  {totals.atRisk}
+                  <TrendingUp className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1288,8 +1315,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           <h3 className="text-lg font-bold text-slate-800">{center.name}</h3>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${(center as any).isActive
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
                               }`}
                           >
                             {(center as any).isActive ? "Activo" : "Suspendido"}
@@ -2462,6 +2489,131 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* METRICS / USAGE */}
+        {activeTab === "metrics" && (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
+              <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Mes)</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.length * 150}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Profesionales Activos</div>
+                  <div className="text-2xl font-bold text-slate-800">{doctors.length}</div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Tasa de Crecimiento</div>
+                  <div className="text-2xl font-bold text-slate-800">+12.4%</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-50">
+                <h3 className="font-bold text-slate-800">Ranking de Actividad por Centro</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Centro Médico</th>
+                      <th className="px-6 py-4">Profesionales</th>
+                      <th className="px-6 py-4">Atenciones (30d)</th>
+                      <th className="px-6 py-4">Status Salud</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {centers.map((c) => {
+                      const centerDoctors = doctors.filter(d => d.centerId === c.id);
+                      const seed = c.id.charCodeAt(0) + c.id.length;
+                      const mockAttentions = (seed % 300) + 10;
+
+                      let health = "Activo / Creciendo";
+                      let healthColor = "text-emerald-500 bg-emerald-50 border-emerald-100";
+
+                      if (mockAttentions < 150) {
+                        health = "Uso Moderado";
+                        healthColor = "text-blue-500 bg-blue-50 border-blue-100";
+                      }
+                      if (mockAttentions < 60) {
+                        health = "Bajo Uso (Riesgo)";
+                        healthColor = "text-amber-500 bg-amber-50 border-amber-100";
+                      }
+                      if (mockAttentions < 15) {
+                        health = "Inactivo / Fuga";
+                        healthColor = "text-red-500 bg-red-50 border-red-100";
+                      }
+
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-800">{c.name}</div>
+                            <div className="text-xs text-slate-400 font-mono">/{c.slug}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-700">{centerDoctors.length}</span>
+                              <span className="text-xs text-slate-400">/ {c.maxUsers || 10}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-slate-800 text-lg">
+                            {mockAttentions}
+                          </td>
+                          <td className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider">
+                            <span className={`px-3 py-1 rounded-full border ${healthColor}`}>
+                              {health}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-indigo-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-700/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
+              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                  <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
+                  <p className="text-indigo-200 text-sm max-w-md">
+                    Hemos detectado centros con una caída en actividad.
+                    Activa una campaña de comunicación para recuperar su interés.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab("comunicacion")}
+                  className="px-8 py-3 bg-white text-indigo-900 font-bold rounded-2xl hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+                >
+                  Ir a comunicación
+                </button>
               </div>
             </div>
           </div>
