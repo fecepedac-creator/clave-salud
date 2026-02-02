@@ -10,6 +10,7 @@ export const DEFAULT_CLINICAL_TEMPLATES: ClinicalTemplate[] = [
       id: "tpl_resp_01",
       title: "Virosis Respiratoria (Adulto)",
       category: "indication",
+      roles: ["MEDICO", "ENFERMERA"],
       content: `INDICACIONES - CUADRO RESPIRATORIO VIRAL
 1. Reposo relativo en casa por 3 días.
 2. Aislamiento dentro del hogar:
@@ -826,6 +827,7 @@ Atentamente,`,
       id: "tpl_cert_03",
       title: "Reposo Médico (Colegio/Trabajo)",
       category: "certificate",
+      roles: ["MEDICO"],
       content: `CERTIFICADO DE REPOSO MÉDICO
 
 Certifico que el paciente debe guardar REPOSO MÉDICO en su domicilio por un periodo de _____ días, a contar del día ___/___/_____, debido al cuadro clínico diagnosticado.
@@ -948,5 +950,342 @@ Atentamente,`,
       category: "indication",
       roles: ["KINESIOLOGO", "MEDICO"],
       tags: ["Musculoesquelética EE.II", "Deporte"]
+   },
+   // =========================================================================
+   // ENFERMERÍA / TENS
+   // =========================================================================
+   {
+      id: "enfer_curacion",
+      title: "Curación de Herida / Sutura",
+      category: "indication",
+      roles: ["ENFERMERA", "TENS", "MEDICO"],
+      tags: ["Enfermería", "Procedimiento"],
+      content: `REGISTRO DE CURACIÓN:
+1. Lavado con suero fisiológico.
+2. Bordes: Afrontados / Eritematosos / Macerados.
+3. Exudado: Escaso / Moderado / Seroso / Purulento.
+4. Tejido: Granulatorio / Esfacelo / Necrótico.
+5. Insumos: Gasa no adherente, apósito secundario.
+PRÓXIMA CURACIÓN: En [ ] días.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "enfer_inyectable",
+      title: "Administración de Inyectable",
+      category: "indication",
+      roles: ["ENFERMERA", "TENS"],
+      tags: ["Enfermería", "Inyectable"],
+      content: `PROCEDIMIENTO INYECTABLE:
+- Medicamento: [ ]
+- Vía: IM (Deltoides / Glúteo) / EV / SC.
+- Tolerancia: Buena / Sin incidentes.
+- Observaciones: Se educa sobre posibles efectos adversos o dolor local.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // NUTRICIÓN
+   // =========================================================================
+   {
+      id: "nutri_pauta_gen",
+      title: "Pauta Alimentaria General Saludable",
+      category: "indication",
+      roles: ["NUTRICIONISTA"],
+      tags: ["Nutrición"],
+      content: `INDICACIONES NUTRICIONALES GENERALES:
+1. Consumo de agua: 6-8 vasos al día.
+2. Frutas y Verduras: 5 porciones de distintos colores diariamente.
+3. Evitar: Azúcares refinadas, bebidas azucaradas, frituras y exceso de sal.
+4. Horarios: Mantener 4 comidas principales bajando el volumen en la noche.
+5. Actividad Física: 30 minutos de caminata a paso rápido.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "nutri_pauta_cho",
+      title: "Pauta Control Hidratos (Diabetes)",
+      category: "indication",
+      roles: ["NUTRICIONISTA", "MEDICO"],
+      tags: ["Nutrición", "Diabetes"],
+      content: `PLAN NUTRICIONAL PARA DIABETES / RESISTENCIA INSULINA:
+- Reemplazar harinas blancas por integrales.
+- Fruta: Máximo 2-3 unidades medianas al día, evitar jugos (consumir entera).
+- Proteína: Aumentar consumo de legumbres, pescado y carnes blancas.
+- Distribución CHO: [ ] porciones al desayuno, [ ] almuerzo, [ ] once.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // PSICOLOGÍA
+   // =========================================================================
+   {
+      id: "psico_encuadre",
+      title: "Encuadre Terapéutico",
+      category: "indication",
+      roles: ["PSICOLOGO"],
+      tags: ["Psicología"],
+      content: `ENCUADRE TERAPÉUTICO:
+1. Frecuencia de sesiones: [Semanal / Bisemanal].
+2. Duración: 45-50 minutos.
+3. Política de cancelación: Avisar con 24 hrs de antelación.
+4. Confidencialidad: Se mantiene reserva de todo lo conversado salvo riesgo vital.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "psico_autoestima",
+      title: "Pauta Autocuidado y Autoestima",
+      category: "indication",
+      roles: ["PSICOLOGO"],
+      tags: ["Psicología", "Autocuidado"],
+      content: `SUGERENCIAS DE AUTOCUIDADO:
+1. Identificar 3 logros diarios (por pequeños que sean).
+2. Espacio de silencio: 15 min al día sin pantallas.
+3. Validar emociones: "Es válido sentirse así en este momento".
+4. Límites: Practicar decir que no en situaciones de baja ansiedad.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // PODOLOGÍA
+   // =========================================================================
+   {
+      id: "podo_pie_diabetico",
+      title: "Evaluación Pie Diabético",
+      category: "indication",
+      roles: ["PODOLOGO", "ENFERMERA", "MEDICO"],
+      tags: ["Podología", "Diabetes"],
+      content: `EVALUACIÓN PIE DIABÉTICO:
+1. Sensibilidad (Monofilamento): Conservada / Disminuida.
+2. Pulsos Pedios: Presentes / Ausentes.
+3. Integridad de la piel: Sin lesiones / Úlcera grado [ ].
+4. Uñas: Onicomicosis / Onicocriptosis.
+INDICACIONES: Lavado diario, secado prolijo entre dedos, no caminar descalzo.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "podo_onicocriptosis",
+      title: "Tratamiento Onicocriptosis (Uña Encarnada)",
+      category: "indication",
+      roles: ["PODOLOGO"],
+      tags: ["Podología"],
+      content: `PROCEDIMIENTO ONICOCRIPTOSIS:
+- Dedo afectado: [ ]
+- Técnica: Resección en espícula / Técnica de espiculotomía.
+- Curación: Curación oclusiva con antiséptico.
+- Evolución: Dolor disminuye post-procedimiento.
+INDICACIONES: No mojar parche por 24 hrs, acudir a control en [ ] días.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // ASISTENTE SOCIAL
+   // =========================================================================
+   {
+      id: "social_informe",
+      title: "Estructura Informe Social",
+      category: "indication",
+      roles: ["ASISTENTE_SOCIAL"],
+      tags: ["Social"],
+      content: `SÍNTESIS INFORME SOCIAL:
+1. SITUACIÓN FAMILIAR: Composición y dinámica.
+2. SITUACIÓN ECONÓMICA: Ingreso per cápita, fuentes de ingreso.
+3. VIVIENDA: Tenencia, materialidad, servicios básicos.
+4. SALUD: Acceso a red, adherencia a tratamientos.
+5. DIAGNÓSTICO SOCIAL: Factores de riesgo y protectores.
+6. PLAN DE INTERVENCIÓN: Derivación a red comunitaria / Subsidios.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // PREPARADOR FÍSICO
+   // =========================================================================
+   {
+      id: "prep_eval_inicial",
+      title: "Evaluación Condición Física Inicial",
+      category: "indication",
+      roles: ["PREPARADOR_FISICO", "KINESIOLOGO"],
+      tags: ["Deporte"],
+      content: `EVALUACIÓN INICIAL PF:
+1. TEST FUERZA: (Ej: Flexoextensión de brazos en 1 min) [ ]
+2. TEST CARDIO: (Ej: Test de Ruffier) [ ]
+3. FLEXIBILIDAD: (Ej: Sit and Reach) [ ]
+4. COMPOSICIÓN: % Grasa [ ], % Músculo [ ].
+OBJETIVOS: [Hipertrofia / Resistencia / Pérdida de grasa].`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // QUÍMICO FARMACÉUTICO
+   // =========================================================================
+   {
+      id: "farm_conciliacion",
+      title: "Conciliación Farmacéutica",
+      category: "indication",
+      roles: ["QUIMICO_FARMACEUTICO"],
+      tags: ["Farmacia"],
+      content: `CONCILIACIÓN MEDICAMENTOSA:
+- Medicamentos actuales: [ ]
+- Duplicidades detectadas: [ ]
+- Interacciones detectadas: [ ]
+- Alergias declaradas: [ ]
+PLAN: Educación sobre horarios, aclaración de dudas, reporte a médico tratante.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // TECNÓLOGO MÉDICO
+   // =========================================================================
+   {
+      id: "tm_impresion_tec",
+      title: "Impresión Técnica (Imagen/Lab)",
+      category: "indication",
+      roles: ["TECNOLOGO_MEDICO"],
+      tags: ["Tecnología Médica"],
+      content: `REGISTRO PROCEDIMIENTO TM:
+- Examen realizado: [ ]
+- Calidad técnica: Adecuada / Con artefactos.
+- Hallazgos técnicos relevantes: [ ]
+- Observaciones: El examen se envía a médico radiólogo/patólogo para informe definitivo.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+
+   // =========================================================================
+   // EDUCACIÓN Y RECOMENDACIONES (MULTIDISCIPLINARIO)
+   // =========================================================================
+   {
+      id: "edu_pie_diabetico",
+      title: "EDU: Prevención y Autocuidado de Pies (MINSAL)",
+      category: "indication",
+      roles: ["MEDICO", "ENFERMERA", "PODOLOGO", "TENS", "NUTRICIONISTA"],
+      tags: ["Educación", "Diabetes", "Chile APS"],
+      content: `RECOMENDACIONES PARA EL AUTOCUIDADO DE SUS PIES (Norma MINSAL):
+1. INSPECCIÓN DIARIA: Revise sus pies todos los días buscando cortes, ampollas, manchas rojas o inflamación. Use un espejo para ver la planta.
+2. LAVADO: Use agua tibia (siempre pruebe la temperatura con el CODO) y jabón neutro. No remojar por más de 5 minutos.
+3. SECADO: Seque cuidadosamente, poniendo especial énfasis ENTRE LOS DEDOS, sin frotar.
+4. HUMECTACIÓN: Use crema humectante en el dorso y planta del pie. NUNCA ponga crema entre los dedos (evita maceración y hongos).
+5. CALZADO: Nunca ande descalzo, ni siquiera en casa. Revise el interior del zapato antes de ponérselo por si hay piedrecitas o costuras sueltas.
+6. CALCETINES: Use calcetines de fibra natural (algodón/lana), sin costuras y que no aprieten la pierna.
+CONSULTE URGENTE SI: Nota mal olor, cambios de color (zona negra o azul), aumento de temperatura local o una herida que no cicatriza.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "edu_calzado",
+      title: "EDU: Selección de Calzado Saludable",
+      category: "indication",
+      roles: ["MEDICO", "ENFERMERA", "PODOLOGO", "KINESIOLOGO", "TERAPEUTA_OCUPACIONAL"],
+      tags: ["Educación", "Prevención"],
+      content: `CRITERIOS PARA COMPRA DE CALZADO (Podología Preventiva):
+1. HORARIO: Compre sus zapatos al final del tarde, cuando sus pies están más dilatados.
+2. TAMAÑO: Debe existir un espacio de 1 a 1.5 cm entre el dedo más largo y la punta.
+3. PUNTA: Siempre redondeada o cuadrada para permitir el libre movimiento de los dedos (evitar puntas "en letra").
+4. MATERIAL: Preferir cuero suave o tela que permita la ventilación. Evite plásticos.
+5. SUELA: De goma, flexible y antideslizante para evitar caídas.
+6. SUJECIÓN: El zapato debe ser firme al talón y preferir cierre con cordones o velcro para ajustar según hinchazón.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "edu_psicomotriz",
+      title: "EDU: Estimulación Temprana (Chile Crece Contigo)",
+      category: "indication",
+      roles: ["ENFERMERA", "KINESIOLOGO", "MATRONA", "TERAPEUTA_OCUPACIONAL"],
+      tags: ["Educación", "Pediatría", "CHCC"],
+      content: `RECOMENDACIONES DE ESTIMULACIÓN EN EL HOGAR (0-12 meses):
+1. TUMMY TIME: Coloque al bebé boca abajo sobre una superficie firme mientras esté despierto y vigilado (fortalece musculatura para el gateo).
+2. INTERACCIÓN: Háblele de frente, cambie de tonos de voz y responda a sus balbuceos (fomenta el lenguaje).
+3. SEGUIMIENTO: Use objetos de colores contrastantes (rojo, blanco, negro) para que los siga con la mirada.
+4. LIBERTAD: Use ropa cómoda y evite el uso excesivo de "andadores" o "saltadores" que limitan el desarrollo motor natural.
+5. JUEGO: Permítale explorar distintas texturas y llevarse objetos seguros a la boca.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "nutri_reg_diabetico_adv",
+      title: "EDU: Alimentación en Diabetes (Red Crónicos)",
+      category: "indication",
+      roles: ["NUTRICIONISTA", "MEDICO", "ENFERMERA"],
+      tags: ["Nutrición", "Diabetes", "Chile APS"],
+      content: `GUÍA ALIMENTARIA PARA PERSONAS CON DIABETES:
+1. FRACCIONAMIENTO: Mantenga horarios de comida regulares para evitar bajas de azúcar (hipoglucemias).
+2. REEMPLAZO: Cambie el pan blanco por pan integral o marraqueta (sin miga).
+3. AZÚCARES: Elimine azúcar de mesa, miel, mermeladas de azúcar, pasteles y jugos (incluso naturales).
+4. FRUTAS: Consuma la fruta entera (no en jugo) y evite las de alto índice glucémico (uva, higo, sandía en exceso). Portions: máximo 2-3 unidades al día.
+5. ETIQUETADO: Prefiera alimentos con sellos "Bajo en azúcar" y revise que no tengan el sello "ALTO EN AZÚCAR".`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "nutri_reg_hta",
+      title: "EDU: Régimen Hiposódico (Corazón Sano)",
+      category: "indication",
+      roles: ["NUTRICIONISTA", "MEDICO", "ENFERMERA"],
+      tags: ["Nutrición", "HTA"],
+      content: `RECOMENDACIONES PARA REDUCIR EL SODIO (SAL):
+1. ELIMINACIÓN: Retire el salero de la mesa.
+2. PRODUCTOS PROHIBIDOS: Evite caldos en cubos, sopas sobre, embutidos (vienesas, paté), conservas y snacks salados.
+3. CONDIMENTACIÓN ALQUIMISTA: Use hierbas naturales (perejil, albahaca), especias (pimienta, comino) y limón para realzar el sabor.
+4. PAN: El pan en Chile es alto en sodio. Limite a 1 unidad diaria (priorice Marraqueta).
+5. SELLOS: Elija SIEMPRE productos sin sello "ALTO EN SODIO".`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "nutri_reg_hepatico",
+      title: "EDU: Régimen para Daño Hepático Crónico",
+      category: "indication",
+      roles: ["NUTRICIONISTA", "MEDICO"],
+      tags: ["Nutrición", "Hepatopatía"],
+      content: `INDICACIONES PARA PACIENTES CON CIRROSIS:
+1. NO AYUNO: Nunca pase más de 4 horas sin comer. El ayuno prolongado daña su hígado.
+2. COLACIÓN NOCTURNA: Es obligatorio consumir una colación antes de dormir (ej: yogurt o 1/2 pan con queso fresco).
+3. PROTEÍNAS: Consuma carnes blancas y lácteos descremados en la cantidad exacta indicada.
+4. SODIO: Restricción absoluta de sal si presenta hinchazón (edema) o líquido en el abdomen (ascitis).
+5. ALCOHOL: Prohibición absoluta de consumo de alcohol.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "nutri_reg_renal",
+      title: "EDU: Régimen Renal y Técnica de Remojo",
+      category: "indication",
+      roles: ["NUTRICIONISTA", "MEDICO"],
+      tags: ["Nutrición", "Renal"],
+      content: `ALIMENTACIÓN PARA CUIDAR SUS RIÑONES (Pre-diálisis):
+1. TÉCNICA DE REMOJO: Para reducir el Potasio, las legumbres y papas deben dejarse en remojo 12-24 horas, cambiando el agua al menos 2 veces y luego cocer en agua nueva (botar el agua de cocción).
+2. PROTEÍNAS: Limite el consumo de carnes rojas y blancas a la porción de la palma de su mano.
+3. FÓSFORO: Evite bebidas cola, productos integrales, frutos secos y lácteos en exceso.
+4. LÍQUIDOS: Si tiene hinchazón, beba solo el volumen de líquido que su médico le indicó.
+5. CONDIMENTOS: Prohibido usar "Sustitutos de sal" (como Biosal) ya que contienen potasio dañino para su riñón.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
+   },
+   {
+      id: "edu_inhalacion",
+      title: "EDU: Técnica Correcta de Inhalación (Chile APS)",
+      category: "indication",
+      roles: ["ENFERMERA", "KINESIOLOGO", "MEDICO", "TENS"],
+      tags: ["Educación", "Respiratorio", "SOCHIPE"],
+      content: `PASOS PARA USO DE AEROCÁMARA Y PUFF:
+1. PREPARACIÓN: Saque la tapa, agite el inhalador por 5 segundos y conéctelo a la aerocámara en posición vertical (forma de L).
+2. POSICIÓN: Siéntese derecho con la cabeza levemente hacia atrás. Bote todo el aire de sus pulmones.
+3. SELLADO: Coloque la boquilla en su boca (u use mascarilla cubriendo nariz y boca sin fugas).
+4. DISPARO: Presione el inhalador UNA SOLA VEZ para liberar una dosis.
+5. RESPIRACIÓN: Respire lenta y profundamente. Mantenga el aire 10 segundos (o respire 10 veces normalmente dentro de la aerocámara si es niño).
+6. ESPERA: Si necesita otra dosis, espere 1 minuto y repita todo el proceso.
+IMPORTANTE: Si usa corticoides (como Fluticasona), ENJUAGUE su boca con agua después de terminar.`,
+      userId: "system",
+      createdAt: new Date().toISOString()
    }
 ];

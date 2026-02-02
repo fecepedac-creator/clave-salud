@@ -439,3 +439,25 @@ export function openEmailCompose(params: {
     return false;
   }
 }
+
+export const getProfessionalPrefix = (role?: string): string => {
+  if (!role) return "Dr(a).";
+  const r = role.toUpperCase();
+  if (r === "MEDICO") return "Dr(a).";
+  if (r === "ODONTOLOGO") return "Dr(a).";
+  if (r === "NUTRICIONISTA") return "Nut.";
+  if (r === "KINESIOLOGO") return "Klgo/a.";
+  if (r === "ENFERMERA" || r === "ENFERMERO") return "Enf.";
+  if (r === "MATRONA" || r === "MATRON") return "Mat.";
+  if (r === "PSICOLOGO") return "Ps.";
+  if (r === "FONOAUDIOLOGO") return "Flgo/a.";
+  if (r === "TERAPEUTA_OCUPACIONAL") return "T.O.";
+  if (r === "PODOLOGO") return "Pod.";
+  if (r === "PREPARADOR_FISICO") return "Prof.";
+  if (r === "TECNOLOGO_MEDICO") return "T.M.";
+  if (r === "QUIMICO_FARMACEUTICO") return "Q.F.";
+  if (r === "ASISTENTE_SOCIAL") return "A.S.";
+  if (r === "TENS") return "TENS";
+  if (r.startsWith("ADMIN")) return "Admin.";
+  return "Sr(a).";
+};
