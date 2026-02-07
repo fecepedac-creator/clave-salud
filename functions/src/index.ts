@@ -2,7 +2,13 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
-import { LogAccessRequest, LogAccessResult, AuditLogData } from "./types";
+import {
+  LogAccessRequest,
+  LogAccessResult,
+  AuditLogData,
+  LogAuditEventRequest,
+  LogAuditEventResult,
+} from "./types";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -10,6 +16,73 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
+const storage = admin.storage();
+
+const BACKUP_TOKEN = process.env.BACKUP_TOKEN || functions.config()?.backup?.token || "";
+const BACKUP_BUCKET = process.env.BACKUP_BUCKET || functions.config()?.backup?.bucket || "";
+const BACKUP_PREFIX = process.env.BACKUP_PREFIX || functions.config()?.backup?.prefix || "backups/firestore";
+
+const METADATA_TOKEN_URL =
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+const METADATA_FLAVOR_HEADER = "Metadata-Flavor";
+
+function getProjectId(): string {
+  return (
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    admin.app().options.projectId ||
+    functions.config()?.backup?.projectid ||
+    ""
+  );
+}
+
+function getBackupPrefix() {
+  const now = new Date();
+  const date = now.toISOString().split("T")[0];
+  const month = date.slice(0, 7);
+  const time = now
+    .toISOString()
+    .replace(/[:]/g, "-")
+    .replace(/\..+/, "");
+  return `${BACKUP_PREFIX}/${month}/${date}_${time}`;
+}
+
+async function getAccessToken(): Promise<string> {
+  if (process.env.BACKUP_ACCESS_TOKEN) {
+    return process.env.BACKUP_ACCESS_TOKEN;
+  }
+  const res = await fetch(METADATA_TOKEN_URL, {
+    headers: { [METADATA_FLAVOR_HEADER]: "Google" },
+  });
+  if (!res.ok) {
+    throw new Error(`Metadata token error: ${res.status}`);
+  }
+  const data = (await res.json()) as { access_token?: string };
+  if (!data.access_token) {
+    throw new Error("No access_token from metadata server.");
+  }
+  return data.access_token;
+}
+
+async function verifySuperAdminFromRequest(req: functions.https.Request): Promise<boolean> {
+  const authHeader = req.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) return false;
+  const idToken = authHeader.replace("Bearer ", "").trim();
+  if (!idToken) return false;
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    return (
+      decoded.super_admin === true ||
+      decoded.superadmin === true ||
+      decoded.superAdmin === true ||
+      (Array.isArray((decoded as any).roles) &&
+        (((decoded as any).roles as string[]).includes("super_admin") ||
+          ((decoded as any).roles as string[]).includes("superadmin")))
+    );
+  } catch {
+    return false;
+  }
+}
 
 type StaffPublicData = {
   id: string;
@@ -496,6 +569,12 @@ export const logAccess = functions.https.onCall(async (data: LogAccessRequest, c
   // Obtener rol del usuario
   const staffData = staffSnap.data() as any;
   const role = staffData?.role || "unknown";
+  const actorName =
+    staffData?.fullName ||
+    staffData?.nombre ||
+    context.auth?.token?.name ||
+    context.auth?.token?.email ||
+    "Usuario";
   
   // Deduplicación: crear un ID basado en usuario + recurso
   const dedupeKey = `${uid}_${resourcePath}`;
@@ -530,10 +609,16 @@ export const logAccess = functions.https.onCall(async (data: LogAccessRequest, c
       // Crear el log de auditoría
       const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
       
+      const resourceSegments = resourcePath.split("/").filter(Boolean);
+      const entityId = resourceSegments[resourceSegments.length - 1] || "";
       const auditLogData: AuditLogData = {
         type: "ACCESS",
+        action: "ACCESS",
+        entityType: resourceType as any,
+        entityId,
         actorUid: uid,
         actorEmail: emailLower,
+        actorName,
         actorRole: role,
         resourceType: resourceType as any,
         resourcePath,
@@ -589,3 +674,194 @@ export const logAccess = functions.https.onCall(async (data: LogAccessRequest, c
   }
 });
 
+export const logAuditEvent = functions.https.onCall(
+  async (data: LogAuditEventRequest, context): Promise<LogAuditEventResult> => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado.");
+    }
+
+    const centerId = String(data?.centerId || "").trim();
+    const action = String(data?.action || "").trim();
+    const entityType = String(data?.entityType || "").trim();
+    const entityId = String(data?.entityId || "").trim();
+
+    if (!centerId || !action || !entityType || !entityId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, action, entityType y entityId son requeridos."
+      );
+    }
+
+    const validEntityTypes = ["patient", "consultation", "appointment", "document", "centerSettings"];
+    if (!validEntityTypes.includes(entityType)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        `entityType debe ser uno de: ${validEntityTypes.join(", ")}`
+      );
+    }
+
+    const uid = context.auth.uid;
+    const emailLower = lowerEmailFromContext(context);
+
+    const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
+    const staffSnap = await staffRef.get();
+    const isStaffMember =
+      staffSnap.exists &&
+      (staffSnap.get("active") === true || staffSnap.get("activo") === true);
+
+    if (!isSuperAdmin(context) && !isStaffMember) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos para registrar auditoría en este centro."
+      );
+    }
+
+    const staffData = staffSnap.data() as any;
+    const actorRole = staffData?.role || "unknown";
+    const actorName =
+      staffData?.fullName ||
+      staffData?.nombre ||
+      context.auth?.token?.name ||
+      context.auth?.token?.email ||
+      "Usuario";
+
+    const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+    const isClinicalEntity = ["patient", "consultation", "appointment"].includes(entityType);
+    const resourceType = isClinicalEntity ? (entityType as any) : "patient";
+    const resourcePath = isClinicalEntity
+      ? `/centers/${centerId}/${entityType}s/${entityId}`
+      : `/centers/${centerId}`;
+    const auditLogData: AuditLogData = {
+      type: "ACTION",
+      action,
+      entityType: entityType as any,
+      entityId,
+      actorUid: uid,
+      actorEmail: emailLower,
+      actorName,
+      actorRole,
+      resourceType,
+      resourcePath,
+      timestamp: serverTimestamp(),
+    };
+
+    if (data.patientId) {
+      auditLogData.patientId = String(data.patientId).trim();
+    }
+    if (typeof data.details === "string" && data.details.trim()) {
+      auditLogData.details = data.details.trim();
+    }
+    if (data.metadata && typeof data.metadata === "object") {
+      auditLogData.metadata = data.metadata;
+    }
+
+    await auditLogRef.set(auditLogData);
+
+    functions.logger.info("logAuditEvent created", {
+      centerId,
+      uid,
+      action,
+      entityType,
+      entityId,
+    });
+
+    return { ok: true, logged: true, message: "Evento registrado." };
+  }
+);
+
+/**
+ * runMonthlyBackup - Ejecuta export de Firestore a GCS.
+ * Diseñada para Cloud Scheduler (token) y ejecución manual por super_admin.
+ */
+export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const headerToken = String(req.get("X-Backup-Token") || "").trim();
+  const schedulerAuthorized = Boolean(BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN);
+  const superAdminAuthorized = await verifySuperAdminFromRequest(req);
+
+  if (!schedulerAuthorized && !superAdminAuthorized) {
+    res.status(403).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+
+  const projectId = getProjectId();
+  if (!projectId) {
+    res.status(500).json({ ok: false, error: "Missing projectId" });
+    return;
+  }
+  if (!BACKUP_BUCKET) {
+    res.status(500).json({ ok: false, error: "Missing BACKUP_BUCKET" });
+    return;
+  }
+
+  const payload = typeof req.body === "object" ? req.body : {};
+  const dryRun = Boolean(payload?.dryRun);
+  const prefix = getBackupPrefix();
+  const outputUriPrefix = `gs://${BACKUP_BUCKET}/${prefix}`;
+
+  const manifest = {
+    timestamp: new Date().toISOString(),
+    projectId,
+    function: "runMonthlyBackup",
+    type: "export/firestore-admin",
+    outputUriPrefix,
+    reason: payload?.reason || "MANUAL",
+    initiatedBy: payload?.initiatedBy || (schedulerAuthorized ? "cloud-scheduler" : "super_admin"),
+  };
+
+  if (dryRun) {
+    await storage.bucket(BACKUP_BUCKET).file(`${prefix}/manifest.json`).save(
+      JSON.stringify({ ...manifest, dryRun: true }, null, 2),
+      { contentType: "application/json" }
+    );
+    res.status(200).json({ ok: true, dryRun: true, outputUriPrefix });
+    return;
+  }
+
+  try {
+    const accessToken = await getAccessToken();
+    const exportRes = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          outputUriPrefix,
+        }),
+      }
+    );
+
+    if (!exportRes.ok) {
+      const errorText = await exportRes.text();
+      functions.logger.error("runMonthlyBackup export failed", {
+        status: exportRes.status,
+        error: errorText,
+      });
+      res.status(500).json({ ok: false, error: "Export failed" });
+      return;
+    }
+
+    const exportBody = await exportRes.json();
+    await storage.bucket(BACKUP_BUCKET).file(`${prefix}/manifest.json`).save(
+      JSON.stringify({ ...manifest, export: exportBody }, null, 2),
+      { contentType: "application/json" }
+    );
+
+    functions.logger.info("runMonthlyBackup export started", {
+      projectId,
+      outputUriPrefix,
+    });
+
+    res.status(200).json({ ok: true, outputUriPrefix, export: exportBody });
+  } catch (error) {
+    functions.logger.error("runMonthlyBackup error", { error: String(error) });
+    res.status(500).json({ ok: false, error: "Backup failed" });
+  }
+});

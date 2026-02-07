@@ -22,11 +22,28 @@ export interface LogAccessRequest {
   resourceType: AuditLogResourceType;
   resourcePath: string;
   patientId?: string;
+  actorUid?: string;
   ip?: string;
   userAgent?: string;
 }
 
 export interface LogAccessResult {
+  ok: boolean;
+  logged: boolean;
+  message?: string;
+}
+
+export interface LogAuditEventRequest {
+  centerId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  patientId?: string;
+  details?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface LogAuditEventResult {
   ok: boolean;
   logged: boolean;
   message?: string;
@@ -57,4 +74,28 @@ export function useAuditLog() {
   };
 
   return { logAccess, loading, error };
+}
+
+export async function logAccessSafe(
+  logAccessFn: (request: LogAccessRequest) => Promise<LogAccessResult | null>,
+  request: LogAccessRequest
+) {
+  try {
+    await logAccessFn(request);
+  } catch (error) {
+    console.error("Failed to log access:", error);
+  }
+}
+
+export async function logAuditEventSafe(request: LogAuditEventRequest) {
+  try {
+    const functions = getFunctions();
+    const logAuditEventFn = httpsCallable<LogAuditEventRequest, LogAuditEventResult>(
+      functions,
+      "logAuditEvent"
+    );
+    await logAuditEventFn(request);
+  } catch (error) {
+    console.error("Failed to log audit event:", error);
+  }
 }

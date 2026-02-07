@@ -255,7 +255,7 @@ const ClinicalReportModal: React.FC<Props> = ({
   professionalRegistry,
   examDefinitions,
 }) => {
-  const consultations = patient?.consultations || [];
+  const consultations = (patient?.consultations || []).filter((c) => c.active !== false);
 
   const examLabelMap = useMemo(
     () => buildExamLabelMap(examDefinitions),
@@ -303,6 +303,7 @@ const ClinicalReportModal: React.FC<Props> = ({
     const tTime = t ? new Date(t + "T23:59:59").getTime() : Number.POSITIVE_INFINITY;
 
     return (patient.consultations || []).filter((c) => {
+      if (c.active === false) return false;
       const time = new Date(c.date).getTime();
       return time >= fTime && time <= tTime;
     });

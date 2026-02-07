@@ -6,6 +6,7 @@ import {
   Patient,
   AgendaConfig,
   AuditLogEntry,
+  AuditLogEvent,
   ProfessionalRole,
   WhatsAppTemplate,
   Preadmission,
@@ -37,7 +38,6 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Database,
   QrCode,
   Share2,
   Copy,
@@ -46,7 +46,6 @@ import {
   MessageCircle,
   AlertTriangle,
   ShieldCheck,
-  FileClock,
   Shield,
   Briefcase,
   Camera,
@@ -71,6 +70,8 @@ import {
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
 import WhatsappTemplatesManager from "./WhatsappTemplatesManager";
+import policyText from "../docs/politicas/POLITICA_CONSERVACION_FICHA_CLINICA.md?raw";
+import AuditLogViewer from "./AuditLogViewer";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -85,7 +86,7 @@ interface AdminDashboardProps {
   preadmissions: Preadmission[];
   onApprovePreadmission: (item: Preadmission) => void;
   logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
-  onLogActivity: (action: AuditLogEntry["action"], details: string, targetId?: string) => void;
+  onLogActivity: (event: AuditLogEvent) => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -131,10 +132,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [anthropometryEnabled, setAnthropometryEnabled] = useState(false);
   const [anthropometrySaving, setAnthropometrySaving] = useState(false);
+  const [accessMode, setAccessMode] = useState<"CENTER_WIDE" | "CARE_TEAM">("CENTER_WIDE");
+  const [accessModeSaving, setAccessModeSaving] = useState(false);
 
   useEffect(() => {
     setAnthropometryEnabled(Boolean(activeCenter?.features?.anthropometryEnabled));
   }, [activeCenter?.features?.anthropometryEnabled]);
+
+  useEffect(() => {
+    setAccessMode(activeCenter?.accessMode ?? "CENTER_WIDE");
+  }, [activeCenter?.accessMode]);
 
   const handleAnthropometryToggle = async (nextValue: boolean) => {
     if (!db || !resolvedCenterId) return;
@@ -159,6 +166,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast("No se pudo actualizar Antropometría.", "error");
     } finally {
       setAnthropometrySaving(false);
+    }
+  };
+
+  const handleAccessModeChange = async (nextMode: "CENTER_WIDE" | "CARE_TEAM") => {
+    if (!db || !resolvedCenterId) return;
+    const previousValue = accessMode;
+    setAccessMode(nextMode);
+    setAccessModeSaving(true);
+    try {
+      await setDoc(
+        doc(db, "centers", resolvedCenterId),
+        { accessMode: nextMode },
+        { merge: true }
+      );
+      onLogActivity({
+        action: "CENTER_ACCESSMODE_UPDATE",
+        entityType: "centerSettings",
+        entityId: resolvedCenterId,
+        details:
+          nextMode === "CARE_TEAM"
+            ? "Modo de acceso restringido por equipo tratante."
+            : "Modo de acceso abierto a todo el centro.",
+        metadata: { accessMode: nextMode },
+      });
+      showToast("Modo de acceso actualizado.", "success");
+    } catch (e) {
+      console.error("update access mode", e);
+      setAccessMode(previousValue);
+      showToast("No se pudo actualizar el modo de acceso.", "error");
+    } finally {
+      setAccessModeSaving(false);
     }
   };
   
@@ -276,7 +314,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [centerLogoError, setCenterLogoError] = useState(false);
 
   // --- STATE FOR AUDIT LOGS (LAZY LOADED) ---
-  const [fetchedLogs, setFetchedLogs] = useState<AuditLogEntry[]>([]);
 
   // Cancellation Modal State
   const [cancelModal, setCancelModal] = useState<{
@@ -327,6 +364,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Share Modal State
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
 
   const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, "").toUpperCase();
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
@@ -339,24 +377,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     a.endTime === b.endTime;
   const hasUnsavedConfig = savedConfig ? !isConfigEqual(savedConfig, tempConfig) : false;
 
-  // --- LAZY LOAD LOGS ---
-  useEffect(() => {
-    if (activeTab === "audit" && db) {
-      // Only fetch if tab is active AND db is connected
-      const q = query(
-        collection(db, "centers", centerId, "auditLogs"),
-        orderBy("timestamp", "desc"),
-        limit(50)
-      );
-      const unsub = onSnapshot(q, (snapshot) => {
-        setFetchedLogs(snapshot.docs.map((d) => d.data() as AuditLogEntry));
-      });
-      return () => unsub();
-    }
-  }, [activeTab]);
-
-  // Use fetched logs if DB exists, otherwise fallback to props (Mock Mode)
-  const displayLogs = db && fetchedLogs.length > 0 ? fetchedLogs : logs || [];
+  // AuditLogViewer maneja su propia carga/filtrado
 
   // --- DOCTOR FUNCTIONS ---
   // Persistencia (Firestore): en el modelo definitivo NO se escribe a colección raíz 'doctors'.
@@ -711,6 +732,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         status: "available",
         patientName: "",
         patientRut: "",
+        active: true,
       };
       onUpdateAppointments([...appointments, newSlot]);
       showToast("Bloque abierto exitosamente.", "success");
@@ -725,11 +747,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!cancelModal.appointment) return;
 
     // LOG CANCELLATION
-    onLogActivity(
-      "delete",
-      `Canceló cita de ${cancelModal.appointment.patientName} (${cancelModal.appointment.date} ${cancelModal.appointment.time}). Notificación: ${notify ? "Si" : "No"}`,
-      cancelModal.appointment.id
-    );
+    onLogActivity({
+      action: "APPOINTMENT_CANCEL",
+      entityType: "appointment",
+      entityId: cancelModal.appointment.id,
+      patientId: cancelModal.appointment.patientId,
+      details: `Canceló cita de ${cancelModal.appointment.patientName} (${cancelModal.appointment.date} ${cancelModal.appointment.time}). Notificación: ${notify ? "Si" : "No"}`,
+    });
 
     if (notify) {
       // WhatsApp Logic
@@ -805,11 +829,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           consultations: [],
           attachments: [],
           lastUpdated: new Date().toISOString(),
+          active: true,
         };
     onUpdatePatients([patientPayload]);
 
     // LOG MANUAL BOOKING
-    onLogActivity("create", `Agendamiento manual Admin para ${bookingName}.`, bookingSlotId);
+    onLogActivity({
+      action: "APPOINTMENT_UPDATE",
+      entityType: "appointment",
+      entityId: bookingSlotId,
+      patientId: patientPayload.id,
+      details: `Agendamiento manual Admin para ${bookingName}.`,
+    });
 
     setBookingSlotId(null);
     setBookingRut("");
@@ -867,6 +898,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {showPolicyModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-3xl w-full relative">
+            <button
+              onClick={() => setShowPolicyModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <h3 className="text-2xl font-bold mb-4">
+              Política de conservación de ficha clínica (15 años)
+            </h3>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm text-slate-700">
+              {policyText}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <nav className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-4">
@@ -893,6 +943,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className="flex items-center gap-2 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
           >
             <Share2 className="w-4 h-4" /> Compartir App
+          </button>
+          <button
+            onClick={() => setShowPolicyModal(true)}
+            className="flex items-center gap-2 text-sm font-bold text-emerald-300 hover:text-emerald-200 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+          >
+            <ShieldCheck className="w-4 h-4" /> Política de conservación (15 años)
           </button>
 
           <div className="flex gap-2">
@@ -1008,6 +1064,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   {anthropometryEnabled ? "Activo" : "Inactivo"}
                 </span>
+              </div>
+
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-200">Modo de acceso clínico</p>
+                  <p className="text-xs text-slate-400">
+                    Controla si toda la dotación puede ver fichas o solo el equipo tratante.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={accessMode}
+                    onChange={(e) =>
+                      handleAccessModeChange(e.target.value as "CENTER_WIDE" | "CARE_TEAM")
+                    }
+                    disabled={!hasActiveCenter || accessModeSaving}
+                    className="bg-slate-900 border border-slate-700 text-slate-100 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="CENTER_WIDE">Centro completo</option>
+                    <option value="CARE_TEAM">Solo equipo tratante</option>
+                  </select>
+                  <span
+                    className={`text-xs font-bold uppercase px-2 py-1 rounded ${accessMode === "CARE_TEAM" ? "bg-amber-500/20 text-amber-300" : "bg-slate-700 text-slate-300"}`}
+                  >
+                    {accessMode === "CARE_TEAM" ? "Restringido" : "Abierto"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1623,83 +1706,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* AUDIT LOGS - LAZY LOADED ONLY */}
         {activeTab === "audit" && isModuleEnabled("audit") && (
           <div className="animate-fadeIn">
-            {/* ... (Existing Audit Content) ... */}
-            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
-              <h3 className="font-bold text-white text-2xl mb-6 flex items-center gap-2">
-                <FileClock className="w-6 h-6 text-indigo-400" /> Registro de Actividad
-              </h3>
-              <p className="text-slate-400 mb-6">
-                Historial de acciones críticas en la plataforma. Visible solo para administradores.
-              </p>
-
-              <div className="overflow-hidden rounded-xl border border-slate-700">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-900 text-slate-400 text-xs uppercase font-bold">
-                    <tr>
-                      <th className="p-4">Fecha / Hora</th>
-                      <th className="p-4">Usuario</th>
-                      <th className="p-4">Acción</th>
-                      <th className="p-4">Detalles</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700 bg-slate-800/50">
-                    {displayLogs
-                      .sort(
-                        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                      )
-                      .map((log) => {
-                        const date = new Date(log.timestamp);
-                        let actionColor = "bg-slate-700 text-slate-300";
-                        if (log.action === "create")
-                          actionColor = "bg-green-900/50 text-green-400 border border-green-800";
-                        if (log.action === "update")
-                          actionColor = "bg-blue-900/50 text-blue-400 border border-blue-800";
-                        if (log.action === "delete")
-                          actionColor = "bg-red-900/50 text-red-400 border border-red-800";
-                        if (log.action === "login")
-                          actionColor = "bg-purple-900/50 text-purple-400 border border-purple-800";
-
-                        return (
-                          <tr key={log.id} className="hover:bg-slate-700/50 transition-colors">
-                            <td className="p-4 text-slate-300 font-mono text-sm">
-                              <div className="font-bold text-white">
-                                {date.toLocaleDateString()}
-                              </div>
-                              <div className="text-xs opacity-60">{date.toLocaleTimeString()}</div>
-                            </td>
-                            <td className="p-4">
-                              <div className="font-bold text-white">{log.actorName}</div>
-                              <div className="text-xs text-slate-400 bg-slate-900 px-2 py-0.5 rounded w-fit mt-1">
-                                {log.actorRole}
-                              </div>
-                            </td>
-                            <td className="p-4">
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${actionColor}`}
-                              >
-                                {log.action}
-                              </span>
-                            </td>
-                            <td
-                              className="p-4 text-slate-300 text-sm max-w-md truncate"
-                              title={log.details}
-                            >
-                              {log.details}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    {displayLogs.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="p-8 text-center text-slate-500 italic">
-                          No hay registros de actividad recientes.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <AuditLogViewer
+              centerId={resolvedCenterId}
+              staff={doctors}
+              patients={patients}
+            />
           </div>
         )}
       </div>

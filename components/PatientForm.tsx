@@ -289,6 +289,8 @@ const PatientForm: React.FC<PatientFormProps> = ({
       consultations: [],
       attachments: [],
       lastUpdated: new Date().toISOString(),
+      active: true,
+      careTeamUids: [],
     };
     onSave(newPatient);
   };

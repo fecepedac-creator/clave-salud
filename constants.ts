@@ -671,5 +671,6 @@ export const MOCK_PATIENTS: Patient[] = [
     attachments: [],
     lastUpdated: "2023-10-15T10:00:00",
     activeExams: ["creatinina", "hba1c"],
+    active: true,
   },
 ];

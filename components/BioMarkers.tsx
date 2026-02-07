@@ -18,6 +18,7 @@ const BioMarkers: React.FC<BioMarkersProps> = ({
 
   // SAFE ACCESS: Ensure consultations is an array
   const history = (consultations || [])
+    .filter((c) => c.active !== false)
     .filter((c) => c.exams)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort oldest to newest
 

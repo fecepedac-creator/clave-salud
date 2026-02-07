@@ -1,3 +1,5 @@
+import type { Timestamp } from "firebase/firestore";
+
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -16,6 +18,7 @@ export interface MedicalCenter {
     prescriptions: boolean; // Enables Prescription Manager
     agenda: boolean; // Enables Appointment Scheduling
   };
+  accessMode?: "CENTER_WIDE" | "CARE_TEAM";
   features?: {
     anthropometryEnabled?: boolean;
   };
@@ -37,16 +40,66 @@ export interface MedicalCenter {
   };
 }
 
+export type AuditEntityType =
+  | "patient"
+  | "consultation"
+  | "appointment"
+  | "document"
+  | "centerSettings";
+
+export type AuditAction =
+  | "ACCESS"
+  | "LOGIN"
+  | "PATIENT_CREATE"
+  | "PATIENT_UPDATE"
+  | "PATIENT_ARCHIVE"
+  | "CONSULTATION_CREATE"
+  | "CONSULTATION_UPDATE"
+  | "CONSULTATION_ARCHIVE"
+  | "APPOINTMENT_CREATE"
+  | "APPOINTMENT_UPDATE"
+  | "APPOINTMENT_CANCEL"
+  | "APPOINTMENT_ARCHIVE"
+  | "CARE_TEAM_UPDATE"
+  | "CENTER_ACCESSMODE_UPDATE"
+  | "ARCHIVE_BLOCKED_RETENTION"
+  | "create"
+  | "update"
+  | "delete"
+  | "login"
+  | "access";
+
 export interface AuditLogEntry {
   id: string;
   centerId: string;
-  timestamp: string;
+  timestamp: string | Timestamp;
   actorUid?: string;
-  actorName: string; // Who did it
-  actorRole: string;
-  action: "create" | "update" | "delete" | "login" | "access";
-  details: string; // "Created consultation for Juan Perez"
-  targetId?: string; // ID of the patient or appointment affected
+  actorName?: string; // Who did it
+  actorRole?: string;
+  action?: AuditAction;
+  type?: string;
+  entityType: AuditEntityType;
+  entityId: string;
+  patientId?: string;
+  metadata?: Record<string, any>;
+  details?: string;
+  targetId?: string; // legacy compatibility
+}
+
+export type AuditLogEvent = {
+  action: AuditAction;
+  entityType: AuditEntityType;
+  entityId: string;
+  patientId?: string;
+  metadata?: Record<string, any>;
+  details?: string;
+};
+
+export interface SoftDeletable {
+  active: boolean;
+  deletedAt?: Timestamp;
+  deletedBy?: string;
+  deleteReason?: string;
 }
 
 export interface Medication {
@@ -120,9 +173,13 @@ export interface ToothState {
   notes?: string;
 }
 
-export interface Consultation {
+export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
+  createdAt?: Timestamp;
+  patientId?: string;
+  centerId?: string;
+  createdBy?: string;
 
   weight?: string;
   height?: string;
@@ -148,15 +205,20 @@ export interface Consultation {
   professionalName: string;
   professionalId: string;
   professionalRole: ProfessionalRole;
+  professionalRut: string;
 
   nextControlDate?: string;
   nextControlReason?: string;
   reminderActive?: boolean;
 }
 
-export interface Patient {
+export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
+  createdAt?: Timestamp;
+  careTeamUids?: string[];
+  careTeamUpdatedAt?: Timestamp;
+  careTeamUpdatedBy?: string;
   rut: string;
   fullName: string;
   birthDate: string;
@@ -200,9 +262,10 @@ export interface Patient {
   lastUpdated: string;
 }
 
-export interface Appointment {
+export interface Appointment extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
+  createdAt?: Timestamp;
   doctorId: string;
   doctorUid?: string;
   date: string;

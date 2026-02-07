@@ -25,6 +25,7 @@ export function useFirestoreSync(
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
+  const isActiveRecord = (data: any) => data?.active !== false && data?.activo !== false;
 
   useEffect(() => {
     let unsubCenters: (() => void) | null = null;
@@ -72,7 +73,11 @@ export function useFirestoreSync(
     const unsubPatients = onSnapshot(
       patientsQuery,
       (snap) =>
-        setPatients(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]),
+        setPatients(
+          snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .filter(isActiveRecord) as Patient[]
+        ),
       () => setPatients([])
     );
 
@@ -112,7 +117,9 @@ export function useFirestoreSync(
       apptQuery,
       (snap) =>
         setAppointments(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]
+          snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .filter(isActiveRecord) as Appointment[]
         ),
       (error) => {
         console.error("appointments snapshot error", error);
@@ -127,7 +134,11 @@ export function useFirestoreSync(
     let usingFallback = false;
     const handleLogsSnapshot = (snap: QuerySnapshot<DocumentData>) =>
       setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]);
-    const handleLogsError = () => {
+    const handleLogsError = (error?: { code?: string }) => {
+      if (error?.code === "permission-denied") {
+        setAuditLogs([]);
+        return;
+      }
       if (usingFallback) return;
       usingFallback = true;
       fallbackUnsub = onSnapshot(fallbackLogsQuery, handleLogsSnapshot, () => setAuditLogs([]));

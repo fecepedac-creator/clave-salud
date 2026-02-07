@@ -1,20 +1,46 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { Consultation, Prescription } from "../types";
 import { Calendar, User, Mail, Copy, Printer, FileText } from "lucide-react";
+import { auth } from "../firebase";
+import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 
 interface ConsultationHistoryProps {
   consultations: Consultation[];
+  centerId?: string;
+  patientId?: string;
   onPrint: (docs: Prescription[]) => void;
   onSendEmail: (consultation: Consultation) => void;
 }
 
 const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   consultations,
+  centerId,
+  patientId,
   onPrint,
   onSendEmail,
 }) => {
+  const { logAccess } = useAuditLog();
+  const activeConsultations = useMemo(
+    () => (consultations || []).filter((c) => c.active !== false),
+    [consultations]
+  );
+
+  useEffect(() => {
+    if (!centerId || !patientId) return;
+    activeConsultations.forEach((consultation) => {
+      if (!consultation.id) return;
+      logAccessSafe(logAccess, {
+        centerId,
+        resourceType: "consultation",
+        resourcePath: `/centers/${centerId}/consultations/${consultation.id}`,
+        patientId,
+        actorUid: auth.currentUser?.uid ?? undefined,
+      });
+    });
+  }, [activeConsultations, centerId, logAccess, patientId]);
+
   // Sort consultations: Newest First (Desc)
-  const sortedConsultations = [...(consultations || [])].sort(
+  const sortedConsultations = [...activeConsultations].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
@@ -38,7 +64,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                   {new Date(c.date).toLocaleDateString()}
                 </div>
                 <span className="text-slate-400 text-base flex items-center gap-1">
-                  <User className="w-4 h-4" /> Dr. {c.professionalName}
+                  <User className="w-4 h-4" /> Dr. {c.professionalName || "(No registrado)"}
                 </span>
               </div>
               <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
