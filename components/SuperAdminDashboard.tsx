@@ -26,11 +26,14 @@ import { db, auth, storage } from "../firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -61,6 +64,16 @@ type CenterExt = MedicalCenter & {
   adminEmail?: string;
   billing?: BillingInfo;
   logoUrl?: string;
+};
+
+type MarketingSettings = {
+  enabled: boolean;
+  monthlyPosterLimit: number;
+  allowPosterRetention: boolean;
+  posterRetentionDays: number;
+  retentionEnabled?: boolean;
+  updatedAt?: any;
+  updatedBy?: string;
 };
 
 interface SuperAdminDashboardProps {
@@ -203,6 +216,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
+  // Marketing settings per center
+  const [marketingSettings, setMarketingSettings] = useState<MarketingSettings>({
+    enabled: false,
+    monthlyPosterLimit: 0,
+    allowPosterRetention: false,
+    posterRetentionDays: 7,
+    retentionEnabled: false,
+  });
+  const [marketingSaving, setMarketingSaving] = useState(false);
+
   // Invitaciones
   const [isInvitingAdmin, setIsInvitingAdmin] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
@@ -294,6 +317,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (!centers.length) return;
     setCenterContextId((prev) => prev || centers[0]?.id || "");
   }, [centers]);
+
+  useEffect(() => {
+    if (!editingCenter?.id) return;
+    void loadMarketingSettings(editingCenter.id);
+  }, [editingCenter?.id]);
 
   useEffect(() => {
     if (!centerContextId) return;
@@ -392,6 +420,40 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
     setLogoFile(null);
     setLogoPreview("");
+  };
+
+  const loadMarketingSettings = async (centerId: string) => {
+    if (!centerId) return;
+    try {
+      const snap = await getDoc(doc(db, "centers", centerId, "settings", "marketing"));
+      if (snap.exists()) {
+        const data = snap.data() as MarketingSettings;
+        setMarketingSettings({
+          enabled: Boolean(data.enabled),
+          monthlyPosterLimit: Number(data.monthlyPosterLimit ?? 0),
+          allowPosterRetention: Boolean(data.allowPosterRetention),
+          posterRetentionDays: Number(data.posterRetentionDays ?? 7),
+          retentionEnabled: Boolean(data.retentionEnabled),
+        });
+      } else {
+        setMarketingSettings({
+          enabled: false,
+          monthlyPosterLimit: 0,
+          allowPosterRetention: false,
+          posterRetentionDays: 7,
+          retentionEnabled: false,
+        });
+      }
+    } catch (e) {
+      console.error("load marketing settings", e);
+      setMarketingSettings({
+        enabled: false,
+        monthlyPosterLimit: 0,
+        allowPosterRetention: false,
+        posterRetentionDays: 7,
+        retentionEnabled: false,
+      });
+    }
   };
 
   const totals = useMemo(() => {
@@ -620,6 +682,31 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       showToast("Cambios guardados", "success");
     } catch (e: any) {
       showToast(e?.message || "Error guardando cambios", "error");
+    }
+  };
+
+  const handleSaveMarketingSettings = async () => {
+    if (!editingCenter?.id) return;
+    setMarketingSaving(true);
+    try {
+      const payload: MarketingSettings = {
+        enabled: Boolean(marketingSettings.enabled),
+        monthlyPosterLimit: Number(marketingSettings.monthlyPosterLimit ?? 0),
+        allowPosterRetention: Boolean(marketingSettings.allowPosterRetention),
+        posterRetentionDays: 7,
+        retentionEnabled: Boolean(marketingSettings.retentionEnabled),
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.uid || "superadmin",
+      };
+      await setDoc(doc(db, "centers", editingCenter.id, "settings", "marketing"), payload, {
+        merge: true,
+      });
+      showToast("Marketing actualizado para el centro.", "success");
+    } catch (e: any) {
+      console.error("save marketing settings", e);
+      showToast(e?.message || "No se pudo actualizar marketing.", "error");
+    } finally {
+      setMarketingSaving(false);
     }
   };
 
@@ -1319,6 +1406,91 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             </button>
                           </div>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Marketing settings */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Marketing RRSS
+                      </div>
+                      <div className="space-y-4">
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-slate-700">
+                            Marketing habilitado
+                          </span>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={marketingSettings.enabled}
+                            onChange={(e) =>
+                              setMarketingSettings((prev) => ({
+                                ...prev,
+                                enabled: e.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-bold text-slate-400 uppercase">
+                            Límite mensual de afiches
+                          </span>
+                          <input
+                            type="number"
+                            min={-1}
+                            max={999}
+                            className="w-full p-3 border rounded-xl mt-1"
+                            value={marketingSettings.monthlyPosterLimit}
+                            onChange={(e) =>
+                              setMarketingSettings((prev) => ({
+                                ...prev,
+                                monthlyPosterLimit: Number(e.target.value),
+                              }))
+                            }
+                          />
+                          <p className="text-xs text-slate-400 mt-1">
+                            Usa -1 para ilimitado. 0 desactiva la generación.
+                          </p>
+                        </label>
+
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-slate-700">
+                            Permitir guardar afiches por 7 días
+                          </span>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={marketingSettings.allowPosterRetention}
+                            onChange={(e) =>
+                              setMarketingSettings((prev) => ({
+                                ...prev,
+                                allowPosterRetention: e.target.checked,
+                              }))
+                            }
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-bold text-slate-400 uppercase">
+                            Retención fija (días)
+                          </span>
+                          <input
+                            type="number"
+                            className="w-full p-3 border rounded-xl mt-1 bg-slate-100 text-slate-500"
+                            value={7}
+                            disabled
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveMarketingSettings}
+                          disabled={marketingSaving}
+                          className="w-full px-4 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 disabled:opacity-60"
+                        >
+                          {marketingSaving ? "Guardando..." : "Guardar marketing"}
+                        </button>
                       </div>
                     </div>
 

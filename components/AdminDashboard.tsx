@@ -72,6 +72,7 @@ import LogoHeader from "./LogoHeader";
 import WhatsappTemplatesManager from "./WhatsappTemplatesManager";
 import policyText from "../docs/politicas/POLITICA_CONSERVACION_FICHA_CLINICA.md?raw";
 import AuditLogViewer from "./AuditLogViewer";
+import MarketingPosterModule from "./MarketingPosterModule";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -118,7 +119,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogActivity,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    "doctors" | "agenda" | "audit" | "preadmissions" | "whatsapp"
+    "doctors" | "agenda" | "audit" | "preadmissions" | "whatsapp" | "marketing"
   >("doctors");
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
@@ -1019,12 +1020,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <User className="w-4 h-4" /> Preingresos
           </button>
           <button
-            onClick={() => setActiveTab("whatsapp")}
+            onClick={() => setActiveTab("marketing")}
             disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "marketing" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Afiche para redes sociales" : "Selecciona un centro activo"}
           >
-            <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
+            <Share2 className="w-4 h-4" /> Afiche RRSS
           </button>
         </div>
 
@@ -1697,6 +1698,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === "whatsapp" && (
           <div className="animate-fadeIn">
             <WhatsappTemplatesManager
+              centerId={resolvedCenterId}
+              centerName={activeCenter?.name || "Centro Médico"}
+            />
+          </div>
+        )}
+
+        {/* MARKETING POSTERS */}
+        {activeTab === "marketing" && (
+          <div className="animate-fadeIn space-y-6">
+            <MarketingPosterModule
               centerId={resolvedCenterId}
               centerName={activeCenter?.name || "Centro Médico"}
             />

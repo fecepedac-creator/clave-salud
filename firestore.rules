@@ -104,6 +104,13 @@ service cloud.firestore {
       return isSuperAdmin() || isCenterAdmin(centerId);
     }
 
+    function canUpdateMarketingRetention(centerId) {
+      return isCenterAdmin(centerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["retentionEnabled", "updatedAt"])
+        && request.resource.data.retentionEnabled is bool
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     function isPublicAppointmentRead() {
       return request.auth == null && resource.data.status == "available";
     }
@@ -175,6 +182,11 @@ service cloud.firestore {
       // -------------------- Center Settings (private) --------------------
       // Example docs:
       // centers/{centerId}/settings/whatsapp   -> WhatsApp templates per center
+      match /settings/marketing {
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update: if signedIn() && (isSuperAdmin() || canUpdateMarketingRetention(centerId));
+        allow delete: if false;
+      }
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
@@ -187,6 +199,16 @@ service cloud.firestore {
 
       match /billingEvents/{eventId} {
         allow read: if signedIn() && isSuperAdmin();
+        allow create, update, delete: if false;
+      }
+
+      match /posters/{posterId} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow create, update, delete: if false;
+      }
+
+      match /stats/postersMonthly/{monthKey} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow create, update, delete: if false;
       }
 
