@@ -103,16 +103,18 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   };
 
   const data = patients ?? remotePatients;
+  const isActiveRecord = (p: Patient) => p?.active !== false && (p as any).activo !== false;
+  const activeData = data.filter(isActiveRecord);
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
-    if (!s) return data;
-    return data.filter((p) => {
+    if (!s) return activeData;
+    return activeData.filter((p) => {
       const name = (p.fullName ?? "").toLowerCase();
       const rut = (p.rut ?? "").toLowerCase();
       return name.includes(s) || rut.includes(s);
     });
-  }, [data, search]);
+  }, [activeData, search]);
 
   return (
     <div className={className ?? ""}>

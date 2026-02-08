@@ -31,6 +31,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   isSyncingAppointments = false,
 }) => {
   const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
+  const activeAppointments = appointments.filter(
+    (a) => a?.active !== false && (a as any).activo !== false
+  );
   const standardSlots = getStandardSlots(selectedAgendaDate, doctorId, agendaConfig);
 
   // Date comparison helper
@@ -80,7 +83,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 
                 const formattedDay = day.toISOString().split("T")[0];
                 const isSelected = formattedDay === selectedAgendaDate;
-                const hasSlots = appointments.some(
+                const hasSlots = activeAppointments.some(
                   (a) => appointmentDoctorUid(a) === doctorId && a.date === formattedDay
                 );
 
@@ -147,7 +150,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
               {/* Grid de Bloques (Gestión) */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                 {standardSlots.map((templateSlot) => {
-                  const realSlot = appointments.find(
+                  const realSlot = activeAppointments.find(
                     (a) =>
                       appointmentDoctorUid(a) === doctorId &&
                       a.date === selectedAgendaDate &&
@@ -196,7 +199,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
               {/* Lista de Pacientes Agendados */}
               <div className="border-t border-slate-100 pt-6">
                 <h4 className="font-bold text-slate-700 mb-4 text-lg">Pacientes Agendados</h4>
-                {appointments.filter(
+                {activeAppointments.filter(
                   (a) =>
                     appointmentDoctorUid(a) === doctorId &&
                     a.date === selectedAgendaDate &&
@@ -205,7 +208,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                   <p className="text-slate-400 italic">No hay pacientes agendados para este día.</p>
                 ) : (
                   <div className="space-y-3">
-                    {appointments
+                    {activeAppointments
                       .filter(
                         (a) =>
                           appointmentDoctorUid(a) === doctorId &&

@@ -122,6 +122,7 @@ export function useBooking(
         patientId,
         patientPhone: phone,
         bookedAt: serverTimestamp(),
+        active: slotAppointment.active ?? true,
       };
       
       setAppointments((prev) =>
@@ -137,6 +138,7 @@ export function useBooking(
         patientId,
         patientPhone: phone,
         bookedAt: serverTimestamp(),
+        active: slotAppointment.active ?? true,
       };
 
       await updateAppointment(bookedAppointment);
@@ -163,6 +165,7 @@ export function useBooking(
         consultations: [],
         attachments: [],
         lastUpdated: new Date().toISOString(),
+        active: true,
       };
       await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
     }

@@ -9,7 +9,7 @@ import {
   ClinicalTemplate,
   Doctor,
   ProfessionalRole,
-  AuditLogEntry,
+  AuditLogEvent,
   ExamProfile,
   ExamDefinition,
   WhatsappTemplate,
@@ -67,7 +67,7 @@ import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
 import { collection, addDoc, serverTimestamp, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { useAuditLog } from "../hooks/useAuditLog";
+import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 
 // Sub-components
 import VitalsForm from "./VitalsForm";
@@ -75,6 +75,7 @@ import PrescriptionManager from "./PrescriptionManager";
 import ConsultationHistory from "./ConsultationHistory";
 import AgendaView from "./AgendaView";
 import PatientSidebar from "./PatientSidebar";
+import PatientDetail from "./PatientDetail";
 import PrintPreviewModal from "./PrintPreviewModal";
 import ClinicalReportModal from "./ClinicalReportModal";
 import AutocompleteInput from "./AutocompleteInput";
@@ -95,7 +96,7 @@ interface ProfessionalDashboardProps {
   onLogout: () => void;
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
-  onLogActivity: (action: AuditLogEntry["action"], details: string, targetId?: string) => void;
+  onLogActivity: (event: AuditLogEvent) => void;
   isReadOnly?: boolean; // Read Only Mode for Suspended Centers
   isSyncingAppointments?: boolean;
 }
@@ -206,16 +207,26 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     return Number.isFinite(age) ? `${age} años` : "-";
   };
 
+  const getActiveConsultations = (p: Patient) =>
+    (p.consultations || []).filter((consultation) => consultation.active !== false);
+
 
   const getNextControlDateFromPatient = (p: Patient): Date | null => {
-    const lastConsult = p.consultations?.[0]
-      ? [...p.consultations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+    const activeConsultations = getActiveConsultations(p);
+    const lastConsult = activeConsultations[0]
+      ? [...activeConsultations].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        )[0]
       : null;
     const raw = lastConsult?.nextControlDate || "";
     if (!raw) return null;
     const d = new Date(raw);
     return Number.isNaN(d.getTime()) ? null : d;
   };
+
+  const selectedPatientConsultations = selectedPatient
+    ? getActiveConsultations(selectedPatient)
+    : [];
 
   const buildWhatsAppText = (templateBody: string, p: Patient) => {
     const centerName = activeCenter?.name ?? "Centro Médico";
@@ -371,17 +382,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     
     // Log patient access for audit trail (DS 41 MINSAL)
     if (activeCenterId && patient.id) {
-      try {
-        await logAccess({
-          centerId: activeCenterId,
-          resourceType: "patient",
-          resourcePath: `centers/${activeCenterId}/patients/${patient.id}`,
-          patientId: patient.id,
-        });
-      } catch (error) {
-        // Silently fail - audit logging should not block user workflow
-        console.error("Failed to log patient access:", error);
-      }
+      logAccessSafe(logAccess, {
+        centerId: activeCenterId,
+        resourceType: "patient",
+        resourcePath: `/centers/${activeCenterId}/patients/${patient.id}`,
+        patientId: patient.id,
+        actorUid: auth.currentUser?.uid ?? undefined,
+      });
     }
   };
   
@@ -574,7 +581,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   }, [previewFile]);
 
   // Filter Patients
-  const filteredPatients = patients.filter((p) => {
+  const activePatients = patients.filter(
+    (p) => p.active !== false && (p as any).activo !== false
+  );
+
+  const filteredPatients = activePatients.filter((p) => {
     // Filter by active center first
     if (activeCenterId && p.centerId !== activeCenterId) return false;
 
@@ -586,7 +597,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     // Control date filter
     if (filterNextControl !== "all") {
       // SAFE ACCESS: Check if consultations exist and is array
-      const consults = p.consultations || [];
+      const consults = getActiveConsultations(p);
       const lastConsultation = consults.length > 0 ? consults[0] : null;
 
       if (!lastConsultation || !lastConsultation.nextControlDate) return false;
@@ -641,6 +652,18 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       return;
     }
 
+    const professionalName = (currentUser?.fullName ?? doctorName ?? "").trim();
+    const professionalRut = (currentUser?.rut ?? "").trim();
+    const professionalRole = (currentUser?.role ?? role) as ProfessionalRole;
+
+    if (!professionalName || !professionalRut) {
+      showToast(
+        "Completa tu perfil profesional (nombre y RUT) antes de registrar una atención.",
+        "warning"
+      );
+      return;
+    }
+
     // Construye un objeto consulta (local + nube)
     const consultation: Consultation = {
       id: generateId(),
@@ -652,9 +675,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       nextControlDate: (newConsultation.nextControlDate || "") as any,
       nextControlReason: (newConsultation.nextControlReason || "") as any,
       reminderActive: Boolean((newConsultation as any).reminderActive),
+      active: true,
       patientId: selectedPatient.id as any,
       centerId: activeCenterId as any,
       createdBy: (auth.currentUser?.uid ?? doctorId) as any,
+      professionalId: auth.currentUser?.uid ?? doctorId,
+      professionalName,
+      professionalRole,
+      professionalRut,
     } as any;
 
     // 1) Guardar en Firestore (colección "consultations")
@@ -684,11 +712,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
     // 3) Auditoría
     try {
-      onLogActivity(
-        "create",
-        `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
-        selectedPatient.id
-      );
+      onLogActivity({
+        action: "CONSULTATION_CREATE",
+        entityType: "consultation",
+        entityId: consultation.id,
+        patientId: selectedPatient.id,
+        details: `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
+      });
     } catch {
       // no-op
     }
@@ -857,7 +887,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     showToast("Contraseña actualizada correctamente.", "success");
     setPwdState({ current: "", new: "", confirm: "" });
     // Log it
-    onLogActivity("update", "Usuario cambió su contraseña.", doctorId);
+    onLogActivity({
+      action: "update",
+      entityType: "centerSettings",
+      entityId: doctorId,
+      details: "Usuario cambió su contraseña.",
+      metadata: { scope: "password" },
+    });
   };
 
   // UI Helpers based on Role
@@ -952,11 +988,24 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 {/* Fallback empty array to prevent BioMarkers crash */}
                 <BioMarkers
                   activeExams={selectedPatient.activeExams || []}
-                  consultations={selectedPatient.consultations || []}
+                  consultations={selectedPatientConsultations}
                   examOptions={allExamOptions} // Pass dynamic options
                 />
               </div>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <PatientDetail
+              patient={selectedPatient}
+              centerId={activeCenterId}
+              center={activeCenter ?? null}
+              consultations={selectedPatientConsultations}
+              generatedBy={{ name: doctorName, rut: currentUser?.rut, role }}
+              onUpdatePatient={(nextPatient) => {
+                onUpdatePatient(nextPatient);
+                setSelectedPatient(nextPatient);
+              }}
+            />
           </div>
         </header>
 
@@ -970,11 +1019,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 if (isEditingPatient) {
                   onUpdatePatient(selectedPatient);
                   // LOG ACTIVITY
-                  onLogActivity(
-                    "update",
-                    `Actualizó datos ficha de ${selectedPatient.fullName}`,
-                    selectedPatient.id
-                  );
+                  onLogActivity({
+                    action: "PATIENT_UPDATE",
+                    entityType: "patient",
+                    entityId: selectedPatient.id,
+                    patientId: selectedPatient.id,
+                    details: `Actualizó datos ficha de ${selectedPatient.fullName}`,
+                  });
                   showToast("Guardado", "success");
                 }
                 setIsEditingPatient(!isEditingPatient);
@@ -996,11 +1047,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   }; // SAFE
                   onUpdatePatient(up);
                   setSelectedPatient(up);
-                  onLogActivity(
-                    "update",
-                    `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
-                    selectedPatient.id
-                  );
+                  onLogActivity({
+                    action: "PATIENT_UPDATE",
+                    entityType: "patient",
+                    entityId: selectedPatient.id,
+                    patientId: selectedPatient.id,
+                    details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
+                  });
                 }
               }}
               onPreviewFile={setPreviewFile}
@@ -1019,7 +1072,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <span className="bg-primary-100 text-primary-800 px-2 py-0.5 rounded text-xs uppercase font-bold">
                         {role}
                       </span>
-                      {selectedPatient.consultations ? selectedPatient.consultations.length : 0}{" "}
+                      {selectedPatientConsultations.length}{" "}
                       atenciones registradas
                     </p>
                   </div>
@@ -1062,7 +1115,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         newConsultation={newConsultation}
                         onChange={handleVitalsChange}
                         onExamChange={handleExamChange} // NEW
-                        consultationHistory={selectedPatient.consultations || []} // SAFETY: Fallback to empty array
+                        consultationHistory={selectedPatientConsultations} // SAFETY: Fallback to empty array
                         activeExams={selectedPatient.activeExams || []} // SAFETY: Fallback to empty array
                         patientBirthDate={selectedPatient.birthDate} // NEW
                         patientGender={selectedPatient.gender} // NEW
@@ -1288,7 +1341,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 </div>
               ) : (
                 <ConsultationHistory
-                  consultations={selectedPatient.consultations || []} // SAFETY: Fallback to empty array
+                  consultations={selectedPatientConsultations} // SAFETY: Fallback to empty array
+                  centerId={activeCenterId}
+                  patientId={selectedPatient.id}
                   onPrint={(docs) => {
                     setDocsToPrint(docs);
                     setIsPrintModalOpen(true);
@@ -1455,6 +1510,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             smokingStatus: "No fumador",
                             alcoholStatus: "No consumo",
                             lastUpdated: new Date().toISOString(),
+                            active: true,
                           };
                           setSelectedPatient(newP);
                           setIsEditingPatient(true);
@@ -1493,10 +1549,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {filteredPatients.map((p) => {
+                          const patientConsultations = getActiveConsultations(p);
                           const lastConsult =
-                            p.consultations && p.consultations.length > 0
-                              ? p.consultations[0]
-                              : null;
+                            patientConsultations.length > 0 ? patientConsultations[0] : null;
                           const nextCtrl = lastConsult?.nextControlDate
                             ? new Date(lastConsult.nextControlDate + "T12:00:00")
                             : null;
@@ -1680,6 +1735,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         status: "available",
                         patientName: "",
                         patientRut: "",
+                        active: true,
                       };
                       onUpdateAppointments([...appointments, newSlot]);
                       showToast("Bloque abierto disponible.", "success");

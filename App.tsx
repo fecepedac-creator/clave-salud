@@ -612,10 +612,14 @@ const App: React.FC = () => {
               const payload = exists
                 ? { ...patient, id: exists.id, centerId: activeCenterId }
                 : { ...patient, centerId: activeCenterId };
+              const nextPayload = {
+                ...payload,
+                active: payload.active ?? true,
+              };
               if (!auth.currentUser) {
                 try {
                   await createPreadmission({
-                    patientDraft: payload,
+                    patientDraft: nextPayload,
                     contact: {
                       name: patient.fullName,
                       rut: patient.rut,
@@ -631,7 +635,7 @@ const App: React.FC = () => {
                 }
                 return;
               }
-              updatePatient(payload);
+              updatePatient(nextPayload);
               showToast("Ficha actualizada correctamente", "success");
               setView("patient-menu" as ViewMode);
             }}
@@ -1663,7 +1667,7 @@ const App: React.FC = () => {
               syncAppointments(newAppts);
             }}
             isSyncingAppointments={isSyncingAppointments}
-            onLogActivity={(action: any, details: string, targetId?: string) => {
+            onLogActivity={(event) => {
               if (isPreviewActive) return;
               const log: AuditLogEntry = {
                 id: generateId(),
@@ -1672,9 +1676,12 @@ const App: React.FC = () => {
                 actorUid: auth.currentUser?.uid ?? userForView.id,
                 actorName: userForView.fullName ?? "Usuario",
                 actorRole: userForView.role ?? "Profesional",
-                action,
-                details,
-                targetId,
+                action: event.action,
+                entityType: event.entityType,
+                entityId: event.entityId,
+                patientId: event.patientId,
+                metadata: event.metadata,
+                details: event.details,
               } as any;
               updateAuditLog(log);
             }}
@@ -1713,7 +1720,7 @@ const App: React.FC = () => {
             }}
             onLogout={handleLogout}
             logs={auditLogs}
-            onLogActivity={(action: any, details: string, targetId?: string) => {
+            onLogActivity={(event) => {
               if (isPreviewActive) return;
               const log: AuditLogEntry = {
                 id: generateId(),
@@ -1722,9 +1729,12 @@ const App: React.FC = () => {
                 actorUid: auth.currentUser?.uid ?? userForView.id,
                 actorName: userForView.fullName ?? "Usuario",
                 actorRole: userForView.role ?? "Admin",
-                action,
-                details,
-                targetId,
+                action: event.action,
+                entityType: event.entityType,
+                entityId: event.entityId,
+                patientId: event.patientId,
+                metadata: event.metadata,
+                details: event.details,
               } as any;
               updateAuditLog(log);
             }}
