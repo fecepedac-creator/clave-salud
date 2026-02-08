@@ -97,15 +97,9 @@ export function useAuth() {
         const claims: any = token?.claims ?? {};
 
         const isSuperAdmin =
-          !!(
-            claims?.super_admin === true ||
-            claims?.superadmin === true ||
-            claims?.superAdmin === true
-          ) ||
-          rolesNorm.includes("superadmin") ||
-          rolesNorm.includes("super_admin") ||
-          rolesNorm.includes("super-admin") ||
-          rolesNorm.includes("super admin");
+          claims?.super_admin === true ||
+          claims?.superadmin === true ||
+          claims?.superAdmin === true;
 
         const isCenterAdmin =
           rolesNorm.includes("centeradmin") ||
@@ -231,13 +225,9 @@ export function useAuth() {
           const claims: any = token?.claims ?? {};
 
           const isSuperAdmin =
-            !!(
-              claims?.super_admin === true ||
-              claims?.superadmin === true ||
-              claims?.superAdmin === true
-            ) ||
-            roles.includes("super_admin") ||
-            roles.includes("superadmin");
+            claims?.super_admin === true ||
+            claims?.superadmin === true ||
+            claims?.superAdmin === true;
 
           const userFromFirestore = {
             uid,

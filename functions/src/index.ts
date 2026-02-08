@@ -236,6 +236,253 @@ export const createCenterAdminInvite = (functions.https.onCall as any)(
   }
 );
 
+export const resendCenterAdminInvite = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const token = String(data?.token || "").trim();
+  if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+
+  const inviteRef = db.collection("invites").doc(token);
+  const inviteSnap = await inviteRef.get();
+  if (!inviteSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
+  }
+
+  const inv = inviteSnap.data() as any;
+  if (String(inv.status || "") !== "pending") {
+    throw new functions.https.HttpsError("failed-precondition", "Invitación no está pendiente.");
+  }
+
+  await inviteRef.set(
+    {
+      status: "revoked",
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedByUid: context.auth?.uid ?? null,
+    },
+    { merge: true }
+  );
+
+  const newToken = randToken(24);
+  const createdAt = admin.firestore.Timestamp.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await db.collection("invites").doc(newToken).set({
+    token: newToken,
+    centerId: inv.centerId,
+    centerName: inv.centerName || "",
+    emailLower: inv.emailLower,
+    role: inv.role || "center_admin",
+    status: "pending",
+    createdAt,
+    expiresAt,
+    invitedByUid: context.auth?.uid,
+  });
+
+  const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
+  return { token: newToken, inviteUrl };
+  }
+);
+
+export const revokeCenterInvite = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const token = String(data?.token || "").trim();
+  if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+
+  const inviteRef = db.collection("invites").doc(token);
+  const inviteSnap = await inviteRef.get();
+  if (!inviteSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
+  }
+
+  await inviteRef.set(
+    {
+      status: "revoked",
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedByUid: context.auth?.uid ?? null,
+    },
+    { merge: true }
+  );
+
+  return { ok: true, token };
+  }
+);
+
+export const createCenterNotification = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const centerId = String(data?.centerId || "").trim();
+  const title = String(data?.title || "").trim();
+  const body = String(data?.body || "").trim();
+  const type = String(data?.type || "info").trim();
+  const severity = String(data?.severity || "medium").trim();
+
+  if (!centerId || !title || !body) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "centerId, title y body son requeridos."
+    );
+  }
+
+  const notifRef = db
+    .collection("centers")
+    .doc(centerId)
+    .collection("adminNotifications")
+    .doc();
+
+  await notifRef.set({
+    centerId,
+    title,
+    body,
+    type,
+    severity,
+    sendEmail: Boolean(data?.sendEmail),
+    createdAt: serverTimestamp(),
+    createdByUid: context.auth?.uid ?? null,
+  });
+
+  await db.collection("centers").doc(centerId).collection("auditLogs").add({
+    type: "ACTION",
+    action: "SUPERADMIN_NOTIFICATION",
+    entityType: "centerSettings",
+    entityId: centerId,
+    actorUid: context.auth?.uid ?? "unknown",
+    actorEmail: lowerEmailFromContext(context) || "unknown",
+    actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
+    actorRole: "super_admin",
+    resourceType: "patient",
+    resourcePath: `/centers/${centerId}`,
+    timestamp: serverTimestamp(),
+    details: title,
+  });
+
+  return { ok: true };
+  }
+);
+
+export const upsertCenter = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const centerId = String(data?.id || data?.centerId || "").trim();
+  if (!centerId) {
+    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  }
+
+  const name = String(data?.name || "").trim();
+  const slug = String(data?.slug || "").trim();
+  if (!name || !slug) {
+    throw new functions.https.HttpsError("invalid-argument", "name y slug son requeridos.");
+  }
+
+  const centerRef = db.collection("centers").doc(centerId);
+  const existingSnap = await centerRef.get();
+  const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
+  const auditReason = String(data?.auditReason || "").trim();
+
+  const payload = { ...(data || {}) };
+  delete (payload as any).createdAt;
+  delete (payload as any).auditReason;
+  payload.id = centerId;
+  payload.name = name;
+  payload.slug = slug;
+  payload.updatedAt = serverTimestamp();
+
+  if (!existingSnap.exists) {
+    payload.createdAt = data?.createdAt ?? serverTimestamp();
+  }
+
+  await centerRef.set(payload, { merge: true });
+
+  const billingPrev = existingData?.billing || {};
+  const billingNext = (payload as any)?.billing || {};
+  const billingChanges: Record<string, any> = {};
+  ["plan", "monthlyUF", "billingStatus", "nextDueDate", "lastPaidAt"].forEach((key) => {
+    if (billingPrev?.[key] !== billingNext?.[key]) {
+      billingChanges[key] = { from: billingPrev?.[key] ?? null, to: billingNext?.[key] ?? null };
+    }
+  });
+
+  const isActivePrev = existingData?.isActive;
+  const isActiveNext = (payload as any)?.isActive;
+  const isActiveChanged = isActivePrev !== isActiveNext;
+
+  if (Object.keys(billingChanges).length > 0) {
+    await centerRef.collection("billingEvents").add({
+      action: "billing_update",
+      reason: auditReason || null,
+      changes: billingChanges,
+      actorUid: context.auth?.uid ?? null,
+      actorEmail: lowerEmailFromContext(context) || null,
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  if (isActiveChanged) {
+    await centerRef.collection("auditLogs").add({
+      type: "ACTION",
+      action: "CENTER_STATUS_CHANGED",
+      entityType: "centerSettings",
+      entityId: centerId,
+      actorUid: context.auth?.uid ?? "unknown",
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
+      actorRole: "super_admin",
+      resourceType: "patient",
+      resourcePath: `/centers/${centerId}`,
+      timestamp: serverTimestamp(),
+      details: auditReason || null,
+      metadata: { from: isActivePrev ?? null, to: isActiveNext ?? null },
+    });
+  }
+
+  return { ok: true, centerId };
+  }
+);
+
+export const deleteCenter = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const centerId = String(data?.centerId || data?.id || "").trim();
+  if (!centerId) {
+    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  }
+
+  const reason = String(data?.reason || "").trim();
+  await db.collection("auditLogs").add({
+    action: "delete_center",
+    actorUid: context.auth?.uid ?? "unknown",
+    actorEmail: lowerEmailFromContext(context) || null,
+    targetUid: centerId,
+    reason: reason || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.collection("centers").doc(centerId).delete();
+
+  return { ok: true, centerId };
+  }
+);
+
 export const setSuperAdmin = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
   requireAuth(context);

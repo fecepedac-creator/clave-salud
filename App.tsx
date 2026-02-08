@@ -92,8 +92,17 @@ const App: React.FC = () => {
     handleRedirectResult,
   } = useAuth();
 
-  const { centers, setCenters, activeCenterId, setActiveCenterId, activeCenter, updateModules } =
-    useCenters(demoMode, isSuperAdminClaim);
+  const {
+    centers,
+    setCenters,
+    activeCenterId,
+    setActiveCenterId,
+    activeCenter,
+    updateModules,
+    hasMoreCenters,
+    loadMoreCenters,
+    isLoadingMoreCenters,
+  } = useCenters(demoMode, isSuperAdminClaim);
   const {
     patients,
     setPatients,
@@ -1585,10 +1594,13 @@ const App: React.FC = () => {
             onUpdateCenters={async (updates) => {
               for (const c of updates) await updateCenter(c as any);
             }}
-            onDeleteCenter={async (id) => {
-              await deleteCenter(id);
+            onDeleteCenter={async (id, reason) => {
+              await deleteCenter(id, reason);
             }}
             onUpdateDoctors={async () => {}}
+            hasMoreCenters={hasMoreCenters}
+            onLoadMoreCenters={loadMoreCenters}
+            isLoadingMoreCenters={isLoadingMoreCenters}
           />
         </CenterContext.Provider>
       );
