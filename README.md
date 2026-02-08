@@ -18,3 +18,18 @@ View your app in AI Studio: https://ai.studio/apps/drive/1izK1pyrhMep1211AhQVY8J
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Marketing RRSS (Afiche) módulo
+
+El módulo de afiches RRSS usa una función Cloud Functions (`generateMarketingPoster`) que genera
+una plantilla SVG sobria (sin claims médicos) y, opcionalmente, la guarda en Storage por 7 días.
+
+Configuración por centro (SuperAdmin):
+- `centers/{centerId}/settings/marketing`
+  - `enabled`: habilita el módulo
+  - `monthlyPosterLimit`: límite mensual (usa `-1` para ilimitado)
+  - `allowPosterRetention`: permite al admin guardar afiches por 7 días
+  - `posterRetentionDays`: fijo en `7`
+
+Despliegue:
+- `firebase deploy --only functions,firestore:rules,storage`

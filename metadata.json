@@ -1,5 +1,5 @@
 {
   "name": "Centro Clínico  Digital",
-  "description": "Una aplicación de registro clínico de dos etapas: ingreso amigable para pacientes y gestión profesional para médicos, con diseño accesible y estructura de datos clínica.",
+  "description": "Una aplicación de registro clínico de dos etapas: ingreso amigable para pacientes y gestión profesional para médicos, con diseño accesible y estructura de datos clínica. Incluye dos hitos con IA: redacción de informes en el dashboard de cada profesional y generación de publicidad para RRSS en el dashboard admin de cada centro.",
   "requestFramePermissions": []
 }

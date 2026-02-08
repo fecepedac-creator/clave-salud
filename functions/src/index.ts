@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import {
@@ -179,6 +179,97 @@ function formatChileanPhone(raw: string): string {
 function lowerEmailFromContext(context: CallableContext): string {
   const raw = (context.auth?.token as any)?.email ?? "";
   return String(raw || "").trim().toLowerCase();
+}
+
+type PosterFormat = "feed" | "story" | "whatsapp" | "internal";
+
+const CLAVESALUD_WORDMARK = "ClaveSalud";
+
+const posterDimensions: Record<PosterFormat, { width: number; height: number }> = {
+  feed: { width: 1080, height: 1350 },
+  story: { width: 1080, height: 1920 },
+  whatsapp: { width: 1080, height: 1080 },
+  internal: { width: 1920, height: 1080 },
+};
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function wrapText(value: string, maxChars: number): string[] {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  words.forEach((word) => {
+    if ((line + " " + word).trim().length > maxChars) {
+      if (line) lines.push(line.trim());
+      line = word;
+    } else {
+      line = `${line} ${word}`.trim();
+    }
+  });
+  if (line) lines.push(line.trim());
+  return lines.length ? lines : [value];
+}
+
+function buildPosterSvg(params: {
+  centerName: string;
+  message: string;
+  format: PosterFormat;
+  centerLogoUrl?: string;
+}) {
+  const { width, height } = posterDimensions[params.format];
+  const messageLines = wrapText(params.message, params.format === "story" ? 24 : 32).slice(0, 3);
+  const centerLogoUrl = params.centerLogoUrl || "";
+  const background = "#f8fafc";
+  const accent = "#1e293b";
+  const secondary = "#475569";
+  const headerHeight = Math.round(height * 0.18);
+  const footerHeight = Math.round(height * 0.12);
+  const contentStart = headerHeight + 40;
+  const lineHeight = Math.round(height * 0.055);
+  const messageStart = contentStart + lineHeight;
+
+  const logoImage = centerLogoUrl
+    ? `<image href="${escapeXml(centerLogoUrl)}" x="60" y="40" width="${Math.round(
+        width * 0.35
+      )}" height="${Math.round(headerHeight * 0.6)}" preserveAspectRatio="xMidYMid meet" />`
+    : "";
+
+  const messageText = messageLines
+    .map(
+      (line, idx) =>
+        `<text x="60" y="${messageStart + idx * lineHeight}" font-size="${Math.round(
+          height * 0.05
+        )}" font-family="Arial, sans-serif" fill="${accent}" font-weight="700">${escapeXml(
+          line
+        )}</text>`
+    )
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="100%" height="100%" fill="${background}" />
+  <rect width="100%" height="${headerHeight}" fill="#ffffff" />
+  ${logoImage}
+  <text x="60" y="${headerHeight - 30}" font-size="${Math.round(
+    height * 0.02
+  )}" font-family="Arial, sans-serif" fill="${secondary}">
+    ${escapeXml(params.centerName)}
+  </text>
+  ${messageText}
+  <rect y="${height - footerHeight}" width="100%" height="${footerHeight}" fill="#ffffff" />
+  <text x="60" y="${height - Math.round(footerHeight / 2)}" font-size="${Math.round(
+    height * 0.025
+  )}" font-family="Arial, sans-serif" fill="${secondary}">
+    Powered by ${CLAVESALUD_WORDMARK}
+  </text>
+</svg>`;
 }
 
 const SUPERADMIN_WHITELIST = new Set<string>([
@@ -1134,3 +1225,130 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ ok: false, error: "Backup failed" });
   }
 });
+
+export const generateMarketingPoster = functions.https.onCall(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const centerId = String(data?.centerId || "").trim();
+    const format = String(data?.format || "").trim() as PosterFormat;
+    const message = String(data?.message || "").trim();
+
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
+    if (!message) {
+      throw new functions.https.HttpsError("invalid-argument", "message es requerido.");
+    }
+    if (!posterDimensions[format]) {
+      throw new functions.https.HttpsError("invalid-argument", "format inválido.");
+    }
+
+    const staffRef = db.doc(`centers/${centerId}/staff/${context.auth?.uid}`);
+    const staffSnap = await staffRef.get();
+    if (!staffSnap.exists || staffSnap.data()?.role !== "center_admin") {
+      throw new functions.https.HttpsError("permission-denied", "PERMISSION_DENIED");
+    }
+
+    const marketingRef = db.doc(`centers/${centerId}/settings/marketing`);
+    const marketingSnap = await marketingRef.get();
+    const marketing = (marketingSnap.data() || {}) as any;
+    const marketingEnabled = Boolean(marketing.enabled);
+    const monthlyPosterLimit = Number(marketing.monthlyPosterLimit ?? 0);
+    const allowPosterRetention = Boolean(marketing.allowPosterRetention);
+    const retentionEnabled = Boolean(marketing.retentionEnabled);
+    const retentionDays = Number(marketing.posterRetentionDays ?? 7);
+
+    if (!marketingEnabled || monthlyPosterLimit === 0) {
+      throw new functions.https.HttpsError("failed-precondition", "NOT_ENABLED");
+    }
+
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const statsRef = db.doc(`centers/${centerId}/stats/postersMonthly/${monthKey}`);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(statsRef);
+      const used = Number(snap.data()?.used || 0);
+      const limitValue =
+        typeof marketing.monthlyPosterLimit === "number" ? marketing.monthlyPosterLimit : 0;
+      if (limitValue !== -1 && used >= limitValue) {
+        throw new functions.https.HttpsError("resource-exhausted", "LIMIT_REACHED");
+      }
+      tx.set(
+        statsRef,
+        {
+          used: used + 1,
+          limit: limitValue,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+
+    const centerSnap = await db.doc(`centers/${centerId}`).get();
+    const centerName = String(centerSnap.data()?.name || "Centro Médico");
+    const centerLogoUrl = String(centerSnap.data()?.logoUrl || "");
+
+    const svg = buildPosterSvg({ centerName, message, format, centerLogoUrl });
+    const imageDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+
+    if (!allowPosterRetention || !retentionEnabled) {
+      return { imageDataUrl };
+    }
+
+    const posterId = randToken(12);
+    const storagePath = `centers/${centerId}/posters/${monthKey}/${posterId}.svg`;
+    const bucket = storage.bucket();
+    await bucket.file(storagePath).save(svg, {
+      contentType: "image/svg+xml",
+      metadata: {
+        cacheControl: "public,max-age=3600",
+      },
+    });
+
+    const createdAt = admin.firestore.Timestamp.now();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(
+      createdAt.toMillis() + retentionDays * 24 * 60 * 60 * 1000
+    );
+    await db.doc(`centers/${centerId}/posters/${posterId}`).set({
+      format,
+      message,
+      storagePath,
+      createdAt,
+      createdBy: context.auth?.uid || null,
+      monthKey,
+      expiresAt,
+    });
+
+    return { imageDataUrl, storagePath };
+  }
+);
+
+export const cleanupExpiredPosters = functions.pubsub
+  .schedule("every 24 hours")
+  .onRun(async () => {
+    const now = admin.firestore.Timestamp.now();
+    const expired = await db.collectionGroup("posters").where("expiresAt", "<=", now).limit(50).get();
+    if (expired.empty) return null;
+
+    const bucket = storage.bucket();
+    const batch = db.batch();
+
+    await Promise.all(
+      expired.docs.map(async (docSnap) => {
+        const data = docSnap.data() as any;
+        const storagePath = String(data.storagePath || "");
+        if (storagePath) {
+          try {
+            await bucket.file(storagePath).delete();
+          } catch (e) {
+            functions.logger.warn("poster cleanup delete storage", { storagePath, error: e });
+          }
+        }
+        batch.delete(docSnap.ref);
+      })
+    );
+
+    await batch.commit();
+    return null;
+  });
