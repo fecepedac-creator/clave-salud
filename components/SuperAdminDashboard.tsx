@@ -27,13 +27,12 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import {
   collection,
   getDocs,
+  limit,
+  orderBy,
   query,
   serverTimestamp,
   updateDoc,
   where,
-  Timestamp,
-  doc,
-  setDoc,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
@@ -76,22 +75,15 @@ interface SuperAdminDashboardProps {
   onExitPreview?: () => void;
 
   onUpdateCenters: (centers: MedicalCenter[]) => Promise<void> | void;
-  onDeleteCenter: (id: string) => Promise<void> | void;
+  onDeleteCenter: (id: string, reason?: string) => Promise<void> | void;
 
   onUpdateDoctors: (doctors: Doctor[]) => Promise<void> | void;
 
   onLogout: () => void;
-}
 
-const LS_NOTIF_KEY = "clavesalud.centerNotifications.v1";
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+  hasMoreCenters?: boolean;
+  onLoadMoreCenters?: () => void;
+  isLoadingMoreCenters?: boolean;
 }
 
 type StoredNotification = {
@@ -105,16 +97,6 @@ type StoredNotification = {
   body: string;
   sendEmail: boolean;
 };
-
-function loadNotifications(): StoredNotification[] {
-  if (typeof window === "undefined") return [];
-  return safeParse<StoredNotification[]>(window.localStorage.getItem(LS_NOTIF_KEY), []);
-}
-
-function saveNotifications(items: StoredNotification[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LS_NOTIF_KEY, JSON.stringify(items));
-}
 
 function todayISO(): string {
   const d = new Date();
@@ -135,14 +117,6 @@ function normalizeSlug(s: string) {
 
 function uidShort() {
   return Math.random().toString(36).slice(2, 10);
-}
-
-// Helpers correo
-function buildMailtoUrl(to: string, subject: string, body: string) {
-  const params = new URLSearchParams();
-  params.set("subject", subject);
-  params.set("body", body);
-  return `mailto:${encodeURIComponent(to)}?${params.toString()}`;
 }
 
 function buildGmailComposeUrl(to: string, subject: string, body: string) {
@@ -198,6 +172,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onDeleteCenter,
   onUpdateDoctors, // reservado
   onLogout,
+  hasMoreCenters = false,
+  onLoadMoreCenters,
+  isLoadingMoreCenters = false,
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
@@ -300,13 +277,112 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const [notifRefreshTick, setNotifRefreshTick] = useState(0);
-  const commHistory = useMemo(() => {
-    void notifRefreshTick;
-    return loadNotifications()
-      .filter((n) => n.centerId === commCenterId)
-      .sort((a, b) => (a.createdAtISO < b.createdAtISO ? 1 : -1));
-  }, [commCenterId, notifRefreshTick]);
+  const [commHistory, setCommHistory] = useState<StoredNotification[]>([]);
+  const [commHistoryLoading, setCommHistoryLoading] = useState(false);
+
+  const [centerContextId, setCenterContextId] = useState<string>(
+    centers?.[0]?.id || ""
+  );
+
+  const [centerInvites, setCenterInvites] = useState<any[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+
+  const [billingEvents, setBillingEvents] = useState<any[]>([]);
+  const [billingEventsLoading, setBillingEventsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!centers.length) return;
+    setCenterContextId((prev) => prev || centers[0]?.id || "");
+  }, [centers]);
+
+  useEffect(() => {
+    if (!centerContextId) return;
+    setFinanceCenterId(centerContextId);
+    setCommCenterId(centerContextId);
+  }, [centerContextId]);
+
+  const promptChangeReason = (label: string) => {
+    const reason = window.prompt(`Indica el motivo para ${label}:`);
+    if (!reason || !reason.trim()) {
+      showToast("Debes indicar un motivo para continuar.", "warning");
+      return null;
+    }
+    return reason.trim();
+  };
+
+  const fetchCommHistory = async (centerId: string) => {
+    if (!centerId) return;
+    setCommHistoryLoading(true);
+    try {
+      const q = query(
+        collection(db, "centers", centerId, "adminNotifications"),
+        orderBy("createdAt", "desc"),
+        limit(10)
+      );
+      const snap = await getDocs(q);
+      const items = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as any;
+        return {
+          id: docSnap.id,
+          centerId,
+          createdAtISO: data?.createdAt?.toDate
+            ? data.createdAt.toDate().toISOString()
+            : data?.createdAtISO || new Date().toISOString(),
+          createdBy: "superadmin" as const,
+          type: data?.type || "info",
+          severity: data?.severity || "medium",
+          title: data?.title || "",
+          body: data?.body || "",
+          sendEmail: Boolean(data?.sendEmail),
+        } as StoredNotification;
+      });
+      setCommHistory(items);
+    } catch (e: any) {
+      console.error("COMM HISTORY ERROR", e);
+      setCommHistory([]);
+    } finally {
+      setCommHistoryLoading(false);
+    }
+  };
+
+  const fetchCenterInvites = async (centerId: string) => {
+    if (!centerId) return;
+    setInvitesLoading(true);
+    try {
+      const q = query(
+        collection(db, "invites"),
+        where("centerId", "==", centerId),
+        orderBy("createdAt", "desc"),
+        limit(10)
+      );
+      const snap = await getDocs(q);
+      setCenterInvites(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    } catch (e: any) {
+      console.error("INVITES LOAD ERROR", e);
+      setCenterInvites([]);
+    } finally {
+      setInvitesLoading(false);
+    }
+  };
+
+  const fetchBillingEvents = async (centerId: string) => {
+    if (!centerId) return;
+    setBillingEventsLoading(true);
+    try {
+      const q = query(
+        collection(db, "centers", centerId, "billingEvents"),
+        orderBy("createdAt", "desc"),
+        limit(8)
+      );
+      const snap = await getDocs(q);
+      setBillingEvents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    } catch (e: any) {
+      console.error("BILLING EVENTS ERROR", e);
+      setBillingEvents([]);
+    } finally {
+      setBillingEventsLoading(false);
+    }
+  };
 
   const resetLogoState = () => {
     if (logoPreview) {
@@ -335,6 +411,46 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
     return { total, active, maxUsers, billingStats };
   }, [centers]);
+
+  useEffect(() => {
+    if (!commCenterId) return;
+    void fetchCommHistory(commCenterId);
+    void fetchCenterInvites(commCenterId);
+  }, [commCenterId]);
+
+  useEffect(() => {
+    if (!financeCenterId) return;
+    void fetchBillingEvents(financeCenterId);
+  }, [financeCenterId]);
+
+  useEffect(() => {
+    if (!editingCenter?.id) return;
+    void fetchCenterInvites(editingCenter.id);
+  }, [editingCenter?.id]);
+
+  const renderHealthBadge = (center: CenterExt) => {
+    const isActive = !!(center as any).isActive;
+    const billingStatus = (center as any).billing?.billingStatus as BillingStatus | undefined;
+    const nextDueDate = (center as any).billing?.nextDueDate as string | undefined;
+    const isOverdue = billingStatus === "overdue";
+    const isRisk =
+      !isActive ||
+      isOverdue ||
+      (nextDueDate ? new Date(nextDueDate) < new Date() : false);
+    const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "Atención" : "OK";
+    const cls = !isActive
+      ? "bg-slate-200 text-slate-700"
+      : isOverdue
+        ? "bg-red-100 text-red-700"
+        : isRisk
+          ? "bg-amber-100 text-amber-800"
+          : "bg-emerald-100 text-emerald-700";
+    return (
+      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${cls}`}>
+        {label}
+      </span>
+    );
+  };
 
   const handleStartCreate = () => {
     resetLogoState();
@@ -432,6 +548,23 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         adminEmail: isCreating ? newCenterAdminEmail.trim() : (editingCenter as any).adminEmail,
       };
 
+      if (!isCreating) {
+        const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
+        const isActiveChanged =
+          previous && !!(previous as any).isActive !== !!(finalCenter as any).isActive;
+        const billingPrev = (previous as any)?.billing || {};
+        const billingNext = (finalCenter as any)?.billing || {};
+        const billingChanged =
+          billingPrev?.plan !== billingNext?.plan ||
+          billingPrev?.monthlyUF !== billingNext?.monthlyUF ||
+          billingPrev?.billingStatus !== billingNext?.billingStatus;
+        if (isActiveChanged || billingChanged) {
+          const reason = promptChangeReason("modificar estado o facturación del centro");
+          if (!reason) return;
+          (finalCenter as any).auditReason = reason;
+        }
+      }
+
       await onUpdateCenters([finalCenter as any]);
 
       showToast(isCreating ? "Centro creado con éxito" : "Centro actualizado con éxito", "success");
@@ -455,8 +588,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const handleDeleteCenter = async (id: string) => {
     if (!id) return;
     if (!window.confirm("¿Eliminar este centro? (no se puede deshacer)")) return;
+    const reason = promptChangeReason("eliminar el centro");
+    if (!reason) return;
     try {
-      await onDeleteCenter(id);
+      await onDeleteCenter(id, reason);
       showToast("Centro eliminado", "success");
       if (financeCenterId === id) setFinanceCenterId(centers?.[0]?.id || "");
       if (commCenterId === id) setCommCenterId(centers?.[0]?.id || "");
@@ -465,13 +600,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const updateCenterPatch = async (centerId: string, patch: Partial<CenterExt>) => {
+  const updateCenterPatch = async (
+    centerId: string,
+    patch: Partial<CenterExt>,
+    auditReason?: string
+  ) => {
     const center = centers.find((c) => c.id === centerId);
     if (!center) {
       showToast("Centro no encontrado", "error");
       return;
     }
     const merged = { ...(center as any), ...patch } as CenterExt;
+    if (auditReason) {
+      (merged as any).auditReason = auditReason;
+    }
 
     try {
       await onUpdateCenters([merged as any]);
@@ -487,8 +629,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       showToast("Centro no encontrado", "error");
       return;
     }
+    const requiresReason = ["plan", "monthlyUF", "billingStatus"].some(
+      (key) => key in billingPatch
+    );
+    let auditReason: string | null = null;
+    if (requiresReason) {
+      auditReason = promptChangeReason("cambiar información de facturación");
+      if (!auditReason) return;
+    }
     const billing = ({ ...(center as any).billing, ...billingPatch } || {}) as BillingInfo;
-    await updateCenterPatch(centerId, { billing });
+    await updateCenterPatch(centerId, { billing }, auditReason ?? undefined);
   };
 
   const handleSendNotification = async () => {
@@ -505,22 +655,22 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
 
     const adminEmail = (commCenter as any).adminEmail?.trim() || "";
-    const n: StoredNotification = {
-      id: `n_${uidShort()}`,
-      centerId: commCenter.id,
-      createdAtISO: new Date().toISOString(),
-      createdBy: "superadmin",
-      type: commType,
-      severity: commSeverity,
-      title,
-      body,
-      sendEmail: commSendEmail,
-    };
-
-    const all = loadNotifications();
-    all.unshift(n);
-    saveNotifications(all);
-    setNotifRefreshTick((x) => x + 1);
+    try {
+      const fn = httpsCallable(getFunctions(), "createCenterNotification");
+      await fn({
+        centerId: commCenter.id,
+        title,
+        body,
+        type: commType,
+        severity: commSeverity,
+        sendEmail: commSendEmail,
+      });
+      await fetchCommHistory(commCenter.id);
+    } catch (e: any) {
+      console.error("COMM NOTIFICATION ERROR", e);
+      showToast(e?.message || "Error enviando aviso", "error");
+      return;
+    }
 
     if (commSendEmail && !adminEmail) {
       showToast("Aviso guardado. Falta adminEmail para enviar por correo.", "warning");
@@ -638,33 +788,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const baseUrl = window.location.origin;
       let link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
 
-      // Prefer Cloud Function
-      try {
-        const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
-        const res: any = await fn({
-          centerId,
-          adminEmail: emailLower,
-          centerName: editingCenter.name || "",
-        });
+      const fn = httpsCallable(getFunctions(), "createCenterAdminInvite");
+      const res: any = await fn({
+        centerId,
+        adminEmail: emailLower,
+        centerName: editingCenter.name || "",
+      });
 
-        const data = res?.data || {};
-        if (data?.token) token = String(data.token);
-        link = String(data?.inviteUrl || `${baseUrl}/invite?token=${encodeURIComponent(token)}`);
-      } catch {
-        // Fallback a Firestore (si rules lo permiten)
-        const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-        await setDoc(doc(db, "invites", token), {
-          token,
-          centerId,
-          centerName: editingCenter.name || "",
-          emailLower,
-          role: "center_admin",
-          status: "pending",
-          createdAt: serverTimestamp(),
-          expiresAt,
-          invitedByUid: auth.currentUser?.uid || null,
-        });
-      }
+      const data = res?.data || {};
+      if (data?.token) token = String(data.token);
+      link = String(data?.inviteUrl || `${baseUrl}/invite?token=${encodeURIComponent(token)}`);
 
       setLastInviteLink(link);
 
@@ -762,6 +895,26 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       <main className="p-8 max-w-6xl mx-auto">
         <div className="flex justify-end mb-6">
           <img src={CORPORATE_LOGO} alt="ClaveSalud" className="h-10 w-auto" />
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
+          <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+            Centro en contexto
+          </div>
+          <select
+            className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-700"
+            value={centerContextId}
+            onChange={(e) => setCenterContextId(e.target.value)}
+          >
+            {centers.map((center) => (
+              <option key={center.id} value={center.id}>
+                {center.name}
+              </option>
+            ))}
+          </select>
+          <div className="text-xs text-slate-400 mt-1">
+            Se sincroniza con Finanzas y Comunicación.
+          </div>
         </div>
 
         {/* GENERAL */}
@@ -933,6 +1086,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             {(center as any).isActive ? "Activo" : "Suspendido"}
                           </span>
                           {renderBadge(billing?.billingStatus)}
+                          {renderHealthBadge(center)}
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
                             {(billing?.plan || "trial").toUpperCase()}
                           </span>
@@ -983,6 +1137,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <p className="text-center py-10 text-slate-400 font-bold">
                     No hay centros creados aún.
                   </p>
+                )}
+                {hasMoreCenters && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 disabled:opacity-60"
+                      disabled={isLoadingMoreCenters}
+                      onClick={() => onLoadMoreCenters?.()}
+                    >
+                      {isLoadingMoreCenters ? "Cargando..." : "Cargar más centros"}
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -1238,6 +1404,76 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
                         <div className="text-xs text-slate-500">
                           Requisito: el centro debe estar guardado y tener <b>adminEmail</b>.
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                            Invitaciones recientes
+                          </div>
+                          {invitesLoading ? (
+                            <div className="text-sm text-slate-500">Cargando invitaciones...</div>
+                          ) : centerInvites.length === 0 ? (
+                            <div className="text-sm text-slate-500">
+                              No hay invitaciones recientes para este centro.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {centerInvites.slice(0, 5).map((inv) => (
+                                <div
+                                  key={inv.id}
+                                  className="bg-white border rounded-xl p-3 flex flex-col gap-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-sm font-bold text-slate-800">
+                                      {inv.emailLower}
+                                    </div>
+                                    <span className="text-[11px] text-slate-400 uppercase font-bold">
+                                      {inv.status || "pending"}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    Expira:{" "}
+                                    {inv.expiresAt?.toDate
+                                      ? inv.expiresAt.toDate().toLocaleString()
+                                      : "—"}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
+                                      onClick={async () => {
+                                        const fn = httpsCallable(
+                                          getFunctions(),
+                                          "resendCenterAdminInvite"
+                                        );
+                                        await fn({ token: inv.id });
+                                        showToast("Invitación reenviada.", "success");
+                                        await fetchCenterInvites(inv.centerId);
+                                      }}
+                                    >
+                                      Reenviar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="px-3 py-1.5 rounded-lg bg-white border text-slate-700 text-xs font-bold hover:bg-slate-50"
+                                      onClick={async () => {
+                                        if (!window.confirm("¿Revocar invitación?")) return;
+                                        const fn = httpsCallable(
+                                          getFunctions(),
+                                          "revokeCenterInvite"
+                                        );
+                                        await fn({ token: inv.id });
+                                        showToast("Invitación revocada.", "success");
+                                        await fetchCenterInvites(inv.centerId);
+                                      }}
+                                    >
+                                      Revocar
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1669,6 +1905,50 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         placeholder="Ej: convenio, prórroga, contacto administrativo..."
                       />
                     </label>
+
+                    <div className="p-4 bg-slate-50 rounded-2xl border">
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                        Historial de facturación
+                      </div>
+                      {billingEventsLoading ? (
+                        <div className="text-sm text-slate-500">Cargando eventos...</div>
+                      ) : billingEvents.length === 0 ? (
+                        <div className="text-sm text-slate-500">
+                          No hay eventos registrados aún.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {billingEvents.map((evt) => (
+                            <div key={evt.id} className="bg-white border rounded-xl p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-bold text-slate-800">
+                                  {evt.action || "Actualización"}
+                                </div>
+                                <span className="text-[11px] text-slate-400">
+                                  {evt.createdAt?.toDate
+                                    ? evt.createdAt.toDate().toLocaleString()
+                                    : "—"}
+                                </span>
+                              </div>
+                              {evt.reason && (
+                                <div className="text-xs text-slate-500 mt-1">
+                                  Motivo: {evt.reason}
+                                </div>
+                              )}
+                              {evt.changes && (
+                                <div className="text-xs text-slate-500 mt-2">
+                                  {Object.entries(evt.changes).map(([key, value]) => (
+                                    <div key={key}>
+                                      {key}: {String(value)}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1854,7 +2134,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     <div className="text-xs font-bold text-slate-400 uppercase mb-2">
                       Historial (centro)
                     </div>
-                    {commHistory.length === 0 ? (
+                    {commHistoryLoading ? (
+                      <div className="text-sm text-slate-500">Cargando historial...</div>
+                    ) : commHistory.length === 0 ? (
                       <div className="text-sm text-slate-500">
                         No hay avisos registrados para este centro.
                       </div>
@@ -1884,20 +2166,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         ))}
                       </div>
                     )}
-                    <div className="mt-3">
-                      <button
-                        type="button"
-                        className="text-sm font-bold text-slate-500 hover:text-slate-700"
-                        onClick={() => {
-                          if (!window.confirm("¿Borrar historial local de avisos?")) return;
-                          saveNotifications([]);
-                          setNotifRefreshTick((x) => x + 1);
-                          showToast("Historial borrado (local)", "success");
-                        }}
-                      >
-                        Borrar historial local
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>

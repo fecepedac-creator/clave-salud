@@ -167,11 +167,10 @@ service cloud.firestore {
     match /centers/{centerId} {
       allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
         || resource.data.isActive == true;
-      allow create: if isSuperAdmin();
-      allow update: if isSuperAdmin()
-        || canUpdateAnthropometryFeature(centerId)
+      allow create: if false;
+      allow update: if canUpdateAnthropometryFeature(centerId)
         || canUpdateAccessMode(centerId);
-      allow delete: if isSuperAdmin();
+      allow delete: if false;
 
       // -------------------- Center Settings (private) --------------------
       // Example docs:
@@ -179,6 +178,16 @@ service cloud.firestore {
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
+      match /adminNotifications/{notifId} {
+        allow read: if signedIn() && isSuperAdmin();
+        allow create, update, delete: if false;
+      }
+
+      match /billingEvents/{eventId} {
+        allow read: if signedIn() && isSuperAdmin();
+        allow create, update, delete: if false;
       }
 
 

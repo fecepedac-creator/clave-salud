@@ -78,18 +78,10 @@ export async function upsertBasicUserProfile(user: User) {
   }
 }
 
-/** Detecta si es superadmin (custom claim o users/{uid}.roles) */
+/** Detecta si es superadmin (solo custom claims) */
 export async function isSuperAdmin(user: User): Promise<boolean> {
   const claims = await getClaims(user);
   if ((claims as any).super_admin === true || (claims as any).superadmin === true) return true;
   if ((claims as any).role === "super_admin") return true;
-
-  const profile = await getUserProfile(user.uid);
-  const rolesRaw = (profile?.roles ?? []) as string[];
-  const roles = rolesRaw.map((r) =>
-    String(r ?? "")
-      .trim()
-      .toLowerCase()
-  );
-  return roles.includes("super_admin");
+  return false;
 }

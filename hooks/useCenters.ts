@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { db, auth } from "../firebase";
-import { collection, doc, documentId, getDoc, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  startAfter,
+  where,
+  QueryDocumentSnapshot,
+} from "firebase/firestore";
 import { MedicalCenter } from "../types";
 import { INITIAL_CENTERS } from "../constants";
 import { CenterModules } from "../CenterContext";
@@ -18,6 +31,9 @@ function isValidCenter(c: any): c is MedicalCenter {
 export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
   const [centers, setCenters] = useState<MedicalCenter[]>([]);
   const [activeCenterId, setActiveCenterId] = useState<string>("");
+  const [lastCenterDoc, setLastCenterDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [hasMoreCenters, setHasMoreCenters] = useState<boolean>(false);
+  const [isLoadingMoreCenters, setIsLoadingMoreCenters] = useState<boolean>(false);
 
   const activeCenter = useMemo(
     () => centers.find((c) => c.id === activeCenterId) ?? null,
@@ -42,6 +58,8 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
   useEffect(() => {
     if (demoMode) {
       setCenters(INITIAL_CENTERS);
+      setHasMoreCenters(false);
+      setLastCenterDoc(null);
       return;
     }
     const unsubscribers: Array<() => void> = [];
@@ -75,15 +93,6 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
         const userSnap = await getDoc(doc(db, "users", uid));
         const profile: any = userSnap.exists() ? userSnap.data() : null;
 
-        const rolesRaw: string[] = Array.isArray(profile?.roles) ? profile.roles : [];
-        const roles = rolesRaw
-          .map((r: any) =>
-            String(r ?? "")
-              .trim()
-              .toLowerCase()
-          )
-          .filter(Boolean);
-
         const centersRaw: any[] = Array.isArray(profile?.centros)
           ? profile.centros
           : Array.isArray(profile?.centers)
@@ -91,28 +100,24 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
             : [];
         const allowed = centersRaw.map((x: any) => String(x ?? "").trim()).filter(Boolean);
 
-        const isSuper =
-          isSuperAdminClaim || roles.includes("super_admin") || roles.includes("superadmin");
+        const isSuper = isSuperAdminClaim;
 
         if (isSuper) {
-          const unsub = onSnapshot(
-            query(collection(db, "centers")),
-            (snap) => {
-              if (cancelled) return;
-              const items = snap.docs.map((d) => ({
-                id: d.id,
-                ...(d.data() as any),
-              })) as MedicalCenter[];
-              setCenters(items);
-            },
-            () => {
-              if (cancelled) return;
-              setCenters([]);
-            }
-          );
-          unsubscribers.push(unsub);
+          const baseQuery = query(collection(db, "centers"), orderBy("name"), limit(25));
+          const snap = await getDocs(baseQuery);
+          if (cancelled) return;
+          const items = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          })) as MedicalCenter[];
+          setCenters(items);
+          setLastCenterDoc(snap.docs[snap.docs.length - 1] ?? null);
+          setHasMoreCenters(snap.size === 25);
           return;
         }
+
+        setHasMoreCenters(false);
+        setLastCenterDoc(null);
 
         if (!allowed.length) {
           setCenters([]);
@@ -161,6 +166,29 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
     };
   }, [demoMode, isSuperAdminClaim]);
 
+  const loadMoreCenters = useCallback(async () => {
+    if (!isSuperAdminClaim || !lastCenterDoc || isLoadingMoreCenters) return;
+    setIsLoadingMoreCenters(true);
+    try {
+      const nextQuery = query(
+        collection(db, "centers"),
+        orderBy("name"),
+        startAfter(lastCenterDoc),
+        limit(25)
+      );
+      const snap = await getDocs(nextQuery);
+      const items = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      })) as MedicalCenter[];
+      setCenters((prev) => [...prev, ...items]);
+      setLastCenterDoc(snap.docs[snap.docs.length - 1] ?? lastCenterDoc);
+      setHasMoreCenters(snap.size === 25);
+    } finally {
+      setIsLoadingMoreCenters(false);
+    }
+  }, [isSuperAdminClaim, isLoadingMoreCenters, lastCenterDoc]);
+
   return {
     centers,
     setCenters,
@@ -168,5 +196,8 @@ export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
     setActiveCenterId,
     activeCenter,
     updateModules,
+    hasMoreCenters,
+    loadMoreCenters,
+    isLoadingMoreCenters,
   };
 }

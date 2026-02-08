@@ -8,6 +8,7 @@ import {
   updateDoc,
   getDoc,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { Patient, Doctor, Appointment, AuditLogEntry, MedicalCenter, Preadmission } from "../types";
 import { generateId } from "../utils";
 import { logAuditEventSafe } from "./useAuditLog";
@@ -332,13 +333,15 @@ export function useCrudOperations(
     [appointments, deleteAppointment, updateAppointment]
   );
 
-  const updateCenter = useCallback(async (payload: MedicalCenter) => {
+  const updateCenter = useCallback(async (payload: MedicalCenter & { auditReason?: string }) => {
     const id = payload?.id ?? generateId();
-    await setDoc(doc(db, "centers", id), { ...payload, id }, { merge: true });
+    const fn = httpsCallable(getFunctions(), "upsertCenter");
+    await fn({ ...payload, id });
   }, []);
 
-  const deleteCenter = useCallback(async (id: string) => {
-    await deleteDoc(doc(db, "centers", id));
+  const deleteCenter = useCallback(async (id: string, reason?: string) => {
+    const fn = httpsCallable(getFunctions(), "deleteCenter");
+    await fn({ centerId: id, reason });
   }, []);
 
   const createPreadmission = useCallback(
