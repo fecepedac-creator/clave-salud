@@ -18,9 +18,10 @@ const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
 
-const BACKUP_TOKEN = process.env.BACKUP_TOKEN || functions.config()?.backup?.token || "";
-const BACKUP_BUCKET = process.env.BACKUP_BUCKET || functions.config()?.backup?.bucket || "";
-const BACKUP_PREFIX = process.env.BACKUP_PREFIX || functions.config()?.backup?.prefix || "backups/firestore";
+const functionsConfig = (functions as any).config?.() ?? {};
+const BACKUP_TOKEN = process.env.BACKUP_TOKEN || functionsConfig?.backup?.token || "";
+const BACKUP_BUCKET = process.env.BACKUP_BUCKET || functionsConfig?.backup?.bucket || "";
+const BACKUP_PREFIX = process.env.BACKUP_PREFIX || functionsConfig?.backup?.prefix || "backups/firestore";
 
 const METADATA_TOKEN_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
@@ -31,10 +32,17 @@ function getProjectId(): string {
     process.env.GCLOUD_PROJECT ||
     process.env.GCP_PROJECT ||
     admin.app().options.projectId ||
-    functions.config()?.backup?.projectid ||
+    functionsConfig?.backup?.projectid ||
     ""
   );
 }
+
+type CallableContext = {
+  auth?: {
+    uid?: string;
+    token?: Record<string, any>;
+  } | null;
+};
 
 function getBackupPrefix() {
   const now = new Date();
@@ -133,13 +141,13 @@ function buildPublicStaffData(
   };
 }
 
-function requireAuth(context: functions.https.CallableContext) {
+function requireAuth(context: CallableContext) {
   if (!context.auth?.uid) {
     throw new functions.https.HttpsError("unauthenticated", "Debe iniciar sesión.");
   }
 }
 
-function isSuperAdmin(context: functions.https.CallableContext): boolean {
+function isSuperAdmin(context: CallableContext): boolean {
   const t: any = context.auth?.token || {};
   return (
     t.super_admin === true ||
@@ -168,7 +176,7 @@ function formatChileanPhone(raw: string): string {
   return `+56${digits}`;
 }
 
-function lowerEmailFromContext(context: functions.https.CallableContext): string {
+function lowerEmailFromContext(context: CallableContext): string {
   const raw = (context.auth?.token as any)?.email ?? "";
   return String(raw || "").trim().toLowerCase();
 }
@@ -193,7 +201,8 @@ const SUPERADMIN_WHITELIST = new Set<string>([
  * }
  */
 
-export const createCenterAdminInvite = functions.https.onCall(async (data, context) => {
+export const createCenterAdminInvite = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
   requireAuth(context);
   if (!isSuperAdmin(context)) {
     throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
@@ -224,12 +233,14 @@ export const createCenterAdminInvite = functions.https.onCall(async (data, conte
 
   const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
   return { token, inviteUrl };
-});
+  }
+);
 
-export const setSuperAdmin = functions.https.onCall(async (data, context) => {
+export const setSuperAdmin = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
   requireAuth(context);
 
-  const callerUid = context.auth!.uid;
+  const callerUid = context.auth?.uid as string;
   const callerEmail = lowerEmailFromContext(context);
 
   const isAllowed =
@@ -261,15 +272,17 @@ export const setSuperAdmin = functions.https.onCall(async (data, context) => {
   });
 
   return { ok: true, targetUid };
-});
+  }
+);
 
-export const acceptInvite = functions.https.onCall(async (data, context) => {
+export const acceptInvite = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
   requireAuth(context);
 
   const token = String(data?.token || "").trim();
   if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
 
-  const uid = context.auth!.uid;
+  const uid = context.auth?.uid as string;
   const emailLower = lowerEmailFromContext(context);
   if (!emailLower) throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email disponible.");
 
@@ -349,9 +362,11 @@ export const acceptInvite = functions.https.onCall(async (data, context) => {
   });
 
   return { ok: true, centerId, role };
-});
+  }
+);
 
-export const listPatientAppointments = functions.https.onCall(async (data) => {
+export const listPatientAppointments = (functions.https.onCall as any)(
+  async (data: any, _context: CallableContext) => {
   const centerId = String(data?.centerId || "").trim();
   const patientRut = String(data?.rut || "").trim();
   const phone = formatChileanPhone(String(data?.phone || ""));
@@ -372,9 +387,11 @@ export const listPatientAppointments = functions.https.onCall(async (data) => {
 
   const appointments = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
   return { appointments };
-});
+  }
+);
 
-export const cancelPatientAppointment = functions.https.onCall(async (data) => {
+export const cancelPatientAppointment = (functions.https.onCall as any)(
+  async (data: any, _context: CallableContext) => {
   const centerId = String(data?.centerId || "").trim();
   const appointmentId = String(data?.appointmentId || "").trim();
   const patientRut = String(data?.rut || "").trim();
@@ -410,11 +427,12 @@ export const cancelPatientAppointment = functions.https.onCall(async (data) => {
   });
 
   return { ok: true };
-});
+  }
+);
 
-export const syncPublicStaff = functions.firestore
+export const syncPublicStaff = (functions.firestore as any)
   .document("centers/{centerId}/staff/{staffUid}")
-  .onWrite(async (change, context) => {
+  .onWrite(async (change: any, context: any) => {
     const centerId = String(context.params.centerId || "").trim();
     const staffUid = String(context.params.staffUid || "").trim();
 
@@ -449,7 +467,8 @@ export const syncPublicStaff = functions.firestore
     });
   });
 
-export const backfillPublicStaff = functions.https.onCall(async (data, context) => {
+export const backfillPublicStaff = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
   requireAuth(context);
   if (!isSuperAdmin(context)) {
     throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
@@ -510,7 +529,8 @@ export const backfillPublicStaff = functions.https.onCall(async (data, context) 
   });
 
   return { ok: true, centersProcessed, staffProcessed, failures };
-});
+  }
+);
 
 /**
  * logAccess - Cloud Function para registrar accesos a datos clínicos
@@ -520,10 +540,11 @@ export const backfillPublicStaff = functions.https.onCall(async (data, context) 
  * - Solo accesible por staff o superadmins autenticados
  * - Timestamps del servidor para integridad
  */
-export const logAccess = functions.https.onCall(async (data: LogAccessRequest, context): Promise<LogAccessResult> => {
+export const logAccess = (functions.https.onCall as any)(
+  async (data: LogAccessRequest, context: CallableContext): Promise<LogAccessResult> => {
   requireAuth(context);
   
-  const uid = context.auth!.uid;
+  const uid = context.auth?.uid as string;
   const emailLower = lowerEmailFromContext(context);
   
   // Validar campos requeridos
@@ -672,10 +693,11 @@ export const logAccess = functions.https.onCall(async (data: LogAccessRequest, c
       "Error al registrar el acceso."
     );
   }
-});
+  }
+);
 
-export const logAuditEvent = functions.https.onCall(
-  async (data: LogAuditEventRequest, context): Promise<LogAuditEventResult> => {
+export const logAuditEvent = (functions.https.onCall as any)(
+  async (data: LogAuditEventRequest, context: CallableContext): Promise<LogAuditEventResult> => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado.");
     }
@@ -700,7 +722,7 @@ export const logAuditEvent = functions.https.onCall(
       );
     }
 
-    const uid = context.auth.uid;
+    const uid = context.auth.uid as string;
     const emailLower = lowerEmailFromContext(context);
 
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
