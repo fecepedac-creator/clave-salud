@@ -375,7 +375,10 @@ export interface CenterInvite {
 }
 
 export type ViewMode =
+  | "home"
   | "landing"
+  | "center-portal"
+  | "invite"
   | "patient-menu"
   | "patient-cancel"
   | "patient-form"
@@ -387,7 +390,9 @@ export type ViewMode =
   | "admin-dashboard"
   | "select-center"
   | "superadmin-login"
-  | "superadmin-dashboard";
+  | "superadmin-dashboard"
+  | "terms"
+  | "privacy";
 
 
 // -------------------- WhatsApp Templates (per center) --------------------

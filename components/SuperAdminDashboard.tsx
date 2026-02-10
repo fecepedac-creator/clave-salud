@@ -20,13 +20,16 @@ import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
 import LogoHeader from "./LogoHeader";
+import LegalLinks from "./LegalLinks";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import {
   collection,
+  collectionGroup,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -93,6 +96,7 @@ interface SuperAdminDashboardProps {
   onUpdateDoctors: (doctors: Doctor[]) => Promise<void> | void;
 
   onLogout: () => void;
+  onOpenLegal: (target: "terms" | "privacy") => void;
 
   hasMoreCenters?: boolean;
   onLoadMoreCenters?: () => void;
@@ -185,6 +189,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onDeleteCenter,
   onUpdateDoctors, // reservado
   onLogout,
+  onOpenLegal,
   hasMoreCenters = false,
   onLoadMoreCenters,
   isLoadingMoreCenters = false,
@@ -215,6 +220,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState("");
+  const [metricsUpdatedAt, setMetricsUpdatedAt] = useState<string>("");
+  const [metrics, setMetrics] = useState({ patients: 0, professionals: 0 });
 
   // Marketing settings per center
   const [marketingSettings, setMarketingSettings] = useState<MarketingSettings>({
@@ -484,6 +493,35 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (!financeCenterId) return;
     void fetchBillingEvents(financeCenterId);
   }, [financeCenterId]);
+
+  useEffect(() => {
+    const loadMetrics = async () => {
+      if (!db) {
+        setMetricsError("Firestore no disponible para métricas.");
+        return;
+      }
+      setMetricsLoading(true);
+      setMetricsError("");
+      try {
+        const [patientsSnap, staffSnap] = await Promise.all([
+          getCountFromServer(collectionGroup(db, "patients")),
+          getCountFromServer(collectionGroup(db, "staff")),
+        ]);
+        setMetrics({
+          patients: Number(patientsSnap.data().count ?? 0),
+          professionals: Number(staffSnap.data().count ?? 0),
+        });
+        setMetricsUpdatedAt(new Date().toISOString());
+      } catch (error) {
+        console.error("load metrics", error);
+        setMetricsError("No se pudieron cargar las métricas.");
+      } finally {
+        setMetricsLoading(false);
+      }
+    };
+
+    void loadMetrics();
+  }, []);
 
   useEffect(() => {
     if (!editingCenter?.id) return;
@@ -952,6 +990,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </nav>
 
         <div className="p-4 space-y-4 border-t border-slate-800">
+          <LegalLinks
+            onOpenTerms={() => onOpenLegal("terms")}
+            onOpenPrivacy={() => onOpenLegal("privacy")}
+            className="flex-col items-start gap-2 text-xs"
+            buttonClassName="text-slate-400 hover:text-white text-xs"
+            showDivider={false}
+          />
           <button
             onClick={onToggleDemo}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
@@ -1033,6 +1078,40 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                  Pacientes Totales
+                </div>
+                <div className="text-3xl font-bold text-slate-800">
+                  {metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                  Profesionales Activos
+                </div>
+                <div className="text-3xl font-bold text-slate-800">
+                  {metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
+                  Última Actualización
+                </div>
+                <div className="text-lg font-semibold text-slate-800">
+                  {metricsUpdatedAt
+                    ? new Date(metricsUpdatedAt).toLocaleString("es-CL")
+                    : "Sin datos"}
+                </div>
+              </div>
+            </div>
+            {metricsError && (
+              <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-4">
+                {metricsError}
+              </div>
+            )}
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-sm text-slate-600">
               <p className="font-semibold text-slate-800 mb-2">Nota importante</p>
