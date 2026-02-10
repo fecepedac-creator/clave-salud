@@ -599,7 +599,12 @@ export const setSuperAdmin = (functions.https.onCall as any)(
     );
   }
 
-  await admin.auth().setCustomUserClaims(targetUid, { super_admin: true });
+  const targetUser = await admin.auth().getUser(targetUid);
+  const existingClaims = (targetUser.customClaims || {}) as Record<string, unknown>;
+  await admin.auth().setCustomUserClaims(targetUid, {
+    ...existingClaims,
+    super_admin: true,
+  });
 
   await db.collection("auditLogs").add({
     action: "set_super_admin",
