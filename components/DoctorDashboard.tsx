@@ -82,6 +82,7 @@ import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
+import LegalLinks from "./LegalLinks";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -94,6 +95,7 @@ interface ProfessionalDashboardProps {
   onUpdatePatient: (updatedPatient: Patient) => void;
   onUpdateDoctor: (updatedDoctor: Doctor) => void;
   onLogout: () => void;
+  onOpenLegal: (target: "terms" | "privacy") => void;
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
   onLogActivity: (event: AuditLogEvent) => void;
@@ -130,6 +132,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   onUpdatePatient,
   onUpdateDoctor,
   onLogout,
+  onOpenLegal,
   appointments,
   onUpdateAppointments,
   onLogActivity,
@@ -1401,6 +1404,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             }{" "}
             Citas Hoy
           </div>
+          <LegalLinks
+            onOpenTerms={() => onOpenLegal("terms")}
+            onOpenPrivacy={() => onOpenLegal("privacy")}
+            className="flex"
+          />
           <button
             onClick={onLogout}
             className="bg-white text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg font-bold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-2"
