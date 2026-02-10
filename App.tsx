@@ -5,6 +5,11 @@ import { ProfessionalDashboard } from "./components/DoctorDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
 import LogoHeader from "./components/LogoHeader";
+import LegalLinks from "./components/LegalLinks";
+import LandingPage from "./components/LandingPage";
+import SupportWidget from "./components/SupportWidget";
+import OnboardingTour from "./components/OnboardingTour";
+import { ONBOARDING_TOURS } from "./constants";
 import {
   extractChileanPhoneDigits,
   formatChileanPhone,
@@ -43,6 +48,8 @@ import { useFirestoreSync } from "./hooks/useFirestoreSync";
 import { useInvite } from "./hooks/useInvite";
 import { useBooking } from "./hooks/useBooking";
 import { useCrudOperations } from "./hooks/useCrudOperations";
+import termsText from "./docs/legal/TERMINOS_Y_CONDICIONES.md?raw";
+import privacyText from "./docs/legal/POLITICA_DE_PRIVACIDAD.md?raw";
 
 function isValidCenter(c: any): c is MedicalCenter {
   return (
@@ -68,6 +75,9 @@ const App: React.FC = () => {
   const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
     "center-portal" as ViewMode
   );
+  const [legalReturnView, setLegalReturnView] = useState<ViewMode>("home" as ViewMode);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const [isSyncingAppointments, setIsSyncingAppointments] = useState(false);
   const [previewCenterId, setPreviewCenterId] = useState("");
   const [previewRole, setPreviewRole] = useState("");
@@ -224,6 +234,7 @@ const App: React.FC = () => {
 
   const PREVIEW_CENTER_KEY = "__previewCenterId";
   const PREVIEW_ROLE_KEY = "__previewRole";
+  const ONBOARDING_KEY = "cs_onboarding_complete";
 
   const isPreviewRoleAdmin = useCallback((role: string) => {
     return role === "ADMIN_CENTRO" || role === "ADMINISTRATIVO";
@@ -240,6 +251,40 @@ const App: React.FC = () => {
     setPreviewCenterId(window.localStorage.getItem(PREVIEW_CENTER_KEY) ?? "");
     setPreviewRole(window.localStorage.getItem(PREVIEW_ROLE_KEY) ?? "");
   }, []);
+
+  const onboardingSteps = useMemo(() => {
+    const roleKey = currentUser?.role ?? "DEFAULT";
+    return (ONBOARDING_TOURS as Record<string, any>)[roleKey] || ONBOARDING_TOURS.DEFAULT;
+  }, [currentUser?.role]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (view !== ("home" as ViewMode)) {
+      setOnboardingOpen(false);
+      return;
+    }
+    const completed = window.localStorage.getItem(ONBOARDING_KEY) === "true";
+    if (!completed) {
+      setOnboardingStep(0);
+      setOnboardingOpen(true);
+    }
+  }, [view]);
+
+  const startOnboarding = useCallback(() => {
+    setOnboardingStep(0);
+    setOnboardingOpen(true);
+  }, []);
+
+  const finishOnboarding = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_KEY, "true");
+    }
+    setOnboardingOpen(false);
+  }, []);
+
+  const skipOnboarding = useCallback(() => {
+    finishOnboarding();
+  }, [finishOnboarding]);
 
   const isPreviewActive = Boolean(previewCenterId && previewRole);
 
@@ -1025,73 +1070,79 @@ const App: React.FC = () => {
     const centerLogoUrl = (activeCenter as any)?.logoUrl as string | undefined;
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div
-          className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}
-        >
-          <button
-            onClick={() => setView("center-portal" as ViewMode)}
-            className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors"
+        <div className="flex flex-col items-center gap-6">
+          <div
+            className={`bg-white/95 backdrop-blur-md p-10 rounded-[2.5rem] shadow-2xl w-full relative transition-all border border-white ${isDoc ? "max-w-4xl" : "max-w-md"}`}
           >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
+            <button
+              onClick={() => setView("center-portal" as ViewMode)}
+              className="absolute top-8 left-8 text-slate-400 hover:text-slate-600 bg-slate-50 p-2 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
 
-          <div className="flex flex-col gap-10 mt-4">
-            <div className="mb-2">
-              <LogoHeader size="md" showText={true} className="mx-auto w-fit" />
-            </div>
-            <h2 className="text-3xl font-bold text-center text-slate-800">
-              {isDoc ? "Acceso Profesional" : "Acceso Administrativo"}
-            </h2>
-
-            <div className="space-y-6 max-w-sm mx-auto w-full">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700"
-                  placeholder="nombre@centro.cl"
-                />
+            <div className="flex flex-col gap-10 mt-4">
+              <div className="mb-2">
+                <LogoHeader size="md" showText={true} className="mx-auto w-fit" />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">
-                  Contraseña
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors"
-                  placeholder="••••••••"
-                />
-              </div>
-              {error && (
-                <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">
-                  {error}
-                </p>
-              )}
-              <button
-                onClick={() =>
-                  handleSuperAdminLogin(
-                    (isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode
-                  )
-                }
-                className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}
-              >
-                Ingresar
-              </button>
+              <h2 className="text-3xl font-bold text-center text-slate-800">
+                {isDoc ? "Acceso Profesional" : "Acceso Administrativo"}
+              </h2>
 
-              <button
-                onClick={() =>
-                  handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)
-                }
-                className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
-              >
-                Continuar con Google
-              </button>
+              <div className="space-y-6 max-w-sm mx-auto w-full">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors font-medium text-slate-700"
+                    placeholder="nombre@centro.cl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-500 transition-colors"
+                    placeholder="••••••••"
+                  />
+                </div>
+                {error && (
+                  <p className="text-red-500 font-bold text-sm text-center bg-red-50 p-3 rounded-xl border border-red-100">
+                    {error}
+                  </p>
+                )}
+                <button
+                  onClick={() =>
+                    handleSuperAdminLogin(
+                      (isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode
+                    )
+                  }
+                  className={`w-full py-4 rounded-2xl font-bold text-white text-lg shadow-lg transition-transform active:scale-95 ${isDoc ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-slate-800 hover:bg-slate-900 shadow-slate-200"}`}
+                >
+                  Ingresar
+                </button>
+
+                <button
+                  onClick={() =>
+                    handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)
+                  }
+                  className="w-full py-4 rounded-2xl font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 shadow-lg transition-transform active:scale-95"
+                >
+                  Continuar con Google
+                </button>
+              </div>
             </div>
           </div>
+          <LegalLinks
+            onOpenTerms={() => openLegal("terms")}
+            onOpenPrivacy={() => openLegal("privacy")}
+          />
         </div>
       </div>
     );
@@ -1103,39 +1154,45 @@ const App: React.FC = () => {
   const renderSuperAdminLogin = () => {
     const content = (
       <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
-          <div className="mb-6">
-            <LogoHeader size="md" showText={true} className="mb-4" />
-          </div>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
-              <Lock className="w-6 h-6 text-slate-700" />
-              Acceso SuperAdmin
-            </h2>
-            <button
-              type="button"
-              onClick={() => setView("center-portal" as ViewMode)}
-              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
-            >
-              Volver
-            </button>
-          </div>
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+            <div className="mb-6">
+              <LogoHeader size="md" showText={true} className="mb-4" />
+            </div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+                <Lock className="w-6 h-6 text-slate-700" />
+                Acceso SuperAdmin
+              </h2>
+              <button
+                type="button"
+                onClick={() => setView("center-portal" as ViewMode)}
+                className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+              >
+                Volver
+              </button>
+            </div>
 
-          <div className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
-                {error}
-              </div>
-            )}
+            <div className="space-y-4">
+              {error && (
+                <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
+                  {error}
+                </div>
+              )}
 
-            <button
-              type="button"
-              onClick={handleSuperAdminGoogleLogin}
-              className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
-            >
-              Ingresar con Google
-            </button>
+              <button
+                type="button"
+                onClick={handleSuperAdminGoogleLogin}
+                className="w-full rounded-xl bg-slate-900 text-white font-bold py-3 hover:bg-slate-800 transition-colors"
+              >
+                Ingresar con Google
+              </button>
+            </div>
           </div>
+          <LegalLinks
+            onOpenTerms={() => openLegal("terms")}
+            onOpenPrivacy={() => openLegal("privacy")}
+          />
         </div>
       </div>
     );
@@ -1402,6 +1459,54 @@ const App: React.FC = () => {
     );
   };
 
+  const openLegal = (target: "terms" | "privacy") => {
+    setLegalReturnView(view);
+    setView(target as ViewMode);
+    window.scrollTo(0, 0);
+  };
+
+  const renderLegalPage = (title: string, body: string) =>
+    renderHomeBackdrop(
+      <div className="min-h-dvh flex items-center justify-center p-6">
+        <div className="w-full max-w-3xl bg-white/95 backdrop-blur-md rounded-3xl shadow-xl border border-white p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-slate-800">{title}</h2>
+            <button
+              type="button"
+              onClick={() => setView(legalReturnView)}
+              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+            >
+              Volver
+            </button>
+          </div>
+          <div className="prose prose-slate max-w-none text-sm md:text-base whitespace-pre-wrap">
+            {body}
+          </div>
+          <div className="pt-4 border-t border-slate-200">
+            <LegalLinks
+              onOpenTerms={() => openLegal("terms")}
+              onOpenPrivacy={() => openLegal("privacy")}
+            />
+          </div>
+        </div>
+      </div>
+    );
+
+  const renderCenterBackdrop = (children: React.ReactNode) => (
+    <div
+      className="center-hero relative min-h-dvh w-full overflow-hidden"
+      style={
+        {
+          "--center-hero-image": `image-set(url("${CENTER_BG_SRC}") type("image/webp"), url("${CENTER_BG_FALLBACK_SRC}") type("image/png"))`,
+        } as React.CSSProperties
+      }
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.04),_transparent_55%)] pointer-events-none" />
+      <div className="relative z-10 min-h-dvh w-full">{children}</div>
+    </div>
+  );
+
   const renderHomeDirectory = () => {
     return (
       <div
@@ -1451,6 +1556,22 @@ const App: React.FC = () => {
             <p className="text-slate-500 mt-3 text-lg">
               Ficha clínica digital para equipos de salud.
             </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setView("landing" as ViewMode)}
+                className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-bold hover:bg-emerald-400"
+              >
+                Conoce la plataforma
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("center-portal" as ViewMode)}
+                className="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-white"
+              >
+                Ingresar al portal
+              </button>
+            </div>
           </div>
 
           <div className="rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
@@ -1501,25 +1622,24 @@ const App: React.FC = () => {
             </div>
           </div>
         </div>
+        <footer className="relative z-10 mt-10">
+          <div className="flex flex-col items-center gap-3">
+            <LegalLinks
+              onOpenTerms={() => openLegal("terms")}
+              onOpenPrivacy={() => openLegal("privacy")}
+            />
+            <button
+              type="button"
+              onClick={startOnboarding}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+            >
+              Reiniciar tutorial
+            </button>
+          </div>
+        </footer>
       </div>
     );
   };
-
-  const renderCenterBackdrop = (children: React.ReactNode) => (
-    <div
-      className="center-hero relative min-h-dvh w-full overflow-hidden"
-      style={
-        {
-          "--center-hero-image": `image-set(url("${CENTER_BG_SRC}") type("image/webp"), url("${CENTER_BG_FALLBACK_SRC}") type("image/png"))`,
-        } as React.CSSProperties
-      }
-    >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8 pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.04),_transparent_55%)] pointer-events-none" />
-      <div className="relative z-10 min-h-dvh w-full">{children}</div>
-    </div>
-  );
-
   const renderByView = () => {
     if (view === ("invite" as any))
       return (
@@ -1591,6 +1711,7 @@ const App: React.FC = () => {
               setActiveCenterId("");
               setView("home" as ViewMode);
             }}
+            onOpenLegal={openLegal}
             onUpdateCenters={async (updates) => {
               for (const c of updates) await updateCenter(c as any);
             }}
@@ -1610,6 +1731,14 @@ const App: React.FC = () => {
       return (
         <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>
       );
+
+    if (view === ("landing" as ViewMode))
+      return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
+
+    if (view === ("terms" as ViewMode)) return renderLegalPage("Términos y Condiciones", termsText);
+
+    if (view === ("privacy" as ViewMode))
+      return renderLegalPage("Política de Privacidad", privacyText);
 
     if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
 
@@ -1698,6 +1827,7 @@ const App: React.FC = () => {
               updateAuditLog(log);
             }}
             isReadOnly={isPreviewActive}
+            onOpenLegal={openLegal}
           />
         </CenterContext.Provider>
       );
@@ -1731,6 +1861,7 @@ const App: React.FC = () => {
               approvePreadmission(p);
             }}
             onLogout={handleLogout}
+            onOpenLegal={openLegal}
             logs={auditLogs}
             onLogActivity={(event) => {
               if (isPreviewActive) return;
@@ -1776,6 +1907,16 @@ const App: React.FC = () => {
           </button>
         </div>
       )}
+      <OnboardingTour
+        isOpen={onboardingOpen}
+        steps={onboardingSteps}
+        currentStep={onboardingStep}
+        onNext={() => setOnboardingStep((prev) => Math.min(prev + 1, onboardingSteps.length - 1))}
+        onPrev={() => setOnboardingStep((prev) => Math.max(prev - 1, 0))}
+        onSkip={skipOnboarding}
+        onFinish={finishOnboarding}
+      />
+      <SupportWidget />
     </>
   );
 };

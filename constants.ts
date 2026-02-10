@@ -28,6 +28,93 @@ import { Patient, Doctor, ClinicalTemplate, MedicalCenter } from "./types";
 // Vectorized version of the Blue/Green Snake & Staff Logo + "ClaveSalud" Text
 export const CORPORATE_LOGO = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 100" fill="none"><defs><linearGradient id="snakeGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="%231e40af" /><stop offset="100%" stop-color="%234ade80" /></linearGradient><linearGradient id="staffGrad" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="%233b82f6" /><stop offset="100%" stop-color="%231d4ed8" /></linearGradient><linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="%230ea5e9" /><stop offset="100%" stop-color="%230f766e" /></linearGradient></defs><!-- Icon Container --><g transform="translate(10, 5) scale(0.9)"><!-- Staff --><rect x="46" y="10" width="8" height="85" rx="4" fill="url(%23staffGrad)" /><!-- Snake Body --><path d="M48 85 C 15 85 15 60 50 55 C 85 50 85 25 50 20 L 54 20" stroke="url(%23snakeGrad)" stroke-width="10" stroke-linecap="round" fill="none"/><circle cx="56" cy="20" r="6" fill="%234ade80" /></g><!-- Text Logo --><text x="100" y="50" font-family="sans-serif" font-weight="800" font-size="38" fill="%230ea5e9">Clave</text><text x="208" y="50" font-family="sans-serif" font-weight="800" font-size="38" fill="%230f766e">Salud</text><!-- Slogan --><text x="102" y="75" font-family="sans-serif" font-weight="500" font-size="12" fill="%2364748b">Ficha clínica digital para equipos de salud.</text></svg>`;
 
+export const SUPPORT_CONTACT = {
+  whatsappNumber: "+56912345678",
+  email: "soporte@clavesalud.cl",
+  whatsappMessage: "Hola, necesito ayuda con ClaveSalud.",
+};
+
+export const LANDING_TESTIMONIALS = [
+  {
+    quote:
+      "Redujimos tiempos administrativos y hoy tenemos control clínico en tiempo real en cada sede.",
+    author: "Red Clínica Andina",
+  },
+  {
+    quote: "La agenda digital disminuyó ausencias y mejoró la comunicación con pacientes.",
+    author: "Centro Médico Santa Lucía",
+  },
+  {
+    quote: "Nuestro equipo adoptó ClaveSalud en días gracias a la capacitación guiada.",
+    author: "Clínica del Valle",
+  },
+];
+
+export const ONBOARDING_TOURS = {
+  DEFAULT: [
+    {
+      title: "Bienvenido a ClaveSalud",
+      description:
+        "Accede al portal de tu centro médico y gestiona pacientes, agenda y fichas clínicas.",
+    },
+    {
+      title: "Selecciona tu centro",
+      description:
+        "En el directorio de centros, elige dónde trabajas para ingresar al portal correspondiente.",
+    },
+    {
+      title: "Accesos rápidos",
+      description:
+        "Usa los accesos para pacientes o profesionales según tu rol. El botón de soporte siempre está disponible.",
+    },
+  ],
+  ADMIN_CENTRO: [
+    {
+      title: "Panel administrativo",
+      description:
+        "Gestiona profesionales, agenda, auditorías y configuraciones del centro desde tu panel.",
+    },
+    {
+      title: "Invitaciones seguras",
+      description:
+        "Invita usuarios mediante el flujo de SuperAdmin para mantener un control seguro de accesos.",
+    },
+    {
+      title: "Reportes y respaldo",
+      description: "Usa los respaldos y auditorías para mantener trazabilidad clínica.",
+    },
+  ],
+  ADMINISTRATIVO: [
+    {
+      title: "Agenda centralizada",
+      description: "Coordina horas médicas y confirma disponibilidad del equipo.",
+    },
+    {
+      title: "Pacientes al día",
+      description:
+        "Actualiza antecedentes y mantiene la ficha clínica completa antes de cada atención.",
+    },
+    {
+      title: "Soporte inmediato",
+      description: "Contacta soporte desde el botón flotante si necesitas ayuda.",
+    },
+  ],
+  MEDICO: [
+    {
+      title: "Historial clínico",
+      description: "Revisa antecedentes, consultas previas y evolución de exámenes.",
+    },
+    {
+      title: "Agenda diaria",
+      description: "Visualiza tus citas y registra atenciones con rapidez.",
+    },
+    {
+      title: "Plantillas y recetas",
+      description: "Ahorra tiempo utilizando plantillas y recetas predefinidas.",
+    },
+  ],
+};
+
 export const TRACKED_EXAMS_OPTIONS = [
   { id: "hba1c", label: "Hemoglobina Glicosilada (HbA1c)", unit: "%", category: "Metabólico" },
   { id: "creatinina", label: "Creatinina Plasmática", unit: "mg/dL", category: "Renal" },

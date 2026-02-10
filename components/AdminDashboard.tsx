@@ -69,6 +69,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
+import LegalLinks from "./LegalLinks";
 import WhatsappTemplatesManager from "./WhatsappTemplatesManager";
 import policyText from "../docs/politicas/POLITICA_CONSERVACION_FICHA_CLINICA.md?raw";
 import AuditLogViewer from "./AuditLogViewer";
@@ -82,6 +83,7 @@ interface AdminDashboardProps {
   onUpdateAppointments: (appointments: Appointment[]) => void;
   isSyncingAppointments?: boolean;
   onLogout: () => void;
+  onOpenLegal: (target: "terms" | "privacy") => void;
   patients: Patient[];
   onUpdatePatients: (patients: Patient[]) => void;
   preadmissions: Preadmission[];
@@ -111,6 +113,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateAppointments,
   isSyncingAppointments,
   onLogout,
+  onOpenLegal,
   patients,
   onUpdatePatients,
   preadmissions,
@@ -968,6 +971,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           </div>
 
+          <LegalLinks
+            onOpenTerms={() => onOpenLegal("terms")}
+            onOpenPrivacy={() => onOpenLegal("privacy")}
+            className="flex"
+            buttonClassName="text-slate-400 hover:text-white"
+          />
           <button
             onClick={onLogout}
             className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors"
