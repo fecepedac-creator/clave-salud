@@ -140,12 +140,34 @@ service cloud.firestore {
     }
 
     function isPublicPatientCreate(centerId) {
+      let allowedFields = [
+        'id',
+        'centerId',
+        'rut',
+        'fullName',
+        'birthDate',
+        'gender',
+        'phone',
+        'medicalHistory',
+        'surgicalHistory',
+        'smokingStatus',
+        'alcoholStatus',
+        'medications',
+        'allergies',
+        'consultations',
+        'attachments',
+        'lastUpdated',
+        'active'
+      ];
       return request.auth == null
+        && request.resource.data.keys().hasOnly(allowedFields)
         && request.resource.data.centerId == centerId
+        && request.resource.data.id is string
         && request.resource.data.rut is string
         && request.resource.data.fullName is string
         && request.resource.data.birthDate is string
         && request.resource.data.gender is string
+        && request.resource.data.phone is string
         && request.resource.data.medicalHistory is list
         && request.resource.data.surgicalHistory is list
         && request.resource.data.smokingStatus is string
@@ -154,7 +176,8 @@ service cloud.firestore {
         && request.resource.data.allergies is list
         && request.resource.data.consultations is list
         && request.resource.data.attachments is list
-        && request.resource.data.lastUpdated is string;
+        && request.resource.data.lastUpdated is string
+        && request.resource.data.active is bool;
     }
 
     function inviteDoc(token) {
@@ -476,7 +499,7 @@ service cloud.firestore {
     }
 
     match /preadmissions/{docId} {
-      allow create: if request.auth == null;
+      allow create: if false;
       allow read, update, delete: if signedIn() && isSuperAdmin();
     }
 

@@ -17,7 +17,7 @@ service firebase.storage {
     }
 
     function staffPath(centerId, staffUid) {
-      return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
+      return /databases/(default)/documents/centers/$(centerId)/staff/$(staffUid);
     }
 
     function isStaff(centerId) {
