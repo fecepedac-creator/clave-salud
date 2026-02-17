@@ -66,6 +66,31 @@ export function useCrudOperations(
     [activeCenterId, showToast]
   );
 
+  const updateAuditLog = useCallback(
+    async (payload: AuditLogEntry) => {
+      if (!requireCenter("registrar auditoría")) return;
+      const id = payload?.id ?? generateId();
+      const event = {
+        centerId: activeCenterId,
+        action: payload.action,
+        entityType: payload.entityType,
+        entityId: payload.entityId,
+        patientId: payload.patientId,
+        details: payload.details,
+        metadata: payload.metadata,
+      };
+
+      await logAuditEventSafe(event);
+
+      return {
+        id,
+        ...payload,
+        centerId: activeCenterId,
+      };
+    },
+    [activeCenterId, requireCenter]
+  );
+
   const updatePatient = useCallback(
     async (payload: Patient) => {
       if (!requireCenter("guardar pacientes")) return;
@@ -96,31 +121,6 @@ export function useCrudOperations(
           ? "Actualización de ficha clínica."
           : "Creación de ficha clínica.",
       });
-    },
-    [activeCenterId, requireCenter, updateAuditLog]
-  );
-
-  const updateAuditLog = useCallback(
-    async (payload: AuditLogEntry) => {
-      if (!requireCenter("registrar auditoría")) return;
-      const id = payload?.id ?? generateId();
-      const event = {
-        centerId: activeCenterId,
-        action: payload.action,
-        entityType: payload.entityType,
-        entityId: payload.entityId,
-        patientId: payload.patientId,
-        details: payload.details,
-        metadata: payload.metadata,
-      };
-
-      await logAuditEventSafe(event);
-
-      return {
-        id,
-        ...payload,
-        centerId: activeCenterId,
-      };
     },
     [activeCenterId, requireCenter, updateAuditLog]
   );

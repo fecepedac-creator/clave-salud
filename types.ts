@@ -344,8 +344,11 @@ export interface Doctor {
   rut: string;
   fullName: string;
   photoUrl?: string; // NEW: Profile photo for booking
+  accessRole?: string;
+  clinicalRole?: string;
   role: AnyRole;
   specialty: string;
+  visibleInBooking?: boolean;
   university?: string;
   email: string;
   /** @deprecated Autenticación real se gestiona con Firebase Auth (Google). */
