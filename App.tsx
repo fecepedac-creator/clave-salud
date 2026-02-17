@@ -720,15 +720,18 @@ const App: React.FC = () => {
   const renderBooking = () => {
     if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
 
-    const uniqueRoles = Array.from(new Set(doctors.map((d) => d.role)));
+    const getPublicCategory = (doctor: Doctor) =>
+      String(doctor.clinicalRole || doctor.specialty || "").trim() || "Otros";
+
+    const uniqueRoles = Array.from(new Set(doctors.map((d) => getPublicCategory(d))));
     const doctorsForRole = selectedRole
-      ? doctors.filter((d) => d.role === selectedRole && d.centerId === activeCenterId)
+      ? doctors.filter((d) => getPublicCategory(d) === selectedRole && d.centerId === activeCenterId)
       : [];
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-    const availableSlotsForDay = selectedDoctorForBooking
+    const availableSlotsForDay = selectedDoctorForBooking?.agendaConfig
       ? getStandardSlots(
           dateStr,
           selectedDoctorForBooking.id,
@@ -816,7 +819,7 @@ const App: React.FC = () => {
                       <span className="font-bold text-xl text-slate-700 block">
                         {docu.fullName}
                       </span>
-                      <span className="text-sm text-slate-500 font-medium">{docu.specialty}</span>
+                      <span className="text-sm text-slate-500 font-medium">{docu.specialty || getPublicCategory(docu)}</span>
                     </div>
                   </button>
                 ))}
@@ -832,6 +835,11 @@ const App: React.FC = () => {
           {/* Step 2: Fecha + Horario */}
           {bookingStep === 2 && selectedDoctorForBooking && (
             <div className="animate-fadeIn">
+              {!selectedDoctorForBooking.agendaConfig && (
+                <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800 text-sm font-semibold text-center">
+                  Profesional no disponible: no tiene agenda configurada.
+                </div>
+              )}
               <div className="flex items-center justify-between mb-6">
                 <button
                   onClick={() => {
