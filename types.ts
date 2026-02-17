@@ -132,9 +132,21 @@ export interface Prescription {
     | "Interconsulta"
     | "Certificado"
     | "Indicaciones"
-    | "Solicitud de Examen";
+    | "Solicitud de Examen"
+    | "OrdenExamenes";
   content: string;
   createdAt: string;
+  category?: "lab_general" | "inmuno" | "cardio" | "pulmonar" | "imagenes";
+  group?: string;
+  items?: Array<{
+    label: string;
+    code?: string;
+    modality?: "RX" | "TC" | "RM" | "ECO" | null;
+    contrast?: "con" | "sin" | null;
+  }>;
+  notes?: string;
+  createdBy?: string;
+  status?: "draft" | "final";
 }
 
 export interface ClinicalTemplate {
@@ -344,8 +356,11 @@ export interface Doctor {
   rut: string;
   fullName: string;
   photoUrl?: string; // NEW: Profile photo for booking
+  accessRole?: string;
+  clinicalRole?: string;
   role: AnyRole;
   specialty: string;
+  visibleInBooking?: boolean;
   university?: string;
   email: string;
   /** @deprecated Autenticación real se gestiona con Firebase Auth (Google). */

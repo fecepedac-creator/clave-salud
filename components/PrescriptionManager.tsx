@@ -11,6 +11,7 @@ interface PrescriptionManagerProps {
   onRemovePrescription: (id: string) => void;
   onPrint: (docs: Prescription[]) => void;
   onOpenClinicalReport?: () => void;
+  onOpenExamOrders?: () => void;
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
 }
@@ -21,6 +22,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   onRemovePrescription,
   onPrint,
   onOpenClinicalReport,
+  onOpenExamOrders,
   templates,
   role,
 }) => {
@@ -100,6 +102,15 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           <FilePlus className="w-5 h-5" /> Documentos Clínicos
         </h4>
         <div className="flex items-center gap-2">
+          {onOpenExamOrders && (
+            <button
+              type="button"
+              onClick={onOpenExamOrders}
+              className="bg-emerald-600 text-white hover:bg-emerald-700 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors"
+            >
+              <FileText className="w-4 h-4" /> Solicitud de exámenes
+            </button>
+          )}
           {onOpenClinicalReport && (
             <button
               type="button"
