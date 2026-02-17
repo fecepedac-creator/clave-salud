@@ -96,9 +96,12 @@ type StaffPublicData = {
   id: string;
   centerId: string;
   fullName: string;
+  accessRole: string;
+  clinicalRole: string;
   role: string;
   specialty: string;
   photoUrl: string;
+  visibleInBooking: boolean;
   agendaConfig: Record<string, unknown> | null;
   active: boolean;
   updatedAt: admin.firestore.FieldValue;
@@ -107,6 +110,30 @@ type StaffPublicData = {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
+}
+
+function normalizeAccessRole(data: Record<string, any> | undefined): string {
+  const accessRole = normalizeString(data?.accessRole ?? "").trim();
+  if (accessRole) return accessRole;
+  const role = normalizeString(data?.role ?? "").trim();
+  if (role === "center_admin" || role === "doctor" || role === "admin") return role;
+  if (data?.isAdmin === true) return "center_admin";
+  return "doctor";
+}
+
+function normalizeClinicalRole(data: Record<string, any> | undefined): string {
+  const explicit = normalizeString(data?.clinicalRole ?? data?.professionalRole ?? "").trim();
+  if (explicit) return explicit;
+  const legacyRole = normalizeString(data?.role ?? "").trim();
+  if (!legacyRole) return "";
+  if (legacyRole.toLowerCase() === "center_admin") return "";
+  if (["doctor", "admin"].includes(legacyRole.toLowerCase())) return "";
+  return legacyRole;
+}
+
+function resolveVisibleInBooking(data: Record<string, any> | undefined): boolean {
+  if (!data) return false;
+  return data.visibleInBooking === true;
 }
 
 function resolveActive(data: Record<string, any> | undefined): boolean {
@@ -125,15 +152,22 @@ function buildPublicStaffData(
   const agendaConfig =
     staffData && staffData.agendaConfig !== undefined ? staffData.agendaConfig : null;
 
+  const fullName = normalizeString(
+    staffData?.fullName ?? staffData?.displayName ?? staffData?.nombre ?? staffData?.name ?? ""
+  );
+  const accessRole = normalizeAccessRole(staffData);
+  const clinicalRole = normalizeClinicalRole(staffData);
+
   return {
     id: staffUid,
     centerId,
-    fullName: normalizeString(
-      staffData?.fullName ?? staffData?.nombre ?? staffData?.name ?? staffData?.displayName ?? ""
-    ),
-    role: normalizeString(staffData?.role ?? ""),
+    fullName,
+    accessRole,
+    clinicalRole,
+    role: clinicalRole,
     specialty: normalizeString(staffData?.specialty ?? ""),
     photoUrl: normalizeString(staffData?.photoUrl ?? ""),
+    visibleInBooking: resolveVisibleInBooking(staffData),
     agendaConfig,
     active: resolveActive(staffData),
     updatedAt: serverTimestamp(),
@@ -679,9 +713,12 @@ export const acceptInvite = (functions.https.onCall as any)(
         uid,
         emailLower,
         role,
+        accessRole: role,
         roles: [role],
+        clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
         active: true,
         activo: true,
+        visibleInBooking: profileData.visibleInBooking === true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         inviteToken: token,
@@ -691,7 +728,7 @@ export const acceptInvite = (functions.https.onCall as any)(
         specialty: profileData.specialty ?? "",
         photoUrl: profileData.photoUrl ?? "",
         agendaConfig: profileData.agendaConfig ?? null,
-        professionalRole: profileData.role ?? inv.professionalRole ?? "",
+        professionalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
         isAdmin: profileData.isAdmin ?? false,
       },
       { merge: true }
@@ -791,8 +828,15 @@ export const syncPublicStaff = (functions.firestore as any)
       .doc(staffUid);
 
     if (!change.after.exists) {
-      await publicRef.delete();
-      functions.logger.info("syncPublicStaff deleted public staff", { centerId, staffUid });
+      await publicRef.set(
+        {
+          active: false,
+          visibleInBooking: false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      functions.logger.info("syncPublicStaff soft-disabled missing staff", { centerId, staffUid });
       return;
     }
 
@@ -810,7 +854,7 @@ export const syncPublicStaff = (functions.firestore as any)
     });
   });
 
-export const backfillPublicStaff = (functions.https.onCall as any)(
+export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
   requireAuth(context);
   if (!isSuperAdmin(context)) {
@@ -831,6 +875,8 @@ export const backfillPublicStaff = (functions.https.onCall as any)(
 
   let centersProcessed = 0;
   let staffProcessed = 0;
+  let staffUpdated = 0;
+  let staffSkipped = 0;
   let failures = 0;
 
   for (const centerDoc of centersDocs) {
@@ -849,9 +895,46 @@ export const backfillPublicStaff = (functions.https.onCall as any)(
       const publicRef = centersRef.doc(centerId).collection("publicStaff").doc(staffUid);
 
       try {
+        const currentStaff = staffData || {};
+        const staffPatch: Record<string, unknown> = {};
+
+        if (typeof currentStaff.visibleInBooking !== "boolean") {
+          staffPatch.visibleInBooking = false;
+        }
+
+        const currentClinicalRole = normalizeString(currentStaff.clinicalRole ?? currentStaff.professionalRole ?? "").trim();
+        if (!currentClinicalRole) {
+          const legacyRole = normalizeString(currentStaff.role ?? "").trim();
+          if (legacyRole && legacyRole.toLowerCase() !== "center_admin" && !["doctor", "admin"].includes(legacyRole.toLowerCase())) {
+            staffPatch.clinicalRole = legacyRole;
+          }
+        }
+
+        const fullName = normalizeString(currentStaff.fullName ?? "").trim();
+        if (!fullName) {
+          const fallbackName = normalizeString(currentStaff.displayName ?? currentStaff.name ?? "").trim();
+          if (fallbackName) {
+            staffPatch.fullName = fallbackName;
+          }
+        }
+
+        if (Object.keys(staffPatch).length > 0) {
+          await centersRef.doc(centerId).collection("staff").doc(staffUid).set(
+            {
+              ...staffPatch,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          staffUpdated += 1;
+        } else {
+          staffSkipped += 1;
+        }
+
         const publicSnap = await publicRef.get();
         const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
-        const publicData = buildPublicStaffData(staffUid, centerId, staffData, existingCreatedAt);
+        const mergedStaffData = { ...currentStaff, ...staffPatch };
+        const publicData = buildPublicStaffData(staffUid, centerId, mergedStaffData, existingCreatedAt);
         await publicRef.set(publicData, { merge: true });
         staffProcessed += 1;
       } catch (error) {
@@ -865,13 +948,15 @@ export const backfillPublicStaff = (functions.https.onCall as any)(
     }
   }
 
-  functions.logger.info("backfillPublicStaff completed", {
+  functions.logger.info("backfillPublicStaffFromStaff completed", {
     centersProcessed,
     staffProcessed,
+    staffUpdated,
+    staffSkipped,
     failures,
   });
 
-  return { ok: true, centersProcessed, staffProcessed, failures };
+  return { ok: true, centersProcessed, staffProcessed, staffUpdated, staffSkipped, failures };
   }
 );
 

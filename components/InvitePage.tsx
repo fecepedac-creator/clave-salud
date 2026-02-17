@@ -132,8 +132,8 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       const centerId = String(invite.centerId || "").trim();
       const accessRole = String(invite.role || "center_admin").trim() || "center_admin";
       const professionalRole =
-        String((invite as any).professionalRole || "").trim() ||
-        (accessRole === "doctor" ? "Medico" : accessRole);
+        String((invite as any).clinicalRole || (invite as any).professionalRole || "").trim() ||
+        (accessRole === "doctor" ? "Medico" : "");
 
       // 1) users/{uid} (merge, compat centers/centros)
       await setDoc(
@@ -156,10 +156,13 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         {
           uid: user.uid,
           emailLower: inviteEmailLower,
-          role: professionalRole,
+          role: accessRole,
+          accessRole,
+          clinicalRole: professionalRole,
           roles: [accessRole],
           active: true,
           activo: true,
+          visibleInBooking: false,
           createdAt: serverTimestamp(),
           inviteToken: token,
           invitedBy: (invite as any).invitedBy ?? null,
@@ -174,9 +177,12 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
           id: user.uid,
           centerId,
           fullName: (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
+          accessRole,
+          clinicalRole: professionalRole,
           role: professionalRole,
           specialty: (invite as any).specialty ?? "",
           photoUrl: (invite as any).photoUrl ?? user.photoURL ?? "",
+          visibleInBooking: false,
           active: true,
           updatedAt: serverTimestamp(),
         },

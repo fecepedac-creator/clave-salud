@@ -47,18 +47,20 @@ service cloud.firestore {
         && (staffDoc(centerId).data.active == true || staffDoc(centerId).data.activo == true);
     }
 
-    function staffRole(centerId) {
+    function staffAccessRole(centerId) {
       return isStaff(centerId)
-        ? staffDoc(centerId).data.role
+        ? (staffDoc(centerId).data.accessRole != null
+          ? staffDoc(centerId).data.accessRole
+          : staffDoc(centerId).data.role)
         : null;
     }
 
     function isCenterAdmin(centerId) {
-      return isStaff(centerId) && staffRole(centerId) == "center_admin";
+      return isStaff(centerId) && staffAccessRole(centerId) == "center_admin";
     }
 
     function isDoctor(centerId) {
-      return isStaff(centerId) && staffRole(centerId) == "doctor";
+      return isStaff(centerId) && staffAccessRole(centerId) == "doctor";
     }
 
     function centerDoc(centerId) {
@@ -265,7 +267,7 @@ service cloud.firestore {
       }
 
       function onlyAllowedFieldsChanged() {
-        let allowedFields = ['fullName', 'photoUrl', 'phone', 'specialty', 'professionalRole', 'bio', 'agendaConfig'];
+        let allowedFields = ['fullName', 'photoUrl', 'phone', 'specialty', 'professionalRole', 'clinicalRole', 'visibleInBooking', 'bio', 'agendaConfig'];
         let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
         return changedKeys.hasOnly(allowedFields);
       }
@@ -318,11 +320,9 @@ service cloud.firestore {
       }
 
       match /publicStaff/{staffUid} {
-        allow read: if isActiveCenter(centerId) && (
-          resource.data.active == true
-          || resource.data.activo == true
-          || !resource.data.keys().hasAny(["active", "activo"])
-        );
+        allow read: if isActiveCenter(centerId)
+          && resource.data.active == true
+          && resource.data.visibleInBooking == true;
         allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if false;
       }
