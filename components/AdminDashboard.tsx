@@ -309,7 +309,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
     clinicalRole: Object.keys(ROLE_LABELS)[0],
-    visibleInBooking: false,
+    visibleInBooking: true,
     active: true,
   });
 
@@ -398,6 +398,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         { visibleInBooking, updatedAt: serverTimestamp() },
         { merge: true }
       );
+      await setDoc(
+        doc(db, "centers", centerId, "publicStaff", doctor.id),
+        { visibleInBooking, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
       showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
     } catch (error) {
       console.error("toggleVisibleInBooking", error);
@@ -422,7 +427,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         clinicalRole: Object.keys(ROLE_LABELS)[0],
         specialty: "",
         isAdmin: true,
-        visibleInBooking: false,
+        visibleInBooking: true,
         active: true,
       });
 
@@ -449,18 +454,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // AuditLogViewer maneja su propia carga/filtrado
 
   // --- DOCTOR FUNCTIONS ---
-  // Persistencia (Firestore): en el modelo definitivo NO se escribe a colección raíz 'doctors'.
-  // El alta de profesionales se hace mediante INVITACIÓN por email. Al aceptar el invite,
-  // la app (o una Cloud Function) crea centers/{centerId}/staff/{uid}.
-  // IMPORTANTE: NO se crean documentos staff directamente aquí para evitar inconsistencias
-  // con el UID del usuario autenticado. Los documentos staff se crean SOLO al aceptar invite.
+  // Persistencia (Firestore): se escribe en centers/{centerId}/staff y publicStaff para que
+  // el profesional aparezca de inmediato en Gestión y Agenda pública.
+  // La invitación por email se mantiene en paralelo para habilitar acceso/login posterior.
   const persistDoctorToFirestore = async (doctor: Doctor) => {
     if (!db) return;
 
     const emailLower = (doctor.email || "").toLowerCase();
     if (!emailLower) {
-      throw new Error("El correo electrónico es requerido para crear la invitación");
+      throw new Error("El correo electrónico es requerido para crear el profesional");
     }
+
+    const existingStaff = await findStaffByEmail(doctor.email || "");
+    if (existingStaff) {
+      await upsertStaffAndPublic(existingStaff.id, doctor);
+      return;
+    }
+
+    // Crear profesional de inmediato para que aparezca en Gestión y Agenda.
+    // Si además requiere acceso/login, se deja invitación pendiente en paralelo.
+    await upsertStaffAndPublic(doctor.id, {
+      ...doctor,
+      visibleInBooking: doctor.visibleInBooking === true,
+      active: doctor.active !== false,
+    });
 
     // Evitar duplicar invitaciones pendientes para el mismo correo/centro
     const qInv = query(
@@ -471,14 +488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
 
     const snap = await getDocs(qInv);
-    if (!snap.empty) {
-      const existingStaff = await findStaffByEmail(doctor.email || "");
-      if (existingStaff) {
-        await upsertStaffAndPublic(existingStaff.id, doctor);
-        return;
-      }
-      throw new Error("Ya existe una invitación pendiente para este correo en este centro");
-    }
+    if (!snap.empty) return;
 
     // Rol de acceso al sistema (no confundir con ProfessionalRole clínico)
     const accessRole = doctor.isAdmin ? "center_admin" : "doctor";
@@ -506,7 +516,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         role: doctor.role,
         clinicalRole: doctor.clinicalRole ?? doctor.role,
         accessRole,
-        visibleInBooking: false,
+        visibleInBooking: doctor.visibleInBooking === true,
         active: true,
         isAdmin: doctor.isAdmin,
       },
@@ -607,17 +617,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         centerId: centerId,
         agendaConfig: { slotDuration: 20, startTime: "08:00", endTime: "21:00" },
         clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
-        visibleInBooking: false,
+        visibleInBooking: currentDoctor.visibleInBooking === true,
         active: true,
       };
 
       try {
         await persistDoctorToFirestore(newDoc);
+        onUpdateDoctors([...doctors, newDoc]);
         showToast(
-          `Invitación enviada a ${newDoc.email}. El profesional debe aceptar la invitación para completar su registro.`,
+          `Profesional creado${newDoc.email ? ` e invitación enviada a ${newDoc.email}` : ""}.`,
           "success"
         );
-        // Note: Don't add to local doctors list - they'll appear after accepting invite
       } catch (e: any) {
         console.error("persistDoctorToFirestore", e);
         showToast(e?.message || "No se pudo crear la invitación.", "error");
@@ -625,7 +635,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     }
     setIsEditingDoctor(false);
-    setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
+    setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: true, active: true });
   };
 
   const handleDeleteDoctor = async (id: string) => {
@@ -1468,7 +1478,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <button
                       onClick={() => {
                         setIsEditingDoctor(false);
-                        setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
+                        setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: true, active: true });
                       }}
                       className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-600 transition-colors"
                     >
