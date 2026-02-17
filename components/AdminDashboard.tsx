@@ -67,6 +67,7 @@ import {
   getDoc,
   Timestamp,
   deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
@@ -307,6 +308,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+    clinicalRole: Object.keys(ROLE_LABELS)[0],
+    visibleInBooking: false,
+    active: true,
   });
 
   // --- STATE FOR AGENDA MANAGEMENT ---
@@ -381,6 +385,67 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     a.endTime === b.endTime;
   const hasUnsavedConfig = savedConfig ? !isConfigEqual(savedConfig, tempConfig) : false;
 
+  const getPublicationStatus = (doc: Doctor) => {
+    if (doc.active === false || (doc as any).activo === false) return "Inactivo";
+    return doc.visibleInBooking ? "Publicado" : "Oculto";
+  };
+
+  const handleToggleVisibleInBooking = async (doctor: Doctor, visibleInBooking: boolean) => {
+    if (!db || !hasActiveCenter) return;
+    try {
+      await setDoc(
+        doc(db, "centers", centerId, "staff", doctor.id),
+        { visibleInBooking, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
+    } catch (error) {
+      console.error("toggleVisibleInBooking", error);
+      showToast("No se pudo actualizar visibilidad del profesional.", "error");
+    }
+  };
+
+  useEffect(() => {
+    const ensureCurrentAdminInStaff = async () => {
+      if (!db || !hasActiveCenter || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
+      const uid = auth.currentUser.uid;
+      const email = auth.currentUser.email;
+      const staffRef = doc(db, "centers", centerId, "staff", uid);
+      const staffSnap = await getDoc(staffRef);
+      if (staffSnap.exists()) return;
+
+      await upsertStaffAndPublic(uid, {
+        id: uid,
+        fullName: auth.currentUser.displayName || email,
+        email,
+        role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+        clinicalRole: Object.keys(ROLE_LABELS)[0],
+        specialty: "",
+        isAdmin: true,
+        visibleInBooking: false,
+        active: true,
+      });
+
+      const pendingInvites = await getDocs(
+        query(
+          collection(db, "invites"),
+          where("emailLower", "==", email.toLowerCase()),
+          where("centerId", "==", centerId),
+          where("status", "==", "pending")
+        )
+      );
+      for (const inviteDoc of pendingInvites.docs) {
+        await updateDoc(doc(db, "invites", inviteDoc.id), {
+          status: "accepted",
+          acceptedAt: serverTimestamp(),
+          acceptedByUid: uid,
+        }).catch(() => {});
+      }
+    };
+
+    ensureCurrentAdminInStaff().catch((error) => console.error("ensureCurrentAdminInStaff", error));
+  }, [db, hasActiveCenter, centerId]);
+
   // AuditLogViewer maneja su propia carga/filtrado
 
   // --- DOCTOR FUNCTIONS ---
@@ -407,6 +472,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const snap = await getDocs(qInv);
     if (!snap.empty) {
+      const existingStaff = await findStaffByEmail(doctor.email || "");
+      if (existingStaff) {
+        await upsertStaffAndPublic(existingStaff.id, doctor);
+        return;
+      }
       throw new Error("Ya existe una invitación pendiente para este correo en este centro");
     }
 
@@ -434,10 +504,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         photoUrl: doctor.photoUrl,
         agendaConfig: doctor.agendaConfig,
         role: doctor.role,
+        clinicalRole: doctor.clinicalRole ?? doctor.role,
+        accessRole,
+        visibleInBooking: false,
+        active: true,
         isAdmin: doctor.isAdmin,
       },
     });
   };
+  const findStaffByEmail = async (email: string) => {
+    if (!db || !email || !centerId) return null;
+    const emailLower = email.toLowerCase();
+    const staffSnap = await getDocs(collection(db, "centers", centerId, "staff"));
+    const existing = staffSnap.docs.find(
+      (staffDoc) => String((staffDoc.data() as any)?.emailLower ?? "").toLowerCase() === emailLower
+    );
+    return existing ? { id: existing.id, data: existing.data() as any } : null;
+  };
+
+  const upsertStaffAndPublic = async (staffId: string, doctor: Partial<Doctor>) => {
+    if (!db || !centerId) return;
+    const payload = {
+      fullName: doctor.fullName ?? "",
+      rut: doctor.rut ?? "",
+      email: doctor.email ?? "",
+      emailLower: String(doctor.email ?? "").toLowerCase(),
+      specialty: doctor.specialty ?? "",
+      photoUrl: doctor.photoUrl ?? "",
+      agendaConfig: doctor.agendaConfig ?? null,
+      role: doctor.role ?? "Medico",
+      accessRole: doctor.isAdmin ? "center_admin" : "doctor",
+      clinicalRole: doctor.clinicalRole || doctor.role || "",
+      visibleInBooking: doctor.visibleInBooking === true,
+      active: doctor.active ?? true,
+      updatedAt: serverTimestamp(),
+    } as any;
+
+    await setDoc(doc(db, "centers", centerId, "staff", staffId), payload, { merge: true });
+    await setDoc(
+      doc(db, "centers", centerId, "publicStaff", staffId),
+      {
+        id: staffId,
+        centerId,
+        fullName: payload.fullName,
+        specialty: payload.specialty,
+        photoUrl: payload.photoUrl,
+        role: payload.clinicalRole,
+        clinicalRole: payload.clinicalRole,
+        accessRole: payload.accessRole,
+        agendaConfig: payload.agendaConfig,
+        visibleInBooking: payload.visibleInBooking,
+        active: payload.active,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
   const handleSaveDoctor = async () => {
     if (!hasActiveCenter) {
       showToast("Selecciona un centro activo para crear profesionales.", "warning");
@@ -447,7 +570,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       !currentDoctor.fullName ||
       !currentDoctor.rut ||
       !currentDoctor.email ||
-      !currentDoctor.role
+      !(currentDoctor.clinicalRole || currentDoctor.role)
     ) {
       showToast("Por favor complete todos los campos obligatorios.", "error");
       return;
@@ -470,23 +593,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onUpdateDoctors(updated);
       try {
         // Update the staff document directly (using their UID)
-        await setDoc(
-          doc(db, "centers", centerId, "staff", currentDoctor.id),
-          {
-            fullName: currentDoctor.fullName,
-            rut: currentDoctor.rut,
-            email: currentDoctor.email,
-            emailLower: (currentDoctor.email || "").toLowerCase(),
-            specialty: currentDoctor.specialty,
-            photoUrl: currentDoctor.photoUrl,
-            agendaConfig: currentDoctor.agendaConfig,
-            role: currentDoctor.role,
-            isAdmin: currentDoctor.isAdmin,
-            active: currentDoctor.active ?? true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+        await upsertStaffAndPublic(currentDoctor.id, currentDoctor);
         showToast("Profesional actualizado.", "success");
       } catch (e: any) {
         console.error("updateStaffDocument", e);
@@ -499,6 +606,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         id: generateId(), // temporary ID for local state
         centerId: centerId,
         agendaConfig: { slotDuration: 20, startTime: "08:00", endTime: "21:00" },
+        clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
+        visibleInBooking: false,
+        active: true,
       };
 
       try {
@@ -515,7 +625,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     }
     setIsEditingDoctor(false);
-    setCurrentDoctor({ role: "Medico" });
+    setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
   };
 
   const handleDeleteDoctor = async (id: string) => {
@@ -655,8 +765,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateDoctors(updatedDoctors);
 
     if (updatedDoctor) {
-      persistDoctorToFirestore(updatedDoctor).catch((e) =>
-        console.error("persistDoctorToFirestore", e)
+      upsertStaffAndPublic(updatedDoctor.id, updatedDoctor).catch((e) =>
+        console.error("upsertStaffAndPublic", e)
       );
     }
 
@@ -1135,12 +1245,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </span>
                         )}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="bg-slate-900 text-indigo-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600">
-                          {ROLE_LABELS[doc.role] || doc.role}
+                          {ROLE_LABELS[(doc.clinicalRole as ProfessionalRole) || (doc.role as ProfessionalRole)] || doc.clinicalRole || doc.role}
                         </span>
-                        <span className="text-slate-500 text-xs font-bold uppercase">
-                          • {doc.specialty}
+                        <span className="text-slate-500 text-xs font-bold uppercase">• {doc.specialty}</span>
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getPublicationStatus(doc) === "Publicado" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : getPublicationStatus(doc) === "Oculto" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-slate-300 border-slate-500/40 bg-slate-500/10"}`}>
+                          {getPublicationStatus(doc)}
                         </span>
                       </div>
                       <p className="text-slate-400 text-xs flex items-center gap-2 mt-1 opacity-70">
@@ -1148,7 +1259,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity items-center">
+                    <button
+                      onClick={() => handleToggleVisibleInBooking(doc, !(doc.visibleInBooking === true))}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold ${doc.visibleInBooking ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"} text-white`}
+                    >
+                      {doc.visibleInBooking ? "Ocultar" : "Publicar"}
+                    </button>
                     <button
                       onClick={() => {
                         setCurrentDoctor(doc);
@@ -1220,6 +1337,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setCurrentDoctor({
                           ...currentDoctor,
                           role: e.target.value as ProfessionalRole,
+                          clinicalRole: e.target.value,
                         })
                       }
                     >
@@ -1323,12 +1441,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </label>
 
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-900/20 border-emerald-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}
+                  >
+                    {currentDoctor.visibleInBooking && <Check className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="hidden"
+                    checked={currentDoctor.visibleInBooking || false}
+                    onChange={(e) =>
+                      setCurrentDoctor({ ...currentDoctor, visibleInBooking: e.target.checked })
+                    }
+                  />
+                  <div>
+                    <span className="block font-bold text-white text-sm">Visible para pacientes</span>
+                    <span className="block text-xs text-slate-400">Controla si aparece en la agenda pública.</span>
+                  </div>
+                </label>
+
                 <div className="flex gap-3 mt-6">
                   {isEditingDoctor && (
                     <button
                       onClick={() => {
                         setIsEditingDoctor(false);
-                        setCurrentDoctor({ role: "Medico" });
+                        setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
                       }}
                       className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-600 transition-colors"
                     >

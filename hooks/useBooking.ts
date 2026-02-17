@@ -286,7 +286,7 @@ export function useBooking(
         (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
       );
       if (doctor) {
-        setSelectedRole(doctor.role);
+        setSelectedRole(String(doctor.clinicalRole || doctor.specialty || doctor.role || ""));
         setSelectedDoctorForBooking(doctor);
       }
       setBookingData({

@@ -65,7 +65,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import { collection, addDoc, serverTimestamp, doc, getDoc, onSnapshot } from "firebase/firestore";
+import { collection, serverTimestamp, doc, getDoc, onSnapshot, query, orderBy, setDoc, limit } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 
@@ -78,10 +78,13 @@ import PatientSidebar from "./PatientSidebar";
 import PatientDetail from "./PatientDetail";
 import PrintPreviewModal from "./PrintPreviewModal";
 import ClinicalReportModal from "./ClinicalReportModal";
+import ConsultationDetailModal from "./ConsultationDetailModal";
+import ExamOrderModal from "./ExamOrderModal";
 import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
+import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
 
 interface ProfessionalDashboardProps {
@@ -227,9 +230,15 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
-  const selectedPatientConsultations = selectedPatient
-    ? getActiveConsultations(selectedPatient)
-    : [];
+  const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
+  const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
+
+  const selectedPatientConsultations = useMemo(() => {
+    if (!selectedPatient) return [];
+    if (consultationsFromDb.length > 0) return consultationsFromDb;
+    const legacy = getActiveConsultations(selectedPatient);
+    return legacy;
+  }, [selectedPatient, consultationsFromDb]);
 
   const buildWhatsAppText = (templateBody: string, p: Patient) => {
     const centerName = activeCenter?.name ?? "Centro Médico";
@@ -355,6 +364,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [docsToPrint, setDocsToPrint] = useState<Prescription[]>([]);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
+  const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
+  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
+  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
 
   // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -470,6 +482,80 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     () => whatsappTemplates.filter((template) => template.enabled),
     [whatsappTemplates]
   );
+
+  useEffect(() => {
+    if (!activeCenterId || !selectedPatient?.id) {
+      setConsultationsFromDb([]);
+      setIsUsingLegacyConsultations(false);
+      return;
+    }
+
+    const consultationsRef = collection(
+      db,
+      "centers",
+      activeCenterId,
+      "patients",
+      selectedPatient.id,
+      "consultations"
+    );
+
+    const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const docs = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Consultation[];
+        setConsultationsFromDb(docs.filter((c) => c.active !== false));
+        const legacyCount = getActiveConsultations(selectedPatient).length;
+        setIsUsingLegacyConsultations(docs.length === 0 && legacyCount > 0);
+      },
+      () => {
+        setConsultationsFromDb([]);
+        const legacyCount = getActiveConsultations(selectedPatient).length;
+        setIsUsingLegacyConsultations(legacyCount > 0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeCenterId, selectedPatient]);
+
+  useEffect(() => {
+    const loadExamOrderCatalog = async () => {
+      try {
+        const centerCatalogRef = activeCenterId
+          ? doc(db, "centers", activeCenterId, "settings", "examOrderCatalog")
+          : null;
+        const globalCatalogRef = doc(db, "globalSettings", "examOrderCatalog");
+
+        if (centerCatalogRef) {
+          const centerSnap = await getDoc(centerCatalogRef);
+          if (centerSnap.exists()) {
+            const data = centerSnap.data() as any;
+            if (Array.isArray(data?.categories)) {
+              setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+              return;
+            }
+          }
+        }
+
+        const globalSnap = await getDoc(globalCatalogRef);
+        if (globalSnap.exists()) {
+          const data = globalSnap.data() as any;
+          if (Array.isArray(data?.categories)) {
+            setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+            return;
+          }
+        }
+
+        setExamOrderCatalog(DEFAULT_EXAM_ORDER_CATALOG);
+      } catch (error) {
+        console.error("loadExamOrderCatalog", error);
+        setExamOrderCatalog(DEFAULT_EXAM_ORDER_CATALOG);
+      }
+    };
+
+    loadExamOrderCatalog();
+  }, [activeCenterId]);
 
   // New Consultation State
   const [newConsultation, setNewConsultation] =
@@ -688,30 +774,44 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       professionalRut,
     } as any;
 
-    // 1) Guardar en Firestore (colección "consultations")
+    // 1) Guardar en Firestore (subcolección por paciente) con ID estable
     try {
       if (!activeCenterId) throw new Error("Centro no seleccionado");
-      await addDoc(collection(db, "centers", activeCenterId, "consultations"), {
-        ...consultation,
-        centerId: activeCenterId,
-        patientId: selectedPatient?.id ?? null,
-        createdByUid: auth.currentUser?.uid ?? doctorId,
-        createdAt: serverTimestamp(),
-      } as any);
-      showToast("Atención guardada correctamente en la nube", "success");
+      await setDoc(
+        doc(
+          db,
+          "centers",
+          activeCenterId,
+          "patients",
+          selectedPatient.id,
+          "consultations",
+          consultation.id
+        ),
+        {
+          ...consultation,
+          centerId: activeCenterId,
+          patientId: selectedPatient.id,
+          createdByUid: auth.currentUser?.uid ?? doctorId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        } as any,
+        { merge: true }
+      );
+      showToast("Atención guardada correctamente", "success");
     } catch (error) {
       console.error(error);
-      showToast("Error al guardar en la nube (se guardó localmente)", "error");
+      showToast("Error al guardar la atención en la nube.", "error");
+      return;
     }
 
-    // 2) Actualizar estado local (lista de pacientes)
+    // 2) Actualizar paciente sin seguir creciendo consultations legacy
     const updatedPatient: Patient = {
       ...selectedPatient,
-      consultations: [consultation, ...(selectedPatient.consultations || [])],
       lastUpdated: new Date().toISOString(),
     };
 
     onUpdatePatient(updatedPatient);
+    setConsultationsFromDb((prev) => [consultation, ...prev]);
 
     // 3) Auditoría
     try {
@@ -954,6 +1054,30 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           centerName={activeCenter?.name}
           centerLogoUrl={activeCenter?.logoUrl}
           selectedPatient={selectedPatient}
+        />
+
+        <ConsultationDetailModal
+          isOpen={Boolean(selectedConsultationForModal)}
+          consultation={selectedConsultationForModal}
+          onClose={() => setSelectedConsultationForModal(null)}
+          onPrint={(docs) => {
+            setDocsToPrint(docs);
+            setIsPrintModalOpen(true);
+          }}
+        />
+
+        <ExamOrderModal
+          isOpen={isExamOrderModalOpen}
+          catalog={examOrderCatalog}
+          createdBy={auth.currentUser?.uid ?? doctorId}
+          onClose={() => setIsExamOrderModalOpen(false)}
+          onSave={(docs) => {
+            setNewConsultation((prev) => ({
+              ...prev,
+              prescriptions: [...(prev.prescriptions || []), ...docs],
+            }));
+            showToast(`${docs.length} orden(es) de exámenes agregadas.`, "success");
+          }}
         />
 
         <ClinicalReportModal
@@ -1239,6 +1363,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               setIsPrintModalOpen(true);
                             }}
                             onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
+                            onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
                             templates={myTemplates}
                             role={role}
                           />
@@ -1343,19 +1468,27 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   </div>
                 </div>
               ) : (
-                <ConsultationHistory
-                  consultations={selectedPatientConsultations} // SAFETY: Fallback to empty array
-                  centerId={activeCenterId}
-                  patientId={selectedPatient.id}
-                  onPrint={(docs) => {
-                    setDocsToPrint(docs);
-                    setIsPrintModalOpen(true);
-                  }}
-                  onSendEmail={(c) => {
-                    showToast("Abriendo correo...", "info");
-                    sendConsultationByEmail(c);
-                  }}
-                />
+                <>
+                  {isUsingLegacyConsultations && (
+                    <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-semibold">
+                      Mostrando historial legacy (patients.consultations). Las nuevas atenciones se guardan en subcolección.
+                    </div>
+                  )}
+                  <ConsultationHistory
+                    consultations={selectedPatientConsultations}
+                    centerId={activeCenterId}
+                    patientId={selectedPatient.id}
+                    onOpen={(consultation) => setSelectedConsultationForModal(consultation)}
+                    onPrint={(docs) => {
+                      setDocsToPrint(docs);
+                      setIsPrintModalOpen(true);
+                    }}
+                    onSendEmail={(c) => {
+                      showToast("Abriendo correo...", "info");
+                      sendConsultationByEmail(c);
+                    }}
+                  />
+                </>
               )}
             </section>
           </div>
