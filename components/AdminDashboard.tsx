@@ -307,6 +307,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+    clinicalRole: Object.keys(ROLE_LABELS)[0],
+    visibleInBooking: false,
+    active: true,
   });
 
   // --- STATE FOR AGENDA MANAGEMENT ---
@@ -381,6 +384,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     a.endTime === b.endTime;
   const hasUnsavedConfig = savedConfig ? !isConfigEqual(savedConfig, tempConfig) : false;
 
+  const getPublicationStatus = (doc: Doctor) => {
+    if (doc.active === false || (doc as any).activo === false) return "Inactivo";
+    return doc.visibleInBooking ? "Publicado" : "Oculto";
+  };
+
+  const handleToggleVisibleInBooking = async (doctor: Doctor, visibleInBooking: boolean) => {
+    if (!db || !hasActiveCenter) return;
+    try {
+      await setDoc(
+        doc(db, "centers", centerId, "staff", doctor.id),
+        { visibleInBooking, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
+    } catch (error) {
+      console.error("toggleVisibleInBooking", error);
+      showToast("No se pudo actualizar visibilidad del profesional.", "error");
+    }
+  };
+
   // AuditLogViewer maneja su propia carga/filtrado
 
   // --- DOCTOR FUNCTIONS ---
@@ -434,6 +457,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         photoUrl: doctor.photoUrl,
         agendaConfig: doctor.agendaConfig,
         role: doctor.role,
+        clinicalRole: doctor.clinicalRole ?? doctor.role,
+        accessRole,
+        visibleInBooking: false,
+        active: true,
         isAdmin: doctor.isAdmin,
       },
     });
@@ -447,7 +474,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       !currentDoctor.fullName ||
       !currentDoctor.rut ||
       !currentDoctor.email ||
-      !currentDoctor.role
+      !(currentDoctor.clinicalRole || currentDoctor.role)
     ) {
       showToast("Por favor complete todos los campos obligatorios.", "error");
       return;
@@ -481,7 +508,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             photoUrl: currentDoctor.photoUrl,
             agendaConfig: currentDoctor.agendaConfig,
             role: currentDoctor.role,
+            accessRole: currentDoctor.isAdmin ? "center_admin" : "doctor",
+            clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
             isAdmin: currentDoctor.isAdmin,
+            visibleInBooking: currentDoctor.visibleInBooking === true,
             active: currentDoctor.active ?? true,
             updatedAt: serverTimestamp(),
           },
@@ -499,6 +529,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         id: generateId(), // temporary ID for local state
         centerId: centerId,
         agendaConfig: { slotDuration: 20, startTime: "08:00", endTime: "21:00" },
+        clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
+        visibleInBooking: false,
+        active: true,
       };
 
       try {
@@ -515,7 +548,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     }
     setIsEditingDoctor(false);
-    setCurrentDoctor({ role: "Medico" });
+    setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
   };
 
   const handleDeleteDoctor = async (id: string) => {
@@ -1135,12 +1168,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </span>
                         )}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="bg-slate-900 text-indigo-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600">
-                          {ROLE_LABELS[doc.role] || doc.role}
+                          {ROLE_LABELS[(doc.clinicalRole as ProfessionalRole) || (doc.role as ProfessionalRole)] || doc.clinicalRole || doc.role}
                         </span>
-                        <span className="text-slate-500 text-xs font-bold uppercase">
-                          • {doc.specialty}
+                        <span className="text-slate-500 text-xs font-bold uppercase">• {doc.specialty}</span>
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getPublicationStatus(doc) === "Publicado" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : getPublicationStatus(doc) === "Oculto" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-slate-300 border-slate-500/40 bg-slate-500/10"}`}>
+                          {getPublicationStatus(doc)}
                         </span>
                       </div>
                       <p className="text-slate-400 text-xs flex items-center gap-2 mt-1 opacity-70">
@@ -1148,7 +1182,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity items-center">
+                    <button
+                      onClick={() => handleToggleVisibleInBooking(doc, !(doc.visibleInBooking === true))}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold ${doc.visibleInBooking ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"} text-white`}
+                    >
+                      {doc.visibleInBooking ? "Ocultar" : "Publicar"}
+                    </button>
                     <button
                       onClick={() => {
                         setCurrentDoctor(doc);
@@ -1220,6 +1260,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setCurrentDoctor({
                           ...currentDoctor,
                           role: e.target.value as ProfessionalRole,
+                          clinicalRole: e.target.value,
                         })
                       }
                     >
@@ -1323,12 +1364,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </label>
 
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-900/20 border-emerald-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}
+                  >
+                    {currentDoctor.visibleInBooking && <Check className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="hidden"
+                    checked={currentDoctor.visibleInBooking || false}
+                    onChange={(e) =>
+                      setCurrentDoctor({ ...currentDoctor, visibleInBooking: e.target.checked })
+                    }
+                  />
+                  <div>
+                    <span className="block font-bold text-white text-sm">Visible para pacientes</span>
+                    <span className="block text-xs text-slate-400">Controla si aparece en la agenda pública.</span>
+                  </div>
+                </label>
+
                 <div className="flex gap-3 mt-6">
                   {isEditingDoctor && (
                     <button
                       onClick={() => {
                         setIsEditingDoctor(false);
-                        setCurrentDoctor({ role: "Medico" });
+                        setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: false, active: true });
                       }}
                       className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-600 transition-colors"
                     >
