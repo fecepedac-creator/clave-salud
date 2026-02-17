@@ -67,6 +67,7 @@ import {
   getDoc,
   Timestamp,
   deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
@@ -404,6 +405,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  useEffect(() => {
+    const ensureCurrentAdminInStaff = async () => {
+      if (!db || !hasActiveCenter || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
+      const uid = auth.currentUser.uid;
+      const email = auth.currentUser.email;
+      const staffRef = doc(db, "centers", centerId, "staff", uid);
+      const staffSnap = await getDoc(staffRef);
+      if (staffSnap.exists()) return;
+
+      await upsertStaffAndPublic(uid, {
+        id: uid,
+        fullName: auth.currentUser.displayName || email,
+        email,
+        role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+        clinicalRole: Object.keys(ROLE_LABELS)[0],
+        specialty: "",
+        isAdmin: true,
+        visibleInBooking: false,
+        active: true,
+      });
+
+      const pendingInvites = await getDocs(
+        query(
+          collection(db, "invites"),
+          where("emailLower", "==", email.toLowerCase()),
+          where("centerId", "==", centerId),
+          where("status", "==", "pending")
+        )
+      );
+      for (const inviteDoc of pendingInvites.docs) {
+        await updateDoc(doc(db, "invites", inviteDoc.id), {
+          status: "accepted",
+          acceptedAt: serverTimestamp(),
+          acceptedByUid: uid,
+        }).catch(() => {});
+      }
+    };
+
+    ensureCurrentAdminInStaff().catch((error) => console.error("ensureCurrentAdminInStaff", error));
+  }, [db, hasActiveCenter, centerId]);
+
   // AuditLogViewer maneja su propia carga/filtrado
 
   // --- DOCTOR FUNCTIONS ---
@@ -430,6 +472,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const snap = await getDocs(qInv);
     if (!snap.empty) {
+      const existingStaff = await findStaffByEmail(doctor.email || "");
+      if (existingStaff) {
+        await upsertStaffAndPublic(existingStaff.id, doctor);
+        return;
+      }
       throw new Error("Ya existe una invitación pendiente para este correo en este centro");
     }
 
@@ -465,6 +512,55 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       },
     });
   };
+  const findStaffByEmail = async (email: string) => {
+    if (!db || !email || !centerId) return null;
+    const emailLower = email.toLowerCase();
+    const staffSnap = await getDocs(collection(db, "centers", centerId, "staff"));
+    const existing = staffSnap.docs.find(
+      (staffDoc) => String((staffDoc.data() as any)?.emailLower ?? "").toLowerCase() === emailLower
+    );
+    return existing ? { id: existing.id, data: existing.data() as any } : null;
+  };
+
+  const upsertStaffAndPublic = async (staffId: string, doctor: Partial<Doctor>) => {
+    if (!db || !centerId) return;
+    const payload = {
+      fullName: doctor.fullName ?? "",
+      rut: doctor.rut ?? "",
+      email: doctor.email ?? "",
+      emailLower: String(doctor.email ?? "").toLowerCase(),
+      specialty: doctor.specialty ?? "",
+      photoUrl: doctor.photoUrl ?? "",
+      agendaConfig: doctor.agendaConfig ?? null,
+      role: doctor.role ?? "Medico",
+      accessRole: doctor.isAdmin ? "center_admin" : "doctor",
+      clinicalRole: doctor.clinicalRole || doctor.role || "",
+      visibleInBooking: doctor.visibleInBooking === true,
+      active: doctor.active ?? true,
+      updatedAt: serverTimestamp(),
+    } as any;
+
+    await setDoc(doc(db, "centers", centerId, "staff", staffId), payload, { merge: true });
+    await setDoc(
+      doc(db, "centers", centerId, "publicStaff", staffId),
+      {
+        id: staffId,
+        centerId,
+        fullName: payload.fullName,
+        specialty: payload.specialty,
+        photoUrl: payload.photoUrl,
+        role: payload.clinicalRole,
+        clinicalRole: payload.clinicalRole,
+        accessRole: payload.accessRole,
+        agendaConfig: payload.agendaConfig,
+        visibleInBooking: payload.visibleInBooking,
+        active: payload.active,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
   const handleSaveDoctor = async () => {
     if (!hasActiveCenter) {
       showToast("Selecciona un centro activo para crear profesionales.", "warning");
@@ -497,26 +593,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onUpdateDoctors(updated);
       try {
         // Update the staff document directly (using their UID)
-        await setDoc(
-          doc(db, "centers", centerId, "staff", currentDoctor.id),
-          {
-            fullName: currentDoctor.fullName,
-            rut: currentDoctor.rut,
-            email: currentDoctor.email,
-            emailLower: (currentDoctor.email || "").toLowerCase(),
-            specialty: currentDoctor.specialty,
-            photoUrl: currentDoctor.photoUrl,
-            agendaConfig: currentDoctor.agendaConfig,
-            role: currentDoctor.role,
-            accessRole: currentDoctor.isAdmin ? "center_admin" : "doctor",
-            clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
-            isAdmin: currentDoctor.isAdmin,
-            visibleInBooking: currentDoctor.visibleInBooking === true,
-            active: currentDoctor.active ?? true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+        await upsertStaffAndPublic(currentDoctor.id, currentDoctor);
         showToast("Profesional actualizado.", "success");
       } catch (e: any) {
         console.error("updateStaffDocument", e);
@@ -688,8 +765,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateDoctors(updatedDoctors);
 
     if (updatedDoctor) {
-      persistDoctorToFirestore(updatedDoctor).catch((e) =>
-        console.error("persistDoctorToFirestore", e)
+      upsertStaffAndPublic(updatedDoctor.id, updatedDoctor).catch((e) =>
+        console.error("upsertStaffAndPublic", e)
       );
     }
 
