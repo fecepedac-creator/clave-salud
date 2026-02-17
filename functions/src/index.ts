@@ -960,6 +960,76 @@ export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
   }
 );
 
+export const backfillPatientConsultationsToSubcollection = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  if (!isSuperAdmin(context)) {
+    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+  }
+
+  const centerId = String(data?.centerId || "").trim();
+  const patientId = String(data?.patientId || "").trim();
+
+  if (!centerId) {
+    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+  }
+
+  const patientsRef = db.collection("centers").doc(centerId).collection("patients");
+  const patientsDocs = patientId
+    ? [await patientsRef.doc(patientId).get()].filter((docSnap) => docSnap.exists)
+    : (await patientsRef.get()).docs;
+
+  let patientsProcessed = 0;
+  let consultationsProcessed = 0;
+  let consultationsSkipped = 0;
+
+  for (const patientDoc of patientsDocs) {
+    patientsProcessed += 1;
+    const pData = patientDoc.data() as Record<string, any>;
+    const legacyConsultations = Array.isArray(pData?.consultations) ? pData.consultations : [];
+
+    for (const legacy of legacyConsultations) {
+      const consultationId = String(legacy?.id || "").trim();
+      if (!consultationId) {
+        consultationsSkipped += 1;
+        continue;
+      }
+
+      await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("patients")
+        .doc(patientDoc.id)
+        .collection("consultations")
+        .doc(consultationId)
+        .set(
+          {
+            ...legacy,
+            id: consultationId,
+            centerId,
+            patientId: patientDoc.id,
+            updatedAt: serverTimestamp(),
+            createdAt: legacy?.createdAt ?? serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+      consultationsProcessed += 1;
+    }
+  }
+
+  functions.logger.info("backfillPatientConsultationsToSubcollection completed", {
+    centerId,
+    patientId: patientId || null,
+    patientsProcessed,
+    consultationsProcessed,
+    consultationsSkipped,
+  });
+
+  return { ok: true, centerId, patientsProcessed, consultationsProcessed, consultationsSkipped };
+  }
+);
+
 /**
  * logAccess - Cloud Function para registrar accesos a datos clínicos
  * 

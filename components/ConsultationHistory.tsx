@@ -9,6 +9,7 @@ interface ConsultationHistoryProps {
   centerId?: string;
   patientId?: string;
   onPrint: (docs: Prescription[]) => void;
+  onOpen: (consultation: Consultation) => void;
   onSendEmail: (consultation: Consultation) => void;
 }
 
@@ -17,6 +18,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   centerId,
   patientId,
   onPrint,
+  onOpen,
   onSendEmail,
 }) => {
   const { logAccess } = useAuditLog();
@@ -32,7 +34,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
       logAccessSafe(logAccess, {
         centerId,
         resourceType: "consultation",
-        resourcePath: `/centers/${centerId}/consultations/${consultation.id}`,
+        resourcePath: `/centers/${centerId}/patients/${patientId}/consultations/${consultation.id}`,
         patientId,
         actorUid: auth.currentUser?.uid ?? undefined,
       });
@@ -67,14 +69,36 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                   <User className="w-4 h-4" /> Dr. {c.professionalName || "(No registrado)"}
                 </span>
               </div>
-              <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => onSendEmail(c)}
-                  className="p-3 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-colors"
-                  title="Enviar mail"
-                >
-                  <Mail className="w-6 h-6" />
-                </button>
+              <div className="flex items-center gap-2">
+                {c.prescriptions && c.prescriptions.length > 0 && (
+                  <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1">
+                    Documentos: {c.prescriptions.length}
+                  </span>
+                )}
+                <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => onOpen(c)}
+                    className="px-3 py-2 text-xs font-bold rounded-lg bg-slate-900 text-white hover:bg-slate-700"
+                    title="Abrir atención"
+                  >
+                    Abrir atención
+                  </button>
+                  <button
+                    onClick={() => onPrint(c.prescriptions || [])}
+                    disabled={!c.prescriptions || c.prescriptions.length === 0}
+                    className="px-3 py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40"
+                    title="Reimprimir"
+                  >
+                    Reimprimir
+                  </button>
+                  <button
+                    onClick={() => onSendEmail(c)}
+                    className="p-3 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-colors"
+                    title="Enviar mail"
+                  >
+                    <Mail className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="grid md:grid-cols-12 gap-8">

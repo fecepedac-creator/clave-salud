@@ -363,6 +363,38 @@ service cloud.firestore {
           );
         allow delete: if false;
 
+        match /consultations/{consultationId} {
+          allow read: if signedIn()
+            && (
+              isSuperAdmin()
+              || isCenterAdmin(centerId)
+              || (isStaff(centerId) && (
+                !isCareTeamMode(centerId)
+                || isCareTeamMember(centerId, patientId)
+              ))
+            );
+          allow create: if signedIn() && (
+            isSuperAdmin()
+            || isCenterAdmin(centerId)
+            || isDoctor(centerId)
+          );
+          allow update: if signedIn() && (
+            isSuperAdmin()
+            || isCenterAdmin(centerId)
+            || isDoctor(centerId)
+          )
+          && professionalFieldsUnchanged()
+          && (
+            !softDeleteKeysChanged()
+            || (
+              (isSuperAdmin() || isCenterAdmin(centerId))
+              && isSoftDeleteValid()
+              && canArchiveByRetention()
+            )
+          );
+          allow delete: if false;
+        }
+
         match /notes/{noteId} {
           allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
           allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
