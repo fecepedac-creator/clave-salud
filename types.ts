@@ -132,9 +132,21 @@ export interface Prescription {
     | "Interconsulta"
     | "Certificado"
     | "Indicaciones"
-    | "Solicitud de Examen";
+    | "Solicitud de Examen"
+    | "OrdenExamenes";
   content: string;
   createdAt: string;
+  category?: "lab_general" | "inmuno" | "cardio" | "pulmonar" | "imagenes";
+  group?: string;
+  items?: Array<{
+    label: string;
+    code?: string;
+    modality?: "RX" | "TC" | "RM" | "ECO" | null;
+    contrast?: "con" | "sin" | null;
+  }>;
+  notes?: string;
+  createdBy?: string;
+  status?: "draft" | "final";
 }
 
 export interface ClinicalTemplate {

@@ -79,10 +79,12 @@ import PatientDetail from "./PatientDetail";
 import PrintPreviewModal from "./PrintPreviewModal";
 import ClinicalReportModal from "./ClinicalReportModal";
 import ConsultationDetailModal from "./ConsultationDetailModal";
+import ExamOrderModal from "./ExamOrderModal";
 import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
+import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
 
 interface ProfessionalDashboardProps {
@@ -363,6 +365,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
   const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
+  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
+  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
 
   // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -514,6 +518,44 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
     return () => unsubscribe();
   }, [activeCenterId, selectedPatient]);
+
+  useEffect(() => {
+    const loadExamOrderCatalog = async () => {
+      try {
+        const centerCatalogRef = activeCenterId
+          ? doc(db, "centers", activeCenterId, "settings", "examOrderCatalog")
+          : null;
+        const globalCatalogRef = doc(db, "globalSettings", "examOrderCatalog");
+
+        if (centerCatalogRef) {
+          const centerSnap = await getDoc(centerCatalogRef);
+          if (centerSnap.exists()) {
+            const data = centerSnap.data() as any;
+            if (Array.isArray(data?.categories)) {
+              setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+              return;
+            }
+          }
+        }
+
+        const globalSnap = await getDoc(globalCatalogRef);
+        if (globalSnap.exists()) {
+          const data = globalSnap.data() as any;
+          if (Array.isArray(data?.categories)) {
+            setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+            return;
+          }
+        }
+
+        setExamOrderCatalog(DEFAULT_EXAM_ORDER_CATALOG);
+      } catch (error) {
+        console.error("loadExamOrderCatalog", error);
+        setExamOrderCatalog(DEFAULT_EXAM_ORDER_CATALOG);
+      }
+    };
+
+    loadExamOrderCatalog();
+  }, [activeCenterId]);
 
   // New Consultation State
   const [newConsultation, setNewConsultation] =
@@ -1024,6 +1066,20 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           }}
         />
 
+        <ExamOrderModal
+          isOpen={isExamOrderModalOpen}
+          catalog={examOrderCatalog}
+          createdBy={auth.currentUser?.uid ?? doctorId}
+          onClose={() => setIsExamOrderModalOpen(false)}
+          onSave={(docs) => {
+            setNewConsultation((prev) => ({
+              ...prev,
+              prescriptions: [...(prev.prescriptions || []), ...docs],
+            }));
+            showToast(`${docs.length} orden(es) de exámenes agregadas.`, "success");
+          }}
+        />
+
         <ClinicalReportModal
           isOpen={isClinicalReportOpen}
           onClose={() => setIsClinicalReportOpen(false)}
@@ -1307,6 +1363,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               setIsPrintModalOpen(true);
                             }}
                             onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
+                            onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
                             templates={myTemplates}
                             role={role}
                           />

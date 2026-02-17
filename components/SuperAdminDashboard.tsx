@@ -21,6 +21,7 @@ import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
+import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -296,8 +297,53 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [commBody, setCommBody] = useState("");
   const [commSendEmail, setCommSendEmail] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+  const [examOrderCatalogDraft, setExamOrderCatalogDraft] = useState<string>(JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2));
+  const [savingExamCatalog, setSavingExamCatalog] = useState(false);
 
   // Handler to apply selected template
+  const loadExamOrderCatalog = async () => {
+    try {
+      const snap = await getDoc(doc(db, "globalSettings", "examOrderCatalog"));
+      if (snap.exists()) {
+        const data = snap.data() as ExamOrderCatalog;
+        if (Array.isArray((data as any)?.categories)) {
+          setExamOrderCatalogDraft(JSON.stringify(data, null, 2));
+          return;
+        }
+      }
+      setExamOrderCatalogDraft(JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2));
+    } catch (error) {
+      console.error("loadExamOrderCatalog", error);
+      setExamOrderCatalogDraft(JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2));
+    }
+  };
+
+  const saveExamOrderCatalog = async () => {
+    try {
+      setSavingExamCatalog(true);
+      const parsed = JSON.parse(examOrderCatalogDraft);
+      if (!Array.isArray(parsed?.categories)) {
+        showToast("Catálogo inválido: falta categories[]", "error");
+        return;
+      }
+      await setDoc(
+        doc(db, "globalSettings", "examOrderCatalog"),
+        {
+          ...parsed,
+          updatedAt: serverTimestamp(),
+          updatedBy: auth.currentUser?.uid ?? "superadmin",
+        },
+        { merge: true }
+      );
+      showToast("Plantilla principal de órdenes guardada.", "success");
+    } catch (error) {
+      console.error("saveExamOrderCatalog", error);
+      showToast("No se pudo guardar el catálogo de órdenes.", "error");
+    } finally {
+      setSavingExamCatalog(false);
+    }
+  };
+
   const handleApplyTemplate = (templateKey: string) => {
     if (templateKey && templateKey in MESSAGE_TEMPLATES) {
       const template = MESSAGE_TEMPLATES[templateKey as keyof typeof MESSAGE_TEMPLATES];

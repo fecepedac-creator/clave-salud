@@ -3,6 +3,7 @@ import { Consultation, Prescription } from "../types";
 import { Calendar, User, Mail, Copy, Printer, FileText } from "lucide-react";
 import { auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
+import { getCategoryLabel } from "../utils/examOrderCatalog";
 
 interface ConsultationHistoryProps {
   consultations: Consultation[];
@@ -54,7 +55,18 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
           <p className="text-slate-500 text-xl">No hay consultas registradas para este paciente.</p>
         </div>
       ) : (
-        sortedConsultations.map((c) => (
+        sortedConsultations.map((c) => {
+          const orderDocs = (c.prescriptions || []).filter((doc) => doc.type === "OrdenExamenes");
+          const orderCounts = orderDocs.reduce(
+            (acc, doc) => {
+              const key = String(doc.category || "");
+              if (!key) return acc;
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            },
+            {} as Record<string, number>
+          );
+          return (
           <div
             key={c.id}
             className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-lg transition-all group"
@@ -75,6 +87,14 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                     Documentos: {c.prescriptions.length}
                   </span>
                 )}
+                {Object.entries(orderCounts).map(([category, count]) => (
+                  <span
+                    key={`${c.id}-${category}`}
+                    className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1"
+                  >
+                    {getCategoryLabel(category as any)}({count})
+                  </span>
+                ))}
                 <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => onOpen(c)}
@@ -215,7 +235,8 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
               </div>
             </div>
           </div>
-        ))
+        );
+        })
       )}
     </div>
   );
