@@ -66,6 +66,31 @@ export function useCrudOperations(
     [activeCenterId, showToast]
   );
 
+  const updateAuditLog = useCallback(
+    async (payload: AuditLogEntry) => {
+      if (!requireCenter("registrar auditoría")) return;
+      const id = payload?.id ?? generateId();
+      const event = {
+        centerId: activeCenterId,
+        action: payload.action,
+        entityType: payload.entityType,
+        entityId: payload.entityId,
+        patientId: payload.patientId,
+        details: payload.details,
+        metadata: payload.metadata,
+      };
+
+      await logAuditEventSafe(event);
+
+      return {
+        id,
+        ...payload,
+        centerId: activeCenterId,
+      };
+    },
+    [activeCenterId, requireCenter]
+  );
+
   const updatePatient = useCallback(
     async (payload: Patient) => {
       if (!requireCenter("guardar pacientes")) return;
@@ -96,31 +121,6 @@ export function useCrudOperations(
           ? "Actualización de ficha clínica."
           : "Creación de ficha clínica.",
       });
-    },
-    [activeCenterId, requireCenter, updateAuditLog]
-  );
-
-  const updateAuditLog = useCallback(
-    async (payload: AuditLogEntry) => {
-      if (!requireCenter("registrar auditoría")) return;
-      const id = payload?.id ?? generateId();
-      const event = {
-        centerId: activeCenterId,
-        action: payload.action,
-        entityType: payload.entityType,
-        entityId: payload.entityId,
-        patientId: payload.patientId,
-        details: payload.details,
-        metadata: payload.metadata,
-      };
-
-      await logAuditEventSafe(event);
-
-      return {
-        id,
-        ...payload,
-        centerId: activeCenterId,
-      };
     },
     [activeCenterId, requireCenter, updateAuditLog]
   );
@@ -336,7 +336,45 @@ export function useCrudOperations(
   const updateCenter = useCallback(async (payload: MedicalCenter & { auditReason?: string }) => {
     const id = payload?.id ?? generateId();
     const fn = httpsCallable(getFunctions(), "upsertCenter");
-    await fn({ ...payload, id });
+    try {
+      await fn({ ...payload, id });
+      return;
+    } catch (err: any) {
+      const code = String(err?.code || "");
+      const message = String(err?.message || "").toLowerCase();
+      const isCallableNetworkIssue =
+        code.includes("unavailable") ||
+        code.includes("internal") ||
+        message.includes("cors") ||
+        message.includes("failed to fetch");
+
+      if (!isCallableNetworkIssue) throw err;
+
+      const tokenResult = await auth.currentUser?.getIdTokenResult();
+      const claims = tokenResult?.claims || {};
+      const isSuperAdmin =
+        claims.super_admin === true || claims.superadmin === true || claims.superAdmin === true;
+
+      if (!isSuperAdmin) throw err;
+
+      // Fallback defensivo cuando callable falla por CORS/red en producción.
+      const centerRef = doc(db, "centers", id);
+      const existingSnap = await getDoc(centerRef);
+      await setDoc(
+        centerRef,
+        {
+          ...payload,
+          id,
+          name: String(payload?.name || "").trim(),
+          slug: String(payload?.slug || "").trim(),
+          updatedAt: serverTimestamp(),
+          createdAt: existingSnap.exists()
+            ? ((payload as any)?.createdAt ?? existingSnap.data()?.createdAt)
+            : ((payload as any)?.createdAt ?? serverTimestamp()),
+        },
+        { merge: true }
+      );
+    }
   }, []);
 
   const deleteCenter = useCallback(async (id: string, reason?: string) => {
