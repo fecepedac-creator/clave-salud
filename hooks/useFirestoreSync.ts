@@ -26,6 +26,28 @@ export function useFirestoreSync(
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
   const isActiveRecord = (data: any) => data?.active !== false && data?.activo !== false;
+  const normalizeClinicalRole = (data: any): string => {
+    const clinicalRole = String(data?.clinicalRole ?? data?.professionalRole ?? "").trim();
+    if (clinicalRole) return clinicalRole;
+    const legacyRole = String(data?.role ?? "").trim();
+    if (!legacyRole) return "";
+    const lower = legacyRole.toLowerCase();
+    return lower === "center_admin" ? "" : legacyRole;
+  };
+  const mapStaffToDoctor = (id: string, payload: any): Doctor => {
+    const accessRole = String(payload?.accessRole ?? "").trim();
+    const clinicalRole = normalizeClinicalRole(payload);
+    const role = (clinicalRole || String(payload?.role ?? "").trim() || "Medico") as any;
+    return {
+      id,
+      ...(payload as any),
+      role,
+      accessRole: accessRole || (String(payload?.role ?? "").trim().toLowerCase() === "center_admin" ? "center_admin" : undefined),
+      clinicalRole,
+      visibleInBooking: payload?.visibleInBooking === true,
+      active: payload?.active !== false && payload?.activo !== false,
+    } as Doctor;
+  };
 
   useEffect(() => {
     let unsubCenters: (() => void) | null = null;
@@ -87,11 +109,11 @@ export function useFirestoreSync(
     const unsubDoctors = onSnapshot(
       doctorsCollection,
       (snap) => {
-        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Doctor[];
-        const activeOnly = items.filter(
-          (doctor) => doctor.active !== false && (doctor as any).activo !== false
-        );
-        setDoctors(activeOnly);
+        const items = snap.docs.map((d) => mapStaffToDoctor(d.id, d.data() as any));
+        const filtered = auth.currentUser
+          ? items.filter((doctor) => doctor.active !== false)
+          : items.filter((doctor) => doctor.active !== false && doctor.visibleInBooking === true);
+        setDoctors(filtered);
       },
       () => setDoctors([])
     );
