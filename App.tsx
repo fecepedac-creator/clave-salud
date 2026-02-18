@@ -1026,6 +1026,19 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
+                    Email (opcional)
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
+                    value={bookingData.email}
+                    onChange={(e) => setBookingData({ ...bookingData, email: e.target.value })}
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
+
                 {error && (
                   <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
                     {error}

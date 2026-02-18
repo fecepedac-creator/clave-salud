@@ -286,6 +286,7 @@ export interface Appointment extends SoftDeletable {
   patientRut: string;
   patientId?: string;
   patientPhone?: string;
+  patientEmail?: string;
   bookedAt?: any;
   cancelledAt?: any;
   status: "available" | "booked";
