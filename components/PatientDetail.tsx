@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { MedicalCenter, Patient, Consultation, Doctor } from "../types";
+import { MedicalCenter, Patient, Consultation, Doctor, PatientCommunication } from "../types";
 import { auth, db } from "../firebase";
 import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAuditLog";
 import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
+import { withDefaultPatientCommunication } from "../utils/patientCommunication";
 
 interface GeneratedByInfo {
   name: string;
@@ -26,6 +27,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   center,
   consultations = [],
   generatedBy,
+  onUpdatePatient,
 }) => {
   const { logAccess } = useAuditLog();
   const [isPrintOpen, setIsPrintOpen] = useState(false);
@@ -34,6 +36,10 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   const [careTeamUids, setCareTeamUids] = useState<string[]>(patient?.careTeamUids ?? []);
   const [savingCareTeam, setSavingCareTeam] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [communication, setCommunication] = useState<PatientCommunication>(
+    withDefaultPatientCommunication(patient ?? {}).communication
+  );
+  const [savingCommunication, setSavingCommunication] = useState(false);
 
   useEffect(() => {
     if (!patient || !centerId) return;
@@ -49,6 +55,10 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   useEffect(() => {
     setCareTeamUids(patient?.careTeamUids ?? []);
   }, [patient?.careTeamUids, patient?.id]);
+
+  useEffect(() => {
+    setCommunication(withDefaultPatientCommunication(patient ?? {}).communication);
+  }, [patient?.id, patient?.communication]);
 
   useEffect(() => {
     const loadStaff = async () => {
@@ -122,6 +132,47 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     );
   };
 
+
+  const toggleCommunication = (channel: "email" | "whatsapp", field: "consent" | "optedOut") => {
+    setCommunication((prev) => ({
+      ...prev,
+      [channel]: {
+        ...prev[channel],
+        [field]: !prev[channel][field],
+      },
+    }));
+  };
+
+  const handleSaveCommunication = async () => {
+    if (!centerId || !patient) return;
+    setSavingCommunication(true);
+    try {
+      const now = serverTimestamp();
+      const nextCommunication = {
+        email: { ...communication.email, updatedAt: now },
+        whatsapp: { ...communication.whatsapp, updatedAt: now },
+      };
+      await updateDoc(doc(db, "centers", centerId, "patients", patient.id), {
+        communication: nextCommunication,
+        lastUpdated: new Date().toISOString(),
+      });
+      onUpdatePatient?.({ ...patient, communication });
+      await logAuditEventSafe({
+        centerId,
+        action: "PATIENT_UPDATE",
+        entityType: "patient",
+        entityId: patient.id,
+        patientId: patient.id,
+        details: "Actualización de consentimiento y opt-out por canal.",
+        metadata: { communication },
+      });
+    } catch (error) {
+      console.error("save communication", error);
+    } finally {
+      setSavingCommunication(false);
+    }
+  };
+
   const handleSaveCareTeam = async () => {
     if (!centerId || !patient) return;
     setSavingCareTeam(true);
@@ -184,6 +235,46 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
                 Solo el equipo tratante podrá acceder a esta ficha.
               </p>
             )}
+          </div>
+
+
+          <div className="mt-6 border-t border-slate-200 pt-4">
+            <p className="text-sm font-bold text-slate-700 mb-1">Consentimiento de comunicación</p>
+            <p className="text-xs text-slate-500 mb-3">
+              Default seguro: si no existe configuración previa, marketing queda no consentido; transaccional
+              solo se bloquea cuando el paciente marca opt-out por canal.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(["email", "whatsapp"] as const).map((channel) => (
+                <div key={channel} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                  <p className="text-sm font-semibold text-slate-700 capitalize">{channel}</p>
+                  <label className="flex items-center gap-2 mt-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={communication[channel].consent}
+                      onChange={() => toggleCommunication(channel, "consent")}
+                    />
+                    Consentimiento marketing
+                  </label>
+                  <label className="flex items-center gap-2 mt-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={communication[channel].optedOut}
+                      onChange={() => toggleCommunication(channel, "optedOut")}
+                    />
+                    Opt-out (bloquear envíos)
+                  </label>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveCommunication}
+              disabled={savingCommunication}
+              className="mt-3 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+            >
+              {savingCommunication ? "Guardando..." : "Guardar comunicación"}
+            </button>
           </div>
 
           {showCareTeamEditor && (

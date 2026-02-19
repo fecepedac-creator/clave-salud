@@ -312,6 +312,28 @@ service cloud.firestore {
           && request.resource.data.careTeamUpdatedBy is string;
       }
 
+      function communicationKeys() {
+        return ["communication"];
+      }
+
+      function communicationKeysChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasAny(communicationKeys());
+      }
+
+      function isCommunicationValid() {
+        return request.resource.data.communication is map
+          && request.resource.data.communication.email is map
+          && request.resource.data.communication.whatsapp is map
+          && request.resource.data.communication.email.consent is bool
+          && request.resource.data.communication.email.optedOut is bool
+          && (!("updatedAt" in request.resource.data.communication.email)
+            || request.resource.data.communication.email.updatedAt is timestamp)
+          && request.resource.data.communication.whatsapp.consent is bool
+          && request.resource.data.communication.whatsapp.optedOut is bool
+          && (!("updatedAt" in request.resource.data.communication.whatsapp)
+            || request.resource.data.communication.whatsapp.updatedAt is timestamp);
+      }
+
       function professionalFieldsUnchanged() {
         return request.resource.data.professionalId == resource.data.professionalId
           && request.resource.data.professionalName == resource.data.professionalName
@@ -351,6 +373,13 @@ service cloud.firestore {
             || (
               (isSuperAdmin() || isCenterAdmin(centerId))
               && isCareTeamUpdateValid()
+            )
+          )
+          && (
+            !communicationKeysChanged()
+            || (
+              (isSuperAdmin() || isCenterAdmin(centerId))
+              && isCommunicationValid()
             )
           )
           && (

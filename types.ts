@@ -237,6 +237,7 @@ export interface Patient extends SoftDeletable {
   gender: "Masculino" | "Femenino" | "Otro";
   email?: string;
   phone?: string;
+  communication?: PatientCommunication;
   address?: string;
   commune?: string;
 
@@ -272,6 +273,17 @@ export interface Patient extends SoftDeletable {
   attachments: Attachment[];
 
   lastUpdated: string;
+}
+
+export interface PatientCommunicationChannel {
+  consent: boolean;
+  optedOut: boolean;
+  updatedAt?: Timestamp | string;
+}
+
+export interface PatientCommunication {
+  email: PatientCommunicationChannel;
+  whatsapp: PatientCommunicationChannel;
 }
 
 export interface Appointment extends SoftDeletable {
