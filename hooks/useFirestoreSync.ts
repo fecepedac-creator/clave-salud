@@ -11,6 +11,7 @@ import {
   where,
 } from "firebase/firestore";
 import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter } from "../types";
+import { withDefaultPatientCommunication } from "../utils/patientCommunication";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 
 export function useFirestoreSync(
@@ -97,7 +98,7 @@ export function useFirestoreSync(
       (snap) =>
         setPatients(
           snap.docs
-            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .map((d) => withDefaultPatientCommunication({ id: d.id, ...(d.data() as any) }))
             .filter(isActiveRecord) as Patient[]
         ),
       () => setPatients([])

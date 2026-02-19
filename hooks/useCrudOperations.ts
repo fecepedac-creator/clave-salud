@@ -12,6 +12,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { Patient, Doctor, Appointment, AuditLogEntry, MedicalCenter, Preadmission } from "../types";
 import { generateId } from "../utils";
 import { logAuditEventSafe } from "./useAuditLog";
+import { DEFAULT_PATIENT_COMMUNICATION } from "../utils/patientCommunication";
 
 export function useCrudOperations(
   activeCenterId: string,
@@ -414,6 +415,7 @@ export function useCrudOperations(
         gender: (patientDraft.gender ?? "Otro") as any,
         email: patientDraft.email ?? item.contact?.email,
         phone: patientDraft.phone ?? item.contact?.phone,
+        communication: patientDraft.communication ?? DEFAULT_PATIENT_COMMUNICATION,
         address: patientDraft.address,
         commune: patientDraft.commune,
         occupation: patientDraft.occupation,

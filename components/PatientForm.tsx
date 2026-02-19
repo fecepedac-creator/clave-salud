@@ -15,6 +15,7 @@ import {
   formatChileanPhone,
   extractChileanPhoneDigits,
 } from "../utils";
+import { DEFAULT_PATIENT_COMMUNICATION } from "../utils/patientCommunication";
 import { CenterContext } from "../CenterContext";
 import {
   Check,
@@ -262,6 +263,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
       gender,
       phone: formatChileanPhone(phoneDigits),
       email,
+      communication: DEFAULT_PATIENT_COMMUNICATION,
       address: finalAddress,
       commune,
       occupation: finalOccupation,

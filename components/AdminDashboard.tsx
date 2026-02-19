@@ -19,6 +19,7 @@ import {
   fileToBase64,
   formatPersonName,
 } from "../utils";
+import { DEFAULT_PATIENT_COMMUNICATION } from "../utils/patientCommunication";
 import {
   Users,
   Calendar,
@@ -934,6 +935,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           rut: bookingRut,
           fullName: bookingName || existingPatient.fullName,
           phone: bookingPhone || existingPatient.phone,
+          communication: existingPatient.communication ?? DEFAULT_PATIENT_COMMUNICATION,
           lastUpdated: new Date().toISOString(),
         }
       : {
@@ -944,6 +946,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           birthDate: "",
           gender: "Otro",
           phone: bookingPhone,
+          communication: DEFAULT_PATIENT_COMMUNICATION,
           medicalHistory: [],
           surgicalHistory: [],
           smokingStatus: "No fumador",

@@ -10,6 +10,7 @@ import {
   generateId,
   validateRUT,
 } from "../utils";
+import { DEFAULT_PATIENT_COMMUNICATION } from "../utils/patientCommunication";
 
 export function useBooking(
   activeCenterId: string,
@@ -156,6 +157,7 @@ export function useBooking(
         birthDate: "",
         gender: "Otro",
         phone,
+        communication: DEFAULT_PATIENT_COMMUNICATION,
         medicalHistory: [],
         surgicalHistory: [],
         smokingStatus: "No fumador",
@@ -175,6 +177,7 @@ export function useBooking(
         name: bookingData.name,
         rut: formattedRut,
         phone,
+        communication: DEFAULT_PATIENT_COMMUNICATION,
       };
       setPrefillContact(storedContact);
       try {

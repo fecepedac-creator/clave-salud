@@ -85,6 +85,7 @@ import Odontogram from "./Odontogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
+import { DEFAULT_PATIENT_COMMUNICATION, isChannelOptedOut, withDefaultPatientCommunication } from "../utils/patientCommunication";
 import LegalLinks from "./LegalLinks";
 
 interface ProfessionalDashboardProps {
@@ -250,7 +251,19 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       .replaceAll("{nextControlDate}", nextCtrlStr);
   };
 
-  const openWhatsApp = (p: Patient, templateBody: string) => {
+  const openWhatsApp = (p: Patient, templateBody: string, context: "reminder" | "marketing" = "reminder") => {
+    if (isChannelOptedOut(p, "whatsapp")) {
+      onLogActivity({
+        action: "APPOINTMENT_UPDATE",
+        entityType: "patient",
+        entityId: p.id,
+        patientId: p.id,
+        details: `Envío ${context} bloqueado por opt-out en WhatsApp.`,
+        metadata: { channel: "whatsapp", status: "blocked_opt_out", context },
+      });
+      showToast("Paciente con opt-out en WhatsApp. Envío bloqueado.", "warning");
+      return;
+    }
     const phone = normalizePhone(p.phone || "");
     if (!phone) {
       showToast("Paciente sin teléfono registrado.", "warning");
@@ -259,6 +272,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const text = buildWhatsAppText(templateBody, p);
     const waPhone = phone.replaceAll("+", "");
     const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
+    onLogActivity({
+      action: "APPOINTMENT_UPDATE",
+      entityType: "patient",
+      entityId: p.id,
+      patientId: p.id,
+      details: `Envío ${context} WhatsApp habilitado.`,
+      metadata: { channel: "whatsapp", status: "ready_to_send", context },
+    });
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -266,6 +287,19 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const sendConsultationByEmail = (consultation: Consultation) => {
     if (!selectedPatient) {
       showToast("Paciente no seleccionado.", "warning");
+      return;
+    }
+
+    if (isChannelOptedOut(selectedPatient, "email")) {
+      onLogActivity({
+        action: "APPOINTMENT_UPDATE",
+        entityType: "patient",
+        entityId: selectedPatient.id,
+        patientId: selectedPatient.id,
+        details: "Envío reminder por email bloqueado por opt-out.",
+        metadata: { channel: "email", status: "blocked_opt_out", context: "reminder" },
+      });
+      showToast("Paciente con opt-out en email. Envío bloqueado.", "warning");
       return;
     }
 
@@ -317,6 +351,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       to: patientEmail,
       subject,
       body: lines.join("\n"),
+    });
+    onLogActivity({
+      action: "APPOINTMENT_UPDATE",
+      entityType: "patient",
+      entityId: selectedPatient.id,
+      patientId: selectedPatient.id,
+      details: ok ? "Envío reminder email habilitado." : "No se pudo abrir envío reminder email.",
+      metadata: { channel: "email", status: ok ? "ready_to_send" : "failed_open_client", context: "reminder" },
     });
     if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
@@ -439,15 +481,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const confirmWhatsappMessage = slotModal.appointment
     ? `Estimado/a ${patientDisplayName}, lo saludamos desde ${centerName} y queremos confirmar su hora con ${doctorFormattedName || "el profesional"} para el día ${slotDateLabel} a las ${slotModal.appointment.time}. Agradecemos su confirmación, por favor.`
     : "";
+  const slotModalPatient = slotModal.appointment
+    ? patients.find((p) => p.id === slotModal.appointment?.patientId)
+      ?? patients.find((p) => normalizeRut(p.rut) === normalizeRut(slotModal.appointment?.patientRut))
+      ?? null
+    : null;
   const whatsappPhone = slotModal.appointment
     ? normalizePhone(slotModal.appointment.patientPhone || "")
     : "";
-  const cancelWhatsappUrl = slotModal.appointment
-    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(cancelWhatsappMessage)}`
-    : "#";
-  const confirmWhatsappUrl = slotModal.appointment
-    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(confirmWhatsappMessage)}`
-    : "#";
 
   useEffect(() => {
     if (!db || !activeCenterId) {
@@ -1652,6 +1693,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             alcoholStatus: "No consumo",
                             lastUpdated: new Date().toISOString(),
                             active: true,
+                            communication: DEFAULT_PATIENT_COMMUNICATION,
                           };
                           setSelectedPatient(newP);
                           setIsEditingPatient(true);
@@ -2337,22 +2379,18 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     >
                       Cerrar
                     </button>
-                    <a
-                      href={cancelWhatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => openWhatsApp(slotModalPatient ?? ({ id: "", fullName: patientDisplayName, phone: slotModal.appointment?.patientPhone } as Patient), cancelWhatsappMessage, "reminder")}
                       className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
                     >
                       <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
-                    </a>
-                    <a
-                      href={confirmWhatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                    </button>
+                    <button
+                      onClick={() => openWhatsApp(slotModalPatient ?? ({ id: "", fullName: patientDisplayName, phone: slotModal.appointment?.patientPhone } as Patient), confirmWhatsappMessage, "reminder")}
                       className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
                     >
                       <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
-                    </a>
+                    </button>
                     <div className="pt-2 border-t border-slate-200">
                       <p className="text-xs font-bold text-slate-500 uppercase mb-2">
                         Plantillas del centro
@@ -2372,19 +2410,25 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             nextControlDate: slotDateLabel,
                             centerName,
                           });
-                          const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
-                            templateMessage
-                          )}`;
                           return (
-                            <a
+                            <button
                               key={template.id}
-                              href={templateUrl}
-                              target="_blank"
-                              rel="noreferrer"
+                              onClick={() =>
+                                openWhatsApp(
+                                  slotModalPatient ??
+                                    ({
+                                      id: "",
+                                      fullName: patientDisplayName,
+                                      phone: slotModal.appointment?.patientPhone,
+                                    } as Patient),
+                                  templateMessage,
+                                  "marketing"
+                                )
+                              }
                               className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
                             >
                               <MessageCircle className="w-4 h-4" /> {template.title}
-                            </a>
+                            </button>
                           );
                         })}
                       </div>
