@@ -557,6 +557,12 @@ service cloud.firestore {
         // No direct writes from client - only through Cloud Functions
         allow create, update, delete: if false;
       }
+
+      match /messageLogs/{logId} {
+        // Mensajería transaccional: lectura interna, escritura exclusiva por Functions/Admin SDK
+        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow create, update, delete: if false;
+      }
     }
 
     match /preadmissions/{docId} {

@@ -26,10 +26,12 @@ export function useBooking(
     name: string;
     rut: string;
     phoneDigits: string;
+    email: string;
   }>({
     name: "",
     rut: "",
     phoneDigits: "",
+    email: "",
   });
   const [prefillContact, setPrefillContact] = useState<{
     name: string;
@@ -85,6 +87,12 @@ export function useBooking(
       showToast("Ingresa un teléfono válido de 8 dígitos.", "error");
       return;
     }
+    const email = bookingData.email.trim().toLowerCase();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      showToast("Ingresa un email válido o déjalo vacío.", "error");
+      return;
+    }
+
     const phone = formatChileanPhone(phoneDigits);
     const slotAppointment = appointments.find(
       (appointment) => appointment.id === selectedSlot.appointmentId
@@ -111,6 +119,7 @@ export function useBooking(
           patientRut: formattedRut,
           patientId,
           patientPhone: phone,
+          patientEmail: email || null,
           bookedAt: serverTimestamp(),
         }
       );
@@ -122,6 +131,7 @@ export function useBooking(
         patientRut: formattedRut,
         patientId,
         patientPhone: phone,
+        patientEmail: email || undefined,
         bookedAt: serverTimestamp(),
         active: slotAppointment.active ?? true,
       };
@@ -138,6 +148,7 @@ export function useBooking(
         patientRut: formattedRut,
         patientId,
         patientPhone: phone,
+        patientEmail: email || undefined,
         bookedAt: serverTimestamp(),
         active: slotAppointment.active ?? true,
       };
@@ -157,7 +168,11 @@ export function useBooking(
         birthDate: "",
         gender: "Otro",
         phone,
+<<<<<<< codex/implement-patient-consent-and-opt-out-features
         communication: DEFAULT_PATIENT_COMMUNICATION,
+=======
+        email: email || undefined,
+>>>>>>> main
         medicalHistory: [],
         surgicalHistory: [],
         smokingStatus: "No fumador",
@@ -177,7 +192,11 @@ export function useBooking(
         name: bookingData.name,
         rut: formattedRut,
         phone,
+<<<<<<< codex/implement-patient-consent-and-opt-out-features
         communication: DEFAULT_PATIENT_COMMUNICATION,
+=======
+        email: email || undefined,
+>>>>>>> main
       };
       setPrefillContact(storedContact);
       try {
@@ -202,7 +221,7 @@ export function useBooking(
 
   const resetBooking = useCallback(() => {
     setBookingStep(0);
-    setBookingData({ name: "", rut: "", phoneDigits: "" });
+    setBookingData({ name: "", rut: "", phoneDigits: "", email: "" });
     setSelectedRole("");
     setSelectedDoctorForBooking(null);
     setBookingDate(new Date());

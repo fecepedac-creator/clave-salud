@@ -33,3 +33,35 @@ Configuración por centro (SuperAdmin):
 
 Despliegue:
 - `firebase deploy --only functions,firestore:rules,storage`
+
+## Capa de emails transaccionales (Cloud Functions)
+
+Se agregó una capa backend reutilizable para envíos transaccionales desde `functions/src/email.ts`.
+
+- API interna: `sendEmail(to, subject, html/text, tags, centerId, relatedEntityId)`.
+- Proveedor actual: **SendGrid** vía HTTP API.
+- Logs automáticos en Firestore:
+  - `centers/{centerId}/messageLogs/{id}`
+  - campos: `type`, `channel="email"`, `to`, `templateId`, `relatedType`, `relatedId`, `status`, `error`, `createdAt`.
+
+### Variables de entorno / secretos requeridos
+
+> Solo nombres (no valores):
+
+- `EMAIL_PROVIDER_API_KEY`
+- `EMAIL_FROM`
+
+### Prueba local rápida
+
+1. Build de functions:
+   - `cd functions && npm run build`
+2. Levantar emuladores (si aplica):
+   - `firebase emulators:start --only functions,firestore`
+3. Invocar callable de smoke test `sendTestTransactionalEmail` (desde Admin SDK, shell o frontend autenticado con rol habilitado) enviando:
+   - `centerId`
+   - `to`
+   - opcional: `subject`, `text`, `relatedEntityId`
+4. Verificar en Firestore:
+   - `centers/{centerId}/messageLogs`
+   - éxito: `status = "sent"`
+   - error forzado (correo inválido): `status = "failed"` y `error` con detalle del proveedor.
