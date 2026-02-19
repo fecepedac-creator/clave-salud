@@ -2,6 +2,7 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
+import { sendEmail } from "./email";
 import {
   LogAccessRequest,
   LogAccessResult,
@@ -190,6 +191,16 @@ function isSuperAdmin(context: CallableContext): boolean {
     (Array.isArray(t.roles) && (t.roles.includes("super_admin") || t.roles.includes("superadmin")))
   );
 }
+
+async function isCenterAdminForCenter(uid: string, centerId: string): Promise<boolean> {
+  const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+  if (!staffSnap.exists) return false;
+  const active = staffSnap.get("active") === true || staffSnap.get("activo") === true;
+  if (!active) return false;
+  const role = String(staffSnap.get("accessRole") || staffSnap.get("role") || "").trim();
+  return role === "center_admin";
+}
+
 
 function randToken(bytes = 24): string {
   return crypto.randomBytes(bytes).toString("hex");
@@ -494,6 +505,50 @@ export const createCenterNotification = (functions.https.onCall as any)(
   });
 
   return { ok: true };
+  }
+);
+
+export const sendTestTransactionalEmail = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+
+    const centerId = String(data?.centerId || "").trim();
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
+
+    const centerAdmin = await isCenterAdminForCenter(context.auth?.uid as string, centerId);
+    if (!(isSuperAdmin(context) || centerAdmin)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos suficientes.");
+    }
+
+    const to = String(data?.to || "").trim();
+    const subject = String(data?.subject || "Prueba email ClaveSalud").trim();
+    const text = String(
+      data?.text ||
+        "Este es un envío de prueba de la capa transaccional de email desde Cloud Functions."
+    ).trim();
+
+    if (!to) {
+      throw new functions.https.HttpsError("invalid-argument", "to es requerido.");
+    }
+
+    try {
+      const result = await sendEmail({
+        to,
+        subject,
+        text,
+        centerId,
+        tags: ["smoke-test"],
+        type: "smoke_test",
+        relatedType: "manual_test",
+        relatedEntityId: String(data?.relatedEntityId || "").trim() || undefined,
+      });
+      return { ok: true, provider: result.provider, messageId: result.messageId || null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new functions.https.HttpsError("internal", `Error enviando email: ${message}`);
+    }
   }
 );
 

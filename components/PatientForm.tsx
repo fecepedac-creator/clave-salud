@@ -394,6 +394,15 @@ const PatientForm: React.FC<PatientFormProps> = ({
                   )}
                 </div>
 
+                <BigInput
+                  label="Correo Electrónico de Contacto (Opcional)"
+                  type="email"
+                  value={email}
+                  onChange={(e: any) => setEmail(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                  error={errors.contact}
+                />
+
                 <div className="md:col-span-2">
                   <label className="block text-xl font-bold text-slate-700 mb-2">
                     Dirección de Residencia
@@ -424,15 +433,6 @@ const PatientForm: React.FC<PatientFormProps> = ({
                     </p>
                   )}
                 </div>
-
-                <BigInput
-                  label="Correo Electrónico (Opcional)"
-                  type="email"
-                  value={email}
-                  onChange={(e: any) => setEmail(e.target.value)}
-                  placeholder="correo@ejemplo.com"
-                  error={errors.contact}
-                />
 
                 <div className="md:col-span-2">
                   <label className="block text-xl font-bold text-slate-700 mb-4">Sexo</label>
