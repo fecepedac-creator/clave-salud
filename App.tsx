@@ -1,9 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef, Suspense } from "react";
 import { Patient, ViewMode, Appointment, Doctor, MedicalCenter, AuditLogEntry } from "./types";
-import PatientForm from "./components/PatientForm";
-import { ProfessionalDashboard } from "./components/DoctorDashboard";
-import AdminDashboard from "./components/AdminDashboard";
-import SuperAdminDashboard from "./components/SuperAdminDashboard";
+// Lazy Loading for Code Splitting
+const PatientForm = React.lazy(() => import("./components/PatientForm"));
+const ProfessionalDashboard = React.lazy(() => import("./components/DoctorDashboard"));
+const AdminDashboard = React.lazy(() => import("./components/AdminDashboard"));
+const SuperAdminDashboard = React.lazy(() => import("./components/SuperAdminDashboard"));
+
+// Fallback Loading Component
+const PageLoader = () => (
+  <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 mb-4"></div>
+    <p className="text-slate-500 text-lg font-medium animate-pulse">Cargando...</p>
+  </div>
+);
 import LogoHeader from "./components/LogoHeader";
 import LegalLinks from "./components/LegalLinks";
 import LandingPage from "./components/LandingPage";
@@ -66,11 +75,18 @@ const HOME_BG_SRC = `${ASSET_BASE}assets/fondo%20principal.webp`;
 const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
+const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
 
 const App: React.FC = () => {
   const { showToast } = useToast();
-  const [demoMode, setDemoMode] = useState(true);
-  const [view, setView] = useState<ViewMode>("home" as ViewMode);
+  const [demoMode, setDemoMode] = useState(false);
+  const [view, setView] = useState<ViewMode>(() => {
+    const path = window.location.pathname;
+    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) {
+      return "doctor-login" as ViewMode;
+    }
+    return "home" as ViewMode;
+  });
   const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
     "center-portal" as ViewMode
   );
@@ -101,6 +117,7 @@ const App: React.FC = () => {
     handleRedirectResult,
   } = useAuth();
 
+  const [portfolioMode, setPortfolioMode] = useState<"global" | "center">("global");
   const {
     centers,
     setCenters,
@@ -121,7 +138,7 @@ const App: React.FC = () => {
     setAppointments,
     auditLogs,
     preadmissions,
-  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters, currentUser);
+  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters, currentUser, portfolioMode);
   const {
     inviteToken,
     setInviteToken,
@@ -211,6 +228,7 @@ const App: React.FC = () => {
       hookHandleSuperAdminLogin(targetView, (user, view, centerId) => {
         setCurrentUser(user);
         setView(view);
+        setDemoMode(false);
         if (centerId) setActiveCenterId(centerId);
       }),
     [hookHandleSuperAdminLogin, setCurrentUser, setActiveCenterId]
@@ -218,7 +236,10 @@ const App: React.FC = () => {
   const handleSuperAdminGoogleLogin = useCallback(
     () =>
       hookHandleSuperAdminGoogleLogin(
-        () => setView("superadmin-dashboard" as any),
+        () => {
+          setView("superadmin-dashboard" as any);
+          setDemoMode(false);
+        },
         handleSuperAdminUnauthorized
       ),
     [hookHandleSuperAdminGoogleLogin, handleSuperAdminUnauthorized]
@@ -227,6 +248,7 @@ const App: React.FC = () => {
     (targetView: ViewMode) =>
       hookHandleGoogleLogin(targetView, (user) => {
         setCurrentUser(user);
+        setDemoMode(false);
         setPostCenterSelectView(targetView);
         setView("select-center" as any);
       }),
@@ -254,6 +276,14 @@ const App: React.FC = () => {
 
   const loadPreviewState = useCallback(() => {
     if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) {
+      window.localStorage.removeItem(PREVIEW_CENTER_KEY);
+      window.localStorage.removeItem(PREVIEW_ROLE_KEY);
+      setPreviewCenterId("");
+      setPreviewRole("");
+      return;
+    }
     setPreviewCenterId(window.localStorage.getItem(PREVIEW_CENTER_KEY) ?? "");
     setPreviewRole(window.localStorage.getItem(PREVIEW_ROLE_KEY) ?? "");
   }, []);
@@ -396,8 +426,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const applyPath = (pathname: string) => {
       const nextCenterId = getCenterIdFromPath(pathname);
-      isApplyingPopStateRef.current = true;
-      if (nextCenterId) {
+      const isProAccess = pathname.startsWith("/accesoprofesionales") || pathname.startsWith("/pro");
+
+      isApplyingPopStateRef.current = true; // Prevent pushing state again
+
+      if (isProAccess) {
+        setView("doctor-login" as ViewMode);
+        // Important: activeCenterId remains empty
+        if (activeCenterIdRef.current) setActiveCenterId("");
+      } else if (nextCenterId) {
         if (nextCenterId !== activeCenterIdRef.current) setActiveCenterId(nextCenterId);
         if (
           viewRef.current === ("home" as ViewMode) ||
@@ -407,7 +444,14 @@ const App: React.FC = () => {
         }
       } else {
         if (activeCenterIdRef.current) setActiveCenterId("");
-        if (viewRef.current !== ("home" as ViewMode)) setView("home" as ViewMode);
+        // Only go to home if we are NOT in special views
+        if (
+          viewRef.current !== ("home" as ViewMode) &&
+          viewRef.current !== ("doctor-login" as ViewMode) &&
+          !isProAccess // Double check input
+        ) {
+          setView("home" as ViewMode);
+        }
       }
       isApplyingPopStateRef.current = false;
     };
@@ -420,8 +464,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isApplyingPopStateRef.current) return;
-    const nextPath =
-      view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+
+    let nextPath = "/";
+    if (view === ("doctor-login" as ViewMode)) {
+      if (window.location.pathname.startsWith("/accesoprofesionales")) nextPath = window.location.pathname;
+      else if (window.location.pathname.startsWith("/pro")) nextPath = window.location.pathname;
+      else nextPath = "/pro"; // Default shorthand
+    } else {
+      nextPath = view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+    }
+
     if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
       lastPathRef.current = nextPath;
@@ -730,7 +782,10 @@ const App: React.FC = () => {
     const getPublicCategory = (doctor: Doctor) =>
       String(doctor.clinicalRole || doctor.specialty || "").trim() || "Otros";
 
-    const uniqueRoles = Array.from(new Set(doctors.map((d) => getPublicCategory(d))));
+    // Exclude management roles from public booking view
+    const NON_BOOKABLE_ROLES = ["ADMIN_CENTRO", "ADMINISTRATIVO"];
+    const uniqueRoles = Array.from(new Set(doctors.map((d) => getPublicCategory(d))))
+      .filter((r) => !NON_BOOKABLE_ROLES.includes(String(r)));
     const doctorsForRole = selectedRole
       ? doctors.filter((d) => getPublicCategory(d) === selectedRole && d.centerId === activeCenterId)
       : [];
@@ -1110,7 +1165,7 @@ const App: React.FC = () => {
   );
 
   const renderLogin = (isDoc: boolean) => {
-    const centerLogoUrl = (activeCenter as any)?.logoUrl as string | undefined;
+    const centerLogoUrl = activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="flex flex-col items-center gap-6">
@@ -1600,21 +1655,33 @@ const App: React.FC = () => {
             <p className="text-slate-500 mt-3 text-lg">
               Ficha clínica digital para equipos de salud.
             </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <div className="mt-8 flex flex-col items-center gap-4">
               <button
-                type="button"
-                onClick={() => setView("landing" as ViewMode)}
-                className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-bold hover:bg-emerald-400"
+                onClick={() => handleGoogleLogin("doctor-dashboard" as ViewMode)}
+                className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold shadow-lg hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3 mx-auto"
               >
-                Conoce la plataforma
+                <img src={GOOGLE_ICON_SRC} alt="G" className="w-5 h-5 bg-white rounded-full p-0.5" />
+                Ingreso Rápido (Profesional / Admin)
               </button>
-              <button
-                type="button"
-                onClick={() => setView("center-portal" as ViewMode)}
-                className="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-white"
-              >
-                Ingresar al portal
-              </button>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setView("landing" as ViewMode)}
+                  className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-bold hover:bg-emerald-400"
+                >
+                  Conoce la plataforma
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("center-portal" as ViewMode)}
+                  className="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-white"
+                >
+                  Ingresar al portal
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">
+                Ingresa con tu correo y selecciona tu centro después.
+              </p>
             </div>
           </div>
 
@@ -1681,7 +1748,7 @@ const App: React.FC = () => {
             </button>
           </div>
         </footer>
-      </div>
+      </div >
     );
   };
   const renderByView = () => {
@@ -1810,9 +1877,9 @@ const App: React.FC = () => {
       const currentEmailLower = String(userForView.email ?? "")
         .trim()
         .toLowerCase();
+
+      // PRIORITIZE EMAIL MATCHING to avoid "UID squatting" from previous tests
       const matchedDoctor =
-        doctors.find((doc) => doc.id === currentUid) ||
-        doctors.find((doc) => (doc as any).uid === currentUid) ||
         doctors.find(
           (doc) =>
             String(doc.email ?? "")
@@ -1825,6 +1892,8 @@ const App: React.FC = () => {
               .trim()
               .toLowerCase() === currentEmailLower
         ) ||
+        doctors.find((doc) => doc.id === currentUid) ||
+        doctors.find((doc) => (doc as any).uid === currentUid) ||
         // In preview mode, if we haven't matched by ID/Email, try to match by Role in current center
         (isPreviewActive
           ? doctors.find((doc) => doc.role === previewRole && doc.centerId === activeCenterId)
@@ -1841,7 +1910,16 @@ const App: React.FC = () => {
           : {};
 
       const mergedCurrentUser = matchedDoctor
-        ? ({ ...userForView, ...matchedDoctor, ...demoOverride, id: resolvedDoctorId } as any)
+        ? ({
+          ...userForView,
+          ...matchedDoctor,
+          ...demoOverride,
+          id: resolvedDoctorId,
+          // CRITICAL: Preserve the real UID and email from the logged-in user if the staff record is "unclaimed" (uid: null)
+          uid: userForView.uid ?? matchedDoctor.uid,
+          email: userForView.email ?? matchedDoctor.email,
+          fullName: resolvedDoctorName
+        } as any)
         : ({ ...userForView, ...demoOverride } as any);
 
       const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
@@ -1855,6 +1933,7 @@ const App: React.FC = () => {
             agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
             savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
             currentUser={mergedCurrentUser}
+            doctors={doctors}
             onUpdatePatient={(p: Patient) => {
               if (isPreviewActive) {
                 setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
@@ -1880,9 +1959,16 @@ const App: React.FC = () => {
               setAppointments(newAppts);
               syncAppointments(newAppts);
             }}
+            onUpdateAppointment={updateAppointment}
+            onDeleteAppointment={deleteAppointment}
             isSyncingAppointments={isSyncingAppointments}
-            onLogActivity={(event) => {
-              if (isPreviewActive) return;
+            portfolioMode={portfolioMode}
+            onSetPortfolioMode={setPortfolioMode}
+            onLogActivity={(event: any) => {
+              if (isPreviewActive) {
+                console.log("[Demo Log]", event);
+                return;
+              }
               const log: AuditLogEntry = {
                 id: generateId(),
                 centerId: activeCenterId,
@@ -1968,7 +2054,9 @@ const App: React.FC = () => {
 
   return (
     <>
-      {renderByView()}
+      <Suspense fallback={<PageLoader />}>
+        {renderByView()}
+      </Suspense>
       {isPreviewActive && (
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2">
           <button

@@ -38,6 +38,15 @@ export interface MedicalCenter {
     lastPaymentDate?: string;
     status: "active" | "late" | "suspended";
   };
+
+  // --- Aggregated Stats (Cloud Functions) ---
+  stats?: {
+    staffCount?: number;
+    patientCount?: number;
+    appointmentCount?: number;
+    consultationCount?: number;
+    updatedAt?: any;
+  };
 }
 
 export type AuditEntityType =
@@ -251,7 +260,12 @@ export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
   createdAt?: Timestamp;
-  careTeamUids?: string[];
+  ownerUid?: string; // UID of the professional who owns this patient
+  accessControl?: {
+    allowedUids: string[]; // Professional UIDs who can view/edit
+    centerIds: string[];   // Center IDs where admins can manage
+  };
+  careTeamUids?: string[]; // UIDs of professionals explicitly involved in care
   careTeamUpdatedAt?: Timestamp;
   careTeamUpdatedBy?: string;
   rut: string;
@@ -292,10 +306,17 @@ export interface Patient extends SoftDeletable {
   allergies: Allergy[];
 
   consultations: Consultation[];
-  kinesiologyPrograms?: KinesiologyProgram[];
+  kinePrograms?: KinesiologyProgram[];
+  whatsAppTemplates?: WhatsappTemplate[];
   attachments: Attachment[];
 
   lastUpdated: string;
+  consent?: boolean;
+  consentDate?: string;
+
+  // --- Google Drive Integration ---
+  driveFileId?: string;
+  driveFileLink?: string;
 }
 
 export interface KinesiologyProgram {
@@ -479,10 +500,3 @@ export type ViewMode =
   | "privacy";
 
 
-// -------------------- WhatsApp Templates (per center) --------------------
-export type WhatsAppTemplate = {
-  id: string;
-  title: string;
-  body: string;
-  enabled?: boolean;
-};

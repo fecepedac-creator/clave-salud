@@ -44,6 +44,10 @@ service firebase.storage {
       allow write: if false;
     }
 
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

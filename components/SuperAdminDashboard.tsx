@@ -26,6 +26,7 @@ import { useToast } from "./Toast";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
+import MarketingFlyerModal from "./MarketingFlyerModal";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -202,8 +203,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const previewRoles = useMemo(
-    () =>
-      ROLE_CATALOG.filter((role) => !["ADMIN_CENTRO"].includes(role.id)),
+    () => ROLE_CATALOG, // NOW INCLUDES ALL ROLES (including ADMIN_CENTRO)
     []
   );
   const [previewCenterSelection, setPreviewCenterSelection] = useState(previewCenterId ?? "");
@@ -224,6 +224,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
+
+  // Marketing Flyer
+  const [showMarketingModal, setShowMarketingModal] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState("");
@@ -701,7 +704,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         slug,
         logoUrl: finalLogoUrl,
         createdAt: isCreating ? new Date().toISOString() : editingCenter.createdAt,
-        adminEmail: isCreating ? newCenterAdminEmail.trim() : (editingCenter as any).adminEmail,
+        adminEmail: isCreating
+          ? newCenterAdminEmail.trim()
+          : (editingCenter as any).adminEmail || "",
       };
 
       if (!isCreating) {
@@ -1275,6 +1280,21 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 )}
               </div>
             )}
+
+            {/* MARKETING - Flyers de ClaveSalud */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex flex-col gap-1 mb-4">
+                <h2 className="text-xl font-bold text-slate-800">📢 Marketing Digital</h2>
+                <p className="text-sm text-slate-500">
+                  Genera flyers publicitarios de alta calidad para promocionar ClaveSalud en redes sociales.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowMarketingModal(true)}
+                className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md hover:shadow-lg">
+                Crear Flyer de ClaveSalud
+              </button>
+            </div>
           </div>
         )}
 
@@ -1308,7 +1328,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-start md:items-center"
                     >
                       <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-slate-100 text-slate-700 flex-shrink-0 border border-slate-200 overflow-hidden">
-                        <Building2 className="w-7 h-7" />
+                        {center.logoUrl ? (
+                          <img
+                            src={center.logoUrl}
+                            alt={center.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Building2 className="w-7 h-7" />
+                        )}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-3 flex-wrap">
@@ -1359,7 +1387,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteCenter(center.id)}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `¿Estás SEGURO de eliminar el centro "${center.name}"?\n\nESTA ACCIÓN ES IRREVERSIBLE.\nSe recomienda usar "Desactivar" en su lugar.`
+                              )
+                            ) {
+                              handleDeleteCenter(center.id);
+                            }
+                          }}
                           className="p-3 bg-red-50 hover:bg-red-100 rounded-xl text-red-600 transition-colors"
                           title="Eliminar centro"
                         >
@@ -2508,9 +2544,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <Activity className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Mes)</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Total)</div>
                   <div className="text-2xl font-bold text-slate-800">
-                    {centers.length * 150}
+                    {centers.reduce((acc, c) => acc + (c.stats?.consultationCount || 0), 0)}
                   </div>
                 </div>
               </div>
@@ -2520,7 +2556,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-400 uppercase">Profesionales Activos</div>
-                  <div className="text-2xl font-bold text-slate-800">{doctors.length}</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.reduce((acc, c) => acc + (c.stats?.staffCount || 0), 0)}
+                  </div>
                 </div>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -2528,8 +2566,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <TrendingUp className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Tasa de Crecimiento</div>
-                  <div className="text-2xl font-bold text-slate-800">+12.4%</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.reduce((acc, c) => acc + (c.stats?.appointmentCount || 0), 0)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2619,6 +2659,25 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           </div>
         )}
       </main>
+
+      {/* Marketing Flyer Modal */}
+      {showMarketingModal && (
+        <MarketingFlyerModal
+          type="platform"
+          onClose={() => setShowMarketingModal(false)}
+        />
+      )}
+
+      {/* FEEDBACK BUTTON (Floating) */}
+      <a
+        href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%B3%20el%20siguiente%20problema%3A%0A%0A"
+        className="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-900 transition-colors flex items-center gap-2 z-50 text-sm font-medium"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
+        Reportar Problema
+      </a>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 
 import { ClinicalTemplate } from "../types";
-import { generateId } from "../utils";
+
+const generateId = (): string => Math.random().toString(36).substring(2, 9);
 
 export const DEFAULT_CLINICAL_TEMPLATES: ClinicalTemplate[] = [
    // =========================================================================

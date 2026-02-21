@@ -282,8 +282,8 @@ function buildPosterSvg(params: {
 
   const logoImage = centerLogoUrl
     ? `<image href="${escapeXml(centerLogoUrl)}" x="60" y="40" width="${Math.round(
-        width * 0.35
-      )}" height="${Math.round(headerHeight * 0.6)}" preserveAspectRatio="xMidYMid meet" />`
+      width * 0.35
+    )}" height="${Math.round(headerHeight * 0.6)}" preserveAspectRatio="xMidYMid meet" />`
     : "";
 
   const messageText = messageLines
@@ -339,172 +339,172 @@ const SUPERADMIN_WHITELIST = new Set<string>([
 
 export const createCenterAdminInvite = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+    }
 
-  const centerId = String(data?.centerId || "").trim();
-  const emailLower = String(data?.adminEmail || data?.email || "").trim().toLowerCase();
-  const centerName = String(data?.centerName || "").trim();
+    const centerId = String(data?.centerId || "").trim();
+    const emailLower = String(data?.adminEmail || data?.email || "").trim().toLowerCase();
+    const centerName = String(data?.centerName || "").trim();
 
-  if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  if (!emailLower) throw new functions.https.HttpsError("invalid-argument", "adminEmail/email es requerido.");
+    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!emailLower) throw new functions.https.HttpsError("invalid-argument", "adminEmail/email es requerido.");
 
-  const token = randToken(24);
-  const createdAt = admin.firestore.Timestamp.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const token = randToken(24);
+    const createdAt = admin.firestore.Timestamp.now();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  await db.collection("invites").doc(token).set({
-    token,
-    centerId,
-    centerName,
-    emailLower,
-    role: "center_admin",
-    status: "pending",
-    createdAt,
-    expiresAt,
-    invitedByUid: context.auth?.uid,
-  });
+    await db.collection("invites").doc(token).set({
+      token,
+      centerId,
+      centerName,
+      emailLower,
+      role: "center_admin",
+      status: "pending",
+      createdAt,
+      expiresAt,
+      invitedByUid: context.auth?.uid,
+    });
 
-  const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
-  return { token, inviteUrl };
+    const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
+    return { token, inviteUrl };
   }
 );
 
 export const resendCenterAdminInvite = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+    }
 
-  const token = String(data?.token || "").trim();
-  if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+    const token = String(data?.token || "").trim();
+    if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
 
-  const inviteRef = db.collection("invites").doc(token);
-  const inviteSnap = await inviteRef.get();
-  if (!inviteSnap.exists) {
-    throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
-  }
+    const inviteRef = db.collection("invites").doc(token);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
+    }
 
-  const inv = inviteSnap.data() as any;
-  if (String(inv.status || "") !== "pending") {
-    throw new functions.https.HttpsError("failed-precondition", "Invitación no está pendiente.");
-  }
+    const inv = inviteSnap.data() as any;
+    if (String(inv.status || "") !== "pending") {
+      throw new functions.https.HttpsError("failed-precondition", "Invitación no está pendiente.");
+    }
 
-  await inviteRef.set(
-    {
-      status: "revoked",
-      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
-      revokedByUid: context.auth?.uid ?? null,
-    },
-    { merge: true }
-  );
+    await inviteRef.set(
+      {
+        status: "revoked",
+        revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+        revokedByUid: context.auth?.uid ?? null,
+      },
+      { merge: true }
+    );
 
-  const newToken = randToken(24);
-  const createdAt = admin.firestore.Timestamp.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const newToken = randToken(24);
+    const createdAt = admin.firestore.Timestamp.now();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  await db.collection("invites").doc(newToken).set({
-    token: newToken,
-    centerId: inv.centerId,
-    centerName: inv.centerName || "",
-    emailLower: inv.emailLower,
-    role: inv.role || "center_admin",
-    status: "pending",
-    createdAt,
-    expiresAt,
-    invitedByUid: context.auth?.uid,
-  });
+    await db.collection("invites").doc(newToken).set({
+      token: newToken,
+      centerId: inv.centerId,
+      centerName: inv.centerName || "",
+      emailLower: inv.emailLower,
+      role: inv.role || "center_admin",
+      status: "pending",
+      createdAt,
+      expiresAt,
+      invitedByUid: context.auth?.uid,
+    });
 
-  const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
-  return { token: newToken, inviteUrl };
+    const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
+    return { token: newToken, inviteUrl };
   }
 );
 
 export const revokeCenterInvite = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+    }
 
-  const token = String(data?.token || "").trim();
-  if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+    const token = String(data?.token || "").trim();
+    if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
 
-  const inviteRef = db.collection("invites").doc(token);
-  const inviteSnap = await inviteRef.get();
-  if (!inviteSnap.exists) {
-    throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
-  }
+    const inviteRef = db.collection("invites").doc(token);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Invitación no encontrada.");
+    }
 
-  await inviteRef.set(
-    {
-      status: "revoked",
-      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
-      revokedByUid: context.auth?.uid ?? null,
-    },
-    { merge: true }
-  );
+    await inviteRef.set(
+      {
+        status: "revoked",
+        revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+        revokedByUid: context.auth?.uid ?? null,
+      },
+      { merge: true }
+    );
 
-  return { ok: true, token };
+    return { ok: true, token };
   }
 );
 
 export const createCenterNotification = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+    }
 
-  const centerId = String(data?.centerId || "").trim();
-  const title = String(data?.title || "").trim();
-  const body = String(data?.body || "").trim();
-  const type = String(data?.type || "info").trim();
-  const severity = String(data?.severity || "medium").trim();
+    const centerId = String(data?.centerId || "").trim();
+    const title = String(data?.title || "").trim();
+    const body = String(data?.body || "").trim();
+    const type = String(data?.type || "info").trim();
+    const severity = String(data?.severity || "medium").trim();
 
-  if (!centerId || !title || !body) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "centerId, title y body son requeridos."
-    );
-  }
+    if (!centerId || !title || !body) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, title y body son requeridos."
+      );
+    }
 
-  const notifRef = db
-    .collection("centers")
-    .doc(centerId)
-    .collection("adminNotifications")
-    .doc();
+    const notifRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("adminNotifications")
+      .doc();
 
-  await notifRef.set({
-    centerId,
-    title,
-    body,
-    type,
-    severity,
-    sendEmail: Boolean(data?.sendEmail),
-    createdAt: serverTimestamp(),
-    createdByUid: context.auth?.uid ?? null,
-  });
+    await notifRef.set({
+      centerId,
+      title,
+      body,
+      type,
+      severity,
+      sendEmail: Boolean(data?.sendEmail),
+      createdAt: serverTimestamp(),
+      createdByUid: context.auth?.uid ?? null,
+    });
 
-  await db.collection("centers").doc(centerId).collection("auditLogs").add({
-    type: "ACTION",
-    action: "SUPERADMIN_NOTIFICATION",
-    entityType: "centerSettings",
-    entityId: centerId,
-    actorUid: context.auth?.uid ?? "unknown",
-    actorEmail: lowerEmailFromContext(context) || "unknown",
-    actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
-    actorRole: "super_admin",
-    resourceType: "patient",
-    resourcePath: `/centers/${centerId}`,
-    timestamp: serverTimestamp(),
-    details: title,
-  });
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action: "SUPERADMIN_NOTIFICATION",
+      entityType: "centerSettings",
+      entityId: centerId,
+      actorUid: context.auth?.uid ?? "unknown",
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
+      actorRole: "super_admin",
+      resourceType: "patient",
+      resourcePath: `/centers/${centerId}`,
+      timestamp: serverTimestamp(),
+      details: title,
+    });
 
-  return { ok: true };
+    return { ok: true };
   }
 );
 
@@ -526,7 +526,7 @@ export const sendTestTransactionalEmail = (functions.https.onCall as any)(
     const subject = String(data?.subject || "Prueba email ClaveSalud").trim();
     const text = String(
       data?.text ||
-        "Este es un envío de prueba de la capa transaccional de email desde Cloud Functions."
+      "Este es un envío de prueba de la capa transaccional de email desde Cloud Functions."
     ).trim();
 
     if (!to) {
@@ -554,314 +554,314 @@ export const sendTestTransactionalEmail = (functions.https.onCall as any)(
 
 export const upsertCenter = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
-
-  const centerId = String(data?.id || data?.centerId || "").trim();
-  if (!centerId) {
-    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  }
-
-  const name = String(data?.name || "").trim();
-  const slug = String(data?.slug || "").trim();
-  if (!name || !slug) {
-    throw new functions.https.HttpsError("invalid-argument", "name y slug son requeridos.");
-  }
-
-  const centerRef = db.collection("centers").doc(centerId);
-  const existingSnap = await centerRef.get();
-  const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
-  const auditReason = String(data?.auditReason || "").trim();
-
-  const payload = { ...(data || {}) };
-  delete (payload as any).createdAt;
-  delete (payload as any).auditReason;
-  payload.id = centerId;
-  payload.name = name;
-  payload.slug = slug;
-  payload.updatedAt = serverTimestamp();
-
-  if (!existingSnap.exists) {
-    payload.createdAt = data?.createdAt ?? serverTimestamp();
-  }
-
-  await centerRef.set(payload, { merge: true });
-
-  const billingPrev = existingData?.billing || {};
-  const billingNext = (payload as any)?.billing || {};
-  const billingChanges: Record<string, any> = {};
-  ["plan", "monthlyUF", "billingStatus", "nextDueDate", "lastPaidAt"].forEach((key) => {
-    if (billingPrev?.[key] !== billingNext?.[key]) {
-      billingChanges[key] = { from: billingPrev?.[key] ?? null, to: billingNext?.[key] ?? null };
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
-  });
 
-  const isActivePrev = existingData?.isActive;
-  const isActiveNext = (payload as any)?.isActive;
-  const isActiveChanged = isActivePrev !== isActiveNext;
+    const centerId = String(data?.id || data?.centerId || "").trim();
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
 
-  if (Object.keys(billingChanges).length > 0) {
-    await centerRef.collection("billingEvents").add({
-      action: "billing_update",
-      reason: auditReason || null,
-      changes: billingChanges,
-      actorUid: context.auth?.uid ?? null,
-      actorEmail: lowerEmailFromContext(context) || null,
-      createdAt: serverTimestamp(),
+    const name = String(data?.name || "").trim();
+    const slug = String(data?.slug || "").trim();
+    if (!name || !slug) {
+      throw new functions.https.HttpsError("invalid-argument", "name y slug son requeridos.");
+    }
+
+    const centerRef = db.collection("centers").doc(centerId);
+    const existingSnap = await centerRef.get();
+    const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
+    const auditReason = String(data?.auditReason || "").trim();
+
+    const payload = { ...(data || {}) };
+    delete (payload as any).createdAt;
+    delete (payload as any).auditReason;
+    payload.id = centerId;
+    payload.name = name;
+    payload.slug = slug;
+    payload.updatedAt = serverTimestamp();
+
+    if (!existingSnap.exists) {
+      payload.createdAt = data?.createdAt ?? serverTimestamp();
+    }
+
+    await centerRef.set(payload, { merge: true });
+
+    const billingPrev = existingData?.billing || {};
+    const billingNext = (payload as any)?.billing || {};
+    const billingChanges: Record<string, any> = {};
+    ["plan", "monthlyUF", "billingStatus", "nextDueDate", "lastPaidAt"].forEach((key) => {
+      if (billingPrev?.[key] !== billingNext?.[key]) {
+        billingChanges[key] = { from: billingPrev?.[key] ?? null, to: billingNext?.[key] ?? null };
+      }
     });
-  }
 
-  if (isActiveChanged) {
-    await centerRef.collection("auditLogs").add({
-      type: "ACTION",
-      action: "CENTER_STATUS_CHANGED",
-      entityType: "centerSettings",
-      entityId: centerId,
-      actorUid: context.auth?.uid ?? "unknown",
-      actorEmail: lowerEmailFromContext(context) || "unknown",
-      actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
-      actorRole: "super_admin",
-      resourceType: "patient",
-      resourcePath: `/centers/${centerId}`,
-      timestamp: serverTimestamp(),
-      details: auditReason || null,
-      metadata: { from: isActivePrev ?? null, to: isActiveNext ?? null },
-    });
-  }
+    const isActivePrev = existingData?.isActive;
+    const isActiveNext = (payload as any)?.isActive;
+    const isActiveChanged = isActivePrev !== isActiveNext;
 
-  return { ok: true, centerId };
+    if (Object.keys(billingChanges).length > 0) {
+      await centerRef.collection("billingEvents").add({
+        action: "billing_update",
+        reason: auditReason || null,
+        changes: billingChanges,
+        actorUid: context.auth?.uid ?? null,
+        actorEmail: lowerEmailFromContext(context) || null,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    if (isActiveChanged) {
+      await centerRef.collection("auditLogs").add({
+        type: "ACTION",
+        action: "CENTER_STATUS_CHANGED",
+        entityType: "centerSettings",
+        entityId: centerId,
+        actorUid: context.auth?.uid ?? "unknown",
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
+        actorRole: "super_admin",
+        resourceType: "patient",
+        resourcePath: `/centers/${centerId}`,
+        timestamp: serverTimestamp(),
+        details: auditReason || null,
+        metadata: { from: isActivePrev ?? null, to: isActiveNext ?? null },
+      });
+    }
+
+    return { ok: true, centerId };
   }
 );
 
 export const deleteCenter = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
+    }
 
-  const centerId = String(data?.centerId || data?.id || "").trim();
-  if (!centerId) {
-    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  }
+    const centerId = String(data?.centerId || data?.id || "").trim();
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
 
-  const reason = String(data?.reason || "").trim();
-  await db.collection("auditLogs").add({
-    action: "delete_center",
-    actorUid: context.auth?.uid ?? "unknown",
-    actorEmail: lowerEmailFromContext(context) || null,
-    targetUid: centerId,
-    reason: reason || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+    const reason = String(data?.reason || "").trim();
+    await db.collection("auditLogs").add({
+      action: "delete_center",
+      actorUid: context.auth?.uid ?? "unknown",
+      actorEmail: lowerEmailFromContext(context) || null,
+      targetUid: centerId,
+      reason: reason || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-  await db.collection("centers").doc(centerId).delete();
+    await db.collection("centers").doc(centerId).delete();
 
-  return { ok: true, centerId };
+    return { ok: true, centerId };
   }
 );
 
 export const setSuperAdmin = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
+    requireAuth(context);
 
-  const callerUid = context.auth?.uid as string;
-  const callerEmail = lowerEmailFromContext(context);
+    const callerUid = context.auth?.uid as string;
+    const callerEmail = lowerEmailFromContext(context);
 
-  const isAllowed =
-    isSuperAdmin(context) ||
-    (callerEmail && SUPERADMIN_WHITELIST.has(callerEmail));
+    const isAllowed =
+      isSuperAdmin(context) ||
+      (callerEmail && SUPERADMIN_WHITELIST.has(callerEmail));
 
-  if (!isAllowed) {
-    throw new functions.https.HttpsError("permission-denied", "No tienes permisos para esta acción.");
-  }
+    if (!isAllowed) {
+      throw new functions.https.HttpsError("permission-denied", "No tienes permisos para esta acción.");
+    }
 
-  const targetUidRaw = String(data?.uid || "").trim();
-  const targetUid = targetUidRaw || callerUid;
+    const targetUidRaw = String(data?.uid || "").trim();
+    const targetUid = targetUidRaw || callerUid;
 
-  if (!isSuperAdmin(context) && targetUid !== callerUid) {
-    throw new functions.https.HttpsError(
-      "permission-denied",
-      "Solo puedes elevar tu propio usuario."
-    );
-  }
+    if (!isSuperAdmin(context) && targetUid !== callerUid) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo puedes elevar tu propio usuario."
+      );
+    }
 
-  const targetUser = await admin.auth().getUser(targetUid);
-  const existingClaims = (targetUser.customClaims || {}) as Record<string, unknown>;
-  await admin.auth().setCustomUserClaims(targetUid, {
-    ...existingClaims,
-    super_admin: true,
-  });
+    const targetUser = await admin.auth().getUser(targetUid);
+    const existingClaims = (targetUser.customClaims || {}) as Record<string, unknown>;
+    await admin.auth().setCustomUserClaims(targetUid, {
+      ...existingClaims,
+      super_admin: true,
+    });
 
-  await db.collection("auditLogs").add({
-    action: "set_super_admin",
-    actorUid: callerUid,
-    actorEmail: callerEmail || null,
-    targetUid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+    await db.collection("auditLogs").add({
+      action: "set_super_admin",
+      actorUid: callerUid,
+      actorEmail: callerEmail || null,
+      targetUid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-  return { ok: true, targetUid };
+    return { ok: true, targetUid };
   }
 );
 
 export const acceptInvite = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
+    requireAuth(context);
 
-  const token = String(data?.token || "").trim();
-  if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+    const token = String(data?.token || "").trim();
+    if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
 
-  const uid = context.auth?.uid as string;
-  const emailLower = lowerEmailFromContext(context);
-  if (!emailLower) throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email disponible.");
+    const uid = context.auth?.uid as string;
+    const emailLower = lowerEmailFromContext(context);
+    if (!emailLower) throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email disponible.");
 
-  const invRef = db.collection("invites").doc(token);
-  const invSnap = await invRef.get();
-  if (!invSnap.exists) throw new functions.https.HttpsError("not-found", "Invitación no encontrada o inválida.");
+    const invRef = db.collection("invites").doc(token);
+    const invSnap = await invRef.get();
+    if (!invSnap.exists) throw new functions.https.HttpsError("not-found", "Invitación no encontrada o inválida.");
 
-  const inv: any = invSnap.data() || {};
-  if (String(inv.status || "") !== "pending") {
-    throw new functions.https.HttpsError("failed-precondition", "Esta invitación ya fue utilizada o no está activa.");
-  }
-
-  const expiresAt = inv.expiresAt;
-  if (expiresAt?.toDate) {
-    if (expiresAt.toDate().getTime() < Date.now()) {
-      throw new functions.https.HttpsError("failed-precondition", "La invitación expiró.");
+    const inv: any = invSnap.data() || {};
+    if (String(inv.status || "") !== "pending") {
+      throw new functions.https.HttpsError("failed-precondition", "Esta invitación ya fue utilizada o no está activa.");
     }
-  }
 
-  if (String(inv.emailLower || "").toLowerCase() !== emailLower) {
-    throw new functions.https.HttpsError("permission-denied", "Este correo no coincide con el invitado.");
-  }
+    const expiresAt = inv.expiresAt;
+    if (expiresAt?.toDate) {
+      if (expiresAt.toDate().getTime() < Date.now()) {
+        throw new functions.https.HttpsError("failed-precondition", "La invitación expiró.");
+      }
+    }
 
-  const centerId = String(inv.centerId || "").trim();
-  if (!centerId) throw new functions.https.HttpsError("failed-precondition", "Invitación sin centerId.");
+    if (String(inv.emailLower || "").toLowerCase() !== emailLower) {
+      throw new functions.https.HttpsError("permission-denied", "Este correo no coincide con el invitado.");
+    }
 
-  const role = String(inv.role || "center_admin").trim() || "center_admin";
-  const profileData = inv.profileData || {};
+    const centerId = String(inv.centerId || "").trim();
+    if (!centerId) throw new functions.https.HttpsError("failed-precondition", "Invitación sin centerId.");
 
-  const userRef = db.collection("users").doc(uid);
-  const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
+    const role = String(inv.role || "center_admin").trim() || "center_admin";
+    const profileData = inv.profileData || {};
 
-  await db.runTransaction(async (tx) => {
-    tx.set(
-      userRef,
-      {
-        uid,
-        email: emailLower,
-        activo: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        centros: admin.firestore.FieldValue.arrayUnion(centerId),
-        centers: admin.firestore.FieldValue.arrayUnion(centerId),
-        roles: admin.firestore.FieldValue.arrayUnion(role),
-      },
-      { merge: true }
-    );
+    const userRef = db.collection("users").doc(uid);
+    const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
 
-    tx.set(
-      staffRef,
-      {
-        uid,
-        emailLower,
-        role,
-        accessRole: role,
-        roles: [role],
-        clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
-        active: true,
-        activo: true,
-        visibleInBooking: profileData.visibleInBooking === true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        inviteToken: token,
-        // Include profile data from invite
-        fullName: profileData.fullName ?? "",
-        rut: profileData.rut ?? "",
-        specialty: profileData.specialty ?? "",
-        photoUrl: profileData.photoUrl ?? "",
-        agendaConfig: profileData.agendaConfig ?? null,
-        professionalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
-        isAdmin: profileData.isAdmin ?? false,
-      },
-      { merge: true }
-    );
+    await db.runTransaction(async (tx) => {
+      tx.set(
+        userRef,
+        {
+          uid,
+          email: emailLower,
+          activo: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          centros: admin.firestore.FieldValue.arrayUnion(centerId),
+          centers: admin.firestore.FieldValue.arrayUnion(centerId),
+          roles: admin.firestore.FieldValue.arrayUnion(role),
+        },
+        { merge: true }
+      );
 
-    tx.update(invRef, {
-      status: "accepted",
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-      acceptedByUid: uid,
+      tx.set(
+        staffRef,
+        {
+          uid,
+          emailLower,
+          role,
+          accessRole: role,
+          roles: [role],
+          clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+          active: true,
+          activo: true,
+          visibleInBooking: profileData.visibleInBooking === true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          inviteToken: token,
+          // Include profile data from invite
+          fullName: profileData.fullName ?? "",
+          rut: profileData.rut ?? "",
+          specialty: profileData.specialty ?? "",
+          photoUrl: profileData.photoUrl ?? "",
+          agendaConfig: profileData.agendaConfig ?? null,
+          professionalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+          isAdmin: profileData.isAdmin ?? false,
+        },
+        { merge: true }
+      );
+
+      tx.update(invRef, {
+        status: "accepted",
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+        acceptedByUid: uid,
+      });
     });
-  });
 
-  return { ok: true, centerId, role };
+    return { ok: true, centerId, role };
   }
 );
 
 export const listPatientAppointments = (functions.https.onCall as any)(
   async (data: any, _context: CallableContext) => {
-  const centerId = String(data?.centerId || "").trim();
-  const patientRut = String(data?.rut || "").trim();
-  const phone = formatChileanPhone(String(data?.phone || ""));
+    const centerId = String(data?.centerId || "").trim();
+    const patientRut = String(data?.rut || "").trim();
+    const phone = formatChileanPhone(String(data?.phone || ""));
 
-  if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
-  if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
+    if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
 
-  const snap = await db
-    .collection("centers")
-    .doc(centerId)
-    .collection("appointments")
-    .where("status", "==", "booked")
-    .where("patientRut", "==", patientRut)
-    .where("patientPhone", "==", phone)
-    .limit(25)
-    .get();
+    const snap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .where("status", "==", "booked")
+      .where("patientRut", "==", patientRut)
+      .where("patientPhone", "==", phone)
+      .limit(25)
+      .get();
 
-  const appointments = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
-  return { appointments };
+    const appointments = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
+    return { appointments };
   }
 );
 
 export const cancelPatientAppointment = (functions.https.onCall as any)(
   async (data: any, _context: CallableContext) => {
-  const centerId = String(data?.centerId || "").trim();
-  const appointmentId = String(data?.appointmentId || "").trim();
-  const patientRut = String(data?.rut || "").trim();
-  const phone = formatChileanPhone(String(data?.phone || ""));
+    const centerId = String(data?.centerId || "").trim();
+    const appointmentId = String(data?.appointmentId || "").trim();
+    const patientRut = String(data?.rut || "").trim();
+    const phone = formatChileanPhone(String(data?.phone || ""));
 
-  if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  if (!appointmentId) throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
-  if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
-  if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!appointmentId) throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
+    if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
+    if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
 
-  const ref = db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) {
-      throw new functions.https.HttpsError("not-found", "La cita no existe.");
-    }
-    const data = snap.data() as any;
-    if (data.status !== "booked") {
-      throw new functions.https.HttpsError("failed-precondition", "La cita no está reservada.");
-    }
-    if (String(data.patientRut || "") !== patientRut || String(data.patientPhone || "") !== phone) {
-      throw new functions.https.HttpsError("permission-denied", "Los datos no coinciden.");
-    }
+    const ref = db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw new functions.https.HttpsError("not-found", "La cita no existe.");
+      }
+      const data = snap.data() as any;
+      if (data.status !== "booked") {
+        throw new functions.https.HttpsError("failed-precondition", "La cita no está reservada.");
+      }
+      if (String(data.patientRut || "") !== patientRut || String(data.patientPhone || "") !== phone) {
+        throw new functions.https.HttpsError("permission-denied", "Los datos no coinciden.");
+      }
 
-    tx.update(ref, {
-      status: "available",
-      patientName: "",
-      patientRut: "",
-      patientPhone: "",
-      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      tx.update(ref, {
+        status: "available",
+        patientName: "",
+        patientRut: "",
+        patientPhone: "",
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     });
-  });
 
-  return { ok: true };
+    return { ok: true };
   }
 );
 
@@ -911,177 +911,177 @@ export const syncPublicStaff = (functions.firestore as any)
 
 export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
-
-  const requestedCenterId = String(data?.centerId || "").trim();
-  const centersRef = db.collection("centers");
-  let centersDocs: admin.firestore.DocumentSnapshot[];
-
-  if (requestedCenterId) {
-    const centerSnap = await centersRef.doc(requestedCenterId).get();
-    centersDocs = centerSnap.exists ? [centerSnap] : [];
-  } else {
-    const centersSnap = await centersRef.get();
-    centersDocs = centersSnap.docs;
-  }
-
-  let centersProcessed = 0;
-  let staffProcessed = 0;
-  let staffUpdated = 0;
-  let staffSkipped = 0;
-  let failures = 0;
-
-  for (const centerDoc of centersDocs) {
-    const centerId = centerDoc.id;
-    const centerData = centerDoc.data() as Record<string, any> | undefined;
-    if (!requestedCenterId && centerData?.isActive === false) {
-      continue;
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
 
-    centersProcessed += 1;
-    const staffSnap = await centersRef.doc(centerId).collection("staff").get();
+    const requestedCenterId = String(data?.centerId || "").trim();
+    const centersRef = db.collection("centers");
+    let centersDocs: admin.firestore.DocumentSnapshot[];
 
-    for (const staffDoc of staffSnap.docs) {
-      const staffUid = staffDoc.id;
-      const staffData = staffDoc.data() as Record<string, any> | undefined;
-      const publicRef = centersRef.doc(centerId).collection("publicStaff").doc(staffUid);
+    if (requestedCenterId) {
+      const centerSnap = await centersRef.doc(requestedCenterId).get();
+      centersDocs = centerSnap.exists ? [centerSnap] : [];
+    } else {
+      const centersSnap = await centersRef.get();
+      centersDocs = centersSnap.docs;
+    }
 
-      try {
-        const currentStaff = staffData || {};
-        const staffPatch: Record<string, unknown> = {};
+    let centersProcessed = 0;
+    let staffProcessed = 0;
+    let staffUpdated = 0;
+    let staffSkipped = 0;
+    let failures = 0;
 
-        if (typeof currentStaff.visibleInBooking !== "boolean") {
-          staffPatch.visibleInBooking = false;
-        }
+    for (const centerDoc of centersDocs) {
+      const centerId = centerDoc.id;
+      const centerData = centerDoc.data() as Record<string, any> | undefined;
+      if (!requestedCenterId && centerData?.isActive === false) {
+        continue;
+      }
 
-        const currentClinicalRole = normalizeString(currentStaff.clinicalRole ?? currentStaff.professionalRole ?? "").trim();
-        if (!currentClinicalRole) {
-          const legacyRole = normalizeString(currentStaff.role ?? "").trim();
-          if (legacyRole && legacyRole.toLowerCase() !== "center_admin" && !["doctor", "admin"].includes(legacyRole.toLowerCase())) {
-            staffPatch.clinicalRole = legacyRole;
+      centersProcessed += 1;
+      const staffSnap = await centersRef.doc(centerId).collection("staff").get();
+
+      for (const staffDoc of staffSnap.docs) {
+        const staffUid = staffDoc.id;
+        const staffData = staffDoc.data() as Record<string, any> | undefined;
+        const publicRef = centersRef.doc(centerId).collection("publicStaff").doc(staffUid);
+
+        try {
+          const currentStaff = staffData || {};
+          const staffPatch: Record<string, unknown> = {};
+
+          if (typeof currentStaff.visibleInBooking !== "boolean") {
+            staffPatch.visibleInBooking = false;
           }
-        }
 
-        const fullName = normalizeString(currentStaff.fullName ?? "").trim();
-        if (!fullName) {
-          const fallbackName = normalizeString(currentStaff.displayName ?? currentStaff.name ?? "").trim();
-          if (fallbackName) {
-            staffPatch.fullName = fallbackName;
+          const currentClinicalRole = normalizeString(currentStaff.clinicalRole ?? currentStaff.professionalRole ?? "").trim();
+          if (!currentClinicalRole) {
+            const legacyRole = normalizeString(currentStaff.role ?? "").trim();
+            if (legacyRole && legacyRole.toLowerCase() !== "center_admin" && !["doctor", "admin"].includes(legacyRole.toLowerCase())) {
+              staffPatch.clinicalRole = legacyRole;
+            }
           }
-        }
 
-        if (Object.keys(staffPatch).length > 0) {
-          await centersRef.doc(centerId).collection("staff").doc(staffUid).set(
-            {
-              ...staffPatch,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-          staffUpdated += 1;
-        } else {
-          staffSkipped += 1;
-        }
+          const fullName = normalizeString(currentStaff.fullName ?? "").trim();
+          if (!fullName) {
+            const fallbackName = normalizeString(currentStaff.displayName ?? currentStaff.name ?? "").trim();
+            if (fallbackName) {
+              staffPatch.fullName = fallbackName;
+            }
+          }
 
-        const publicSnap = await publicRef.get();
-        const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
-        const mergedStaffData = { ...currentStaff, ...staffPatch };
-        const publicData = buildPublicStaffData(staffUid, centerId, mergedStaffData, existingCreatedAt);
-        await publicRef.set(publicData, { merge: true });
-        staffProcessed += 1;
-      } catch (error) {
-        failures += 1;
-        functions.logger.error("backfillPublicStaff failed", {
-          centerId,
-          staffUid,
-          error: String(error),
-        });
+          if (Object.keys(staffPatch).length > 0) {
+            await centersRef.doc(centerId).collection("staff").doc(staffUid).set(
+              {
+                ...staffPatch,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+            staffUpdated += 1;
+          } else {
+            staffSkipped += 1;
+          }
+
+          const publicSnap = await publicRef.get();
+          const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
+          const mergedStaffData = { ...currentStaff, ...staffPatch };
+          const publicData = buildPublicStaffData(staffUid, centerId, mergedStaffData, existingCreatedAt);
+          await publicRef.set(publicData, { merge: true });
+          staffProcessed += 1;
+        } catch (error) {
+          failures += 1;
+          functions.logger.error("backfillPublicStaff failed", {
+            centerId,
+            staffUid,
+            error: String(error),
+          });
+        }
       }
     }
-  }
 
-  functions.logger.info("backfillPublicStaffFromStaff completed", {
-    centersProcessed,
-    staffProcessed,
-    staffUpdated,
-    staffSkipped,
-    failures,
-  });
+    functions.logger.info("backfillPublicStaffFromStaff completed", {
+      centersProcessed,
+      staffProcessed,
+      staffUpdated,
+      staffSkipped,
+      failures,
+    });
 
-  return { ok: true, centersProcessed, staffProcessed, staffUpdated, staffSkipped, failures };
+    return { ok: true, centersProcessed, staffProcessed, staffUpdated, staffSkipped, failures };
   }
 );
 
 export const backfillPatientConsultationsToSubcollection = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
-  requireAuth(context);
-  if (!isSuperAdmin(context)) {
-    throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
-  }
-
-  const centerId = String(data?.centerId || "").trim();
-  const patientId = String(data?.patientId || "").trim();
-
-  if (!centerId) {
-    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  }
-
-  const patientsRef = db.collection("centers").doc(centerId).collection("patients");
-  const patientsDocs = patientId
-    ? [await patientsRef.doc(patientId).get()].filter((docSnap) => docSnap.exists)
-    : (await patientsRef.get()).docs;
-
-  let patientsProcessed = 0;
-  let consultationsProcessed = 0;
-  let consultationsSkipped = 0;
-
-  for (const patientDoc of patientsDocs) {
-    patientsProcessed += 1;
-    const pData = patientDoc.data() as Record<string, any>;
-    const legacyConsultations = Array.isArray(pData?.consultations) ? pData.consultations : [];
-
-    for (const legacy of legacyConsultations) {
-      const consultationId = String(legacy?.id || "").trim();
-      if (!consultationId) {
-        consultationsSkipped += 1;
-        continue;
-      }
-
-      await db
-        .collection("centers")
-        .doc(centerId)
-        .collection("patients")
-        .doc(patientDoc.id)
-        .collection("consultations")
-        .doc(consultationId)
-        .set(
-          {
-            ...legacy,
-            id: consultationId,
-            centerId,
-            patientId: patientDoc.id,
-            updatedAt: serverTimestamp(),
-            createdAt: legacy?.createdAt ?? serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-      consultationsProcessed += 1;
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
-  }
 
-  functions.logger.info("backfillPatientConsultationsToSubcollection completed", {
-    centerId,
-    patientId: patientId || null,
-    patientsProcessed,
-    consultationsProcessed,
-    consultationsSkipped,
-  });
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
 
-  return { ok: true, centerId, patientsProcessed, consultationsProcessed, consultationsSkipped };
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
+
+    const patientsRef = db.collection("centers").doc(centerId).collection("patients");
+    const patientsDocs = patientId
+      ? [await patientsRef.doc(patientId).get()].filter((docSnap) => docSnap.exists)
+      : (await patientsRef.get()).docs;
+
+    let patientsProcessed = 0;
+    let consultationsProcessed = 0;
+    let consultationsSkipped = 0;
+
+    for (const patientDoc of patientsDocs) {
+      patientsProcessed += 1;
+      const pData = patientDoc.data() as Record<string, any>;
+      const legacyConsultations = Array.isArray(pData?.consultations) ? pData.consultations : [];
+
+      for (const legacy of legacyConsultations) {
+        const consultationId = String(legacy?.id || "").trim();
+        if (!consultationId) {
+          consultationsSkipped += 1;
+          continue;
+        }
+
+        await db
+          .collection("centers")
+          .doc(centerId)
+          .collection("patients")
+          .doc(patientDoc.id)
+          .collection("consultations")
+          .doc(consultationId)
+          .set(
+            {
+              ...legacy,
+              id: consultationId,
+              centerId,
+              patientId: patientDoc.id,
+              updatedAt: serverTimestamp(),
+              createdAt: legacy?.createdAt ?? serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+        consultationsProcessed += 1;
+      }
+    }
+
+    functions.logger.info("backfillPatientConsultationsToSubcollection completed", {
+      centerId,
+      patientId: patientId || null,
+      patientsProcessed,
+      consultationsProcessed,
+      consultationsSkipped,
+    });
+
+    return { ok: true, centerId, patientsProcessed, consultationsProcessed, consultationsSkipped };
   }
 );
 
@@ -1095,157 +1095,155 @@ export const backfillPatientConsultationsToSubcollection = (functions.https.onCa
  */
 export const logAccess = (functions.https.onCall as any)(
   async (data: LogAccessRequest, context: CallableContext): Promise<LogAccessResult> => {
-  requireAuth(context);
-  
-  const uid = context.auth?.uid as string;
-  const emailLower = lowerEmailFromContext(context);
-  
-  // Validar campos requeridos
-  const centerId = String(data?.centerId || "").trim();
-  const resourceType = String(data?.resourceType || "").trim();
-  const resourcePath = String(data?.resourcePath || "").trim();
-  
-  if (!centerId) {
-    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-  }
-  if (!resourceType) {
-    throw new functions.https.HttpsError("invalid-argument", "resourceType es requerido.");
-  }
-  if (!resourcePath) {
-    throw new functions.https.HttpsError("invalid-argument", "resourcePath es requerido.");
-  }
-  
-  // Validar que el resourceType sea válido
-  const validResourceTypes = ["patient", "consultation", "appointment"];
-  if (!validResourceTypes.includes(resourceType)) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      `resourceType debe ser uno de: ${validResourceTypes.join(", ")}`
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const emailLower = lowerEmailFromContext(context);
+
+    // Validar campos requeridos
+    const centerId = String(data?.centerId || "").trim();
+    const resourceType = String(data?.resourceType || "").trim();
+    const resourcePath = String(data?.resourcePath || "").trim();
+
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
+    if (!resourceType) {
+      throw new functions.https.HttpsError("invalid-argument", "resourceType es requerido.");
+    }
+    if (!resourcePath) {
+      throw new functions.https.HttpsError("invalid-argument", "resourcePath es requerido.");
+    }
+
+    // Validar que el resourceType sea válido
+    const validResourceTypes = ["patient", "consultation", "appointment"];
+    if (!validResourceTypes.includes(resourceType)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        `resourceType debe ser uno de: ${validResourceTypes.join(", ")}`
+      );
+    }
+
+    // Verificar permisos: debe ser staff del centro o superadmin
+    const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
+    const staffSnap = await staffRef.get();
+
+    const isStaffMember = staffSnap.exists && (
+      staffSnap.get("active") === true ||
+      staffSnap.get("activo") === true
     );
-  }
-  
-  // Verificar permisos: debe ser staff del centro o superadmin
-  const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
-  const staffSnap = await staffRef.get();
-  
-  const isStaffMember = staffSnap.exists && (
-    staffSnap.get("active") === true || 
-    staffSnap.get("activo") === true
-  );
-  
-  if (!isSuperAdmin(context) && !isStaffMember) {
-    throw new functions.https.HttpsError(
-      "permission-denied",
-      "No tiene permisos para acceder a este centro."
-    );
-  }
-  
-  // Obtener rol del usuario
-  const staffData = staffSnap.data() as any;
-  const role = staffData?.role || "unknown";
-  const actorName =
-    staffData?.fullName ||
-    staffData?.nombre ||
-    context.auth?.token?.name ||
-    context.auth?.token?.email ||
-    "Usuario";
-  
-  // Deduplicación: crear un ID basado en usuario + recurso
-  const dedupeKey = `${uid}_${resourcePath}`;
-  const dedupeDocRef = db
-    .collection("centers")
-    .doc(centerId)
-    .collection("auditLogs")
-    .doc(`dedupe_${dedupeKey.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
-  
-  try {
-    // Usar transacción para verificar deduplicación atómica
-    const result = await db.runTransaction(async (transaction) => {
-      const dedupeSnap = await transaction.get(dedupeDocRef);
-      
-      // Si existe un log reciente (menos de 60 segundos), no crear uno nuevo
-      if (dedupeSnap.exists) {
-        const lastTimestamp = dedupeSnap.get("timestamp");
-        if (lastTimestamp?.toMillis) {
-          const timeSinceLastLog = Date.now() - lastTimestamp.toMillis();
-          if (timeSinceLastLog < 60000) { // 60 segundos
-            functions.logger.info("logAccess deduplicated", {
-              centerId,
-              uid,
-              resourcePath,
-              timeSinceLastLog,
-            });
-            return { logged: false };
+
+    if (!isSuperAdmin(context) && !isStaffMember) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos para acceder a este centro."
+      );
+    }
+
+    // Obtener rol del usuario
+    const staffData = staffSnap.data() as any;
+    const role = staffData?.role || "unknown";
+    const actorName =
+      staffData?.fullName ||
+      staffData?.nombre ||
+      context.auth?.token?.name ||
+      context.auth?.token?.email ||
+      "Usuario";
+
+    // Deduplicación: crear un ID basado en usuario + recurso
+    const dedupeKey = `${uid}_${resourcePath}`;
+    const dedupeDocRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .doc(`dedupe_${dedupeKey.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+
+    try {
+      // Usar transacción para verificar deduplicación atómica
+      const result = await db.runTransaction(async (transaction) => {
+        const dedupeSnap = await transaction.get(dedupeDocRef);
+
+        // Si existe un log reciente (menos de 60 segundos), no crear uno nuevo
+        if (dedupeSnap.exists) {
+          const lastTimestamp = dedupeSnap.get("timestamp");
+          if (lastTimestamp?.toMillis) {
+            const timeSinceLastLog = Date.now() - lastTimestamp.toMillis();
+            if (timeSinceLastLog < 60000) { // 60 segundos
+              functions.logger.info("logAccess deduplicated", {
+                centerId,
+                uid,
+                resourcePath,
+                timeSinceLastLog,
+              });
+              return { logged: false };
+            }
           }
         }
-      }
-      
-      // Crear el log de auditoría
-      const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
-      
-      const resourceSegments = resourcePath.split("/").filter(Boolean);
-      const entityId = resourceSegments[resourceSegments.length - 1] || "";
-      const auditLogData: AuditLogData = {
-        type: "ACCESS",
-        action: "ACCESS",
-        entityType: resourceType as any,
-        entityId,
-        actorUid: uid,
-        actorEmail: emailLower,
-        actorName,
-        actorRole: role,
-        resourceType: resourceType as any,
-        resourcePath,
-        timestamp: serverTimestamp(),
+
+        // Crear el log de auditoría
+        const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+        const resourceSegments = resourcePath.split("/").filter(Boolean);
+        const entityId = resourceSegments[resourceSegments.length - 1] || "";
+        const auditLogData: AuditLogData = {
+          type: "ACCESS",
+          action: "ACCESS",
+          entityType: resourceType as any,
+          entityId,
+          actorUid: uid,
+          actorEmail: emailLower,
+          actorName,
+          actorRole: role,
+          resourceType: resourceType as any,
+          resourcePath,
+          timestamp: serverTimestamp(),
+        };
+
+        // Añadir campos opcionales si están presentes
+        if (data.patientId) {
+          auditLogData.patientId = String(data.patientId).trim();
+        }
+        if (data.ip) {
+          auditLogData.ip = String(data.ip).trim();
+        }
+        if (data.userAgent) {
+          auditLogData.userAgent = String(data.userAgent).trim();
+        }
+
+        // Escribir el log y actualizar el documento de deduplicación
+        transaction.set(auditLogRef, auditLogData);
+        transaction.set(dedupeDocRef, {
+          timestamp: serverTimestamp(),
+          resourcePath,
+          actorUid: uid,
+        }, { merge: true });
+
+        functions.logger.info("logAccess created", {
+          centerId,
+          uid,
+          role,
+          resourceType,
+          resourcePath,
+        });
+
+        return { logged: true };
+      });
+
+      return {
+        ok: true,
+        logged: result.logged,
+        message: result.logged ? "Acceso registrado." : "Acceso ya registrado recientemente.",
       };
-      
-      // Añadir campos opcionales si están presentes
-      if (data.patientId) {
-        auditLogData.patientId = String(data.patientId).trim();
-      }
-      if (data.ip) {
-        auditLogData.ip = String(data.ip).trim();
-      }
-      if (data.userAgent) {
-        auditLogData.userAgent = String(data.userAgent).trim();
-      }
-      
-      // Escribir el log y actualizar el documento de deduplicación
-      transaction.set(auditLogRef, auditLogData);
-      transaction.set(dedupeDocRef, {
-        timestamp: serverTimestamp(),
-        resourcePath,
-        actorUid: uid,
-      }, { merge: true });
-      
-      functions.logger.info("logAccess created", {
+    } catch (error) {
+      functions.logger.error("logAccess error", {
         centerId,
         uid,
-        role,
-        resourceType,
         resourcePath,
+        error: String(error),
       });
-      
-      return { logged: true };
-    });
-    
-    return {
-      ok: true,
-      logged: result.logged,
-      message: result.logged ? "Acceso registrado." : "Acceso ya registrado recientemente.",
-    };
-  } catch (error) {
-    functions.logger.error("logAccess error", {
-      centerId,
-      uid,
-      resourcePath,
-      error: String(error),
-    });
-    throw new functions.https.HttpsError(
-      "internal",
-      "Error al registrar el acceso."
-    );
-  }
+      throw new functions.https.HttpsError(
+        "internal",
+        "Error al registrar el acceso."
+      );
+    }
   }
 );
 
@@ -1441,6 +1439,7 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
   }
 });
 
+
 export const generateMarketingPoster = functions.https.onCall(
   async (data: any, context: CallableContext) => {
     requireAuth(context);
@@ -1566,4 +1565,299 @@ export const cleanupExpiredPosters = functions.pubsub
 
     await batch.commit();
     return null;
+  });
+
+// migratePatients - One-time migration from centers/[centerId]/patients to root /patients
+// Callable function restricted to SuperAdmins.
+// Call with { dryRun: true } to preview changes without writing.
+// Call with { dryRun: false } to execute the migration.
+// Usage from Firebase Functions Shell:
+//   firebase functions:shell
+//   > migratePatients({ data: { dryRun: true } })
+// Or call from the app's SuperAdmin dashboard.
+export const migratePatients = functions
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .https.onCall(async (data, context) => {
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "Solo SuperAdmins pueden ejecutar la migración.");
+    }
+
+    const dryRun = data?.dryRun !== false; // Default to dryRun=true for safety
+    const log: string[] = [];
+    const addLog = (msg: string) => {
+      log.push(msg);
+      functions.logger.info(msg);
+    };
+
+    addLog(`🚀 Migration started (mode: ${dryRun ? "DRY RUN" : "LIVE"})`);
+
+    const centersSnap = await db.collection("centers").get();
+    addLog(`Found ${centersSnap.size} centers`);
+
+    let totalPatients = 0;
+    let totalConsultations = 0;
+    let totalSkipped = 0;
+
+    for (const centerDoc of centersSnap.docs) {
+      const centerId = centerDoc.id;
+      addLog(`\n📋 Processing center: ${centerId}`);
+
+      // Get patients
+      const patientsSnap = await db.collection("centers").doc(centerId).collection("patients").get();
+      if (patientsSnap.empty) {
+        addLog(`  ⚠️  No patients in ${centerId}`);
+        continue;
+      }
+      addLog(`  Found ${patientsSnap.size} patients`);
+
+      // Get staff for default owner
+      const staffSnap = await db.collection("centers").doc(centerId).collection("staff").get();
+      const staffList: any[] = [];
+      staffSnap.forEach(d => staffList.push({ uid: d.id, ...d.data() }));
+
+      const defaultOwner = staffList.find((s: any) =>
+        s.roles?.includes("doctor") || s.roles?.includes("MEDICO") || s.roles?.includes("professional")
+      ) || staffList[0];
+      const defaultOwnerUid = defaultOwner?.uid || "migration-orphan";
+      addLog(`  Default owner: ${defaultOwnerUid}`);
+
+      // Get consultations indexed by patientId
+      const consultSnap = await db.collection("centers").doc(centerId).collection("consultations").get();
+      const consultsByPatient: Record<string, any[]> = {};
+      consultSnap.forEach(d => {
+        const cd = d.data();
+        if (cd.patientId) {
+          if (!consultsByPatient[cd.patientId]) consultsByPatient[cd.patientId] = [];
+          consultsByPatient[cd.patientId].push({ id: d.id, ...cd });
+        }
+      });
+
+      // Migrate each patient
+      for (const patDoc of patientsSnap.docs) {
+        const pd = patDoc.data();
+        const patientId = patDoc.id;
+
+        // Skip if already migrated
+        const existingRoot = await db.collection("patients").doc(patientId).get();
+        if (existingRoot.exists) {
+          addLog(`  ⏭️  ${patientId} (${pd.fullName || "?"}) — already exists`);
+          totalSkipped++;
+          continue;
+        }
+
+        // Determine owner from consultation creator or default
+        const patConsults = consultsByPatient[patientId] || [];
+        const creatorUid = patConsults.find((c: any) => c.createdByUid)?.createdByUid;
+        const ownerUid = creatorUid || defaultOwnerUid;
+
+        const migratedPatient = {
+          ...pd,
+          id: patientId,
+          ownerUid,
+          accessControl: {
+            allowedUids: [ownerUid],
+            centerIds: [centerId],
+          },
+          centerId,
+          migratedFrom: `centers/${centerId}/patients/${patientId}`,
+          migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!dryRun) {
+          await db.collection("patients").doc(patientId).set(migratedPatient);
+        }
+        addLog(`  ${dryRun ? "[DRY]" : "✅"} ${patientId} (${pd.fullName || "?"}) → owner: ${ownerUid}`);
+        totalPatients++;
+
+        // Migrate consultations
+        for (const c of patConsults) {
+          if (!dryRun) {
+            await db.collection("patients").doc(patientId).collection("consultations").doc(c.id).set({
+              ...c,
+              migratedFrom: `centers/${centerId}/consultations/${c.id}`,
+              migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+          totalConsultations++;
+        }
+        if (patConsults.length > 0) {
+          addLog(`    ${dryRun ? "[DRY]" : "✅"} ${patConsults.length} consultations`);
+        }
+      }
+    }
+
+    const summary = {
+      ok: true,
+      dryRun,
+      totalPatients,
+      totalConsultations,
+      totalSkipped,
+    };
+    addLog(`\n📊 Summary: ${JSON.stringify(summary)}`);
+
+    return { ...summary, log };
+  });
+
+// ============================================================================
+// AGGREGATED METRICS
+// ============================================================================
+
+/**
+ * Mantiene un contador de staff activo en el documento del centro.
+ * Trigger: centers/{centerId}/staff/{staffUid}
+ */
+export const aggregateStaff = functions.firestore
+  .document("centers/{centerId}/staff/{staffUid}")
+  .onWrite(async (change, context) => {
+    const centerId = context.params.centerId;
+    const centerRef = db.collection("centers").doc(centerId);
+    let increment = 0;
+
+    const before = change.before.data();
+    const after = change.after.data();
+
+    const wasActive = before ? (before.active !== false && before.activo !== false) : false;
+    const isActive = after ? (after.active !== false && after.activo !== false) : false;
+
+    if (!before && isActive) {
+      increment = 1; // Created and active
+    } else if (before && !after) {
+      if (wasActive) increment = -1; // Deleted and was active
+    } else {
+      // Updated
+      if (!wasActive && isActive) increment = 1;
+      if (wasActive && !isActive) increment = -1;
+    }
+
+    if (increment !== 0) {
+      await centerRef.set(
+        {
+          stats: {
+            staffCount: admin.firestore.FieldValue.increment(increment),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+  });
+
+/**
+ * Mantiene un contador de citas agendadas (status: 'booked').
+ * Trigger: centers/{centerId}/appointments/{apptId}
+ */
+export const aggregateAppointments = functions.firestore
+  .document("centers/{centerId}/appointments/{apptId}")
+  .onWrite(async (change, context) => {
+    const centerId = context.params.centerId;
+    const centerRef = db.collection("centers").doc(centerId);
+    let increment = 0;
+
+    const before = change.before.data();
+    const after = change.after.data();
+
+    // Helper to check if booked
+    const isBooked = (d: any) => d && d.status === "booked";
+
+    const wasBooked = isBooked(before);
+    const nowBooked = isBooked(after);
+
+    if (!wasBooked && nowBooked) increment = 1;
+    if (wasBooked && !nowBooked) increment = -1;
+
+    if (increment !== 0) {
+      await centerRef.set(
+        {
+          stats: {
+            appointmentCount: admin.firestore.FieldValue.increment(increment),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+  });
+
+/**
+ * Mantiene un contador de atenciones realizadas.
+ * Trigger: centers/{centerId}/consultations/{consultationId}
+ */
+export const aggregateConsultations = functions.firestore
+  .document("centers/{centerId}/consultations/{consultationId}")
+  .onWrite(async (change, context) => {
+    const centerId = context.params.centerId;
+    const centerRef = db.collection("centers").doc(centerId);
+    let increment = 0;
+
+    if (!change.before.exists && change.after.exists) {
+      increment = 1; // Created
+    } else if (change.before.exists && !change.after.exists) {
+      increment = -1; // Deleted
+    }
+
+    if (increment !== 0) {
+      await centerRef.set(
+        {
+          stats: {
+            consultationCount: admin.firestore.FieldValue.increment(increment),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+  });
+
+/**
+ * Callable para recalcular manualmente todas las estadísticas de un centro.
+ * Solo SuperAdmin.
+ */
+export const recalcCenterStats = functions
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .https.onCall(async (data, context) => {
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError("permission-denied", "Solo SuperAdmin.");
+    }
+
+    const centerId = String(data?.centerId || "").trim();
+    const centersRef = db.collection("centers");
+    const targetCenters = centerId
+      ? [centersRef.doc(centerId)]
+      : (await centersRef.get()).docs.map((d) => d.ref);
+
+    let processed = 0;
+
+    for (const ref of targetCenters) {
+      // 1. Count Active Staff
+      const staffSnap = await ref.collection("staff").get();
+      const staffCount = staffSnap.docs.filter((d) => {
+        const data = d.data();
+        return data.active !== false && data.activo !== false;
+      }).length;
+
+      // 2. Count Booked Appointments
+      const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
+      const appointmentCount = apptSnap.size;
+
+      // 3. Count Consultations
+      const consultSnap = await ref.collection("consultations").count().get();
+      const consultationCount = consultSnap.data().count;
+
+      await ref.set(
+        {
+          stats: {
+            staffCount,
+            appointmentCount,
+            consultationCount,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+      processed++;
+    }
+
+    return { ok: true, processed };
   });

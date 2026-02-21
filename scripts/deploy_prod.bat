@@ -5,7 +5,7 @@ echo ==========================================
 
 echo [1/3] Saving changes to Git...
 git add .
-git commit -m "Deploy: Admin Dashboard fixes and Kinesiology Report"
+git commit -m "Deploy: Multi-center access implementation and profile mismatch bugfixes"
 
 echo [2/3] Building production version...
 call npm run build

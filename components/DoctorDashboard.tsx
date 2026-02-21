@@ -72,6 +72,9 @@ import { CenterContext } from "../CenterContext";
 import { collection, serverTimestamp, doc, getDoc, onSnapshot, query, orderBy, setDoc, limit } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
+import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
+import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
+import { usePrescriptionLogic } from "../hooks/doctor/usePrescriptionLogic";
 
 // Sub-components
 import VitalsForm from "./VitalsForm";
@@ -94,6 +97,7 @@ import LegalLinks from "./LegalLinks";
 import { StartProgramModal, SessionModal } from "./KinesiologyModals";
 import { ExamSheetsSection } from "./ExamSheetsSection";
 import { KinesiologyProgram, KinesiologySession } from "../types";
+import DrivePicker from "./DrivePicker";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -103,13 +107,18 @@ interface ProfessionalDashboardProps {
   agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
   currentUser?: Doctor;
+  doctors?: Doctor[]; // All doctors in the center (needed for Administrativo role)
+  portfolioMode?: "global" | "center";
+  onSetPortfolioMode?: (mode: "global" | "center") => void;
   onUpdatePatient: (updatedPatient: Patient) => void;
   onUpdateDoctor: (updatedDoctor: Doctor) => void;
   onLogout: () => void;
   onOpenLegal: (target: "terms" | "privacy") => void;
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
-  onLogActivity: (event: AuditLogEvent) => void;
+  onUpdateAppointment?: (appointment: Appointment) => Promise<void>;
+  onDeleteAppointment?: (id: string) => Promise<void>;
+  onLogActivity: (event: any) => void;
   isReadOnly?: boolean; // Read Only Mode for Suspended Centers
   isSyncingAppointments?: boolean;
 }
@@ -132,6 +141,27 @@ function sameById(a: any[] = [], b: any[] = [], extraKeys: string[] = []) {
   return true;
 }
 
+const DEFAULT_WHATSAPP_TEMPLATES: WhatsappTemplate[] = [
+  {
+    id: "reminder",
+    title: "Recordatorio de cita",
+    body: "Hola {patientName}, le recordamos su control el {nextControlDate} en {centerName}. Si desea confirmar, responda a este mensaje.",
+    enabled: true,
+  },
+  {
+    id: "confirm",
+    title: "Confirmación asistencia",
+    body: "Hola {patientName}, desde {centerName} queremos confirmar su asistencia al control del {nextControlDate}. ¿Confirma su asistencia?",
+    enabled: true,
+  },
+  {
+    id: "reschedule",
+    title: "Reagendar",
+    body: "Hola {patientName}, desde {centerName}. Vimos que tiene un control próximo ({nextControlDate}). Si no puede asistir, indíquenos un horario alternativo.",
+    enabled: true,
+  },
+];
+
 export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   patients,
   doctorName,
@@ -140,25 +170,148 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   agendaConfig,
   savedTemplates,
   currentUser,
+  doctors = [],
   onUpdatePatient,
   onUpdateDoctor,
   onLogout,
   onOpenLegal,
   appointments,
   onUpdateAppointments,
+  onUpdateAppointment,
+  onDeleteAppointment,
   onLogActivity,
+  portfolioMode = "global",
+  onSetPortfolioMode,
   isReadOnly = false,
   isSyncingAppointments = false,
 }) => {
+  // --- Context ---
+  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
+  const hasActiveCenter = Boolean(activeCenterId);
+
   const { showToast } = useToast();
-  const { logAccess } = useAuditLog();
+  // const { logAccess } = useAuditLog(); // Moved to hooks
+
+  const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
   const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings">(
     "patients"
   );
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
-  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+
+  // Custom Hooks
+  const {
+    selectedPatient,
+    setSelectedPatient,
+    searchTerm,
+    setSearchTerm,
+    isEditingPatient,
+    setIsEditingPatient,
+    filteredPatients,
+    handleSelectPatient,
+    handleSavePatient,
+    handleOpenPatientFromAppointment
+  } = usePatientManagement({
+    patients,
+    activeCenterId,
+    onUpdatePatient,
+    onLogActivity,
+    filterNextControl
+  });
+
+  const {
+    newConsultation,
+    setNewConsultation,
+    isCreatingConsultation,
+    setIsCreatingConsultation,
+    handleVitalsChange,
+    handleExamChange,
+    addPrescription,
+    removePrescription,
+    handleCreateConsultation,
+    getEmptyConsultation
+  } = useConsultationLogic({
+    selectedPatient,
+    activeCenterId,
+    activeCenter,
+    hasActiveCenter,
+    doctorId,
+    doctorName,
+    role,
+    onUpdatePatient,
+    onLogActivity,
+    setActiveTab
+  });
+
+  const {
+    docsToPrint,
+    setDocsToPrint,
+    isPrintModalOpen,
+    setIsPrintModalOpen,
+    isClinicalReportOpen,
+    setIsClinicalReportOpen,
+    handlePrint
+  } = usePrescriptionLogic();
+
   const [centerLogoError, setCenterLogoError] = useState(false);
+
+  // --- Clinical Templates State ---
+  const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>(savedTemplates || []);
+  const [isEditingTemplateId, setIsEditingTemplateId] = useState<string | null>(null);
+  const [tempTemplate, setTempTemplate] = useState({ id: "", title: "", content: "" });
+
+  // --- Exam Profiles State ---
+  const [myExamProfiles, setMyExamProfiles] = useState<ExamProfile[]>(
+    currentUser?.savedExamProfiles || EXAM_PROFILES
+  );
+  const [isEditingProfileId, setIsEditingProfileId] = useState<string | null>(null);
+  const [tempProfile, setTempProfile] = useState<ExamProfile>({
+    id: "",
+    label: "",
+    exams: [],
+    description: "",
+  });
+
+  // --- Custom Exams State ---
+  const [newCustomExam, setNewCustomExam] = useState({
+    label: "",
+    unit: "",
+    category: "",
+  });
+
+  // --- Password State ---
+  const [pwdState, setPwdState] = useState({ current: "", new: "", confirm: "" });
+
+  // --- WhatsApp State ---
+  const [whatsAppMenuForPatientId, setWhatsAppMenuForPatientId] = useState<string | null>(null);
+  const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsappTemplate[]>([]);
+
+  // --- Exam Options ---
+  const allExamOptions = useMemo(() => {
+    const customs = currentUser?.customExams || [];
+    return [...TRACKED_EXAMS_OPTIONS, ...customs];
+  }, [currentUser?.customExams]);
+
+  // --- Kinesiology State ---
+  const [isKineProgramModalOpen, setIsKineProgramModalOpen] = useState(false);
+  const [isKineSessionModalOpen, setIsKineSessionModalOpen] = useState(false);
+  const [selectedKineProgram, setSelectedKineProgram] = useState<KinesiologyProgram | null>(null);
+  const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
+
+  // --- Consultation / Exam / Print State ---
+  const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
+  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
+  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
+
+  // ── Administrativo / Secretary role: select which professional's agenda to manage ──
+  const isAdministrativo = String(role).toUpperCase() === "ADMINISTRATIVO";
+  const NON_CLINICAL_ROLES = ["ADMIN_CENTRO", "ADMINISTRATIVO"];
+  const clinicalDoctors = doctors.filter(
+    (d) => !NON_CLINICAL_ROLES.includes(String(d.role).toUpperCase()) && d.centerId === activeCenterId
+  );
+  const [viewingDoctorId, setViewingDoctorId] = useState<string>("");
+  // Effective values for the agenda: use the selected doctor when Administrativo
+  const viewingDoctor = isAdministrativo ? clinicalDoctors.find((d) => d.id === viewingDoctorId) : null;
+  const effectiveDoctorId = isAdministrativo && viewingDoctor ? viewingDoctor.id : doctorId;
+  const effectiveAgendaConfig = isAdministrativo && viewingDoctor ? viewingDoctor.agendaConfig : agendaConfig;
 
   // State for Catalog
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
@@ -189,31 +342,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     }
   };
 
-  // Dedicated Save Handler
-  const handleSavePatient = () => {
-    if (!selectedPatient) return;
-    try {
-      onUpdatePatient(selectedPatient);
-      onLogActivity(
-        "update",
-        `Actualizó datos ficha de ${selectedPatient.fullName}`,
-        selectedPatient.id
-      );
-      showToast("Datos guardados correctamente.", "success");
-    } catch (err) {
-      console.error("Error saving patient:", err);
-      showToast("Error al guardar (revise consola)", "error");
-    }
-    setIsEditingPatient(false);
-  };
-
-
-
-  // --- contexto del centro ---
-  // --- contexto del centro ---
-  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
-  const hasActiveCenter = Boolean(activeCenterId);
-
   // Load WhatsApp templates configured by Center Admin (fallback to defaults)
   useEffect(() => {
     const loadTemplates = async () => {
@@ -229,19 +357,19 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           return;
         }
 
-        const parsed: WhatsAppTemplate[] = templatesRaw
+        const parsed: WhatsappTemplate[] = templatesRaw
           .map((t: any, i: number) => ({
             id: String(t.id ?? i),
             title: String(t.title ?? "Plantilla"),
             body: String(t.body ?? ""),
             enabled: Boolean(t.enabled ?? true),
           }))
-          .filter((t: WhatsAppTemplate) => t.body.trim().length > 0);
+          .filter((t: WhatsappTemplate) => t.body.trim().length > 0);
 
-        setWhatsAppTemplates(parsed.length ? parsed : DEFAULT_WHATSAPP_TEMPLATES);
+        setWhatsAppTemplates(parsed.length ? parsed : []);
       } catch (err) {
         // If something fails, we keep defaults (do not block UI)
-        setWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES);
+        setWhatsAppTemplates([]);
       }
     };
 
@@ -287,6 +415,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
+  const getNextControlReasonFromPatient = (p: Patient): string => {
+    const lastConsult = p.consultations?.[0]
+      ? [...p.consultations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      : null;
+    return lastConsult?.nextControlReason || "";
+  };
+
   const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
   const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
 
@@ -301,10 +436,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const centerName = activeCenter?.name ?? "Centro Médico";
     const nextCtrl = getNextControlDateFromPatient(p);
     const nextCtrlStr = nextCtrl ? nextCtrl.toLocaleDateString("es-CL") : "";
+    const nextCtrlReason = getNextControlReasonFromPatient(p);
     return templateBody
       .replaceAll("{patientName}", formatPersonName(p.fullName) || "Paciente")
       .replaceAll("{centerName}", centerName)
-      .replaceAll("{nextControlDate}", nextCtrlStr);
+      .replaceAll("{nextControlDate}", nextCtrlStr)
+      .replaceAll("{nextControlReason}", nextCtrlReason);
   };
 
   const openWhatsApp = (p: Patient, templateBody: string) => {
@@ -377,27 +514,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     });
     if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
-  const getEmptyConsultation = (): Partial<Consultation> => ({
-    weight: "",
-    height: "",
-    bmi: "",
-    bloodPressure: "",
-    hgt: "",
-    waist: "",
-    hip: "",
-    reason: "",
-    anamnesis: "",
-    physicalExam: "",
-    diagnosis: "",
-    prescriptions: [],
-    dentalMap: [],
-    exams: {},
-    examSheets: [],
-    nextControlDate: "",
-    nextControlReason: "",
-    reminderActive: false,
-  });
-
   // --- módulos del centro (SuperAdmin) ---
   const moduleGuards = useMemo(
     () => {
@@ -419,20 +535,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     },
     [isModuleEnabled, currentUser]
   );
-  // Edit Mode State
-  const [isEditingPatient, setIsEditingPatient] = useState(false);
 
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
   const [previewFile, setPreviewFile] = useState<Attachment | null>(null);
   const [safePdfUrl, setSafePdfUrl] = useState<string>("");
-
-  // Printing State
-  const [docsToPrint, setDocsToPrint] = useState<Prescription[]>([]);
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
-  const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
-  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
-  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
 
   // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -457,41 +563,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       .replace(/[^0-9kK]/g, "")
       .toUpperCase();
 
-  // Helper function to handle patient selection with audit logging
-  const handleSelectPatient = async (patient: Patient) => {
-    setSelectedPatient(patient);
-
-    // Log patient access for audit trail (DS 41 MINSAL)
-    if (activeCenterId && patient.id) {
-      logAccessSafe(logAccess, {
-        centerId: activeCenterId,
-        resourceType: "patient",
-        resourcePath: `/centers/${activeCenterId}/patients/${patient.id}`,
-        patientId: patient.id,
-        actorUid: auth.currentUser?.uid ?? undefined,
-      });
-    }
-  };
-
-  const handleOpenPatientFromAppointment = (appointment: Appointment) => {
-    const foundById = appointment.patientId
-      ? patients.find((patient) => patient.id === appointment.patientId)
-      : null;
-    const appointmentRut = normalizeRut(appointment.patientRut);
-    const foundByRut =
-      !foundById && appointmentRut
-        ? patients.find((patient) => normalizeRut(patient.rut) === appointmentRut)
-        : null;
-    const resolvedPatient = foundById ?? foundByRut ?? null;
-
-    if (resolvedPatient) {
-      handleSelectPatient(resolvedPatient);
-      setActiveTab("patients");
-      return;
-    }
-
-    showToast("Paciente no encontrado; revisa si fue creado", "warning");
-  };
   const patientDisplayName = formatPersonName(slotModal.appointment?.patientName) || "Paciente";
   const doctorFormattedName = formatPersonName(doctorName);
   const doctorDisplayName = doctorFormattedName
@@ -548,6 +619,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     () => whatsappTemplates.filter((template) => template.enabled),
     [whatsappTemplates]
   );
+
 
   useEffect(() => {
     if (!activeCenterId || !selectedPatient?.id) {
@@ -623,350 +695,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     loadExamOrderCatalog();
   }, [activeCenterId]);
 
-  // New Consultation State
-  const [newConsultation, setNewConsultation] =
-    useState<Partial<Consultation>>(getEmptyConsultation());
-
-  // --- KINESIOLOGY STATE ---
-  const [isKineProgramModalOpen, setIsKineProgramModalOpen] = useState(false);
-  const [isKineSessionModalOpen, setIsKineSessionModalOpen] = useState(false);
-  const [selectedKineProgram, setSelectedKineProgram] = useState<KinesiologyProgram | null>(null);
-  const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
-
-  const handleCreateKineProgram = async (programData: Partial<KinesiologyProgram>) => {
-    if (!selectedPatient || !activeCenterId) return;
-
-    const newProgram: KinesiologyProgram = {
-      id: generateId(),
-      patientId: selectedPatient.id,
-      type: programData.type!,
-      diagnosis: programData.diagnosis!,
-      clinicalCondition: programData.clinicalCondition || "",
-      objectives: programData.objectives || [],
-      totalSessions: programData.totalSessions || 10,
-      sessions: [],
-      createdAt: new Date().toISOString(),
-      status: "active",
-      professionalName: doctorName,
-    };
-
-    // Update Local
-    const updatedPrograms = [newProgram, ...(selectedPatient.kinesiologyPrograms || [])];
-    const updatedPatient = { ...selectedPatient, kinesiologyPrograms: updatedPrograms, lastUpdated: new Date().toISOString() };
-
-    // Update Firestore logic to be safe would require saving the whole patient or subcollection
-    // For now assuming we save within patient object or handle via onUpdatePatient which likely saves the patient document
-    onUpdatePatient(updatedPatient);
-    setSelectedPatient(updatedPatient);
-
-    // Audit
-    onLogActivity("create", `Inició programa ${newProgram.type}`, selectedPatient.id);
-  };
-
-  const handleSaveKineSession = async (sessionData: Partial<KinesiologySession>) => {
-    if (!selectedPatient || !selectedKineProgram) return;
-
-    const newSession: KinesiologySession = {
-      id: generateId(),
-      date: sessionData.date || new Date().toISOString(),
-      sessionNumber: sessionData.sessionNumber!,
-      techniques: sessionData.techniques || [],
-      tolerance: sessionData.tolerance || "Buena",
-      response: sessionData.response || "Mejoría",
-      observations: sessionData.observations || "",
-      vitals: sessionData.vitals,
-      oxygenation: sessionData.oxygenation,
-    };
-
-    // Update Program
-    const updatedPrograms = (selectedPatient.kinesiologyPrograms || []).map(p => {
-      if (p.id === selectedKineProgram.id) {
-        return { ...p, sessions: [...(p.sessions || []), newSession] };
-      }
-      return p;
-    });
-
-    const updatedPatient = { ...selectedPatient, kinesiologyPrograms: updatedPrograms, lastUpdated: new Date().toISOString() };
-
-    onUpdatePatient(updatedPatient);
-    setSelectedPatient(updatedPatient);
-    onLogActivity("update", `Registró sesión kinesiológica ${newSession.sessionNumber}`, selectedPatient.id);
-  };
-
-  // Templates State
-  const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>([]);
-  const [tempTemplate, setTempTemplate] = useState<ClinicalTemplate>({
-    id: "",
-    title: "",
-    content: "",
-  });
-  const [isEditingTemplateId, setIsEditingTemplateId] = useState<string | null>(null);
-
-  // Exam Profiles State
-  const [myExamProfiles, setMyExamProfiles] = useState<ExamProfile[]>([]);
-  const [tempProfile, setTempProfile] = useState<ExamProfile>({
-    id: "",
-    label: "",
-    exams: [],
-    description: "",
-  });
-  const [isEditingProfileId, setIsEditingProfileId] = useState<string | null>(null);
-
-  // Custom Exams State
-  const [newCustomExam, setNewCustomExam] = useState<Partial<ExamDefinition>>({
-    label: "",
-    unit: "",
-    category: "",
-  });
-
-  // Password Change State
-  const [pwdState, setPwdState] = useState({ current: "", new: "", confirm: "" });
-
-  const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
-
-  // --- WhatsApp templates (per center) ---
-  type WhatsAppTemplate = {
-    id: string;
-    title: string;
-    body: string;
-    enabled: boolean;
-  };
-
-  const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
-    {
-      id: "reminder",
-      title: "Recordatorio control",
-      body:
-        "Hola {patientName}, le recordamos su control el {nextControlDate} en {centerName}. Si desea confirmar, responda a este mensaje. Si necesita reagendar, indíquenos un horario alternativo.",
-      enabled: true,
-    },
-    {
-      id: "confirm",
-      title: "Confirmación asistencia",
-      body:
-        "Hola {patientName}, desde {centerName} queremos confirmar su asistencia al control del {nextControlDate}. ¿Confirma su asistencia?",
-      enabled: true,
-    },
-    {
-      id: "reschedule",
-      title: "Reagendar",
-      body:
-        "Hola {patientName}, desde {centerName}. Vimos que tiene un control próximo ({nextControlDate}). Si no puede asistir, indíquenos por favor un horario alternativo para reagendar.",
-      enabled: true,
-    },
-  ];
-
-  const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplate[]>(
-    DEFAULT_WHATSAPP_TEMPLATES
-  );
-  const [whatsAppMenuForPatientId, setWhatsAppMenuForPatientId] = useState<string | null>(null);
-
-  // --- COMBINED EXAM OPTIONS (Default + Custom) ---
-  const allExamOptions = useMemo(() => {
-    const customs = currentUser?.customExams || [];
-    return [...TRACKED_EXAMS_OPTIONS, ...customs];
-  }, [currentUser?.customExams]);
-
-  // Load Doctor Data (Templates & Profiles)
-  useEffect(() => {
-    // Templates: Ensure they are filtered by the current role even if they come from savedTemplates
-    const rawTemplates = Array.isArray(savedTemplates)
-      ? savedTemplates
-      : DEFAULT_TEMPLATES.filter((t) => t.roles?.includes(role));
-
-    // Safety check: Filter out templates that don't belong to this role
-    const nextTemplates = rawTemplates.filter(t => !t.roles || t.roles.includes(role));
-
-    setMyTemplates((prev) =>
-      sameById(prev, nextTemplates, ["title", "content"]) ? prev : nextTemplates
-    );
-
-    // Exam profiles
-    const nextProfiles =
-      currentUser?.savedExamProfiles && currentUser.savedExamProfiles.length > 0
-        ? currentUser.savedExamProfiles
-        : EXAM_PROFILES;
-
-    setMyExamProfiles((prev) =>
-      sameById(prev, nextProfiles, ["label", "description"]) ? prev : nextProfiles
-    );
-  }, [role, savedTemplates, currentUser?.savedExamProfiles]);
-
-  // PDF Safety
-  useEffect(() => {
-    if (previewFile && previewFile.type === "pdf") {
-      const blob = base64ToBlob(previewFile.url);
-      const url = URL.createObjectURL(blob);
-      setSafePdfUrl(url);
-      return () => URL.revokeObjectURL(url);
-    } else {
-      setSafePdfUrl("");
-    }
-  }, [previewFile]);
-
-  // Filter Patients
-  const activePatients = patients.filter(
-    (p) => p.active !== false && (p as any).activo !== false
-  );
-
-  const filteredPatients = activePatients.filter((p) => {
-    // Filter by active center first
-    if (activeCenterId && p.centerId !== activeCenterId) return false;
-
-    // Show if linked to this professional OR if filtering by all
-    const nameMatch =
-      p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || p.rut.includes(searchTerm);
-    if (!nameMatch) return false;
-
-    // Control date filter
-    if (filterNextControl !== "all") {
-      // SAFE ACCESS: Check if consultations exist and is array
-      const consults = getActiveConsultations(p);
-      const lastConsultation = consults.length > 0 ? consults[0] : null;
-
-      if (!lastConsultation || !lastConsultation.nextControlDate) return false;
-      const date = new Date(lastConsultation.nextControlDate + "T12:00:00");
-      const now = new Date();
-      const limit = new Date();
-      if (filterNextControl === "week") limit.setDate(now.getDate() + 7);
-      else limit.setMonth(now.getMonth() + 1);
-
-      return date <= limit && date >= now;
-    }
-    return true;
-  });
-
-  // Vitals logic
-  const handleVitalsChange = (field: keyof Consultation, value: string) => {
-    let finalValue = value;
-
-    if (field === "bloodPressure") {
-      const rawNumbers = value.replace(/\D/g, "");
-      if (rawNumbers.length > 6) return;
-      if (rawNumbers.length >= 4) {
-        finalValue = `${rawNumbers.slice(0, -2)}/${rawNumbers.slice(-2)}`;
-      } else {
-        finalValue = rawNumbers;
-      }
-    }
-
-    const updated = { ...newConsultation, [field]: finalValue };
-    if (field === "weight" || field === "height") {
-      const weight = parseFloat(updated.weight || "0");
-      const height = parseFloat(updated.height || "0") / 100;
-      if (weight > 0 && height > 0) {
-        updated.bmi = (weight / (height * height)).toFixed(1);
-      }
-    }
-    setNewConsultation(updated);
-  };
-
-  const handleExamChange = (examId: string, value: string) => {
-    setNewConsultation((prev) => ({
-      ...prev,
-      exams: { ...prev.exams, [examId]: value },
-    }));
-  };
-
-  const handleCreateConsultation = async () => {
-    if (!selectedPatient) return;
-
-    if (!hasActiveCenter) {
-      showToast("Selecciona un centro activo antes de guardar.", "warning");
-      return;
-    }
-
-    const professionalName = (currentUser?.fullName ?? doctorName ?? "").trim();
-    const professionalRut = (currentUser?.rut ?? "").trim();
-    const professionalRole = (currentUser?.role ?? role) as ProfessionalRole;
-
-    if (!professionalName || !professionalRut) {
-      showToast(
-        "Completa tu perfil profesional (nombre y RUT) antes de registrar una atención.",
-        "warning"
-      );
-      return;
-    }
-
-    // Construye un objeto consulta (local + nube)
-    const consultation: Consultation = {
-      id: generateId(),
-      date: new Date().toISOString(),
-      ...(newConsultation as any),
-      prescriptions: (newConsultation.prescriptions || []) as any,
-      dentalMap: (newConsultation.dentalMap || []) as any,
-      exams: (newConsultation.exams || {}) as any,
-      nextControlDate: (newConsultation.nextControlDate || "") as any,
-      nextControlReason: (newConsultation.nextControlReason || "") as any,
-      reminderActive: Boolean((newConsultation as any).reminderActive),
-      active: true,
-      patientId: selectedPatient.id as any,
-      centerId: activeCenterId as any,
-      createdBy: (auth.currentUser?.uid ?? doctorId) as any,
-      professionalId: auth.currentUser?.uid ?? doctorId,
-      professionalName,
-      professionalRole,
-      professionalRut,
-    } as any;
-
-    // 1) Guardar en Firestore (subcolección por paciente) con ID estable
-    try {
-      if (!activeCenterId) throw new Error("Centro no seleccionado");
-      await setDoc(
-        doc(
-          db,
-          "centers",
-          activeCenterId,
-          "patients",
-          selectedPatient.id,
-          "consultations",
-          consultation.id
-        ),
-        {
-          ...consultation,
-          centerId: activeCenterId,
-          patientId: selectedPatient.id,
-          createdByUid: auth.currentUser?.uid ?? doctorId,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        } as any,
-        { merge: true }
-      );
-      showToast("Atención guardada correctamente", "success");
-    } catch (error) {
-      console.error(error);
-      showToast("Error al guardar la atención en la nube.", "error");
-      return;
-    }
-
-    // 2) Actualizar paciente sin seguir creciendo consultations legacy
-    const updatedPatient: Patient = {
-      ...selectedPatient,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    onUpdatePatient(updatedPatient);
-    setConsultationsFromDb((prev) => [consultation, ...prev]);
-
-    // 3) Auditoría
-    try {
-      onLogActivity({
-        action: "CONSULTATION_CREATE",
-        entityType: "consultation",
-        entityId: consultation.id,
-        patientId: selectedPatient.id,
-        details: `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
-      });
-    } catch {
-      // no-op
-    }
-
-    // 4) Reset UI
-    setSelectedPatient(updatedPatient);
-    setIsCreatingConsultation(false);
-    setNewConsultation(getEmptyConsultation());
-    setActiveTab("patients");
-  };
 
   // --- TEMPLATE HANDLERS ---
   const handleSaveTemplate = () => {
@@ -1132,6 +860,45 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       details: "Usuario cambió su contraseña.",
       metadata: { scope: "password" },
     });
+  };
+
+  // --- KINESIOLOGY HANDLERS ---
+  const handleCreateKineProgram = async (p: Patient, type: string, diagnosis: string) => {
+    const newProgram: KinesiologyProgram = {
+      id: generateId(),
+      patientId: p.id,
+      type: type as any,
+      diagnosis,
+      clinicalCondition: "",
+      objectives: [],
+      totalSessions: 10,
+      professionalName: doctorName,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      sessions: [],
+    };
+    const updated = { ...p, kinePrograms: [...(p.kinePrograms || []), newProgram] };
+    onUpdatePatient(updated);
+    setIsKineProgramModalOpen(false);
+    showToast("Programa iniciado", "success");
+  };
+
+  const handleSaveKineSession = async (p: Patient, programId: string, session: Partial<KinesiologySession>) => {
+    const newSession: KinesiologySession = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      professionalName: doctorName,
+      ...session,
+    } as KinesiologySession;
+
+    const updatedPrograms = (p.kinePrograms || []).map((prog) =>
+      prog.id === programId ? { ...prog, sessions: [...prog.sessions, newSession] } : prog
+    );
+
+    const updatedPatient = { ...p, kinePrograms: updatedPrograms };
+    onUpdatePatient(updatedPatient);
+    setIsKineSessionModalOpen(false);
+    showToast("Sesión guardada", "success");
   };
 
   // UI Helpers based on Role
@@ -1332,7 +1099,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors"
                       value={selectedPatient.fullName}
                       onChange={(e) =>
-                        setSelectedPatient({ ...selectedPatient, fullName: e.target.value })
+                        setSelectedPatient((prev) => prev ? ({ ...prev, fullName: e.target.value }) : null)
                       }
                       placeholder="Nombre Completo"
                     />
@@ -1340,7 +1107,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors"
                       value={selectedPatient.rut}
                       onChange={(e) =>
-                        setSelectedPatient({ ...selectedPatient, rut: e.target.value })
+                        setSelectedPatient((prev) => prev ? ({ ...prev, rut: e.target.value }) : null)
                       }
                       placeholder="RUT"
                     />
@@ -1351,14 +1118,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
                       value={selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""}
                       onChange={(e) =>
-                        setSelectedPatient({ ...selectedPatient, birthDate: e.target.value })
+                        setSelectedPatient((prev) => prev ? ({ ...prev, birthDate: e.target.value }) : null)
                       }
                     />
                     <select
                       className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
                       value={selectedPatient.gender}
                       onChange={(e) =>
-                        setSelectedPatient({ ...selectedPatient, gender: e.target.value })
+                        setSelectedPatient((prev) => prev ? ({ ...prev, gender: e.target.value }) : null)
                       }
                     >
                       <option value="Masculino">Masculino</option>
@@ -1438,30 +1205,42 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   setIsEditingPatient(true);
                 }
               }}
-              handleEditPatientField={(f, v) => setSelectedPatient({ ...selectedPatient, [f]: v })}
-              onFileUpload={(e) => {
-                if (e.target.files?.[0]) {
+              handleEditPatientField={(f, v) => setSelectedPatient((prev) => prev ? ({ ...prev, [f]: v }) : null)}
+              onFileUpload={async (e) => {
+                if (e.target.files?.[0] && currentUser) {
                   const f = e.target.files[0];
-                  const att: Attachment = {
-                    id: generateId(),
-                    name: f.name,
-                    type: f.type.includes("image") ? "image" : "pdf",
-                    date: new Date().toISOString(),
-                    url: URL.createObjectURL(f),
-                  };
-                  const up = {
-                    ...selectedPatient,
-                    attachments: [...(selectedPatient.attachments || []), att],
-                  }; // SAFE
-                  onUpdatePatient(up);
-                  setSelectedPatient(up);
-                  onLogActivity({
-                    action: "PATIENT_UPDATE",
-                    entityType: "patient",
-                    entityId: selectedPatient.id,
-                    patientId: selectedPatient.id,
-                    details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
-                  });
+                  showToast("Subiendo archivo...", "info");
+                  try {
+                    const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+                    const { storage } = await import("../firebase");
+                    const storageRef = ref(storage, `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`);
+                    await uploadBytes(storageRef, f);
+                    const downloadUrl = await getDownloadURL(storageRef);
+
+                    const att: Attachment = {
+                      id: generateId(),
+                      name: f.name,
+                      type: f.type.includes("image") ? "image" : "pdf",
+                      date: new Date().toISOString(),
+                      url: downloadUrl,
+                    };
+                    const up = {
+                      ...selectedPatient,
+                      attachments: [...(selectedPatient.attachments || []), att],
+                      lastUpdated: new Date().toISOString()
+                    };
+                    onUpdatePatient(up);
+                    setSelectedPatient(up);
+                    showToast("Archivo subido correctamente", "success");
+                    onLogActivity({
+                      action: "update",
+                      details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
+                      targetId: selectedPatient.id
+                    } as any);
+                  } catch (err) {
+                    console.error("Upload error", err);
+                    showToast("Error al subir archivo", "error");
+                  }
                 }
               }}
               onPreviewFile={setPreviewFile}
@@ -1602,12 +1381,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         }))
                       }
                       onRemovePrescription={(id) =>
-                        setNewConsultation({
-                          ...newConsultation,
-                          prescriptions: newConsultation.prescriptions?.filter(
+                        setNewConsultation((prev) => ({
+                          ...prev,
+                          prescriptions: prev.prescriptions?.filter(
                             (p) => p.id !== id
                           ),
-                        })
+                        }))
                       }
                       onPrint={(docs) => {
                         setDocsToPrint(docs);
@@ -1634,10 +1413,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           type="date"
                           value={newConsultation.nextControlDate}
                           onChange={(e) =>
-                            setNewConsultation({
-                              ...newConsultation,
+                            setNewConsultation((prev) => ({
+                              ...prev,
                               nextControlDate: e.target.value,
-                            })
+                            }))
                           }
                           className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
                         />
@@ -1650,10 +1429,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           placeholder="Ej: Traer radiografía..."
                           value={newConsultation.nextControlReason}
                           onChange={(e) =>
-                            setNewConsultation({
-                              ...newConsultation,
+                            setNewConsultation((prev) => ({
+                              ...prev,
                               nextControlReason: e.target.value,
-                            })
+                            }))
                           }
                           className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
                         />
@@ -1664,7 +1443,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   {/* Save Button */}
                   <div className="flex justify-end pt-4 pb-12">
                     <button
-                      onClick={handleCreateConsultation}
+                      onClick={async () => {
+                        const updatedPatient: Patient = await handleCreateConsultation();
+                        if (updatedPatient) {
+                          setSelectedPatient(updatedPatient);
+                        }
+                      }}
                       disabled={!hasActiveCenter || ((!newConsultation.prescriptions?.length) && (!newConsultation.nextControlDate))}
                       className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -1725,7 +1509,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <ExamSheetsSection
                           examSheets={newConsultation.examSheets || []}
                           onChange={(sheets) =>
-                            setNewConsultation({ ...newConsultation, examSheets: sheets })
+                            setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))
                           }
                           examOptions={allExamOptions}
                           availableProfiles={
@@ -1764,7 +1548,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <Odontogram
                         value={newConsultation.dentalMap || []}
                         onChange={(val) =>
-                          setNewConsultation({ ...newConsultation, dentalMap: val })
+                          setNewConsultation((prev) => ({ ...prev, dentalMap: val }))
                         }
                       />
                     )}
@@ -1773,7 +1557,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <Podogram
                         value={newConsultation.podogram || []}
                         onChange={(val) =>
-                          setNewConsultation({ ...newConsultation, podogram: val })
+                          setNewConsultation((prev) => ({ ...prev, podogram: val }))
                         }
                       />
                     )}
@@ -1787,7 +1571,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <input
                           value={newConsultation.reason}
                           onChange={(e) =>
-                            setNewConsultation({ ...newConsultation, reason: e.target.value })
+                            setNewConsultation((prev) => ({ ...prev, reason: e.target.value }))
                           }
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none font-medium text-xl text-slate-800"
                         />
@@ -1799,7 +1583,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <textarea
                           value={newConsultation.anamnesis}
                           onChange={(e) =>
-                            setNewConsultation({ ...newConsultation, anamnesis: e.target.value })
+                            setNewConsultation((prev) => ({ ...prev, anamnesis: e.target.value }))
                           }
                           spellCheck={true}
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
@@ -1813,10 +1597,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           <textarea
                             value={newConsultation.physicalExam}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 physicalExam: e.target.value,
-                              })
+                              }))
                             }
                             spellCheck={true}
                             className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
@@ -1830,7 +1614,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <AutocompleteInput
                           value={newConsultation.diagnosis || ""}
                           onChange={(val) =>
-                            setNewConsultation({ ...newConsultation, diagnosis: val })
+                            setNewConsultation((prev) => ({ ...prev, diagnosis: val }))
                           }
                           options={COMMON_DIAGNOSES}
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none font-bold text-xl text-slate-800"
@@ -1862,12 +1646,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               }))
                             }
                             onRemovePrescription={(id) =>
-                              setNewConsultation({
-                                ...newConsultation,
-                                prescriptions: newConsultation.prescriptions?.filter(
+                              setNewConsultation((prev) => ({
+                                ...prev,
+                                prescriptions: prev.prescriptions?.filter(
                                   (p) => p.id !== id
                                 ),
-                              })
+                              }))
                             }
                             onPrint={(docs) => {
                               setDocsToPrint(docs);
@@ -1909,10 +1693,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             type="date"
                             value={newConsultation.nextControlDate}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 nextControlDate: e.target.value,
-                              })
+                              }))
                             }
                             className="w-full p-4 border-2 border-secondary-200 rounded-xl outline-none focus:border-secondary-500 bg-white text-lg"
                           />
@@ -1925,10 +1709,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             placeholder="Ej: Traer radiografía..."
                             value={newConsultation.nextControlReason}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 nextControlReason: e.target.value,
-                              })
+                              }))
                             }
                             className="w-full p-4 border-2 border-secondary-200 rounded-xl outline-none focus:border-secondary-500 bg-white text-lg"
                           />
@@ -1969,7 +1753,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         </div>
                       )}
                       <button
-                        onClick={handleCreateConsultation}
+                        onClick={async () => {
+                          const updatedPatient: Patient = await handleCreateConsultation();
+                          if (updatedPatient) {
+                            setSelectedPatient(updatedPatient);
+                          }
+                        }}
                         disabled={!hasActiveCenter}
                         title={hasActiveCenter ? "Guardar atención" : "Selecciona un centro activo"}
                         className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2004,8 +1793,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               )}
             </section>
           </div>
-        </main>
-      </div>
+        </main >
+      </div >
     );
   }
 
@@ -2115,66 +1904,95 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+                  <div className="flex flex-wrap items-center gap-3 w-full justify-between">
+                    <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
                       <button
-                        onClick={() => setFilterNextControl("all")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        onClick={() => onSetPortfolioMode?.("global")}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "global" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                       >
-                        Todos
+                        <Layers className="w-4 h-4" />
+                        Cartera Global
                       </button>
                       <button
-                        onClick={() => setFilterNextControl("week")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        onClick={() => onSetPortfolioMode?.("center")}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "center" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                       >
-                        Control 7d
-                      </button>
-                      <button
-                        onClick={() => setFilterNextControl("month")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
-                      >
-                        Control 30d
+                        <History className="w-4 h-4" />
+                        Este Centro
                       </button>
                     </div>
-                    {!isReadOnly && (
-                      <button
-                        onClick={() => {
-                          if (!hasActiveCenter) {
-                            showToast(
-                              "Selecciona un centro activo para crear pacientes.",
-                              "warning"
-                            );
-                            return;
-                          }
-                          const newP: Patient = {
-                            id: generateId(),
-                            centerId: activeCenterId || "", // Set from active center (fallback empty)
-                            rut: "",
-                            fullName: "Nuevo Paciente",
-                            birthDate: new Date().toISOString(),
-                            gender: "Otro",
-                            medicalHistory: [],
-                            surgicalHistory: [],
-                            medications: [],
-                            allergies: [],
-                            consultations: [],
-                            attachments: [],
-                            livingWith: [],
-                            smokingStatus: "No fumador",
-                            alcoholStatus: "No consumo",
-                            lastUpdated: new Date().toISOString(),
-                            active: true,
-                          };
-                          setSelectedPatient(newP);
-                          setIsEditingPatient(true);
-                        }}
-                        disabled={!hasActiveCenter}
-                        title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
-                        className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
-                      >
-                        <Plus className="w-5 h-5" /> Nuevo Paciente
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+                        <button
+                          onClick={() => setFilterNextControl("all")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          onClick={() => setFilterNextControl("week")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Control 7d
+                        </button>
+                        <button
+                          onClick={() => setFilterNextControl("month")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Control 30d
+                        </button>
+                      </div>
+                      {!isReadOnly && (
+                        <>
+                          <DrivePicker
+                            clientId={import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID}
+                            apiKey={import.meta.env.VITE_FIREBASE_API_KEY}
+                          />
+                          <button
+                            onClick={() => {
+                              if (!hasActiveCenter) {
+                                showToast(
+                                  "Selecciona un centro activo para crear pacientes.",
+                                  "warning"
+                                );
+                                return;
+                              }
+                              const newP: Patient = {
+                                id: generateId(),
+                                centerId: activeCenterId || "",
+                                ownerUid: currentUser?.uid || "",
+                                accessControl: {
+                                  allowedUids: [currentUser?.uid || ""],
+                                  centerIds: activeCenterId ? [activeCenterId] : [],
+                                },
+                                rut: "",
+                                fullName: "Nuevo Paciente",
+                                birthDate: new Date().toISOString(),
+                                gender: "Otro",
+                                medicalHistory: [],
+                                surgicalHistory: [],
+                                medications: [],
+                                allergies: [],
+                                consultations: [],
+                                attachments: [],
+                                livingWith: [],
+                                smokingStatus: "No fumador",
+                                alcoholStatus: "No consumo",
+                                lastUpdated: new Date().toISOString(),
+                                active: true,
+                              };
+                              setSelectedPatient(newP);
+                              setIsEditingPatient(true);
+                            }}
+                            disabled={!hasActiveCenter}
+                            title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
+                            className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
+                          >
+                            <Plus className="w-5 h-5" /> Nuevo Paciente
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2336,67 +2154,103 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             {/* CONTENT: AGENDA VIEW */}
             {activeTab === "agenda" && moduleGuards.agenda && (
               <div className="h-full overflow-hidden">
-                <AgendaView
-                  currentMonth={currentMonth}
-                  selectedAgendaDate={selectedAgendaDate}
-                  appointments={appointments}
-                  doctorId={doctorId}
-                  agendaConfig={agendaConfig}
-                  isSyncingAppointments={isSyncingAppointments}
-                  onMonthChange={(inc) => {
-                    const newDate = new Date(currentMonth);
-                    newDate.setMonth(newDate.getMonth() + inc);
-                    setCurrentMonth(newDate);
-                  }}
-                  onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split("T")[0])}
-                  onToggleSlot={(time) => {
-                    if (isReadOnly) return;
-                    if (!hasActiveCenter) {
-                      showToast("Selecciona un centro activo para modificar la agenda.", "warning");
-                      return;
-                    }
-                    const date = selectedAgendaDate;
-                    if (!date) return;
+                {/* Doctor Selector for Administrativo / Secretary */}
+                {isAdministrativo && (
+                  <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <label className="text-xs font-bold text-amber-700 uppercase mb-2 block">
+                      Seleccionar Profesional para gestionar agenda
+                    </label>
+                    <select
+                      className="w-full bg-white border border-amber-300 rounded-lg p-3 text-slate-800 outline-none focus:border-amber-500 font-medium"
+                      value={viewingDoctorId}
+                      onChange={(e) => setViewingDoctorId(e.target.value)}
+                    >
+                      <option value="">-- Selecciona un profesional --</option>
+                      {clinicalDoctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName} ({d.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-                    const matchingSlots = appointments.filter(
-                      (a) =>
-                        ((a as any).doctorUid ?? a.doctorId) === doctorId &&
-                        a.date === date &&
-                        a.time === time
-                    );
-                    const bookedSlot = matchingSlots.find((slot) => slot.status === "booked");
+                {isAdministrativo && !viewingDoctorId ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <p className="text-lg">Selecciona un profesional para gestionar su agenda.</p>
+                  </div>
+                ) : (
+                  <AgendaView
+                    currentMonth={currentMonth}
+                    selectedAgendaDate={selectedAgendaDate}
+                    appointments={appointments}
+                    doctorId={effectiveDoctorId}
+                    agendaConfig={effectiveAgendaConfig}
+                    isSyncingAppointments={isSyncingAppointments}
+                    onMonthChange={(inc) => {
+                      const newDate = new Date(currentMonth);
+                      newDate.setMonth(newDate.getMonth() + inc);
+                      setCurrentMonth(newDate);
+                    }}
+                    onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split("T")[0])}
+                    onToggleSlot={async (time) => {
+                      if (isReadOnly) return;
+                      if (!hasActiveCenter) {
+                        showToast("Selecciona un centro activo para modificar la agenda.", "warning");
+                        return;
+                      }
+                      const date = selectedAgendaDate;
+                      if (!date) return;
 
-                    if (bookedSlot) {
-                      setSlotModal({ isOpen: true, appointment: bookedSlot });
-                    } else if (matchingSlots.length > 0) {
-                      // Remove slot (Close it)
-                      const matchingIds = new Set(matchingSlots.map((slot) => slot.id));
-                      onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
-                      showToast("Bloque cerrado (horario bloqueado).", "info");
-                    } else {
-                      // Add slot (Open it)
-                      // NOTE: 'centerId' should technically come from currentUser context or App,
-                      // but App handles filtering. We add a placeholder here or rely on App's logic.
-                      // Ideally passed as prop, but empty string works if filtered by doctorId.
-                      const newSlot: Appointment = {
-                        id: generateId(),
-                        centerId: currentUser?.centerId || "",
-                        doctorId,
-                        doctorUid: doctorId,
-                        date,
-                        time,
-                        status: "available",
-                        patientName: "",
-                        patientRut: "",
-                        active: true,
-                      };
-                      onUpdateAppointments([...appointments, newSlot]);
-                      showToast("Bloque abierto disponible.", "success");
-                    }
-                  }}
-                  onOpenPatient={handleOpenPatientFromAppointment}
-                  readOnly={isReadOnly}
-                />
+                      const matchingSlots = appointments.filter(
+                        (a) =>
+                          ((a as any).doctorUid ?? a.doctorId) === effectiveDoctorId &&
+                          a.date === date &&
+                          a.time === time
+                      );
+                      const bookedSlot = matchingSlots.find((slot) => slot.status === "booked");
+
+                      if (bookedSlot) {
+                        setSlotModal({ isOpen: true, appointment: bookedSlot });
+                      } else if (matchingSlots.length > 0) {
+                        // Remove slot (Close it) — individual delete per slot
+                        const matchingIds = new Set(matchingSlots.map((slot) => slot.id));
+                        // Optimistic local state update
+                        onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
+                        // Individual Firestore deletes
+                        if (onDeleteAppointment) {
+                          for (const slot of matchingSlots) {
+                            try { await onDeleteAppointment(slot.id); } catch (e) { console.error("deleteSlot", e); }
+                          }
+                        }
+                        showToast("Bloque cerrado (horario bloqueado).", "info");
+                      } else {
+                        // Add slot (Open it) — individual write
+                        const newSlot: Appointment = {
+                          id: generateId(),
+                          centerId: currentUser?.centerId || activeCenterId || "",
+                          doctorId: effectiveDoctorId,
+                          doctorUid: effectiveDoctorId,
+                          date,
+                          time,
+                          status: "available",
+                          active: true,
+                          patientName: "",
+                          patientRut: "",
+                        };
+                        // Optimistic local state update
+                        onUpdateAppointments([...appointments, newSlot]);
+                        // Individual Firestore write
+                        if (onUpdateAppointment) {
+                          try { await onUpdateAppointment(newSlot); } catch (e) { console.error("createSlot", e); }
+                        }
+                        showToast("Bloque abierto disponible.", "success");
+                      }
+                    }}
+                    onOpenPatient={handleOpenPatientFromAppointment}
+                    readOnly={isReadOnly}
+                  />
+                )}
               </div>
             )}
 
@@ -3068,6 +2922,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           </div>
         </div>
       </main>
+      {/* FEEDBACK BUTTON (Floating) */}
+      <a
+        href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%A9%20el%20siguiente%20problema%3A%0A%0A"
+        className="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-900 transition-colors flex items-center gap-2 z-50 text-sm font-medium"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
+        Reportar Problema
+      </a>
     </div>
   );
 };

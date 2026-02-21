@@ -1,0 +1,124 @@
+
+=== DEEP INSPECTION: dr.felipecepeda@gmail.com ===
+
+--- Global Users ---
+
+--- All Staff in Center: c_cf35oz9w ---
+Staff ID: 1tdw3xy | Name: felipe Cepeda Cea | Email: fecepedac@gmail.com | Role: Medico
+Staff ID: 2fFcAftcfuW4OoJnCxjTejs9kvy2 | Name: Felipe Cepeda Cea | Email: fecepedac@gmail.com | Role: center_admin
+Staff ID: oqjmr05 | Name: Tere | Email: dr.felipecepeda@gmail.com | Role: ADMINISTRATIVO
+>>> MATCHED EMAIL <<<
+{
+  "centerId": "c_cf35oz9w",
+  "specialty": null,
+  "role": "ADMINISTRATIVO",
+  "agendaConfig": {
+    "slotDuration": 20,
+    "startTime": "08:00",
+    "endTime": "21:00"
+  },
+  "active": true,
+  "fullName": "Tere",
+  "isAdmin": false,
+  "emailLower": "dr.felipecepeda@gmail.com",
+  "rut": "5.555.555-5",
+  "photoUrl": null,
+  "uid": null,
+  "createdAt": {
+    "_seconds": 1771619055,
+    "_nanoseconds": 121000000
+  },
+  "isTemp": true,
+  "id": "oqjmr05",
+  "email": "dr.felipecepeda@gmail.com",
+  "activo": true,
+  "updatedAt": {
+    "_seconds": 1771619055,
+    "_nanoseconds": 121000000
+  }
+}
+
+--- Invites for dr.felipecepeda@gmail.com ---
+Invite Token: b8qosjt | Status: accepted | Role: center_admin | Center: undefined
+{
+  "emailLower": "dr.felipecepeda@gmail.com",
+  "email": "Dr.FelipeCepeda@gmail.com",
+  "centerId": "c_bvewk6ie",
+  "role": "center_admin",
+  "professionalRole": "Kinesiologo",
+  "expiresAt": {
+    "_seconds": 1769858342,
+    "_nanoseconds": 515000000
+  },
+  "createdByUid": "centerAdmin",
+  "createdAt": {
+    "_seconds": 1769253541,
+    "_nanoseconds": 875000000
+  },
+  "acceptedByUid": "u5PSaYNBn9bPpAWdZ0lvqeVGwg33",
+  "status": "accepted",
+  "acceptedAt": {
+    "_seconds": 1771619895,
+    "_nanoseconds": 266000000
+  }
+}
+Invite Token: fe3be9a3095b549380b85bb3b42129394cc45e4707eeb69e | Status: accepted | Role: center_admin | Center: Centro Dr Cepeda
+{
+  "token": "fe3be9a3095b549380b85bb3b42129394cc45e4707eeb69e",
+  "centerId": "c_g5o2fjq0",
+  "centerName": "Centro Dr Cepeda",
+  "emailLower": "dr.felipecepeda@gmail.com",
+  "role": "center_admin",
+  "createdAt": {
+    "_seconds": 1769566079,
+    "_nanoseconds": 521000000
+  },
+  "expiresAt": {
+    "_seconds": 1770170879,
+    "_nanoseconds": 522000000
+  },
+  "invitedByUid": "2fFcAftcfuW4OoJnCxjTejs9kvy2",
+  "acceptedByUid": "u5PSaYNBn9bPpAWdZ0lvqeVGwg33",
+  "status": "accepted",
+  "acceptedAt": {
+    "_seconds": 1771619895,
+    "_nanoseconds": 458000000
+  }
+}
+Invite Token: sdkfnyd | Status: accepted | Role: center_admin | Center: undefined
+{
+  "emailLower": "dr.felipecepeda@gmail.com",
+  "email": "dr.felipecepeda@gmail.com",
+  "centerId": "c_cf35oz9w",
+  "role": "center_admin",
+  "professionalRole": "Medico",
+  "tempStaffId": "yirkjzx",
+  "expiresAt": {
+    "_seconds": 1774209779,
+    "_nanoseconds": 983000000
+  },
+  "createdByUid": "2fFcAftcfuW4OoJnCxjTejs9kvy2",
+  "profileData": {
+    "fullName": "felipe Cepeda Cea",
+    "rut": "16.452.991-5",
+    "specialty": "Medicina interna",
+    "photoUrl": null,
+    "agendaConfig": {
+      "slotDuration": 20,
+      "startTime": "08:00",
+      "endTime": "21:00"
+    },
+    "role": "Medico",
+    "isAdmin": true
+  },
+  "createdAt": {
+    "_seconds": 1771617780,
+    "_nanoseconds": 108000000
+  },
+  "acceptedByUid": "u5PSaYNBn9bPpAWdZ0lvqeVGwg33",
+  "status": "accepted",
+  "acceptedAt": {
+    "_seconds": 1771619895,
+    "_nanoseconds": 503000000
+  }
+}

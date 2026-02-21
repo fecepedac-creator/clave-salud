@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { Patient, Doctor, Appointment, AuditLogEntry, MedicalCenter, Preadmission } from "../types";
-import { generateId } from "../utils";
+import { generateId, sanitizeForFirestore } from "../utils";
 import { logAuditEventSafe } from "./useAuditLog";
 
 export function useCrudOperations(
@@ -93,20 +93,34 @@ export function useCrudOperations(
 
   const updatePatient = useCallback(
     async (payload: Patient) => {
-      if (!requireCenter("guardar pacientes")) return;
       const id = payload?.id ?? generateId();
-      const ref = doc(db, "centers", activeCenterId, "patients", id);
+      const currentUid = auth.currentUser?.uid ?? "";
+
+      const ownerUid = payload.ownerUid || currentUid;
+      const accessControl = payload.accessControl || {
+        allowedUids: [currentUid],
+        centerIds: activeCenterId ? [activeCenterId] : [],
+      };
+      if (!accessControl.allowedUids.includes(ownerUid)) {
+        accessControl.allowedUids.push(ownerUid);
+      }
+
+      const ref = doc(db, "patients", id);
       const existingSnap = await getDoc(ref);
+
       await setDoc(
         ref,
-        {
+        sanitizeForFirestore({
           ...payload,
           id,
-          centerId: activeCenterId,
+          ownerUid,
+          accessControl,
+          lastUpdated: new Date().toISOString(),
           createdAt: payload.createdAt ?? serverTimestamp(),
-        },
+        }),
         { merge: true }
       );
+
       await updateAuditLog({
         id: generateId(),
         centerId: activeCenterId,
@@ -122,50 +136,41 @@ export function useCrudOperations(
           : "Creación de ficha clínica.",
       });
     },
-    [activeCenterId, requireCenter, updateAuditLog]
+    [activeCenterId, updateAuditLog]
   );
 
   const deletePatient = useCallback(
     async (id: string) => {
-      if (!requireCenter("archivar pacientes")) return;
-      const patientSnap = await getDoc(doc(db, "centers", activeCenterId, "patients", id));
+      const patientSnap = await getDoc(doc(db, "patients", id));
       const patientData = patientSnap.exists() ? (patientSnap.data() as any) : null;
-      const fallbackConsultations: any[] = Array.isArray(patientData?.consultations)
-        ? patientData.consultations
-        : [];
-      const oldestConsultation = fallbackConsultations
-        .map((c) => new Date(c?.date || ""))
-        .filter((d) => !Number.isNaN(d.getTime()))
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-      const retentionDate = patientData?.createdAt ?? oldestConsultation;
-      if (isOverRetention(retentionDate)) {
-        showToast(
-          "Este registro supera 15 años. Por normativa no puede archivarse desde la plataforma. Contacte al administrador.",
-          "warning"
-        );
-        await updateAuditLog({
-          id: generateId(),
-          centerId: activeCenterId,
-          actorUid: auth.currentUser?.uid ?? "unknown",
-          actorName: auth.currentUser?.displayName ?? "Usuario",
-          actorRole: "staff",
-          action: "ARCHIVE_BLOCKED_RETENTION",
-          entityType: "patient",
-          entityId: id,
-          patientId: id,
-          details: "Intento de archivo bloqueado por retención (15 años).",
-          metadata: { reason: "RETENTION_15Y" },
-        });
+      if (!patientData) {
+        showToast("Paciente no encontrado.", "error");
         return;
       }
+
+      // Retention check
+      const fallbackConsultations = Array.isArray(patientData?.consultations) ? patientData.consultations : [];
+      const oldestConsultation = fallbackConsultations
+        .map((c: any) => new Date(c?.date || ""))
+        .filter((d: Date) => !Number.isNaN(d.getTime()))
+        .sort((a: Date, b: Date) => a.getTime() - b.getTime())[0];
+
+      const retentionDate = patientData?.createdAt ?? oldestConsultation;
+      if (isOverRetention(retentionDate)) {
+        showToast("Este registro supera 15 años. No puede archivarse.", "warning");
+        return;
+      }
+
       const reason = requestDeleteReason("este paciente");
       if (!reason) return;
-      await updateDoc(doc(db, "centers", activeCenterId, "patients", id), {
+
+      await updateDoc(doc(db, "patients", id), {
         active: false,
         deletedAt: serverTimestamp(),
         deletedBy: auth.currentUser?.uid ?? "unknown",
         deleteReason: reason,
       });
+
       await updateAuditLog({
         id: generateId(),
         centerId: activeCenterId,
@@ -176,11 +181,11 @@ export function useCrudOperations(
         entityType: "patient",
         entityId: id,
         patientId: id,
-        details: "Archivo de ficha clínica.",
+        details: "Archivo de ficha clínica (root).",
         metadata: { deleteReason: reason },
       });
     },
-    [activeCenterId, requireCenter, requestDeleteReason, updateAuditLog]
+    [activeCenterId, requestDeleteReason, updateAuditLog]
   );
 
   const updateStaff = useCallback(
@@ -189,12 +194,12 @@ export function useCrudOperations(
       const id = payload?.id ?? generateId();
       await setDoc(
         doc(db, "centers", activeCenterId, "staff", id),
-        { ...payload, id, centerId: activeCenterId },
+        sanitizeForFirestore({ ...payload, id, centerId: activeCenterId }),
         { merge: true }
       );
       await setDoc(
         doc(db, "centers", activeCenterId, "publicStaff", id),
-        {
+        sanitizeForFirestore({
           id,
           centerId: activeCenterId,
           fullName: payload.fullName ?? "",
@@ -204,7 +209,7 @@ export function useCrudOperations(
           agendaConfig: payload.agendaConfig ?? null,
           active: payload.active ?? true,
           updatedAt: serverTimestamp(),
-        },
+        }),
         { merge: true }
       );
     },
@@ -237,13 +242,13 @@ export function useCrudOperations(
       const doctorUid = (payload as any).doctorUid ?? payload.doctorId;
       await setDoc(
         ref,
-        {
+        sanitizeForFirestore({
           ...payload,
           doctorUid,
           id,
           centerId: activeCenterId,
           createdAt: payload.createdAt ?? serverTimestamp(),
-        },
+        }),
         { merge: true }
       );
       await updateAuditLog({
@@ -314,15 +319,10 @@ export function useCrudOperations(
 
   const syncAppointments = useCallback(
     async (nextAppointments: Appointment[], setIsSyncingAppointments: (val: boolean) => void) => {
-      const nextIds = new Set(nextAppointments.map((a) => a.id));
-      const removed = appointments.filter((appt) => !nextIds.has(appt.id));
-
+      // Safety net: only upsert, never delete remotely.
+      // Individual deletes are handled explicitly by each action (toggleSlot, cancel, etc.)
       setIsSyncingAppointments(true);
       try {
-        for (const appt of removed) {
-          await deleteAppointment(appt.id, "Cierre de bloque en agenda");
-        }
-
         for (const appt of nextAppointments) {
           await updateAppointment(appt);
         }
@@ -330,7 +330,7 @@ export function useCrudOperations(
         setIsSyncingAppointments(false);
       }
     },
-    [appointments, deleteAppointment, updateAppointment]
+    [updateAppointment]
   );
 
   const updateCenter = useCallback(async (payload: MedicalCenter & { auditReason?: string }) => {
@@ -407,6 +407,11 @@ export function useCrudOperations(
       const patientId = (patientDraft as any).id ?? generateId();
       const patientPayload: Patient = {
         id: patientId,
+        ownerUid: auth.currentUser?.uid ?? "",
+        accessControl: {
+          allowedUids: [auth.currentUser?.uid ?? ""],
+          centerIds: activeCenterId ? [activeCenterId] : [],
+        },
         centerId: activeCenterId,
         rut: (patientDraft.rut ?? item.contact?.rut ?? "") as string,
         fullName: (patientDraft.fullName ?? item.contact?.name ?? "Paciente") as string,
