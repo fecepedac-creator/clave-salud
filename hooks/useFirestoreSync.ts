@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { db, auth } from "../firebase";
 import {
   collection,
@@ -28,29 +28,40 @@ export function useFirestoreSync(
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
-  const isActiveRecord = (data: any) => data?.active !== false && data?.activo !== false;
-  const normalizeClinicalRole = (data: any): string => {
-    const clinicalRole = String(data?.clinicalRole ?? data?.professionalRole ?? "").trim();
+  const normalizeClinicalRole = useCallback((data: Record<string, unknown>): string => {
+    const clinicalRole = String(
+      (data as any)?.clinicalRole ?? (data as any)?.professionalRole ?? ""
+    ).trim();
     if (clinicalRole) return clinicalRole;
-    const legacyRole = String(data?.role ?? "").trim();
+    const legacyRole = String((data as any)?.role ?? "").trim();
     if (!legacyRole) return "";
     const lower = legacyRole.toLowerCase();
     return lower === "center_admin" ? "" : legacyRole;
-  };
-  const mapStaffToDoctor = (id: string, payload: any): Doctor => {
-    const accessRole = String(payload?.accessRole ?? "").trim();
-    const clinicalRole = normalizeClinicalRole(payload);
-    const role = (clinicalRole || String(payload?.role ?? "").trim() || "Medico") as any;
-    return {
-      id,
-      ...(payload as any),
-      role,
-      accessRole: accessRole || (String(payload?.role ?? "").trim().toLowerCase() === "center_admin" ? "center_admin" : undefined),
-      clinicalRole,
-      visibleInBooking: payload?.visibleInBooking === true,
-      active: payload?.active !== false && payload?.activo !== false,
-    } as Doctor;
-  };
+  }, []);
+
+  const mapStaffToDoctor = useCallback(
+    (id: string, payload: Record<string, unknown>): Doctor => {
+      const accessRole = String((payload as any)?.accessRole ?? "").trim();
+      const clinicalRole = normalizeClinicalRole(payload);
+      const role = (clinicalRole || String((payload as any)?.role ?? "").trim() || "Medico") as any;
+      return {
+        id,
+        ...(payload as any),
+        role,
+        accessRole:
+          accessRole ||
+          (String((payload as any)?.role ?? "")
+            .trim()
+            .toLowerCase() === "center_admin"
+            ? "center_admin"
+            : undefined),
+        clinicalRole,
+        visibleInBooking: (payload as any)?.visibleInBooking === true,
+        active: (payload as any)?.active !== false && (payload as any)?.activo !== false,
+      } as Doctor;
+    },
+    [normalizeClinicalRole]
+  );
 
   useEffect(() => {
     let unsubCenters: (() => void) | null = null;
@@ -137,14 +148,14 @@ export function useFirestoreSync(
 
     const unsubPatients = patientsQuery
       ? onSnapshot(
-        patientsQuery,
-        (snap: QuerySnapshot<DocumentData>) => {
-          const pts = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
-          setPatients(pts);
-        },
-        () => setPatients([])
-      )
-      : () => { };
+          patientsQuery,
+          (snap: QuerySnapshot<DocumentData>) => {
+            const pts = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
+            setPatients(pts);
+          },
+          () => setPatients([])
+        )
+      : () => {};
 
     // FIX: Only admins/staff should read from "staff" (protected).
     const isAdminOrStaff =
@@ -155,10 +166,10 @@ export function useFirestoreSync(
       currentUser?.roles?.includes("staff") ||
       isSuperAdminClaim;
 
-    let unsubDoctors = () => { };
-    let unsubAppts = () => { };
-    let unsubLogs = () => { };
-    let unsubPreadmissions = () => { };
+    let unsubDoctors = () => {};
+    let unsubAppts = () => {};
+    let unsubLogs = () => {};
+    let unsubPreadmissions = () => {};
 
     if (!activeCenterId) {
       setDoctors([]);
@@ -245,7 +256,16 @@ export function useFirestoreSync(
       unsubLogs();
       unsubPreadmissions();
     };
-  }, [activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters, currentUser]);
+  }, [
+    activeCenterId,
+    authUser,
+    demoMode,
+    isSuperAdminClaim,
+    setCenters,
+    currentUser,
+    portfolioMode,
+    mapStaffToDoctor,
+  ]);
 
   return {
     patients,
