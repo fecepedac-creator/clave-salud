@@ -27,6 +27,7 @@ import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
 import MarketingFlyerModal from "./MarketingFlyerModal";
+import MetricCard from "./MetricCard";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -1009,11 +1010,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pl-64">
+    <div className="min-h-screen bg-slate-50 font-sans pl-64 transition-all duration-300">
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full fixed left-0 top-0 border-r border-slate-800 z-50">
-        <div className="p-6 border-b border-slate-800">
+        <div className="p-6 border-b border-white/5 bg-slate-900/50 backdrop-blur-md">
           <LogoHeader size="sm" showText={true} className="mb-3" />
-          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-emerald-500">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-health-400">
             <Shield className="w-3 h-3" /> Super Admin
           </div>
         </div>
@@ -1120,58 +1121,68 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="space-y-6">
             <h1 className="text-3xl font-bold text-slate-800">Visión General</h1>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Total Centros</div>
-                <div className="text-3xl font-bold text-slate-800">{totals.total}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Centros Activos
-                </div>
-                <div className="text-3xl font-bold text-slate-800">{totals.active}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Cupos (maxUsers)
-                </div>
-                <div className="text-3xl font-bold text-slate-800">{totals.maxUsers}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Atrasados</div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {totals.billingStats.overdue || 0}
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveTab("metrics")}
-                className="bg-red-50 p-6 rounded-2xl shadow-sm border border-red-100 text-left hover:bg-red-100 transition-colors group"
-              >
-                <div className="text-xs font-bold text-red-400 uppercase mb-2">En Riesgo (Bajo Uso)</div>
-                <div className="text-3xl font-bold text-red-600 flex items-center justify-between">
-                  {totals.atRisk}
-                  <TrendingUp className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <MetricCard
+                title="Total Centros"
+                value={totals.total}
+                icon="Building2"
+                colorClass="text-indigo-400"
+              />
+              <MetricCard
+                title="Centros Activos"
+                value={totals.active}
+                icon="Zap"
+                colorClass="text-health-400"
+              />
+              <MetricCard
+                title="Cupos Totales"
+                value={totals.maxUsers}
+                icon="Users"
+                colorClass="text-sky-400"
+              />
+              <MetricCard
+                title="Atrasados"
+                value={totals.billingStats.overdue || 0}
+                icon="AlertTriangle"
+                colorClass="text-amber-400"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Pacientes Totales (Histórico)
+              <MetricCard
+                title="Pacientes Totales"
+                value={metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
+                icon="Activity"
+                colorClass="text-rose-400"
+                loading={metricsLoading}
+              />
+              <MetricCard
+                title="Profesionales Activos"
+                value={metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
+                icon="ShieldCheck"
+                colorClass="text-health-400"
+                loading={metricsLoading}
+              />
+              <button
+                onClick={() => setActiveTab("metrics")}
+                className="bg-slate-800 p-6 rounded-3xl border border-slate-700 hover:border-red-500/50 transition-all group hover:shadow-[0_0_20px_rgba(239,68,68,0.15)] transform hover:-translate-y-1 text-left"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 rounded-2xl bg-slate-900/50 text-red-400">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    Crítico
+                  </div>
                 </div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
+                <h3 className="text-slate-400 text-sm font-medium mb-1">En Riesgo (Bajo Uso)</h3>
+                <div className="flex items-center justify-between">
+                  <span className="text-3xl font-bold text-white tracking-tight">{totals.atRisk}</span>
+                  <div className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Analizar →
+                  </div>
                 </div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Profesionales Activos (Histórico)
-                </div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
-                </div>
-              </div>
+              </button>
             </div>
 
             {metricsUpdatedAt && (

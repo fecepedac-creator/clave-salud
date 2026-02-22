@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
+import MetricCard from "./MetricCard";
 import { CenterContext } from "../CenterContext";
 import {
   Doctor,
@@ -1388,7 +1389,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
           <button
             onClick={() => setShowShareModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+            className="flex items-center gap-2 text-sm font-bold text-health-400 hover:text-health-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
           >
             <Share2 className="w-4 h-4" /> Compartir App
           </button>
@@ -1435,7 +1436,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setActiveTab("command_center")}
             disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "command_center" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "command_center" ? "bg-health-400 text-slate-900 shadow-[0_0_15px_-3px_rgba(74,222,128,0.4)]" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <Activity className="w-4 h-4" /> Centro de Mando
           </button>
@@ -1495,41 +1496,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-8 animate-fadeIn">
           {/* Métricas del Centro */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Totales</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
-
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Profesionales</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.staffCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
-
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.appointmentCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
+            <MetricCard
+              title="Pacientes Totales"
+              value={activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "0"}
+              icon="Users"
+              colorClass="text-blue-400"
+            />
+            <MetricCard
+              title="Profesionales"
+              value={activeCenter?.stats?.staffCount?.toLocaleString("es-CL") || "0"}
+              icon="Activity"
+              colorClass="text-health-400"
+            />
+            <MetricCard
+              title="Citas Agendadas"
+              value={activeCenter?.stats?.appointmentCount?.toLocaleString("es-CL") || "0"}
+              icon="Calendar"
+              colorClass="text-amber-400"
+            />
           </div>
 
           {activeCenter?.stats?.updatedAt && (
