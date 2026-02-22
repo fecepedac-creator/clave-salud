@@ -9,10 +9,11 @@ import {
   QueryDocumentSnapshot,
   query,
   startAfter,
+  where,
 } from "firebase/firestore";
 import { Search, Plus, User } from "lucide-react";
 import { Patient } from "../types";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { CenterContext } from "../CenterContext";
 
 type Props = {
@@ -35,21 +36,32 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   const [orderDirection, setOrderDirection] = useState<"asc" | "desc">("asc");
   const pageSize = 25;
 
-  // Leer desde Firestore solo si no llegan patients por props
+  // Read from root /patients collection filtered by current user
   useEffect(() => {
     if (patients) return;
-    if (!activeCenterId) {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) {
       setRemotePatients([]);
       return;
     }
 
-    const baseRef = collection(db, "centers", activeCenterId, "patients");
+    const baseRef = collection(db, "patients");
     setLastDoc(null);
     setHasMore(false);
     setOrderField("fullName");
     setOrderDirection("asc");
-    const q = query(baseRef, orderBy("fullName", "asc"), limit(pageSize));
-    const fallbackQuery = query(baseRef, orderBy("lastUpdated", "desc"), limit(pageSize));
+    const q = query(
+      baseRef,
+      where("accessControl.allowedUids", "array-contains", currentUid),
+      orderBy("fullName", "asc"),
+      limit(pageSize)
+    );
+    const fallbackQuery = query(
+      baseRef,
+      where("accessControl.allowedUids", "array-contains", currentUid),
+      orderBy("lastUpdated", "desc"),
+      limit(pageSize)
+    );
 
     let fallbackUnsub: (() => void) | null = null;
     const unsub = onSnapshot(
@@ -62,7 +74,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
         setHasMore(snap.docs.length === pageSize);
       },
       () => {
-        // Si falla orderBy por índice, igual mostramos sin crashear:
+        // If index missing, fallback:
         setOrderField("lastUpdated");
         setOrderDirection("desc");
         fallbackUnsub = onSnapshot(fallbackQuery, (snap2) => {
@@ -82,12 +94,14 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   }, [activeCenterId, patients]);
 
   const handleLoadMore = async () => {
-    if (!activeCenterId || !lastDoc || !hasMore || isLoadingMore) return;
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid || !lastDoc || !hasMore || isLoadingMore) return;
     setIsLoadingMore(true);
     try {
-      const baseRef = collection(db, "centers", activeCenterId, "patients");
+      const baseRef = collection(db, "patients");
       const moreQuery = query(
         baseRef,
+        where("accessControl.allowedUids", "array-contains", currentUid),
         orderBy(orderField, orderDirection),
         startAfter(lastDoc),
         limit(pageSize)
@@ -153,49 +167,49 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
         </div>
       </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="p-6 text-slate-500">
-              {activeCenterId
-                ? "No hay pacientes registrados en este centro."
-                : "Selecciona un centro para ver pacientes."}
-            </div>
-          ) : (
-            <>
-              <ul className="divide-y divide-slate-100">
-                {filtered.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect?.(p)}
-                      className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
-                    >
-                      <div>
-                        <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
-                        <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
-                      </div>
-                      <div className="text-sm text-slate-500">
-                        {p.commune ? `Comuna: ${p.commune}` : ""}
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {!patients && hasMore && (
-                <div className="p-4 flex justify-center border-t border-slate-100">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="p-6 text-slate-500">
+            {activeCenterId
+              ? "No hay pacientes registrados en este centro."
+              : "Selecciona un centro para ver pacientes."}
+          </div>
+        ) : (
+          <>
+            <ul className="divide-y divide-slate-100">
+              {filtered.map((p) => (
+                <li key={p.id}>
                   <button
                     type="button"
-                    onClick={handleLoadMore}
-                    disabled={isLoadingMore}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => onSelect?.(p)}
+                    className="w-full text-left p-4 hover:bg-slate-50 transition flex flex-col md:flex-row md:items-center md:justify-between gap-1"
                   >
-                    {isLoadingMore ? "Cargando..." : "Ver más"}
+                    <div>
+                      <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
+                      <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      {p.commune ? `Comuna: ${p.commune}` : ""}
+                    </div>
                   </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                </li>
+              ))}
+            </ul>
+            {!patients && hasMore && (
+              <div className="p-4 flex justify-center border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoadingMore ? "Cargando..." : "Ver más"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="mt-3 text-xs text-slate-500">
         Los datos se leen desde Firebase (Firestore) en tiempo real para el centro activo.

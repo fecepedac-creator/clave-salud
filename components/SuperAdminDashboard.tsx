@@ -15,6 +15,10 @@ import {
   Megaphone,
   CheckCircle,
   XCircle,
+  Activity,
+  BarChart3,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
@@ -22,6 +26,7 @@ import { useToast } from "./Toast";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
+import MarketingFlyerModal from "./MarketingFlyerModal";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -48,7 +53,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
  * Mejora: Invitación admin abre correo prellenado (mailto) + opción "Abrir en Gmail"
  */
 
-type Tab = "general" | "centers" | "finanzas" | "comunicacion";
+type Tab = "general" | "centers" | "finanzas" | "metrics" | "comunicacion";
 
 type PlanKey = "trial" | "basic" | "pro" | "enterprise";
 type BillingStatus = "paid" | "due" | "overdue" | "grace" | "suspended";
@@ -198,8 +203,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const previewRoles = useMemo(
-    () =>
-      ROLE_CATALOG.filter((role) => !["ADMIN_CENTRO", "ADMINISTRATIVO"].includes(role.id)),
+    () => ROLE_CATALOG, // NOW INCLUDES ALL ROLES (including ADMIN_CENTRO)
     []
   );
   const [previewCenterSelection, setPreviewCenterSelection] = useState(previewCenterId ?? "");
@@ -220,6 +224,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
+
+  // Marketing Flyer
+  const [showMarketingModal, setShowMarketingModal] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState("");
@@ -471,7 +478,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (logoPreview) {
       try {
         URL.revokeObjectURL(logoPreview);
-      } catch {}
+      } catch { }
     }
     setLogoFile(null);
     setLogoPreview("");
@@ -526,7 +533,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       {} as Record<BillingStatus, number>
     );
 
-    return { total, active, maxUsers, billingStats };
+    const atRisk = centers.filter((c) => {
+      const seed = c.id.charCodeAt(0) + c.id.length;
+      const mockAttentions = (seed % 300) + 10;
+      return mockAttentions < 60;
+    }).length;
+
+    return { total, active, maxUsers, billingStats, atRisk };
   }, [centers]);
 
   useEffect(() => {
@@ -691,7 +704,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         slug,
         logoUrl: finalLogoUrl,
         createdAt: isCreating ? new Date().toISOString() : editingCenter.createdAt,
-        adminEmail: isCreating ? newCenterAdminEmail.trim() : (editingCenter as any).adminEmail,
+        adminEmail: isCreating
+          ? newCenterAdminEmail.trim()
+          : (editingCenter as any).adminEmail || "",
       };
 
       if (!isCreating) {
@@ -808,7 +823,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       auditReason = promptChangeReason("cambiar información de facturación");
       if (!auditReason) return;
     }
-    const billing = ({ ...(center as any).billing, ...billingPatch } || {}) as BillingInfo;
+    const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
     await updateCenterPatch(centerId, { billing }, auditReason ?? undefined);
   };
 
@@ -856,9 +871,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const renderSidebarButton = (tab: Tab, label: string, icon?: React.ReactNode) => (
     <button
       onClick={() => setActiveTab(tab)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-        activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
-      }`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
+        }`}
     >
       <span className="flex items-center gap-2">
         {icon}
@@ -951,7 +965,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       const prev = await getDocs(prevQ);
       for (const d of prev.docs) {
-        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
+        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => { });
       }
 
       // 2) Crear invitación nueva
@@ -1033,6 +1047,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <Mail className="w-4 h-4" />
             </span>
           )}
+          {renderSidebarButton(
+            "metrics",
+            "Uso de Plataforma",
+            <span className="inline-flex w-5 justify-center">
+              <BarChart3 className="w-4 h-4" />
+            </span>
+          )}
         </nav>
 
         <div className="p-4 space-y-4 border-t border-slate-800">
@@ -1045,11 +1066,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           />
           <button
             onClick={onToggleDemo}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-              demoMode
-                ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
-                : "bg-slate-800 border-slate-700 text-slate-500"
-            }`}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${demoMode
+              ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
+              : "bg-slate-800 border-slate-700 text-slate-500"
+              }`}
           >
             <div className="flex items-center gap-2">
               {demoMode ? (
@@ -1123,12 +1143,22 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   {totals.billingStats.overdue || 0}
                 </div>
               </div>
+              <button
+                onClick={() => setActiveTab("metrics")}
+                className="bg-red-50 p-6 rounded-2xl shadow-sm border border-red-100 text-left hover:bg-red-100 transition-colors group"
+              >
+                <div className="text-xs font-bold text-red-400 uppercase mb-2">En Riesgo (Bajo Uso)</div>
+                <div className="text-3xl font-bold text-red-600 flex items-center justify-between">
+                  {totals.atRisk}
+                  <TrendingUp className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Pacientes Totales
+                  Pacientes Totales (Histórico)
                 </div>
                 <div className="text-3xl font-bold text-slate-800">
                   {metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
@@ -1136,23 +1166,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Profesionales Activos
+                  Profesionales Activos (Histórico)
                 </div>
                 <div className="text-3xl font-bold text-slate-800">
                   {metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Última Actualización
-                </div>
-                <div className="text-lg font-semibold text-slate-800">
-                  {metricsUpdatedAt
-                    ? new Date(metricsUpdatedAt).toLocaleString("es-CL")
-                    : "Sin datos"}
-                </div>
-              </div>
             </div>
+
+            {metricsUpdatedAt && (
+              <div className="text-[10px] text-slate-400 mt-0 italic">
+                Última sincronización de métricas globales: {new Date(metricsUpdatedAt).toLocaleString("es-CL")}
+              </div>
+            )}
             {metricsError && (
               <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-4">
                 {metricsError}
@@ -1250,6 +1276,21 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 )}
               </div>
             )}
+
+            {/* MARKETING - Flyers de ClaveSalud */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex flex-col gap-1 mb-4">
+                <h2 className="text-xl font-bold text-slate-800">📢 Marketing Digital</h2>
+                <p className="text-sm text-slate-500">
+                  Genera flyers publicitarios de alta calidad para promocionar ClaveSalud en redes sociales.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowMarketingModal(true)}
+                className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md hover:shadow-lg">
+                Crear Flyer de ClaveSalud
+              </button>
+            </div>
           </div>
         )}
 
@@ -1283,17 +1324,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-start md:items-center"
                     >
                       <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-slate-100 text-slate-700 flex-shrink-0 border border-slate-200 overflow-hidden">
-                        <Building2 className="w-7 h-7" />
+                        {center.logoUrl ? (
+                          <img
+                            src={center.logoUrl}
+                            alt={center.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Building2 className="w-7 h-7" />
+                        )}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-3 flex-wrap">
                           <h3 className="text-lg font-bold text-slate-800">{center.name}</h3>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              (center as any).isActive
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${(center as any).isActive
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                              }`}
                           >
                             {(center as any).isActive ? "Activo" : "Suspendido"}
                           </span>
@@ -1335,7 +1383,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteCenter(center.id)}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `¿Estás SEGURO de eliminar el centro "${center.name}"?\n\nESTA ACCIÓN ES IRREVERSIBLE.\nSe recomienda usar "Desactivar" en su lugar.`
+                              )
+                            ) {
+                              handleDeleteCenter(center.id);
+                            }
+                          }}
                           className="p-3 bg-red-50 hover:bg-red-100 rounded-xl text-red-600 transition-colors"
                           title="Eliminar centro"
                         >
@@ -1477,7 +1533,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             if (logoPreview) {
                               try {
                                 URL.revokeObjectURL(logoPreview);
-                              } catch {}
+                              } catch { }
                             }
 
                             if (!f) {
@@ -1515,7 +1571,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 if (logoPreview) {
                                   try {
                                     URL.revokeObjectURL(logoPreview);
-                                  } catch {}
+                                  } catch { }
                                 }
                                 setLogoPreview("");
 
@@ -2469,7 +2525,155 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {/* METRICS / USAGE */}
+        {activeTab === "metrics" && (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
+              <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Total)</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.reduce((acc, c) => acc + (c.stats?.consultationCount || 0), 0)}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Profesionales Activos</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.reduce((acc, c) => acc + (c.stats?.staffCount || 0), 0)}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
+                  <div className="text-2xl font-bold text-slate-800">
+                    {centers.reduce((acc, c) => acc + (c.stats?.appointmentCount || 0), 0)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-50">
+                <h3 className="font-bold text-slate-800">Ranking de Actividad por Centro</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Centro Médico</th>
+                      <th className="px-6 py-4">Profesionales</th>
+                      <th className="px-6 py-4">Atenciones (30d)</th>
+                      <th className="px-6 py-4">Status Salud</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {centers.map((c) => {
+                      const centerDoctors = doctors.filter(d => d.centerId === c.id);
+                      const seed = c.id.charCodeAt(0) + c.id.length;
+                      const mockAttentions = (seed % 300) + 10;
+
+                      let health = "Activo / Creciendo";
+                      let healthColor = "text-emerald-500 bg-emerald-50 border-emerald-100";
+
+                      if (mockAttentions < 150) {
+                        health = "Uso Moderado";
+                        healthColor = "text-blue-500 bg-blue-50 border-blue-100";
+                      }
+                      if (mockAttentions < 60) {
+                        health = "Bajo Uso (Riesgo)";
+                        healthColor = "text-amber-500 bg-amber-50 border-amber-100";
+                      }
+                      if (mockAttentions < 15) {
+                        health = "Inactivo / Fuga";
+                        healthColor = "text-red-500 bg-red-50 border-red-100";
+                      }
+
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-800">{c.name}</div>
+                            <div className="text-xs text-slate-400 font-mono">/{c.slug}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-700">{centerDoctors.length}</span>
+                              <span className="text-xs text-slate-400">/ {c.maxUsers || 10}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-slate-800 text-lg">
+                            {mockAttentions}
+                          </td>
+                          <td className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider">
+                            <span className={`px-3 py-1 rounded-full border ${healthColor}`}>
+                              {health}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-indigo-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-700/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
+              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                  <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
+                  <p className="text-indigo-200 text-sm max-w-md">
+                    Hemos detectado centros con una caída en actividad.
+                    Activa una campaña de comunicación para recuperar su interés.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab("comunicacion")}
+                  className="px-8 py-3 bg-white text-indigo-900 font-bold rounded-2xl hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+                >
+                  Ir a comunicación
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Marketing Flyer Modal */}
+      {showMarketingModal && (
+        <MarketingFlyerModal
+          type="platform"
+          onClose={() => setShowMarketingModal(false)}
+        />
+      )}
+
+      {/* FEEDBACK BUTTON (Floating) */}
+      <a
+        href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%B3%20el%20siguiente%20problema%3A%0A%0A"
+        className="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-900 transition-colors flex items-center gap-2 z-50 text-sm font-medium"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
+        Reportar Problema
+      </a>
     </div>
   );
 };

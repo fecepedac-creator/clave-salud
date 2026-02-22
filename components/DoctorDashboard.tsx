@@ -17,12 +17,14 @@ import {
 import {
   calculateAge,
   generateId,
+  generateSlotId,
   sanitizeText,
   base64ToBlob,
   normalizePhone,
   formatPersonName,
   applyWhatsappTemplate,
   openEmailCompose,
+  getProfessionalPrefix,
 } from "../utils";
 import {
   COMMON_DIAGNOSES,
@@ -30,8 +32,10 @@ import {
   EXAM_PROFILES,
   TRACKED_EXAMS_OPTIONS,
 } from "../constants";
+import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import {
   Search,
+  Book,
   Plus,
   User,
   Calendar,
@@ -62,12 +66,26 @@ import {
   KeyRound,
   Shield,
   TestTube,
+  History,
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import { collection, serverTimestamp, doc, getDoc, onSnapshot, query, orderBy, setDoc, limit } from "firebase/firestore";
+import {
+  collection,
+  serverTimestamp,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  setDoc,
+  limit,
+} from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
+import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
+import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
+import { usePrescriptionLogic } from "../hooks/doctor/usePrescriptionLogic";
 
 // Sub-components
 import VitalsForm from "./VitalsForm";
@@ -82,10 +100,19 @@ import ConsultationDetailModal from "./ConsultationDetailModal";
 import ExamOrderModal from "./ExamOrderModal";
 import AutocompleteInput from "./AutocompleteInput";
 import Odontogram from "./Odontogram";
+import Podogram from "./Podogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
-import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
+import {
+  DEFAULT_EXAM_ORDER_CATALOG,
+  ExamOrderCatalog,
+  getCategoryLabel,
+} from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
+import { StartProgramModal, SessionModal } from "./KinesiologyModals";
+import { ExamSheetsSection } from "./ExamSheetsSection";
+import { KinesiologyProgram, KinesiologySession } from "../types";
+import DrivePicker from "./DrivePicker";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -95,13 +122,18 @@ interface ProfessionalDashboardProps {
   agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
   currentUser?: Doctor;
+  doctors?: Doctor[]; // All doctors in the center (needed for Administrativo role)
+  portfolioMode?: "global" | "center";
+  onSetPortfolioMode?: (mode: "global" | "center") => void;
   onUpdatePatient: (updatedPatient: Patient) => void;
   onUpdateDoctor: (updatedDoctor: Doctor) => void;
   onLogout: () => void;
   onOpenLegal: (target: "terms" | "privacy") => void;
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
-  onLogActivity: (event: AuditLogEvent) => void;
+  onUpdateAppointment?: (appointment: Appointment) => Promise<void>;
+  onDeleteAppointment?: (id: string) => Promise<void>;
+  onLogActivity: (event: any) => void;
   isReadOnly?: boolean; // Read Only Mode for Suspended Centers
   isSyncingAppointments?: boolean;
 }
@@ -124,6 +156,27 @@ function sameById(a: any[] = [], b: any[] = [], extraKeys: string[] = []) {
   return true;
 }
 
+const DEFAULT_WHATSAPP_TEMPLATES: WhatsappTemplate[] = [
+  {
+    id: "reminder",
+    title: "Recordatorio de cita",
+    body: "Hola {patientName}, le recordamos su control el {nextControlDate} en {centerName}. Si desea confirmar, responda a este mensaje.",
+    enabled: true,
+  },
+  {
+    id: "confirm",
+    title: "Confirmación asistencia",
+    body: "Hola {patientName}, desde {centerName} queremos confirmar su asistencia al control del {nextControlDate}. ¿Confirma su asistencia?",
+    enabled: true,
+  },
+  {
+    id: "reschedule",
+    title: "Reagendar",
+    body: "Hola {patientName}, desde {centerName}. Vimos que tiene un control próximo ({nextControlDate}). Si no puede asistir, indíquenos un horario alternativo.",
+    enabled: true,
+  },
+];
+
 export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   patients,
   doctorName,
@@ -132,30 +185,184 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   agendaConfig,
   savedTemplates,
   currentUser,
+  doctors = [],
   onUpdatePatient,
   onUpdateDoctor,
   onLogout,
   onOpenLegal,
   appointments,
   onUpdateAppointments,
+  onUpdateAppointment,
+  onDeleteAppointment,
   onLogActivity,
+  portfolioMode = "global",
+  onSetPortfolioMode,
   isReadOnly = false,
   isSyncingAppointments = false,
 }) => {
+  // --- Context ---
+  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
+  const hasActiveCenter = Boolean(activeCenterId);
+
   const { showToast } = useToast();
-  const { logAccess } = useAuditLog();
+  // const { logAccess } = useAuditLog(); // Moved to hooks
+
+  const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
   const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings">(
     "patients"
   );
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>(""); // FIX: was referenced but not defined
-  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+
+  // Custom Hooks
+  const {
+    selectedPatient,
+    setSelectedPatient,
+    searchTerm,
+    setSearchTerm,
+    isEditingPatient,
+    setIsEditingPatient,
+    filteredPatients,
+    handleSelectPatient,
+    handleSavePatient,
+    handleOpenPatientFromAppointment,
+  } = usePatientManagement({
+    patients,
+    activeCenterId,
+    onUpdatePatient,
+    onLogActivity,
+    filterNextControl,
+  });
+
+  const {
+    newConsultation,
+    setNewConsultation,
+    isCreatingConsultation,
+    setIsCreatingConsultation,
+    handleVitalsChange,
+    handleExamChange,
+    addPrescription,
+    removePrescription,
+    handleCreateConsultation,
+    getEmptyConsultation,
+  } = useConsultationLogic({
+    selectedPatient,
+    activeCenterId,
+    activeCenter,
+    hasActiveCenter,
+    doctorId,
+    doctorName,
+    role,
+    onUpdatePatient,
+    onLogActivity,
+    setActiveTab,
+  });
+
+  const {
+    docsToPrint,
+    setDocsToPrint,
+    isPrintModalOpen,
+    setIsPrintModalOpen,
+    isClinicalReportOpen,
+    setIsClinicalReportOpen,
+    handlePrint,
+  } = usePrescriptionLogic();
+
   const [centerLogoError, setCenterLogoError] = useState(false);
 
-  // --- contexto del centro ---
-  const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
-  const hasActiveCenter = Boolean(activeCenterId);
-  const anthropometryEnabled = Boolean(activeCenter?.features?.anthropometryEnabled);
+  // --- Clinical Templates State ---
+  const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>(savedTemplates || []);
+  const [isEditingTemplateId, setIsEditingTemplateId] = useState<string | null>(null);
+  const [tempTemplate, setTempTemplate] = useState({ id: "", title: "", content: "" });
+
+  // --- Exam Profiles State ---
+  const [myExamProfiles, setMyExamProfiles] = useState<ExamProfile[]>(
+    currentUser?.savedExamProfiles || EXAM_PROFILES
+  );
+  const [isEditingProfileId, setIsEditingProfileId] = useState<string | null>(null);
+  const [tempProfile, setTempProfile] = useState<ExamProfile>({
+    id: "",
+    label: "",
+    exams: [],
+    description: "",
+  });
+
+  // --- Custom Exams State ---
+  const [newCustomExam, setNewCustomExam] = useState({
+    label: "",
+    unit: "",
+    category: "",
+  });
+
+  // --- Password State ---
+  const [pwdState, setPwdState] = useState({ current: "", new: "", confirm: "" });
+
+  // --- WhatsApp State ---
+  const [whatsAppMenuForPatientId, setWhatsAppMenuForPatientId] = useState<string | null>(null);
+  const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsappTemplate[]>([]);
+
+  // --- Exam Options ---
+  const allExamOptions = useMemo(() => {
+    const customs = currentUser?.customExams || [];
+    return [...TRACKED_EXAMS_OPTIONS, ...customs];
+  }, [currentUser?.customExams]);
+
+  // --- Kinesiology State ---
+  const [isKineProgramModalOpen, setIsKineProgramModalOpen] = useState(false);
+  const [isKineSessionModalOpen, setIsKineSessionModalOpen] = useState(false);
+  const [selectedKineProgram, setSelectedKineProgram] = useState<KinesiologyProgram | null>(null);
+  const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
+
+  // --- Consultation / Exam / Print State ---
+  const [selectedConsultationForModal, setSelectedConsultationForModal] =
+    useState<Consultation | null>(null);
+  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
+  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(
+    DEFAULT_EXAM_ORDER_CATALOG
+  );
+
+  // ── Administrativo / Secretary role: select which professional's agenda to manage ──
+  const isAdministrativo = String(role).toUpperCase() === "ADMINISTRATIVO";
+  const NON_CLINICAL_ROLES = ["ADMIN_CENTRO", "ADMINISTRATIVO"];
+  const clinicalDoctors = doctors.filter(
+    (d) =>
+      !NON_CLINICAL_ROLES.includes(String(d.role).toUpperCase()) && d.centerId === activeCenterId
+  );
+  const [viewingDoctorId, setViewingDoctorId] = useState<string>("");
+  // Effective values for the agenda: use the selected doctor when Administrativo
+  const viewingDoctor = isAdministrativo
+    ? clinicalDoctors.find((d) => d.id === viewingDoctorId)
+    : null;
+  const effectiveDoctorId = isAdministrativo && viewingDoctor ? viewingDoctor.id : doctorId;
+  const effectiveAgendaConfig =
+    isAdministrativo && viewingDoctor ? viewingDoctor.agendaConfig : agendaConfig;
+
+  // State for Catalog
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
+
+  const handleImportTemplate = async (template: ClinicalTemplate) => {
+    if (!currentUser || !currentUser.id) return;
+    try {
+      const newT: ClinicalTemplate = {
+        id: generateId(),
+        userId: currentUser.id,
+        title: template.title, // Keep original title
+        content: template.content,
+        category: template.category,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Add to current doctor templates
+      const updatedTemplates = [...(currentUser.savedTemplates || []), newT];
+      const updatedDoctor = { ...currentUser, savedTemplates: updatedTemplates };
+
+      onUpdateDoctor(updatedDoctor);
+      showToast("Plantilla importada correctamente", "success");
+      setIsCatalogOpen(false);
+    } catch (e) {
+      console.error("Error importing template:", e);
+      showToast("Error al importar plantilla", "error");
+    }
+  };
 
   // Load WhatsApp templates configured by Center Admin (fallback to defaults)
   useEffect(() => {
@@ -172,19 +379,19 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           return;
         }
 
-        const parsed: WhatsAppTemplate[] = templatesRaw
+        const parsed: WhatsappTemplate[] = templatesRaw
           .map((t: any, i: number) => ({
             id: String(t.id ?? i),
             title: String(t.title ?? "Plantilla"),
             body: String(t.body ?? ""),
             enabled: Boolean(t.enabled ?? true),
           }))
-          .filter((t: WhatsAppTemplate) => t.body.trim().length > 0);
+          .filter((t: WhatsappTemplate) => t.body.trim().length > 0);
 
-        setWhatsAppTemplates(parsed.length ? parsed : DEFAULT_WHATSAPP_TEMPLATES);
+        setWhatsAppTemplates(parsed.length ? parsed : []);
       } catch (err) {
         // If something fails, we keep defaults (do not block UI)
-        setWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES);
+        setWhatsAppTemplates([]);
       }
     };
 
@@ -216,18 +423,26 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const getActiveConsultations = (p: Patient) =>
     (p.consultations || []).filter((consultation) => consultation.active !== false);
 
-
   const getNextControlDateFromPatient = (p: Patient): Date | null => {
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-        )[0]
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0]
       : null;
     const raw = lastConsult?.nextControlDate || "";
     if (!raw) return null;
     const d = new Date(raw);
     return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const getNextControlReasonFromPatient = (p: Patient): string => {
+    const lastConsult = p.consultations?.[0]
+      ? [...p.consultations].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0]
+      : null;
+    return lastConsult?.nextControlReason || "";
   };
 
   const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
@@ -244,10 +459,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const centerName = activeCenter?.name ?? "Centro Médico";
     const nextCtrl = getNextControlDateFromPatient(p);
     const nextCtrlStr = nextCtrl ? nextCtrl.toLocaleDateString("es-CL") : "";
+    const nextCtrlReason = getNextControlReasonFromPatient(p);
     return templateBody
       .replaceAll("{patientName}", formatPersonName(p.fullName) || "Paciente")
       .replaceAll("{centerName}", centerName)
-      .replaceAll("{nextControlDate}", nextCtrlStr);
+      .replaceAll("{nextControlDate}", nextCtrlStr)
+      .replaceAll("{nextControlReason}", nextCtrlReason);
   };
 
   const openWhatsApp = (p: Patient, templateBody: string) => {
@@ -284,7 +501,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     lines.push(`Paciente: ${formatPersonName(selectedPatient.fullName)}`);
     lines.push(`RUT: ${selectedPatient.rut || "-"}`);
     lines.push(`Fecha: ${dateStr}`);
-    lines.push(`Profesional: Dr. ${consultation.professionalName || "-"}`);
+    lines.push(
+      `Profesional: ${getProfessionalPrefix(consultation.professionalRole)} ${consultation.professionalName || "-"}`
+    );
     lines.push("");
     lines.push(`Motivo: ${consultation.reason || "-"}`);
     lines.push(`Diagnóstico / Hipótesis: ${consultation.diagnosis || "-"}`);
@@ -320,53 +539,28 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     });
     if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
-  const getEmptyConsultation = (): Partial<Consultation> => ({
-    weight: "",
-    height: "",
-    bmi: "",
-    bloodPressure: "",
-    hgt: "",
-    waist: "",
-    hip: "",
-    reason: "",
-    anamnesis: "",
-    physicalExam: "",
-    diagnosis: "",
-    prescriptions: [],
-    dentalMap: [],
-    exams: {},
-    nextControlDate: "",
-    nextControlReason: "",
-    reminderActive: false,
-  });
-
   // --- módulos del centro (SuperAdmin) ---
-  const moduleGuards = useMemo(
-    () => ({
+  const moduleGuards = useMemo(() => {
+    // Calculate individual flags
+    const vitalsBase = isModuleEnabled ? isModuleEnabled("vitals") : true;
+    const vitalsUserPref = currentUser.preferences?.vitalsEnabled;
+    // If user has a preference, use it. Otherwise use center config.
+    const vitalsEffective = vitalsUserPref !== undefined ? vitalsUserPref : vitalsBase;
+
+    return {
       patients: isModuleEnabled ? isModuleEnabled("patients") : true,
       agenda: isModuleEnabled ? isModuleEnabled("agenda") : true,
       prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
-      vitals: isModuleEnabled ? isModuleEnabled("vitals") : true,
+      vitals: vitalsEffective,
       exams: isModuleEnabled ? isModuleEnabled("exams") : true,
       dental: isModuleEnabled ? isModuleEnabled("dental") : true,
       settings: isModuleEnabled ? isModuleEnabled("settings") : true,
-    }),
-    [isModuleEnabled]
-  );
-  // Edit Mode State
-  const [isEditingPatient, setIsEditingPatient] = useState(false);
+    };
+  }, [isModuleEnabled, currentUser]);
 
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
   const [previewFile, setPreviewFile] = useState<Attachment | null>(null);
   const [safePdfUrl, setSafePdfUrl] = useState<string>("");
-
-  // Printing State
-  const [docsToPrint, setDocsToPrint] = useState<Prescription[]>([]);
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [isClinicalReportOpen, setIsClinicalReportOpen] = useState(false);
-  const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
-  const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
-  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
 
   // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -380,56 +574,21 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const slotDateLabel = slotModal.appointment?.date
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString("es-CL", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
     : "";
   const centerName = activeCenter?.name || "Centro Médico";
   const normalizeRut = (value?: string | null) =>
     String(value ?? "")
       .replace(/[^0-9kK]/g, "")
       .toUpperCase();
-  
-  // Helper function to handle patient selection with audit logging
-  const handleSelectPatient = async (patient: Patient) => {
-    setSelectedPatient(patient);
-    
-    // Log patient access for audit trail (DS 41 MINSAL)
-    if (activeCenterId && patient.id) {
-      logAccessSafe(logAccess, {
-        centerId: activeCenterId,
-        resourceType: "patient",
-        resourcePath: `/centers/${activeCenterId}/patients/${patient.id}`,
-        patientId: patient.id,
-        actorUid: auth.currentUser?.uid ?? undefined,
-      });
-    }
-  };
-  
-  const handleOpenPatientFromAppointment = (appointment: Appointment) => {
-    const foundById = appointment.patientId
-      ? patients.find((patient) => patient.id === appointment.patientId)
-      : null;
-    const appointmentRut = normalizeRut(appointment.patientRut);
-    const foundByRut =
-      !foundById && appointmentRut
-        ? patients.find((patient) => normalizeRut(patient.rut) === appointmentRut)
-        : null;
-    const resolvedPatient = foundById ?? foundByRut ?? null;
 
-    if (resolvedPatient) {
-      handleSelectPatient(resolvedPatient);
-      setActiveTab("patients");
-      return;
-    }
-
-    showToast("Paciente no encontrado; revisa si fue creado", "warning");
-  };
   const patientDisplayName = formatPersonName(slotModal.appointment?.patientName) || "Paciente";
   const doctorFormattedName = formatPersonName(doctorName);
   const doctorDisplayName = doctorFormattedName
-    ? `el Dr. ${doctorFormattedName}`
+    ? `el/la ${getProfessionalPrefix(role)} ${doctorFormattedName}`
     : "el profesional asignado";
   const bookingUrl =
     typeof window !== "undefined" ? window.location.origin : "https://clavesalud-2.web.app";
@@ -504,7 +663,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const docs = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Consultation[];
+        const docs = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        })) as Consultation[];
         setConsultationsFromDb(docs.filter((c) => c.active !== false));
         const legacyCount = getActiveConsultations(selectedPatient).length;
         setIsUsingLegacyConsultations(docs.length === 0 && legacyCount > 0);
@@ -532,7 +694,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           if (centerSnap.exists()) {
             const data = centerSnap.data() as any;
             if (Array.isArray(data?.categories)) {
-              setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+              setExamOrderCatalog({
+                version: Number(data.version || 1),
+                categories: data.categories,
+              });
               return;
             }
           }
@@ -542,7 +707,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         if (globalSnap.exists()) {
           const data = globalSnap.data() as any;
           if (Array.isArray(data?.categories)) {
-            setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+            setExamOrderCatalog({
+              version: Number(data.version || 1),
+              categories: data.categories,
+            });
             return;
           }
         }
@@ -556,282 +724,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
     loadExamOrderCatalog();
   }, [activeCenterId]);
-
-  // New Consultation State
-  const [newConsultation, setNewConsultation] =
-    useState<Partial<Consultation>>(getEmptyConsultation());
-
-  // Templates State
-  const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>([]);
-  const [tempTemplate, setTempTemplate] = useState<ClinicalTemplate>({
-    id: "",
-    title: "",
-    content: "",
-  });
-  const [isEditingTemplateId, setIsEditingTemplateId] = useState<string | null>(null);
-
-  // Exam Profiles State
-  const [myExamProfiles, setMyExamProfiles] = useState<ExamProfile[]>([]);
-  const [tempProfile, setTempProfile] = useState<ExamProfile>({
-    id: "",
-    label: "",
-    exams: [],
-    description: "",
-  });
-  const [isEditingProfileId, setIsEditingProfileId] = useState<string | null>(null);
-
-  // Custom Exams State
-  const [newCustomExam, setNewCustomExam] = useState<Partial<ExamDefinition>>({
-    label: "",
-    unit: "",
-    category: "",
-  });
-
-  // Password Change State
-  const [pwdState, setPwdState] = useState({ current: "", new: "", confirm: "" });
-
-  const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
-
-  // --- WhatsApp templates (per center) ---
-  type WhatsAppTemplate = {
-    id: string;
-    title: string;
-    body: string;
-    enabled: boolean;
-  };
-
-  const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
-    {
-      id: "reminder",
-      title: "Recordatorio control",
-      body:
-        "Hola {patientName}, le recordamos su control el {nextControlDate} en {centerName}. Si desea confirmar, responda a este mensaje. Si necesita reagendar, indíquenos un horario alternativo.",
-      enabled: true,
-    },
-    {
-      id: "confirm",
-      title: "Confirmación asistencia",
-      body:
-        "Hola {patientName}, desde {centerName} queremos confirmar su asistencia al control del {nextControlDate}. ¿Confirma su asistencia?",
-      enabled: true,
-    },
-    {
-      id: "reschedule",
-      title: "Reagendar",
-      body:
-        "Hola {patientName}, desde {centerName}. Vimos que tiene un control próximo ({nextControlDate}). Si no puede asistir, indíquenos por favor un horario alternativo para reagendar.",
-      enabled: true,
-    },
-  ];
-
-  const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplate[]>(
-    DEFAULT_WHATSAPP_TEMPLATES
-  );
-  const [whatsAppMenuForPatientId, setWhatsAppMenuForPatientId] = useState<string | null>(null);
-
-  // --- COMBINED EXAM OPTIONS (Default + Custom) ---
-  const allExamOptions = useMemo(() => {
-    const customs = currentUser?.customExams || [];
-    return [...TRACKED_EXAMS_OPTIONS, ...customs];
-  }, [currentUser?.customExams]);
-
-  // Load Doctor Data (Templates & Profiles)
-  useEffect(() => {
-    // Templates
-    const nextTemplates = Array.isArray(savedTemplates)
-      ? savedTemplates
-      : DEFAULT_TEMPLATES.filter((t) => t.roles?.includes(role));
-
-    setMyTemplates((prev) =>
-      sameById(prev, nextTemplates, ["title", "content"]) ? prev : nextTemplates
-    );
-
-    // Exam profiles
-    const nextProfiles =
-      currentUser?.savedExamProfiles && currentUser.savedExamProfiles.length > 0
-        ? currentUser.savedExamProfiles
-        : EXAM_PROFILES;
-
-    setMyExamProfiles((prev) =>
-      sameById(prev, nextProfiles, ["label", "description"]) ? prev : nextProfiles
-    );
-  }, [role, savedTemplates, currentUser?.savedExamProfiles]);
-
-  // PDF Safety
-  useEffect(() => {
-    if (previewFile && previewFile.type === "pdf") {
-      const blob = base64ToBlob(previewFile.url);
-      const url = URL.createObjectURL(blob);
-      setSafePdfUrl(url);
-      return () => URL.revokeObjectURL(url);
-    } else {
-      setSafePdfUrl("");
-    }
-  }, [previewFile]);
-
-  // Filter Patients
-  const activePatients = patients.filter(
-    (p) => p.active !== false && (p as any).activo !== false
-  );
-
-  const filteredPatients = activePatients.filter((p) => {
-    // Filter by active center first
-    if (activeCenterId && p.centerId !== activeCenterId) return false;
-
-    // Show if linked to this professional OR if filtering by all
-    const nameMatch =
-      p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || p.rut.includes(searchTerm);
-    if (!nameMatch) return false;
-
-    // Control date filter
-    if (filterNextControl !== "all") {
-      // SAFE ACCESS: Check if consultations exist and is array
-      const consults = getActiveConsultations(p);
-      const lastConsultation = consults.length > 0 ? consults[0] : null;
-
-      if (!lastConsultation || !lastConsultation.nextControlDate) return false;
-      const date = new Date(lastConsultation.nextControlDate + "T12:00:00");
-      const now = new Date();
-      const limit = new Date();
-      if (filterNextControl === "week") limit.setDate(now.getDate() + 7);
-      else limit.setMonth(now.getMonth() + 1);
-
-      return date <= limit && date >= now;
-    }
-    return true;
-  });
-
-  // Vitals logic
-  const handleVitalsChange = (field: keyof Consultation, value: string) => {
-    let finalValue = value;
-
-    if (field === "bloodPressure") {
-      const rawNumbers = value.replace(/\D/g, "");
-      if (rawNumbers.length > 6) return;
-      if (rawNumbers.length >= 4) {
-        finalValue = `${rawNumbers.slice(0, -2)}/${rawNumbers.slice(-2)}`;
-      } else {
-        finalValue = rawNumbers;
-      }
-    }
-
-    const updated = { ...newConsultation, [field]: finalValue };
-    if (field === "weight" || field === "height") {
-      const weight = parseFloat(updated.weight || "0");
-      const height = parseFloat(updated.height || "0") / 100;
-      if (weight > 0 && height > 0) {
-        updated.bmi = (weight / (height * height)).toFixed(1);
-      }
-    }
-    setNewConsultation(updated);
-  };
-
-  const handleExamChange = (examId: string, value: string) => {
-    setNewConsultation((prev) => ({
-      ...prev,
-      exams: { ...prev.exams, [examId]: value },
-    }));
-  };
-
-  const handleCreateConsultation = async () => {
-    if (!selectedPatient) return;
-
-    if (!hasActiveCenter) {
-      showToast("Selecciona un centro activo antes de guardar.", "warning");
-      return;
-    }
-
-    const professionalName = (currentUser?.fullName ?? doctorName ?? "").trim();
-    const professionalRut = (currentUser?.rut ?? "").trim();
-    const professionalRole = (currentUser?.role ?? role) as ProfessionalRole;
-
-    if (!professionalName || !professionalRut) {
-      showToast(
-        "Completa tu perfil profesional (nombre y RUT) antes de registrar una atención.",
-        "warning"
-      );
-      return;
-    }
-
-    // Construye un objeto consulta (local + nube)
-    const consultation: Consultation = {
-      id: generateId(),
-      date: new Date().toISOString(),
-      ...(newConsultation as any),
-      prescriptions: (newConsultation.prescriptions || []) as any,
-      dentalMap: (newConsultation.dentalMap || []) as any,
-      exams: (newConsultation.exams || {}) as any,
-      nextControlDate: (newConsultation.nextControlDate || "") as any,
-      nextControlReason: (newConsultation.nextControlReason || "") as any,
-      reminderActive: Boolean((newConsultation as any).reminderActive),
-      active: true,
-      patientId: selectedPatient.id as any,
-      centerId: activeCenterId as any,
-      createdBy: (auth.currentUser?.uid ?? doctorId) as any,
-      professionalId: auth.currentUser?.uid ?? doctorId,
-      professionalName,
-      professionalRole,
-      professionalRut,
-    } as any;
-
-    // 1) Guardar en Firestore (subcolección por paciente) con ID estable
-    try {
-      if (!activeCenterId) throw new Error("Centro no seleccionado");
-      await setDoc(
-        doc(
-          db,
-          "centers",
-          activeCenterId,
-          "patients",
-          selectedPatient.id,
-          "consultations",
-          consultation.id
-        ),
-        {
-          ...consultation,
-          centerId: activeCenterId,
-          patientId: selectedPatient.id,
-          createdByUid: auth.currentUser?.uid ?? doctorId,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        } as any,
-        { merge: true }
-      );
-      showToast("Atención guardada correctamente", "success");
-    } catch (error) {
-      console.error(error);
-      showToast("Error al guardar la atención en la nube.", "error");
-      return;
-    }
-
-    // 2) Actualizar paciente sin seguir creciendo consultations legacy
-    const updatedPatient: Patient = {
-      ...selectedPatient,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    onUpdatePatient(updatedPatient);
-    setConsultationsFromDb((prev) => [consultation, ...prev]);
-
-    // 3) Auditoría
-    try {
-      onLogActivity({
-        action: "CONSULTATION_CREATE",
-        entityType: "consultation",
-        entityId: consultation.id,
-        patientId: selectedPatient.id,
-        details: `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
-      });
-    } catch {
-      // no-op
-    }
-
-    // 4) Reset UI
-    setSelectedPatient(updatedPatient);
-    setIsCreatingConsultation(false);
-    setNewConsultation(getEmptyConsultation());
-    setActiveTab("patients");
-  };
 
   // --- TEMPLATE HANDLERS ---
   const handleSaveTemplate = () => {
@@ -999,22 +891,157 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     });
   };
 
-  // UI Helpers based on Role
-  const canSeeVitals = ["Medico", "Enfermera", "Kinesiologo", "Matrona", "Nutricionista"].includes(
-    role
-  );
-  // Prescriber Logic: Only Medico, Odontologo, Matrona can prescribe drugs/exams
-  const canPrescribeDrugs = ["Medico", "Odontologo", "Matrona"].includes(role);
-  // Only Medico and Odontologo can issue licenses. Matronas cannot.
-  const canIssueLicense = ["Medico", "Odontologo"].includes(role);
+  // --- KINESIOLOGY HANDLERS ---
+  const handleCreateKineProgram = async (p: Patient, type: string, diagnosis: string) => {
+    const newProgram: KinesiologyProgram = {
+      id: generateId(),
+      patientId: p.id,
+      type: type as any,
+      diagnosis,
+      clinicalCondition: "",
+      objectives: [],
+      totalSessions: 10,
+      professionalName: doctorName,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      sessions: [],
+    };
+    const updated = { ...p, kinePrograms: [...(p.kinePrograms || []), newProgram] };
+    onUpdatePatient(updated);
+    setIsKineProgramModalOpen(false);
+    showToast("Programa iniciado", "success");
+  };
 
-  const isDentist = role === "Odontologo";
-  const isPsych = role === "Psicologo";
+  const handleSaveKineSession = async (
+    p: Patient,
+    programId: string,
+    session: Partial<KinesiologySession>
+  ) => {
+    const newSession: KinesiologySession = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      professionalName: doctorName,
+      ...session,
+    } as KinesiologySession;
+
+    const updatedPrograms = (p.kinePrograms || []).map((prog) =>
+      prog.id === programId ? { ...prog, sessions: [...prog.sessions, newSession] } : prog
+    );
+
+    const updatedPatient = { ...p, kinePrograms: updatedPrograms };
+    onUpdatePatient(updatedPatient);
+    setIsKineSessionModalOpen(false);
+    showToast("Sesión guardada", "success");
+  };
+
+  // UI Helpers based on Role
+  // UI Helpers based on Role
+  const canSeeVitals = [
+    "MEDICO",
+    "ENFERMERA",
+    "KINESIOLOGO",
+    "MATRONA",
+    "NUTRICIONISTA",
+    "PREPARADOR_FISICO",
+  ].includes(role);
+  // Prescriber Logic: Only Medico, Odontologo, Matrona can prescribe drugs/exams
+  const canPrescribeDrugs = ["MEDICO", "ODONTOLOGO", "MATRONA"].includes(role);
+  // Only Medico and Odontologo can issue licenses. Matronas cannot.
+  const canIssueLicense = ["MEDICO", "ODONTOLOGO"].includes(role);
+
+  const isDentist = role === "ODONTOLOGO";
+  const isPsych = role === "PSICOLOGO";
+  const isPodo = role === "PODOLOGO";
+  const isNutri = role === "NUTRICIONISTA";
+
+  const labels = useMemo(() => {
+    switch (role) {
+      case "PODOLOGO":
+        return {
+          reason: "Motivo de Atención Podológica",
+          anamnesis: "Anamnesis y Antecedentes (Calzado, Hábitos)",
+          physical: "Examen Físico de Pies y Miembros Inferiores",
+          diagnosis: "Diagnóstico Podológico / Hallazgos",
+        };
+      case "ASISTENTE_SOCIAL":
+        return {
+          reason: "Motivo de Intervención Social",
+          anamnesis: "Antecedentes Familiares y Redes de Apoyo",
+          physical: "Evaluación Socio-Económica / Vivienda",
+          diagnosis: "Diagnóstico Social e Informe de Situación",
+        };
+      case "PREPARADOR_FISICO":
+        return {
+          reason: "Objetivo de Entrenamiento / Consulta",
+          anamnesis: "Antecedentes Deportivos y Fitness (Lesiones)",
+          physical: "Evaluación de Condición Física (Tests)",
+          diagnosis: "Diagnóstico Funcional y Planificación",
+        };
+      case "QUIMICO_FARMACEUTICO":
+        return {
+          reason: "Motivo de Seguimiento Farmacoterapéutico",
+          anamnesis: "Conciliación de Medicamentos / Reacciones",
+          physical: "Seguimiento de Resultados y Adherencia",
+          diagnosis: "Problemas Relacionados con Medicamentos (PRM)",
+        };
+      case "TECNOLOGO_MEDICO":
+        return {
+          reason: "Motivo de Examen / Procedimiento",
+          anamnesis: "Antecedentes Clínicos Relevantes",
+          physical: "Condiciones Propias del Procedimiento Técnico",
+          diagnosis: "Impresión Técnica (Hallazgos)",
+        };
+      case "NUTRICIONISTA":
+        return {
+          reason: "Motivo de Consulta Nutricional",
+          anamnesis: "Anamnesis Alimentaria y Hábitos",
+          physical: "Evaluación Antropométrica (Cintura, Hip, Pliegues)",
+          diagnosis: "Diagnóstico Nutricional Integrado (DNI)",
+        };
+      case "PSICOLOGO":
+        return {
+          reason: "Motivo de Consulta / Relato",
+          anamnesis: "Desarrollo de la Sesión / Evolución",
+          physical: "",
+          diagnosis: "Hipótesis Diagnóstica / Foco Terapéutico",
+        };
+      case "ENFERMERA":
+      case "TENS":
+        return {
+          reason: "Motivo de Atención / Procedimiento",
+          anamnesis: "Antecedentes y Observaciones",
+          physical: "Evaluación de Enfermería / Estado General",
+          diagnosis: "Diagnóstico Enfermero / Procedimiento Realizado",
+        };
+      case "MATRONA":
+        return {
+          reason: "Motivo de Consulta Gineco-Obstétrica",
+          anamnesis: "Anamnesis y Antecedentes (AGO)",
+          physical: "Examen Físico Segmentario",
+          diagnosis: "Diagnóstico / Hipótesis",
+        };
+      case "FONOAUDIOLOGO":
+      case "TERAPEUTA_OCUPACIONAL":
+        return {
+          reason: "Motivo de Consulta / Derivación",
+          anamnesis: "Evaluación Clínica / Anamnesis",
+          physical: "Observaciones de Desempeño / Pruebas",
+          diagnosis: "Hipótesis Diagnóstica (CID/CIF)",
+        };
+      default:
+        return {
+          reason: "Motivo de Consulta",
+          anamnesis: "Anamnesis Próxima",
+          physical: "Examen Físico",
+          diagnosis: "Diagnóstico / Hipótesis",
+        };
+    }
+  }, [role]);
 
   // --- RENDER SELECTED PATIENT ---
   if (selectedPatient) {
     return (
-      <div className="flex flex-col h-screen font-sans animate-fadeIn">
+      <div className="flex flex-col min-h-screen lg:h-screen font-sans animate-fadeIn">
         {previewFile && (
           <div
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
@@ -1102,85 +1129,170 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             </button>
             <LogoHeader size="sm" showText={true} />
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                {formatPersonName(selectedPatient.fullName)}
-                <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">
-                  {selectedPatient.rut}
-                </span>
-              </h1>
-              <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                <span>
-                  {safeAgeLabel(selectedPatient.birthDate)} • {selectedPatient.gender}
-                </span>
-                {/* Fallback empty array to prevent BioMarkers crash */}
-                <BioMarkers
-                  activeExams={selectedPatient.activeExams || []}
-                  consultations={selectedPatientConsultations}
-                  examOptions={allExamOptions} // Pass dynamic options
-                />
-              </div>
+              {isEditingPatient ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors"
+                      value={selectedPatient.fullName}
+                      onChange={(e) =>
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, fullName: e.target.value } : null
+                        )
+                      }
+                      placeholder="Nombre Completo"
+                    />
+                    <input
+                      className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors"
+                      value={selectedPatient.rut}
+                      onChange={(e) =>
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, rut: e.target.value } : null
+                        )
+                      }
+                      placeholder="RUT"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <input
+                      type="date"
+                      className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
+                      value={
+                        selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""
+                      }
+                      onChange={(e) =>
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, birthDate: e.target.value } : null
+                        )
+                      }
+                    />
+                    <select
+                      className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
+                      value={selectedPatient.gender}
+                      onChange={(e) =>
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, gender: e.target.value } : null
+                        )
+                      }
+                    >
+                      <option value="Masculino">Masculino</option>
+                      <option value="Femenino">Femenino</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 group">
+                    {formatPersonName(selectedPatient.fullName)}
+                    <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">
+                      {selectedPatient.rut}
+                    </span>
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => setIsEditingPatient(true)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-full"
+                        title="Editar datos básicos"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+                  </h1>
+                  <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                    <span>
+                      {safeAgeLabel(selectedPatient.birthDate)} • {selectedPatient.gender}
+                    </span>
+                    <BioMarkers
+                      activeExams={selectedPatient.activeExams || []}
+                      consultations={selectedPatientConsultations}
+                      examOptions={allExamOptions}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <PatientDetail
-              patient={selectedPatient}
-              centerId={activeCenterId}
-              center={activeCenter ?? null}
-              consultations={selectedPatientConsultations}
-              generatedBy={{ name: doctorName, rut: currentUser?.rut, role }}
-              onUpdatePatient={(nextPatient) => {
-                onUpdatePatient(nextPatient);
-                setSelectedPatient(nextPatient);
-              }}
-            />
+            {isEditingPatient ? (
+              <button
+                type="button"
+                onClick={handleSavePatient}
+                className="bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors"
+                title="Guardar cambios"
+              >
+                <Save className="w-5 h-5" /> Guardar Cambios
+              </button>
+            ) : (
+              <PatientDetail
+                patient={selectedPatient}
+                centerId={activeCenterId}
+                center={activeCenter ?? null}
+                consultations={selectedPatientConsultations}
+                generatedBy={{ name: doctorName, rut: currentUser?.rut, role }}
+                onUpdatePatient={(nextPatient) => {
+                  onUpdatePatient(nextPatient);
+                  setSelectedPatient(nextPatient);
+                }}
+              />
+            )}
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden">
-          <div className="h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
+        <main className="flex-1 lg:overflow-hidden">
+          <div className="h-auto lg:h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
             {/* SIDEBAR */}
+            {/* Refactored Toggle Logic */}
             <PatientSidebar
               selectedPatient={selectedPatient}
               isEditingPatient={isEditingPatient}
               toggleEditPatient={() => {
                 if (isEditingPatient) {
-                  onUpdatePatient(selectedPatient);
-                  // LOG ACTIVITY
-                  onLogActivity({
-                    action: "PATIENT_UPDATE",
-                    entityType: "patient",
-                    entityId: selectedPatient.id,
-                    patientId: selectedPatient.id,
-                    details: `Actualizó datos ficha de ${selectedPatient.fullName}`,
-                  });
-                  showToast("Guardado", "success");
+                  handleSavePatient();
+                } else {
+                  setIsEditingPatient(true);
                 }
-                setIsEditingPatient(!isEditingPatient);
               }}
-              handleEditPatientField={(f, v) => setSelectedPatient({ ...selectedPatient, [f]: v })}
-              onFileUpload={(e) => {
-                if (e.target.files?.[0]) {
+              handleEditPatientField={(f, v) =>
+                setSelectedPatient((prev) => (prev ? { ...prev, [f]: v } : null))
+              }
+              onFileUpload={async (e) => {
+                if (e.target.files?.[0] && currentUser) {
                   const f = e.target.files[0];
-                  const att: Attachment = {
-                    id: generateId(),
-                    name: f.name,
-                    type: f.type.includes("image") ? "image" : "pdf",
-                    date: new Date().toISOString(),
-                    url: URL.createObjectURL(f),
-                  };
-                  const up = {
-                    ...selectedPatient,
-                    attachments: [...(selectedPatient.attachments || []), att],
-                  }; // SAFE
-                  onUpdatePatient(up);
-                  setSelectedPatient(up);
-                  onLogActivity({
-                    action: "PATIENT_UPDATE",
-                    entityType: "patient",
-                    entityId: selectedPatient.id,
-                    patientId: selectedPatient.id,
-                    details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
-                  });
+                  showToast("Subiendo archivo...", "info");
+                  try {
+                    const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+                    const { storage } = await import("../firebase");
+                    const storageRef = ref(
+                      storage,
+                      `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`
+                    );
+                    await uploadBytes(storageRef, f);
+                    const downloadUrl = await getDownloadURL(storageRef);
+
+                    const att: Attachment = {
+                      id: generateId(),
+                      name: f.name,
+                      type: f.type.includes("image") ? "image" : "pdf",
+                      date: new Date().toISOString(),
+                      url: downloadUrl,
+                    };
+                    const up = {
+                      ...selectedPatient,
+                      attachments: [...(selectedPatient.attachments || []), att],
+                      lastUpdated: new Date().toISOString(),
+                    };
+                    onUpdatePatient(up);
+                    setSelectedPatient(up);
+                    showToast("Archivo subido correctamente", "success");
+                    onLogActivity({
+                      action: "update",
+                      details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
+                      targetId: selectedPatient.id,
+                    } as any);
+                  } catch (err) {
+                    console.error("Upload error", err);
+                    showToast("Error al subir archivo", "error");
+                  }
                 }
               }}
               onPreviewFile={setPreviewFile}
@@ -1190,7 +1302,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             />
 
             {/* MAIN CONTENT */}
-            <section className="lg:col-span-9 h-full overflow-y-auto bg-slate-50/30 p-6 lg:p-10">
+            <section className="lg:col-span-9 h-auto lg:h-full lg:overflow-y-auto bg-slate-50/30 p-4 lg:p-10">
               {!isCreatingConsultation && (
                 <div className="flex justify-between items-end mb-8">
                   <div>
@@ -1199,11 +1311,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <span className="bg-primary-100 text-primary-800 px-2 py-0.5 rounded text-xs uppercase font-bold">
                         {role}
                       </span>
-                      {selectedPatientConsultations.length}{" "}
-                      atenciones registradas
+                      {selectedPatientConsultations.length} atenciones registradas
                     </p>
                   </div>
-                  {!isReadOnly && (
+                  {!isReadOnly && role !== "KINESIOLOGO" && (
                     <button
                       onClick={() => setIsCreatingConsultation(true)}
                       disabled={!hasActiveCenter}
@@ -1213,7 +1324,267 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <Plus className="w-6 h-6" /> Nueva Atención
                     </button>
                   )}
+
+                  {/* KINESIOLOGY ACTIONS */}
+                  {!isReadOnly && role === "KINESIOLOGO" && (
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setIsKineProgramModalOpen(true)}
+                        disabled={!hasActiveCenter}
+                        className="bg-indigo-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-6 h-6" /> Nuevo Programa
+                      </button>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* KINESIOLOGY DASHBOARD OVERVIEW */}
+              {role === "KINESIOLOGO" &&
+                !isCreatingConsultation &&
+                (selectedPatient.kinesiologyPrograms?.length || 0) > 0 && (
+                  <div className="mb-8 space-y-4">
+                    <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">
+                      Programas Activos
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      {selectedPatient.kinesiologyPrograms?.map((prog) => (
+                        <div
+                          key={prog.id}
+                          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4"
+                        >
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}
+                                >
+                                  {prog.type}
+                                </span>
+                                <span className="text-xs text-slate-400 font-medium">
+                                  {new Date(prog.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
+                              <p className="text-slate-500 text-sm">
+                                {prog.sessions?.length || 0} / {prog.totalSessions} Sesiones
+                                realizadas
+                              </p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() =>
+                                  setExpandedProgramId(
+                                    expandedProgramId === prog.id ? null : prog.id
+                                  )
+                                }
+                                className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id
+                                  ? "bg-slate-100 text-slate-700"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                  }`}
+                              >
+                                <History className="w-4 h-4" />{" "}
+                                {expandedProgramId === prog.id
+                                  ? "Ocultar Historial"
+                                  : "Ver Historial"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedKineProgram(prog);
+                                  setIsKineSessionModalOpen(true);
+                                }}
+                                className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2"
+                              >
+                                <Activity className="w-4 h-4" /> Registrar Sesión
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* EXPANDED HISTORY */}
+                          {expandedProgramId === prog.id && (
+                            <div className="border-t border-slate-100 pt-4 animate-fadeIn">
+                              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+                                Historial de Sesiones
+                              </h5>
+                              {!prog.sessions || prog.sessions.length === 0 ? (
+                                <p className="text-sm text-slate-400 italic">
+                                  No hay sesiones registradas aún.
+                                </p>
+                              ) : (
+                                <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                                  {prog.sessions
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                                    ) // Newest first
+                                    .map((session, idx) => (
+                                      <div key={session.id || idx} className="relative pl-8">
+                                        <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                          <div className="flex justify-between items-start mb-2">
+                                            <span className="font-bold text-slate-700 text-sm">
+                                              Sesión #{session.sessionNumber}
+                                            </span>
+                                            <span className="text-xs text-slate-400">
+                                              {new Date(session.date).toLocaleDateString()}
+                                            </span>
+                                          </div>
+                                          <div className="text-sm text-slate-600 space-y-1">
+                                            {session.observations && (
+                                              <p>
+                                                <strong className="text-slate-500">Obs:</strong>{" "}
+                                                {session.observations}
+                                              </p>
+                                            )}
+                                            {session.techniques &&
+                                              session.techniques.length > 0 && (
+                                                <p>
+                                                  <strong className="text-slate-500">
+                                                    Técnicas:
+                                                  </strong>{" "}
+                                                  {session.techniques.join(", ")}
+                                                </p>
+                                              )}
+                                            <div className="flex gap-4 mt-2">
+                                              {session.tolerance && (
+                                                <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">
+                                                  Tol: {session.tolerance}
+                                                </span>
+                                              )}
+                                              {session.response && (
+                                                <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">
+                                                  Resp: {session.response}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* KINESIOLOGY UNIFIED DASHBOARD: Clinical Docs & Next Control inline */}
+              {role === "KINESIOLOGO" && !isCreatingConsultation && (
+                <div className="space-y-8 animate-fadeIn">
+                  {/* Document Manager */}
+                  <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
+                    <PrescriptionManager
+                      prescriptions={newConsultation.prescriptions || []}
+                      onAddPrescription={(doc) =>
+                        setNewConsultation((prev) => ({
+                          ...prev,
+                          prescriptions: [...(prev.prescriptions || []), doc],
+                        }))
+                      }
+                      onRemovePrescription={(id) =>
+                        setNewConsultation((prev) => ({
+                          ...prev,
+                          prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
+                        }))
+                      }
+                      onPrint={(docs) => {
+                        setDocsToPrint(docs);
+                        setIsPrintModalOpen(true);
+                      }}
+                      onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
+                      templates={myTemplates}
+                      role={role}
+                      currentDiagnosis={selectedPatient.kinesiologyPrograms?.[0]?.diagnosis || ""}
+                    />
+                  </div>
+
+                  {/* Next Control */}
+                  <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h4 className="text-secondary-900 font-bold text-lg uppercase tracking-wider mb-6 flex items-center gap-2">
+                      <Calendar className="w-5 h-5" /> Próximo Control
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div>
+                        <label className="block text-lg font-bold text-slate-700 mb-3">
+                          Fecha Estimada
+                        </label>
+                        <input
+                          type="date"
+                          value={newConsultation.nextControlDate}
+                          onChange={(e) =>
+                            setNewConsultation((prev) => ({
+                              ...prev,
+                              nextControlDate: e.target.value,
+                            }))
+                          }
+                          className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-lg font-bold text-slate-700 mb-3">
+                          Indicaciones / Requisitos
+                        </label>
+                        <input
+                          placeholder="Ej: Traer radiografía..."
+                          value={newConsultation.nextControlReason}
+                          onChange={(e) =>
+                            setNewConsultation((prev) => ({
+                              ...prev,
+                              nextControlReason: e.target.value,
+                            }))
+                          }
+                          className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-4 pb-12">
+                    <button
+                      onClick={async () => {
+                        const updatedPatient: Patient = await handleCreateConsultation();
+                        if (updatedPatient) {
+                          setSelectedPatient(updatedPatient);
+                        }
+                      }}
+                      disabled={
+                        !hasActiveCenter ||
+                        (!newConsultation.prescriptions?.length && !newConsultation.nextControlDate)
+                      }
+                      className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Save className="w-6 h-6" /> Guardar Gestión / Documentos
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* MODALS FOR KINE */}
+              {role === "KINESIOLOGO" && (
+                <>
+                  <StartProgramModal
+                    isOpen={isKineProgramModalOpen}
+                    onClose={() => setIsKineProgramModalOpen(false)}
+                    onConfirm={handleCreateKineProgram}
+                  />
+                  {selectedKineProgram && (
+                    <SessionModal
+                      isOpen={isKineSessionModalOpen}
+                      onClose={() => {
+                        setIsKineSessionModalOpen(false);
+                        setSelectedKineProgram(null);
+                      }}
+                      program={selectedKineProgram}
+                      sessionNumber={(selectedKineProgram.sessions?.length || 0) + 1}
+                      onSave={handleSaveKineSession}
+                    />
+                  )}
+                </>
               )}
 
               {isCreatingConsultation ? (
@@ -1237,6 +1608,26 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         Módulo de Signos Vitales deshabilitado por el administrador del centro.
                       </div>
                     )}
+                    {/* 1.5 Exam Sheets (New Tracking) */}
+                    {moduleGuards.exams && (
+                      <div className="mb-6">
+                        <ExamSheetsSection
+                          examSheets={newConsultation.examSheets || []}
+                          onChange={(sheets) =>
+                            setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))
+                          }
+                          examOptions={allExamOptions}
+                          availableProfiles={
+                            currentUser?.savedExamProfiles?.length
+                              ? currentUser.savedExamProfiles
+                              : EXAM_PROFILES
+                          }
+                          consultationHistory={selectedPatient.consultations || []}
+                          legacyExams={newConsultation.exams}
+                        />
+                      </div>
+                    )}
+
                     {canSeeVitals && moduleGuards.vitals && (
                       <VitalsForm
                         newConsultation={newConsultation}
@@ -1248,7 +1639,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         patientGender={selectedPatient.gender} // NEW
                         examOptions={allExamOptions} // PASS DYNAMIC OPTIONS
                         role={role} // PASS ROLE
-                        anthropometryEnabled={anthropometryEnabled}
+                        anthropometryEnabled={moduleGuards.vitals}
                       />
                     )}
 
@@ -1262,7 +1653,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <Odontogram
                         value={newConsultation.dentalMap || []}
                         onChange={(val) =>
-                          setNewConsultation({ ...newConsultation, dentalMap: val })
+                          setNewConsultation((prev) => ({ ...prev, dentalMap: val }))
+                        }
+                      />
+                    )}
+
+                    {isPodo && (
+                      <Podogram
+                        value={newConsultation.podogram || []}
+                        onChange={(val) =>
+                          setNewConsultation((prev) => ({ ...prev, podogram: val }))
                         }
                       />
                     )}
@@ -1271,41 +1671,41 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       <div className="col-span-full">
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          Motivo de Consulta
+                          {labels.reason}
                         </label>
                         <input
                           value={newConsultation.reason}
                           onChange={(e) =>
-                            setNewConsultation({ ...newConsultation, reason: e.target.value })
+                            setNewConsultation((prev) => ({ ...prev, reason: e.target.value }))
                           }
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none font-medium text-xl text-slate-800"
                         />
                       </div>
                       <div className={isPsych ? "col-span-full" : ""}>
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          {isPsych ? "Desarrollo de la Sesión / Evolución" : "Anamnesis Próxima"}
+                          {labels.anamnesis}
                         </label>
                         <textarea
                           value={newConsultation.anamnesis}
                           onChange={(e) =>
-                            setNewConsultation({ ...newConsultation, anamnesis: e.target.value })
+                            setNewConsultation((prev) => ({ ...prev, anamnesis: e.target.value }))
                           }
                           spellCheck={true}
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
                         />
                       </div>
-                      {!isPsych && (
+                      {labels.physical && (
                         <div>
                           <label className="block text-lg font-bold text-slate-700 mb-3">
-                            Examen Físico
+                            {labels.physical}
                           </label>
                           <textarea
                             value={newConsultation.physicalExam}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 physicalExam: e.target.value,
-                              })
+                              }))
                             }
                             spellCheck={true}
                             className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none resize-none h-60 text-lg leading-relaxed text-slate-700"
@@ -1314,12 +1714,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       )}
                       <div className="col-span-full">
                         <label className="block text-lg font-bold text-slate-700 mb-3">
-                          Diagnóstico / Hipótesis
+                          {labels.diagnosis}
                         </label>
                         <AutocompleteInput
                           value={newConsultation.diagnosis || ""}
                           onChange={(val) =>
-                            setNewConsultation({ ...newConsultation, diagnosis: val })
+                            setNewConsultation((prev) => ({ ...prev, diagnosis: val }))
                           }
                           options={COMMON_DIAGNOSES}
                           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none font-bold text-xl text-slate-800"
@@ -1345,18 +1745,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           <PrescriptionManager
                             prescriptions={newConsultation.prescriptions || []}
                             onAddPrescription={(doc) =>
-                              setNewConsultation({
-                                ...newConsultation,
-                                prescriptions: [...(newConsultation.prescriptions || []), doc],
-                              })
+                              setNewConsultation((prev) => ({
+                                ...prev,
+                                prescriptions: [...(prev.prescriptions || []), doc],
+                              }))
                             }
                             onRemovePrescription={(id) =>
-                              setNewConsultation({
-                                ...newConsultation,
-                                prescriptions: newConsultation.prescriptions?.filter(
-                                  (p) => p.id !== id
-                                ),
-                              })
+                              setNewConsultation((prev) => ({
+                                ...prev,
+                                prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
+                              }))
                             }
                             onPrint={(docs) => {
                               setDocsToPrint(docs);
@@ -1366,6 +1764,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
                             templates={myTemplates}
                             role={role}
+                            currentDiagnosis={newConsultation.diagnosis}
                           />
 
                           {!canPrescribeDrugs && (
@@ -1397,10 +1796,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             type="date"
                             value={newConsultation.nextControlDate}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 nextControlDate: e.target.value,
-                              })
+                              }))
                             }
                             className="w-full p-4 border-2 border-secondary-200 rounded-xl outline-none focus:border-secondary-500 bg-white text-lg"
                           />
@@ -1413,10 +1812,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             placeholder="Ej: Traer radiografía..."
                             value={newConsultation.nextControlReason}
                             onChange={(e) =>
-                              setNewConsultation({
-                                ...newConsultation,
+                              setNewConsultation((prev) => ({
+                                ...prev,
                                 nextControlReason: e.target.value,
-                              })
+                              }))
                             }
                             className="w-full p-4 border-2 border-secondary-200 rounded-xl outline-none focus:border-secondary-500 bg-white text-lg"
                           />
@@ -1457,7 +1856,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         </div>
                       )}
                       <button
-                        onClick={handleCreateConsultation}
+                        onClick={async () => {
+                          const updatedPatient: Patient = await handleCreateConsultation();
+                          if (updatedPatient) {
+                            setSelectedPatient(updatedPatient);
+                          }
+                        }}
                         disabled={!hasActiveCenter}
                         title={hasActiveCenter ? "Guardar atención" : "Selecciona un centro activo"}
                         className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all transform active:scale-95 flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1471,7 +1875,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 <>
                   {isUsingLegacyConsultations && (
                     <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-semibold">
-                      Mostrando historial legacy (patients.consultations). Las nuevas atenciones se guardan en subcolección.
+                      Mostrando historial legacy (patients.consultations). Las nuevas atenciones se
+                      guardan en subcolección.
                     </div>
                   )}
                   <ConsultationHistory
@@ -1501,15 +1906,15 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   return (
     <div className="flex flex-col h-screen font-sans">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-8 py-4 flex justify-between items-center sticky top-0 z-20 flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <LogoHeader size="md" showText={false} />
           <div>
             <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
             <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto justify-center">
           {activeCenter?.logoUrl && (
             <div className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
               <span className="text-slate-500 text-xs font-medium">Centro:</span>
@@ -1525,7 +1930,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               )}
             </div>
           )}
-          <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2">
+          <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-bold text-sm border border-blue-100 flex items-center gap-2 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
             {
               appointments.filter(
@@ -1546,7 +1951,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             onClick={onLogout}
             className="bg-white text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg font-bold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-2"
           >
-            <LogOut className="w-4 h-4" /> Salir
+            <LogOut className="w-4 h-4" /> <span className="hidden md:inline">Salir</span>
           </button>
         </div>
       </header>
@@ -1561,23 +1966,23 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === "settings" ? "" : "overflow-hidden"}`}
         >
           {/* Tabs */}
-          <div className="flex-shrink-0 px-8 pt-8 pb-4">
-            <div className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-fit shadow-sm">
+          <div className="flex-shrink-0 px-4 md:px-8 pt-4 md:pt-8 pb-4">
+            <div className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-full md:w-fit shadow-sm overflow-x-auto">
               <button
                 onClick={() => setActiveTab("patients")}
-                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "patients" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
+                className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "patients" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
               >
                 <UsersRound className="w-4 h-4" /> Pacientes
               </button>
               <button
                 onClick={() => setActiveTab("agenda")}
-                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "agenda" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
+                className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "agenda" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
               >
                 <CalendarCheck className="w-4 h-4" /> Mi Agenda
               </button>
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "settings" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
+                className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "settings" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
               >
                 <Settings className="w-4 h-4" /> Configuración
               </button>
@@ -1586,7 +1991,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
           {/* CONTENT AREA */}
           <div
-            className={`flex-1 px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}
+            className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-hidden"}`}
           >
             {/* CONTENT: PATIENTS LIST */}
             {activeTab === "patients" && (
@@ -1603,66 +2008,97 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+                  <div className="flex flex-wrap items-center gap-3 w-full justify-between">
+                    <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
                       <button
-                        onClick={() => setFilterNextControl("all")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        onClick={() => onSetPortfolioMode?.("global")}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "global" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                       >
-                        Todos
+                        <Layers className="w-4 h-4" />
+                        Cartera Global
                       </button>
                       <button
-                        onClick={() => setFilterNextControl("week")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        onClick={() => onSetPortfolioMode?.("center")}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "center" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                       >
-                        Control 7d
-                      </button>
-                      <button
-                        onClick={() => setFilterNextControl("month")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
-                      >
-                        Control 30d
+                        <History className="w-4 h-4" />
+                        Este Centro
                       </button>
                     </div>
-                    {!isReadOnly && (
-                      <button
-                        onClick={() => {
-                          if (!hasActiveCenter) {
-                            showToast(
-                              "Selecciona un centro activo para crear pacientes.",
-                              "warning"
-                            );
-                            return;
-                          }
-                          const newP: Patient = {
-                            id: generateId(),
-                            centerId: activeCenterId || "", // Set from active center (fallback empty)
-                            rut: "",
-                            fullName: "Nuevo Paciente",
-                            birthDate: new Date().toISOString(),
-                            gender: "Otro",
-                            medicalHistory: [],
-                            surgicalHistory: [],
-                            medications: [],
-                            allergies: [],
-                            consultations: [],
-                            attachments: [],
-                            livingWith: [],
-                            smokingStatus: "No fumador",
-                            alcoholStatus: "No consumo",
-                            lastUpdated: new Date().toISOString(),
-                            active: true,
-                          };
-                          setSelectedPatient(newP);
-                          setIsEditingPatient(true);
-                        }}
-                        disabled={!hasActiveCenter}
-                        title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
-                        className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
-                      >
-                        <Plus className="w-5 h-5" /> Nuevo Paciente
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+                        <button
+                          onClick={() => setFilterNextControl("all")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          onClick={() => setFilterNextControl("week")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Control 7d
+                        </button>
+                        <button
+                          onClick={() => setFilterNextControl("month")}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                        >
+                          Control 30d
+                        </button>
+                      </div>
+                      {!isReadOnly && (
+                        <>
+                          <DrivePicker
+                            clientId={import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID}
+                            apiKey={import.meta.env.VITE_FIREBASE_API_KEY}
+                          />
+                          <button
+                            onClick={() => {
+                              if (!hasActiveCenter) {
+                                showToast(
+                                  "Selecciona un centro activo para crear pacientes.",
+                                  "warning"
+                                );
+                                return;
+                              }
+                              const newP: Patient = {
+                                id: generateId(),
+                                centerId: activeCenterId || "",
+                                ownerUid: currentUser?.uid || "",
+                                accessControl: {
+                                  allowedUids: [currentUser?.uid || ""],
+                                  centerIds: activeCenterId ? [activeCenterId] : [],
+                                },
+                                rut: "",
+                                fullName: "Nuevo Paciente",
+                                birthDate: new Date().toISOString(),
+                                gender: "Otro",
+                                medicalHistory: [],
+                                surgicalHistory: [],
+                                medications: [],
+                                allergies: [],
+                                consultations: [],
+                                attachments: [],
+                                livingWith: [],
+                                smokingStatus: "No fumador",
+                                alcoholStatus: "No consumo",
+                                lastUpdated: new Date().toISOString(),
+                                active: true,
+                              };
+                              setSelectedPatient(newP);
+                              setIsEditingPatient(true);
+                            }}
+                            disabled={!hasActiveCenter}
+                            title={
+                              hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"
+                            }
+                            className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
+                          >
+                            <Plus className="w-5 h-5" /> Nuevo Paciente
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1747,7 +2183,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                   <span className="text-slate-300">-</span>
                                 )}
                               </td>
-                              
+
                               <td className="p-5 text-right relative">
                                 <div className="flex items-center justify-end gap-2">
                                   {(() => {
@@ -1795,10 +2231,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                                 ))}
                                               {whatsAppTemplates.filter((t) => t.enabled).length ===
                                                 0 && (
-                                                <div className="px-3 py-2 text-sm text-slate-500">
-                                                  No hay plantillas activas.
-                                                </div>
-                                              )}
+                                                  <div className="px-3 py-2 text-sm text-slate-500">
+                                                    No hay plantillas activas.
+                                                  </div>
+                                                )}
                                             </div>
                                           </div>
                                         )}
@@ -1824,67 +2260,119 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             {/* CONTENT: AGENDA VIEW */}
             {activeTab === "agenda" && moduleGuards.agenda && (
               <div className="h-full overflow-hidden">
-                <AgendaView
-                  currentMonth={currentMonth}
-                  selectedAgendaDate={selectedAgendaDate}
-                  appointments={appointments}
-                  doctorId={doctorId}
-                  agendaConfig={agendaConfig}
-                  isSyncingAppointments={isSyncingAppointments}
-                  onMonthChange={(inc) => {
-                    const newDate = new Date(currentMonth);
-                    newDate.setMonth(newDate.getMonth() + inc);
-                    setCurrentMonth(newDate);
-                  }}
-                  onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split("T")[0])}
-                  onToggleSlot={(time) => {
-                    if (isReadOnly) return;
-                    if (!hasActiveCenter) {
-                      showToast("Selecciona un centro activo para modificar la agenda.", "warning");
-                      return;
-                    }
-                    const date = selectedAgendaDate;
-                    if (!date) return;
+                {/* Doctor Selector for Administrativo / Secretary */}
+                {isAdministrativo && (
+                  <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <label className="text-xs font-bold text-amber-700 uppercase mb-2 block">
+                      Seleccionar Profesional para gestionar agenda
+                    </label>
+                    <select
+                      className="w-full bg-white border border-amber-300 rounded-lg p-3 text-slate-800 outline-none focus:border-amber-500 font-medium"
+                      value={viewingDoctorId}
+                      onChange={(e) => setViewingDoctorId(e.target.value)}
+                    >
+                      <option value="">-- Selecciona un profesional --</option>
+                      {clinicalDoctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName} ({d.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-                    const matchingSlots = appointments.filter(
-                      (a) =>
-                        ((a as any).doctorUid ?? a.doctorId) === doctorId &&
-                        a.date === date &&
-                        a.time === time
-                    );
-                    const bookedSlot = matchingSlots.find((slot) => slot.status === "booked");
+                {isAdministrativo && !viewingDoctorId ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <p className="text-lg">Selecciona un profesional para gestionar su agenda.</p>
+                  </div>
+                ) : (
+                  <AgendaView
+                    currentMonth={currentMonth}
+                    selectedAgendaDate={selectedAgendaDate}
+                    appointments={appointments}
+                    doctorId={effectiveDoctorId}
+                    agendaConfig={effectiveAgendaConfig}
+                    isSyncingAppointments={isSyncingAppointments}
+                    onMonthChange={(inc) => {
+                      const newDate = new Date(currentMonth);
+                      newDate.setMonth(newDate.getMonth() + inc);
+                      setCurrentMonth(newDate);
+                    }}
+                    onDateClick={(date) => setSelectedAgendaDate(date.toISOString().split("T")[0])}
+                    onToggleSlot={async (time) => {
+                      if (isReadOnly) return;
+                      if (!hasActiveCenter) {
+                        showToast(
+                          "Selecciona un centro activo para modificar la agenda.",
+                          "warning"
+                        );
+                        return;
+                      }
+                      const date = selectedAgendaDate;
+                      if (!date) return;
 
-                    if (bookedSlot) {
-                      setSlotModal({ isOpen: true, appointment: bookedSlot });
-                    } else if (matchingSlots.length > 0) {
-                      // Remove slot (Close it)
-                      const matchingIds = new Set(matchingSlots.map((slot) => slot.id));
-                      onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
-                      showToast("Bloque cerrado (horario bloqueado).", "info");
-                    } else {
-                      // Add slot (Open it)
-                      // NOTE: 'centerId' should technically come from currentUser context or App,
-                      // but App handles filtering. We add a placeholder here or rely on App's logic.
-                      // Ideally passed as prop, but empty string works if filtered by doctorId.
-                      const newSlot: Appointment = {
-                        id: generateId(),
-                        centerId: currentUser?.centerId || "",
-                        doctorId,
-                        doctorUid: doctorId,
-                        date,
-                        time,
-                        status: "available",
-                        patientName: "",
-                        patientRut: "",
-                        active: true,
-                      };
-                      onUpdateAppointments([...appointments, newSlot]);
-                      showToast("Bloque abierto disponible.", "success");
-                    }
-                  }}
-                  onOpenPatient={handleOpenPatientFromAppointment}
-                  readOnly={isReadOnly}
-                />
+                      const matchingSlots = appointments.filter(
+                        (a) =>
+                          ((a as any).doctorUid ?? a.doctorId) === effectiveDoctorId &&
+                          a.date === date &&
+                          a.time === time
+                      );
+                      const bookedSlot = matchingSlots.find((slot) => slot.status === "booked");
+
+                      if (bookedSlot) {
+                        setSlotModal({ isOpen: true, appointment: bookedSlot });
+                      } else if (matchingSlots.length > 0) {
+                        // Remove slot (Close it) — individual delete per slot
+                        const matchingIds = new Set(matchingSlots.map((slot) => slot.id));
+                        // Optimistic local state update
+                        onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
+                        // Individual Firestore deletes
+                        if (onDeleteAppointment) {
+                          for (const slot of matchingSlots) {
+                            try {
+                              await onDeleteAppointment(slot.id);
+                            } catch (e) {
+                              console.error("deleteSlot", e);
+                            }
+                          }
+                        }
+                        showToast("Bloque cerrado (horario bloqueado).", "info");
+                      } else {
+                        // Add slot (Open it) — individual write
+                        const newSlot: Appointment = {
+                          id: generateSlotId(
+                            currentUser?.centerId || activeCenterId || "",
+                            effectiveDoctorId,
+                            date,
+                            time
+                          ),
+                          centerId: currentUser?.centerId || activeCenterId || "",
+                          doctorId: effectiveDoctorId,
+                          doctorUid: effectiveDoctorId,
+                          date,
+                          time,
+                          status: "available",
+                          active: true,
+                          patientName: "",
+                          patientRut: "",
+                        };
+                        // Optimistic local state update
+                        onUpdateAppointments([...appointments, newSlot]);
+                        // Individual Firestore write
+                        if (onUpdateAppointment) {
+                          try {
+                            await onUpdateAppointment(newSlot);
+                          } catch (e) {
+                            console.error("createSlot", e);
+                          }
+                        }
+                        showToast("Bloque abierto disponible.", "success");
+                      }
+                    }}
+                    onOpenPatient={handleOpenPatientFromAppointment}
+                    readOnly={isReadOnly}
+                  />
+                )}
               </div>
             )}
 
@@ -1902,243 +2390,303 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* 1. EXAM PROFILES EDITOR */}
-                <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
-                  <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
-                  </h3>
-
-                  <div className="flex-1 overflow-hidden flex flex-col gap-6">
-                    {/* List */}
-                    <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4">
-                      {myExamProfiles.length === 0 && (
-                        <p className="text-slate-400 italic text-sm text-center py-4">
-                          No tiene perfiles configurados.
-                        </p>
-                      )}
-                      {myExamProfiles.map((profile) => (
-                        <div
-                          key={profile.id}
-                          className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-emerald-200 transition-all shadow-sm group"
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <h4 className="font-bold text-slate-700 text-sm">{profile.label}</h4>
-                              <p className="text-xs text-slate-400">
-                                {profile.description || "Sin descripción"}
-                              </p>
-                            </div>
-                            {!isReadOnly && (
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => handleEditProfile(profile)}
-                                  className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
-                                >
-                                  <Edit className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProfile(profile.id)}
-                                  className="p-1.5 hover:bg-red-50 text-red-500 rounded"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {profile.exams.map((ex) => {
-                              const def = allExamOptions.find((o) => o.id === ex);
-                              const label = def ? def.label.split("(")[0] : ex;
-                              return (
-                                <span
-                                  key={ex}
-                                  className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase"
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                {/* 0. GENERAL PREFERENCES */}
+                <div className="lg:col-span-12 bg-white/90 backdrop-blur-sm p-6 rounded-3xl border border-white shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-rose-100 text-rose-600 p-3 rounded-2xl">
+                      <Activity className="w-6 h-6" />
                     </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Módulo de Signos Vitales</h3>
+                      <p className="text-sm text-slate-500 max-w-xl">
+                        Habilita los campos de peso, talla, presión arterial y otros datos
+                        antropométricos en el formulario de nueva consulta.
+                        <span className="font-bold text-slate-700 ml-1">
+                          (Anula la configuración del centro)
+                        </span>
+                      </p>
+                    </div>
+                  </div>
 
-                    {/* Editor Form */}
-                    {!isReadOnly && (
-                      <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <div className="flex gap-2">
-                          <div className="flex-1 space-y-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase">
-                              Nombre Perfil
-                            </label>
-                            <input
-                              className="w-full p-2 border rounded-lg text-sm"
-                              placeholder="Ej: Control Diabetes"
-                              value={tempProfile.label}
-                              onChange={(e) =>
-                                setTempProfile({ ...tempProfile, label: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <label className="text-xs font-bold text-slate-400 uppercase">
-                              Descripción
-                            </label>
-                            <input
-                              className="w-full p-2 border rounded-lg text-sm"
-                              placeholder="Opcional..."
-                              value={tempProfile.description}
-                              onChange={(e) =>
-                                setTempProfile({ ...tempProfile, description: e.target.value })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        {/* Checkbox Grid */}
-                        <div>
-                          <label className="text-xs font-bold text-slate-400 uppercase block mb-1">
-                            Seleccionar Exámenes
-                          </label>
-                          <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
-                            {allExamOptions
-                              .filter((e) => !e.readOnly)
-                              .map((opt) => (
-                                <button
-                                  key={opt.id}
-                                  onClick={() => toggleExamInTempProfile(opt.id)}
-                                  className={`text-xs text-left px-2 py-1 rounded flex items-center gap-2 transition-colors ${tempProfile.exams.includes(opt.id) ? "bg-emerald-50 text-emerald-700 font-bold" : "text-slate-600 hover:bg-slate-50"}`}
-                                >
-                                  {tempProfile.exams.includes(opt.id) ? (
-                                    <CheckSquare className="w-3 h-3" />
-                                  ) : (
-                                    <Square className="w-3 h-3" />
-                                  )}
-                                  <span className="truncate">{opt.label}</span>
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={handleSaveProfile}
-                            className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm"
-                          >
-                            {isEditingProfileId ? "Guardar Cambios" : "Crear Perfil"}
-                          </button>
-                          {isEditingProfileId && (
-                            <button
-                              onClick={() => {
-                                setIsEditingProfileId(null);
-                                setTempProfile({ id: "", label: "", exams: [], description: "" });
-                              }}
-                              className="px-3 py-2 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 text-sm"
-                            >
-                              Cancelar
-                            </button>
-                          )}
-                        </div>
-                        <button
-                          onClick={handleResetProfiles}
-                          className="w-full text-xs text-slate-400 hover:text-emerald-600 flex justify-center items-center gap-1 mt-1"
-                        >
-                          <RefreshCw className="w-3 h-3" /> Restaurar predeterminados
-                        </button>
-                      </div>
-                    )}
+                  <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                    <button
+                      onClick={() => {
+                        onUpdateDoctor({
+                          ...currentUser,
+                          preferences: { ...currentUser.preferences, vitalsEnabled: true },
+                        });
+                        showToast("Signos vitales ACTIVADOS (Preferencia personal)", "success");
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${moduleGuards.vitals ? "bg-white text-emerald-600 shadow-sm border border-emerald-100" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      Activado
+                    </button>
+                    <button
+                      onClick={() => {
+                        onUpdateDoctor({
+                          ...currentUser,
+                          preferences: { ...currentUser.preferences, vitalsEnabled: false },
+                        });
+                        showToast("Signos vitales DESACTIVADOS (Preferencia personal)", "info");
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!moduleGuards.vitals ? "bg-white text-rose-600 shadow-sm border border-rose-100" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      Desactivado
+                    </button>
                   </div>
                 </div>
 
+                {/* 1. EXAM PROFILES EDITOR - ONLY FOR MEDICO */}
+                {role === "MEDICO" && (
+                  <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
+                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                      <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
+                    </h3>
+
+                    <div className="flex-1 overflow-hidden flex flex-col gap-6">
+                      {/* List */}
+                      <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4">
+                        {myExamProfiles.length === 0 && (
+                          <p className="text-slate-400 italic text-sm text-center py-4">
+                            No tiene perfiles configurados.
+                          </p>
+                        )}
+                        {myExamProfiles.map((profile) => (
+                          <div
+                            key={profile.id}
+                            className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-emerald-200 transition-all shadow-sm group"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <h4 className="font-bold text-slate-700 text-sm">
+                                  {profile.label}
+                                </h4>
+                                <p className="text-xs text-slate-400">
+                                  {profile.description || "Sin descripción"}
+                                </p>
+                              </div>
+                              {!isReadOnly && (
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => handleEditProfile(profile)}
+                                    className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProfile(profile.id)}
+                                    className="p-1.5 hover:bg-red-50 text-red-500 rounded"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {profile.exams.map((ex) => {
+                                const def = allExamOptions.find((o) => o.id === ex);
+                                const label = def ? def.label.split("(")[0] : ex;
+                                return (
+                                  <span
+                                    key={ex}
+                                    className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase"
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Editor Form */}
+                      {!isReadOnly && (
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                          <div className="flex gap-2">
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs font-bold text-slate-400 uppercase">
+                                Nombre Perfil
+                              </label>
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="Ej: Control Diabetes"
+                                value={tempProfile.label}
+                                onChange={(e) =>
+                                  setTempProfile({ ...tempProfile, label: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs font-bold text-slate-400 uppercase">
+                                Descripción
+                              </label>
+                              <input
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="Opcional..."
+                                value={tempProfile.description}
+                                onChange={(e) =>
+                                  setTempProfile({ ...tempProfile, description: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {/* Checkbox Grid */}
+                          <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase block mb-1">
+                              Seleccionar Exámenes
+                            </label>
+                            <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
+                              {allExamOptions
+                                .filter((e) => !e.readOnly)
+                                .map((opt) => (
+                                  <button
+                                    key={opt.id}
+                                    onClick={() => toggleExamInTempProfile(opt.id)}
+                                    className={`text-xs text-left px-2 py-1 rounded flex items-center gap-2 transition-colors ${tempProfile.exams.includes(opt.id) ? "bg-emerald-50 text-emerald-700 font-bold" : "text-slate-600 hover:bg-slate-50"}`}
+                                  >
+                                    {tempProfile.exams.includes(opt.id) ? (
+                                      <CheckSquare className="w-3 h-3" />
+                                    ) : (
+                                      <Square className="w-3 h-3" />
+                                    )}
+                                    <span className="truncate">{opt.label}</span>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={handleSaveProfile}
+                              className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                            >
+                              {isEditingProfileId ? "Guardar Cambios" : "Crear Perfil"}
+                            </button>
+                            {isEditingProfileId && (
+                              <button
+                                onClick={() => {
+                                  setIsEditingProfileId(null);
+                                  setTempProfile({ id: "", label: "", exams: [], description: "" });
+                                }}
+                                className="px-3 py-2 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 text-sm"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleResetProfiles}
+                            className="w-full text-xs text-slate-400 hover:text-emerald-600 flex justify-center items-center gap-1 mt-1"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Restaurar predeterminados
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* 1.5 CUSTOM EXAM CREATION (NEW) */}
                 <div className="lg:col-span-6 space-y-8">
-                  {/* NEW: CREATE CUSTOM EXAM */}
-                  <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-auto">
-                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen
-                    </h3>
-                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
-                      <p className="text-xs text-purple-700 mb-2">
-                        Cree un examen personalizado si no está en la lista estándar.
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          className="flex-1 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
-                          placeholder="Nombre (ej: Estradiol)"
-                          value={newCustomExam.label}
-                          onChange={(e) =>
-                            setNewCustomExam({ ...newCustomExam, label: e.target.value })
-                          }
-                        />
-                        <input
-                          className="w-24 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
-                          placeholder="Unidad"
-                          value={newCustomExam.unit}
-                          onChange={(e) =>
-                            setNewCustomExam({ ...newCustomExam, unit: e.target.value })
-                          }
-                        />
-                      </div>
-                      <select
-                        className="w-full p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500 bg-white"
-                        value={newCustomExam.category}
-                        onChange={(e) =>
-                          setNewCustomExam({ ...newCustomExam, category: e.target.value })
-                        }
-                      >
-                        <option value="">Seleccione Categoría</option>
-                        <option value="Metabólico">Metabólico</option>
-                        <option value="Hormonal">Hormonal</option>
-                        <option value="Hematológico">Hematológico</option>
-                        <option value="Cardíaco">Cardíaco</option>
-                        <option value="Otro">Otro</option>
-                      </select>
-                      <button
-                        onClick={handleCreateCustomExam}
-                        className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                      >
-                        Agregar a la Lista
-                      </button>
-                    </div>
-
-                    {/* LIST OF CUSTOM EXAMS */}
-                    {currentUser?.customExams && currentUser.customExams.length > 0 && (
-                      <div className="mt-4 border-t border-slate-100 pt-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
-                          Mis Exámenes Personalizados
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {currentUser.customExams.map((ex) => (
-                            <span
-                              key={ex.id}
-                              className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 border border-purple-200"
-                            >
-                              {ex.label} ({ex.unit})
-                              <button
-                                onClick={() => handleDeleteCustomExam(ex.id)}
-                                className="hover:text-red-500"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          ))}
+                  {/* NEW: CREATE CUSTOM EXAM - ONLY FOR MEDICO */}
+                  {role === "MEDICO" && (
+                    <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-auto">
+                      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen
+                      </h3>
+                      <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
+                        <p className="text-xs text-purple-700 mb-2">
+                          Cree un examen personalizado si no está en la lista estándar.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+                            placeholder="Nombre (ej: Estradiol)"
+                            value={newCustomExam.label}
+                            onChange={(e) =>
+                              setNewCustomExam({ ...newCustomExam, label: e.target.value })
+                            }
+                          />
+                          <input
+                            className="w-24 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+                            placeholder="Unidad"
+                            value={newCustomExam.unit}
+                            onChange={(e) =>
+                              setNewCustomExam({ ...newCustomExam, unit: e.target.value })
+                            }
+                          />
                         </div>
+                        <select
+                          className="w-full p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500 bg-white"
+                          value={newCustomExam.category}
+                          onChange={(e) =>
+                            setNewCustomExam({ ...newCustomExam, category: e.target.value })
+                          }
+                        >
+                          <option value="">Seleccione Categoría</option>
+                          <option value="Metabólico">Metabólico</option>
+                          <option value="Hormonal">Hormonal</option>
+                          <option value="Hematológico">Hematológico</option>
+                          <option value="Cardíaco">Cardíaco</option>
+                          <option value="Otro">Otro</option>
+                        </select>
+                        <button
+                          onClick={handleCreateCustomExam}
+                          className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                        >
+                          Agregar a la Lista
+                        </button>
                       </div>
-                    )}
-                  </div>
+
+                      {/* LIST OF CUSTOM EXAMS */}
+                      {currentUser?.customExams && currentUser.customExams.length > 0 && (
+                        <div className="mt-4 border-t border-slate-100 pt-4">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                            Mis Exámenes Personalizados
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {currentUser.customExams.map((ex) => (
+                              <span
+                                key={ex.id}
+                                className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 border border-purple-200"
+                              >
+                                {ex.label} ({ex.unit})
+                                <button
+                                  onClick={() => handleDeleteCustomExam(ex.id)}
+                                  className="hover:text-red-500"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* 2. CLINICAL TEMPLATES EDITOR */}
                   <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col min-h-[300px]">
-                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <FileText className="w-6 h-6 text-slate-400" /> Mis Plantillas Clínicas
-                    </h3>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <FileText className="w-6 h-6 text-slate-400" /> Mis Plantillas Clínicas
+                      </h3>
+                      <button
+                        onClick={() => setIsCatalogOpen(true)}
+                        className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
+                      >
+                        <Book className="w-3 h-3" /> Explorar Catálogo
+                      </button>
+                    </div>
 
                     <div className="flex-1 overflow-hidden flex flex-col gap-6">
                       {/* List */}
                       <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4 max-h-40">
                         {myTemplates.length === 0 && (
                           <p className="text-center text-slate-400 text-sm italic py-4">
-                            No tiene plantillas.
+                            No tiene plantillas. Importe desde el catálogo o cree una.
                           </p>
                         )}
                         {myTemplates.map((t) => (
@@ -2224,6 +2772,158 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* CATALOG MODAL */}
+                  {isCatalogOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
+                      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                          <div>
+                            <h3 className="font-bold text-lg text-slate-800">
+                              Catálogo de Plantillas
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Importe plantillas estándar a su colección personal
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setIsCatalogOpen(false)}
+                            className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                          >
+                            <X className="w-5 h-5 text-slate-500" />
+                          </button>
+                        </div>
+
+                        <div className="p-4 border-b border-slate-100 bg-white space-y-3">
+                          {/* Search */}
+                          <div className="relative">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                            <input
+                              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500"
+                              placeholder="Buscar plantilla (ej: Amigdalitis, HTA)..."
+                              value={catalogSearch}
+                              onChange={(e) => setCatalogSearch(e.target.value)}
+                            />
+                          </div>
+
+                          {/* Category Filter Chips */}
+                          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                            {(role === "KINESIOLOGO"
+                              ? [
+                                { id: "all", label: "Todas" },
+                                { id: "Respiratoria", label: "Patología Respiratoria" },
+                                {
+                                  id: "Musculoesquelética EE.SS",
+                                  label: "Músculo Esquelética EE.SS",
+                                },
+                                {
+                                  id: "Musculoesquelética EE.II",
+                                  label: "Músculo Esquelética EE.II",
+                                },
+                                { id: "Columna", label: "Patología Columna" },
+                                { id: "Neurología", label: "Neurología" },
+                                { id: "Deporte", label: "Deporte" },
+                              ]
+                              : [
+                                { id: "all", label: "Todas" },
+                                { id: "Traumatología", label: "Traumatología" },
+                                { id: "Respiratorio", label: "Respiratorio" },
+                                { id: "Salud Mental", label: "Salud Mental" },
+                                { id: "Cirugía", label: "Cirugía" },
+                                { id: "Gastro", label: "Gastroenterología" },
+                                { id: "Diabetes", label: "Metabólico" },
+                              ]
+                            ).map((chip) => (
+                              <button
+                                key={chip.id}
+                                onClick={() => setCatalogSearch(chip.id === "all" ? "" : chip.id)}
+                                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-bold border transition-colors ${(chip.id === "all" && catalogSearch === "") ||
+                                  (chip.id !== "all" && catalogSearch.includes(chip.id))
+                                  ? "bg-indigo-100 text-indigo-700 border-indigo-200"
+                                  : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                              >
+                                {chip.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+                          {DEFAULT_CLINICAL_TEMPLATES.filter((t) => t.category !== "certificate") // Hide certificates (they are global)
+                            // Filter by Role (Legacy check via roles array)
+                            .filter((t) => !t.roles || t.roles.includes(role))
+                            .filter((t) => {
+                              const searchLower = catalogSearch.toLowerCase();
+                              if (!searchLower) return true;
+
+                              // Check tags first (Robust filtering)
+                              if (
+                                t.tags &&
+                                t.tags.some((tag) => tag.toLowerCase().includes(searchLower))
+                              ) {
+                                return true;
+                              }
+
+                              // Legacy manual mapping fallback for non-tagged templates
+                              if (searchLower === "respiratorio")
+                                return (
+                                  t.content.toLowerCase().includes("respiratoria") ||
+                                  t.title.toLowerCase().includes("resfrío") ||
+                                  t.title.toLowerCase().includes("amigdalitis")
+                                );
+                              if (searchLower === "gastro")
+                                return (
+                                  t.content.toLowerCase().includes("gastro") ||
+                                  t.title.toLowerCase().includes("gastro")
+                                );
+                              if (searchLower === "diabetes")
+                                return t.title.toLowerCase().includes("diabetes");
+                              if (searchLower === "salud mental")
+                                return (
+                                  t.title.toLowerCase().includes("ansiedad") ||
+                                  t.title.toLowerCase().includes("depresión")
+                                );
+                              if (searchLower === "traumatología")
+                                return (
+                                  t.content.toLowerCase().includes("traumatología") ||
+                                  t.title.toLowerCase().includes("lumbago") ||
+                                  t.title.toLowerCase().includes("esguince")
+                                );
+
+                              // General search
+                              return (
+                                t.title.toLowerCase().includes(searchLower) ||
+                                t.content.toLowerCase().includes(searchLower)
+                              );
+                            })
+                            .map((t) => (
+                              <div
+                                key={t.id}
+                                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2"
+                              >
+                                <div className="flex justify-between items-start">
+                                  <span className="font-bold text-slate-800">{t.title}</span>
+                                  <button
+                                    onClick={() => handleImportTemplate(t)}
+                                    className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors"
+                                  >
+                                    Importar
+                                  </button>
+                                </div>
+                                <p className="text-xs text-slate-500 line-clamp-2">{t.content}</p>
+                              </div>
+                            ))}
+                          {DEFAULT_CLINICAL_TEMPLATES.filter((t) => t.category !== "certificate")
+                            .length === 0 && (
+                              <p className="text-center text-slate-400 text-sm py-4">
+                                No hay plantillas disponibles.
+                              </p>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. ACCOUNT SECURITY (NEW) */}
@@ -2361,9 +3061,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
                       )}
                       {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
-                        <div className="text-xs text-slate-400">
-                          No hay plantillas habilitadas.
-                        </div>
+                        <div className="text-xs text-slate-400">No hay plantillas habilitadas.</div>
                       )}
                       <div className="flex flex-col gap-2">
                         {enabledWhatsappTemplates.map((template) => {
@@ -2396,9 +3094,18 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           </div>
         </div>
       </main>
+      {/* FEEDBACK BUTTON (Floating) */}
+      <a
+        href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%A9%20el%20siguiente%20problema%3A%0A%0A"
+        className="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-900 transition-colors flex items-center gap-2 z-50 text-sm font-medium"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
+        Reportar Problema
+      </a>
     </div>
   );
 };
-
 
 export default ProfessionalDashboard;

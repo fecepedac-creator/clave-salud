@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { db, auth } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp, runTransaction, getDoc } from "firebase/firestore";
 import { Appointment, Doctor, Patient, ViewMode } from "../types";
 import {
   extractChileanPhoneDigits,
@@ -107,12 +107,23 @@ export function useBooking(
       (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
     );
     const patientId = existingPatient?.id ?? generateId();
-    
-    // For public booking (no auth), use explicit field update without merge
-    if (!auth.currentUser) {
-      await updateDoc(
-        doc(db, "centers", activeCenterId, "appointments", selectedSlot.appointmentId),
-        {
+
+    // ---- TRANSACTIONAL BOOKING (prevents double bookings) ----
+    const apptRef = doc(db, "centers", activeCenterId, "appointments", selectedSlot.appointmentId);
+    let bookedAppointment: Appointment;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const apptSnap = await transaction.get(apptRef);
+        if (!apptSnap.exists()) {
+          throw new Error("El horario ya no existe. El profesional puede haberlo cerrado recientemente.");
+        }
+        const currentData = apptSnap.data() as Appointment;
+        if (currentData?.status !== "available") {
+          throw new Error("Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque.");
+        }
+
+        transaction.update(apptRef, {
           status: "booked",
           patientName: name,
           patientRut: formattedRut,
@@ -120,10 +131,10 @@ export function useBooking(
           patientPhone: phone,
           patientEmail: email || null,
           bookedAt: serverTimestamp(),
-        }
-      );
-      
-      const bookedAppointment: Appointment = {
+        });
+      });
+
+      bookedAppointment = {
         ...slotAppointment,
         status: "booked",
         patientName: name,
@@ -131,36 +142,29 @@ export function useBooking(
         patientId,
         patientPhone: phone,
         patientEmail: email || undefined,
-        bookedAt: serverTimestamp(),
-        active: slotAppointment.active ?? true,
-      };
-      
-      setAppointments((prev) =>
-        prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
-      );
-    } else {
-      // For authenticated users, use the normal updateAppointment flow
-      const bookedAppointment: Appointment = {
-        ...slotAppointment,
-        status: "booked",
-        patientName: name,
-        patientRut: formattedRut,
-        patientId,
-        patientPhone: phone,
-        patientEmail: email || undefined,
-        bookedAt: serverTimestamp(),
+        bookedAt: new Date().toISOString(),
         active: slotAppointment.active ?? true,
       };
 
-      await updateAppointment(bookedAppointment);
       setAppointments((prev) =>
         prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
       );
+    } catch (txError: unknown) {
+      const message = txError instanceof Error ? txError.message : "No se pudo completar la reserva.";
+      showToast(message, "error");
+      return;
     }
 
     if (activeCenterId && !existingPatient) {
+      // Assign patient to the DOCTOR (not the person booking)
+      const doctorUid = selectedDoctorForBooking.id;
       const patientPayload: Patient = {
         id: patientId,
+        ownerUid: doctorUid,
+        accessControl: {
+          allowedUids: [doctorUid],
+          centerIds: activeCenterId ? [activeCenterId] : [],
+        },
         centerId: activeCenterId,
         rut: formattedRut,
         fullName: name,
@@ -179,7 +183,7 @@ export function useBooking(
         lastUpdated: new Date().toISOString(),
         active: true,
       };
-      await setDoc(doc(db, "centers", activeCenterId, "patients", patientId), patientPayload);
+      await setDoc(doc(db, "patients", patientId), patientPayload);
     }
 
     if (!auth.currentUser) {
@@ -296,7 +300,7 @@ export function useBooking(
       const cancelled = await cancelPatientAppointment(appointment);
       if (!cancelled) return;
       const doctor = doctors.find(
-        (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
+        (doc) => doc.id === (appointment.doctorUid ?? appointment.doctorId)
       );
       if (doctor) {
         setSelectedRole(String(doctor.clinicalRole || doctor.specialty || doctor.role || ""));

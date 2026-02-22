@@ -1,5 +1,18 @@
 import type { Timestamp } from "firebase/firestore";
 
+/**
+ * Representa un valor de fecha compatible con Firestore y Serialización JSON.
+ * Se usa para tipar campos que vienen de Firestore como Timestamp pero se
+ * transforman a string (ISO) en el frontend, o viceversa.
+ */
+export type FirestoreDateLike = Timestamp | string | Date | null;
+
+/**
+ * Representa un mapa de datos JSON-safe para metadatos o configuraciones dinámicas.
+ */
+export type JsonValue = string | number | boolean | null | undefined | JsonMap | JsonValue[];
+export type JsonMap = { [key: string]: JsonValue };
+
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -12,7 +25,7 @@ export interface MedicalCenter {
   isActive: boolean; // If false, access is blocked
   isPinned?: boolean; // To pin important centers to top
   maxUsers: number; // Limit number of doctors
-  allowedRoles: AnyRole[]; // Only these roles can be created // Only these roles can be created
+  allowedRoles: AnyRole[]; // Only these roles can be created
   modules: {
     dental: boolean; // Enables Odontogram
     prescriptions: boolean; // Enables Prescription Manager
@@ -37,6 +50,17 @@ export interface MedicalCenter {
     currency: "UF" | "CLP";
     lastPaymentDate?: string;
     status: "active" | "late" | "suspended";
+  };
+
+  // --- Aggregated Stats (Cloud Functions) ---
+  stats?: {
+    staffCount?: number;
+    patientCount?: number;
+    appointmentCount?: number;
+    consultationCount?: number;
+    totalPatients?: number; // Aliased for SuperAdminDashboard logic
+    totalStaff?: number; // Aliased for SuperAdminDashboard logic
+    updatedAt?: FirestoreDateLike;
   };
 }
 
@@ -72,7 +96,7 @@ export type AuditAction =
 export interface AuditLogEntry {
   id: string;
   centerId: string;
-  timestamp: string | Timestamp;
+  timestamp: FirestoreDateLike;
   actorUid?: string;
   actorName?: string; // Who did it
   actorRole?: string;
@@ -81,7 +105,7 @@ export interface AuditLogEntry {
   entityType: AuditEntityType;
   entityId: string;
   patientId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
   details?: string;
   targetId?: string; // legacy compatibility
 }
@@ -91,7 +115,7 @@ export type AuditLogEvent = {
   entityType: AuditEntityType;
   entityId: string;
   patientId?: string;
-  metadata?: Record<string, any>;
+  metadata?: JsonMap;
   details?: string;
 };
 
@@ -127,13 +151,13 @@ export interface Attachment {
 export interface Prescription {
   id: string;
   type:
-    | "Receta Médica"
-    | "Receta Retenida"
-    | "Interconsulta"
-    | "Certificado"
-    | "Indicaciones"
-    | "Solicitud de Examen"
-    | "OrdenExamenes";
+  | "Receta Médica"
+  | "Receta Retenida"
+  | "Interconsulta"
+  | "Certificado"
+  | "Indicaciones"
+  | "Solicitud de Examen"
+  | "OrdenExamenes";
   content: string;
   createdAt: string;
   category?: "lab_general" | "inmuno" | "cardio" | "pulmonar" | "imagenes";
@@ -147,6 +171,9 @@ export interface Prescription {
   notes?: string;
   createdBy?: string;
   status?: "draft" | "final";
+  metadata?: {
+    selectedExams?: string[];
+  } & JsonMap;
 }
 
 export interface ClinicalTemplate {
@@ -154,6 +181,10 @@ export interface ClinicalTemplate {
   title: string;
   content: string;
   roles?: RoleId[];
+  userId?: string;
+  createdAt?: string;
+  category?: "indication" | "certificate";
+  tags?: string[];
 }
 
 export interface WhatsappTemplate {
@@ -161,6 +192,7 @@ export interface WhatsappTemplate {
   title: string;
   body: string;
   enabled: boolean;
+  updatedAt?: FirestoreDateLike;
 }
 
 // NEW INTERFACE FOR CUSTOM EXAMS
@@ -185,10 +217,29 @@ export interface ToothState {
   notes?: string;
 }
 
+export interface NailState {
+  id: string; // e.g. "L1" (Left 1, Big toe), "R5" (Right 5, Little toe)
+  status:
+  | "Sana"
+  | "Onicomicosis"
+  | "Onicocriptosis"
+  | "Onicogrifosis"
+  | "Ausente"
+  | "Atrofica"
+  | "Traumatica";
+  notes?: string;
+}
+
+export interface ExamSheet {
+  id: string;
+  date: string; // YYYY-MM-DD
+  exams: Record<string, string>;
+}
+
 export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
-  createdAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
   patientId?: string;
   centerId?: string;
   createdBy?: string;
@@ -197,6 +248,7 @@ export interface Consultation extends SoftDeletable {
   height?: string;
   bmi?: string;
   bloodPressure?: string;
+  heartRate?: string; // Frecuencia Cardiaca
   hgt?: string;
 
   // --- New Anthropometry Fields ---
@@ -205,6 +257,7 @@ export interface Consultation extends SoftDeletable {
 
   // --- Dynamic Exams ---
   exams?: Record<string, string>; // Stores values like { 'hba1c': '7.5', 'creatinina': '1.2' }
+  examSheets?: ExamSheet[];
 
   reason: string;
   anamnesis: string;
@@ -212,6 +265,7 @@ export interface Consultation extends SoftDeletable {
   diagnosis: string;
 
   dentalMap?: ToothState[];
+  podogram?: NailState[];
 
   prescriptions: Prescription[];
   professionalName: string;
@@ -227,9 +281,14 @@ export interface Consultation extends SoftDeletable {
 export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
-  createdAt?: Timestamp;
-  careTeamUids?: string[];
-  careTeamUpdatedAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
+  ownerUid?: string; // UID of the professional who owns this patient
+  accessControl?: {
+    allowedUids: string[]; // Professional UIDs who can view/edit
+    centerIds: string[]; // Center IDs where admins can manage
+  };
+  careTeamUids?: string[]; // UIDs of professionals explicitly involved in care
+  careTeamUpdatedAt?: FirestoreDateLike;
   careTeamUpdatedBy?: string;
   rut: string;
   fullName: string;
@@ -269,15 +328,63 @@ export interface Patient extends SoftDeletable {
   allergies: Allergy[];
 
   consultations: Consultation[];
+  kinePrograms?: KinesiologyProgram[];
+  whatsAppTemplates?: WhatsappTemplate[];
   attachments: Attachment[];
 
   lastUpdated: string;
+  consent?: boolean;
+  consentDate?: string;
+
+  // --- Google Drive Integration ---
+  driveFileId?: string;
+  driveFileLink?: string;
+}
+
+export interface KinesiologyProgram {
+  id: string;
+  patientId: string;
+  type: "Kinesioterapia motora" | "Kinesioterapia respiratoria";
+  diagnosis: string;
+  clinicalCondition: string;
+  objectives: string[];
+  totalSessions: number;
+  sessions: KinesiologySession[]; // Embedded sessions or linked by ID? Embedded is easier for NoSQL.
+  createdAt: string;
+  status: "active" | "completed";
+  professionalName: string;
+}
+
+export interface KinesiologySession {
+  id: string;
+  date: string;
+  sessionNumber: number;
+
+  // Techniques (handled as string list)
+  techniques: string[];
+
+  // Motora Fields
+  vitals?: {
+    pre: { pa: string; fc: string };
+    post: { pa: string; fc: string };
+  };
+
+  // Respiratoria Fields
+  oxygenation?: {
+    pre: { sat: string; fc: string };
+    post: { sat: string; fc: string };
+  };
+  secretions?: "Si" | "No";
+
+  tolerance: "Buena" | "Regular" | "Mala";
+  response: "Mejoría" | "Igual" | "Empeora";
+  observations: string;
 }
 
 export interface Appointment extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
-  createdAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
   doctorId: string;
   doctorUid?: string;
   date: string;
@@ -287,8 +394,8 @@ export interface Appointment extends SoftDeletable {
   patientId?: string;
   patientPhone?: string;
   patientEmail?: string;
-  bookedAt?: any;
-  cancelledAt?: any;
+  bookedAt?: FirestoreDateLike;
+  cancelledAt?: FirestoreDateLike;
   status: "available" | "booked";
 }
 
@@ -305,7 +412,7 @@ export interface Preadmission {
   };
   source?: "public" | "staff";
   submittedByUid?: string | null;
-  createdAt?: any;
+  createdAt?: FirestoreDateLike;
   status?: "pending" | "approved" | "rejected";
 }
 
@@ -332,19 +439,20 @@ export type RoleId =
   | "PREPARADOR_FISICO"
   | "MATRONA"
   | "ODONTOLOGO"
-  | "QUIMICO_FARMACEUTICO";
+  | "QUIMICO_FARMACEUTICO"
+  | "SUPER_ADMIN";
 
 /**
  * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
  * Mantener compatibilidad con roles legacy definidos en RoleId.
  */
-export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor";
+export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor" | "staff";
 
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
  * Útil mientras migramos componentes gradualmente.
  */
-export type AnyRole = RoleId | CanonicalRole | "superadmin" | "Administrador" | "Admin";
+export type AnyRole = RoleId | CanonicalRole | "superadmin" | "SUPERADMIN" | "Administrador" | "Admin";
 
 /**
  * @deprecated Mantener por compatibilidad. Usar RoleId.
@@ -372,6 +480,10 @@ export interface Doctor {
   savedTemplates?: ClinicalTemplate[];
   savedExamProfiles?: ExamProfile[];
   customExams?: ExamDefinition[]; // NEW: Allows doctor to define their own exams
+  preferences?: {
+    vitalsEnabled?: boolean;
+    // can add more user-specific settings here
+  };
 }
 
 export interface CenterInvite {
@@ -382,10 +494,10 @@ export interface CenterInvite {
   role: AnyRole;
   /** Roles múltiples (preferido). Si existe, úsalo sobre `role`. */
   roles?: AnyRole[];
-  createdAt?: any;
+  createdAt?: FirestoreDateLike;
   createdBy?: string; // uid
   status?: "pending" | "claimed" | "revoked";
-  claimedAt?: any;
+  claimedAt?: FirestoreDateLike;
   claimedBy?: string; // uid
   photoUrl?: string;
 }
@@ -410,11 +522,21 @@ export type ViewMode =
   | "terms"
   | "privacy";
 
-
-// -------------------- WhatsApp Templates (per center) --------------------
-export type WhatsAppTemplate = {
-  id: string;
-  title: string;
-  body: string;
-  enabled?: boolean;
-};
+/**
+ * Representa el perfil global del usuario autenticado (desde /users/{uid}).
+ */
+export interface UserProfile {
+  id: string; // Habitualmente el UID
+  uid: string;
+  email: string;
+  fullName: string;
+  roles: AnyRole[];
+  centers: string[]; // IDs de centros donde tiene acceso
+  centros?: string[]; // Compatibilidad legacy con 'centers'
+  isAdmin?: boolean; // Si tiene permisos administrativos globales o en algún centro
+  role?: string; // Role principal para mostrar en UI
+  displayName?: string;
+  photoURL?: string;
+  activeCenterId?: string | null;
+  activo?: boolean;
+}

@@ -239,7 +239,7 @@ export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
 3. Clorfenamina 4mg: 1 comprimido cada 12 horas x 3 días.
 4. Abundante líquido (2 litros al día).
 5. Consultar urgencia SOS: Fiebre > 39°C o dificultad respiratoria.`,
-    roles: ["MEDICO", "ENFERMERA"],
+    roles: ["MEDICO", "ENFERMERA", "TENS"],
   },
   {
     id: "med_gastro",
@@ -250,7 +250,7 @@ export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
 3. Probióticos: 1 dosis al día x 5 días.
 4. Viadil (Pargeverina): 40 gotas cada 8 hrs si hay dolor abdominal.
 5. SOS Urgencia: Deshidratación severa o sangre en deposiciones.`,
-    roles: ["MEDICO", "ENFERMERA"],
+    roles: ["MEDICO", "ENFERMERA", "TENS"],
   },
   {
     id: "med_hta",
@@ -285,7 +285,7 @@ export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
 2. Uso de seda dental antes de dormir (fundamental entre molares).
 3. Disminuir consumo de azúcares y bebidas carbonatadas.
 4. Control semestral.`,
-    roles: ["ODONTOLOGO"],
+    roles: ["ODONTOLOGO", "TENS"], // TENS auxiliar dental
   },
   {
     id: "odo_antibiotico",
@@ -294,7 +294,7 @@ export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
 1. Amoxicilina 500mg: 1 cápsula cada 8 horas por 7 días.
 2. Metronidazol 500mg: 1 comprimido cada 8 horas por 7 días.
 3. Ketorolaco 10mg: 1 comprimido cada 8 horas por 3 días (solo dolor).
-* Tomar con estómago lleno. No suspender aunque se sienta mejor.`,
+4. Tomar con estómago lleno. No suspender aunque se sienta mejor.`,
     roles: ["ODONTOLOGO"],
   },
 
@@ -307,7 +307,7 @@ export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
 2. Ejercicio 1: "Lomo de gato" (movilidad suave en 4 apoyos), 3 series de 10.
 3. Ejercicio 2: Elongación isquiotibiales (acostado, llevar pierna arriba con toalla), mantener 20 seg x 3 veces.
 4. Evitar reposo absoluto en cama; mantener movilidad suave según tolerancia.`,
-    roles: ["KINESIOLOGO", "TERAPEUTA_OCUPACIONAL"],
+    roles: ["KINESIOLOGO", "TERAPEUTA_OCUPACIONAL", "PREPARADOR_FISICO"],
   },
   {
     id: "kine_esguince",
@@ -318,7 +318,7 @@ I (Hielo): Frio local 15 min cada 4 horas (no directo a piel).
 C (Compresión): Vendaje elástico suave si hay edema.
 E (Elevación): Pie en alto al estar acostado.
 * Iniciar movilidad de dedos inmediatamente.`,
-    roles: ["KINESIOLOGO"],
+    roles: ["KINESIOLOGO", "PREPARADOR_FISICO"],
   },
   {
     id: "kine_resp",
@@ -366,7 +366,7 @@ Columnas:
 3. Humectar piel (crema urea) pero NUNCA entre los dedos.
 4. Corte de uñas recto, limar bordes.
 5. Usar calcetines sin costuras y calzado ancho.`,
-    roles: ["PODOLOGO", "ENFERMERA"],
+    roles: ["PODOLOGO", "ENFERMERA", "TENS", "MEDICO"],
   },
   {
     id: "pod_onicocriptosis",
@@ -382,8 +382,22 @@ INDICACIONES:
 - Control en 48 horas si hay dolor excesivo.`,
     roles: ["PODOLOGO"],
   },
+  {
+    id: "pod_heloma",
+    title: "Resección de Heloma (Callos)",
+    content: `PROCEDIMIENTO:
+1. Asepsia de la zona.
+2. Deslaminado de hiperqueratosis (bisturí/gubia).
+3. Enucleación de heloma.
+4. Pulido de la zona.
+5. Aplicación de crema humectante.
+INDICACIONES:
+- Uso de calzado amortiguado.
+- Hidratación diaria.`,
+    roles: ["PODOLOGO"],
+  },
 
-  // --- ENFERMERÍA ---
+  // --- ENFERMERÍA / TENS ---
   {
     id: "enf_curacion",
     title: "Curación Herida Simple",
@@ -394,21 +408,38 @@ INDICACIONES:
 4. Piel circundante limpia y seca.
 5. Cobertura con apósito tradicional y fijación.
 PRÓXIMA CURACIÓN: En 48 horas o si se mancha/despega.`,
-    roles: ["ENFERMERA"],
+    roles: ["ENFERMERA", "TENS", "MEDICO"],
   },
   {
     id: "enf_csv",
     title: "Control Signos Vitales (EMP)",
-    content: `REGISTRO EMPA:
+    content: `REGISTRO EMPA / CSV:
 - Presión Arterial: __/__ mmHg
 - Pulso: __ lpm
+- SatO2: __ %
+- Temperatura: __ °C
 - Peso: __ kg / Talla: __ cm
 - IMC: __ (Estado: __)
 - Circunferencia Cintura: __ cm
 CONSEJERÍA BREVE:
 - Fomentar actividad física 3 veces/sem.
 - Reducir consumo de sal y azúcar.`,
-    roles: ["ENFERMERA"],
+    roles: ["ENFERMERA", "TENS"],
+  },
+  {
+    id: "enf_inyectable",
+    title: "Administración IM/SC",
+    content: `PROCEDIMIENTO INYECTABLE:
+- Medicamento: ________________
+- Dosis: ________________
+- Vía: [ ] Intramuscular [ ] Subcutánea
+- Sitio de punción: Deltoides / Glúteo / Periumbilical
+- Asepsia: Alcohol 70%
+- Tolerancia: Buena, sin reacciones inmediatas.
+INDICACIONES:
+- No masajear zona de punción.
+- Vigilar sangrado o hematoma.`,
+    roles: ["ENFERMERA", "TENS"],
   },
 
   // --- MATRONA ---
@@ -423,7 +454,7 @@ CONSEJERÍA BREVE:
 INDICACIONES:
 - Retiro de resultado en 4 semanas.
 - Consultar si presenta sangrado abundante (leve goteo es normal).`,
-    roles: ["MATRONA"],
+    roles: ["MATRONA", "MEDICO"],
   },
   {
     id: "mat_prenatal",
@@ -433,10 +464,10 @@ INDICACIONES:
 - EG actual: __ semanas.
 - Antecedentes Obs: G_ P_ A_
 - Examen Físico: Mamas sin nódulos, Utero palpable/no palpable.
-- LCF: __ lpm (si aplica).
+- LCF: __ lpm.
 SOLICITUD EXÁMENES: Hemograma, VDRL, VIH, Grupo RH, Orina completa, Urocultivo.
-INDICACIONES: Ácido Fólico 1mg/día.`,
-    roles: ["MATRONA"],
+INDICACIONES: Ácido Fólico 1mg/día + Calcio + Multivitamínico.`,
+    roles: ["MATRONA", "MEDICO"],
   },
 
   // --- TERAPIA OCUPACIONAL ---
@@ -493,8 +524,155 @@ CONCLUSIÓN: Deglución funcional para líquidos claros.
 PLAN: Mantener régimen común, vigilancia en ingesta.`,
     roles: ["FONOAUDIOLOGO"],
   },
+  {
+    id: "flgo_voz",
+    title: "Rehabilitación de Voz",
+    content: `SESIÓN VOZ:
+EJERCICIOS:
+1. Relajación cervical y hombros.
+2. Tracto Vocal Semi Ocluido (TVSO): Vibración labial y humming x 3 min.
+3. Emisión sostenida /m/ con resonancia anterior.
+4. Higiene vocal: Aumentar hidratación, evitargritos y carraspeo.
+OBSERVACIONES: Se logra mejor proyección y disminución de tensión laríngea.`,
+    roles: ["FONOAUDIOLOGO"],
+  },
+  {
+    id: "flgo_lenguaje",
+    title: "Evaluación Lenguaje (Adulto)",
+    content: `EVALUACIÓN LENGUAJE:
+1. LENGUAJE ESPONTÁNEO: Fluidez [ ] Adecuada [ ] Alterada. Contenido informativo [ ]
+2. COMPRENSIÓN:
+   - Ordenes simples: Logra/No logra
+   - Ordenes complejas: Logra/No logra
+3. DENOMINACIÓN:
+   - Por confrontación visual: __/10
+4. REPETICIÓN: Palabras y frases.
+5. LECTOESCRITURA: Conservada/Alterada.
+HIPÓTESIS: Trastorno cognitivo-comunicativo leve.`,
+    roles: ["FONOAUDIOLOGO"],
+  },
 
-  // --- NUTRICIÓN ---
+  // --- TERAPIA OCUPACIONAL (AMPLIADO) ---
+  {
+    id: "to_barthel",
+    title: "Índice de Barthel (Dependencia)",
+    content: `ÍNDICE DE BARTHEL (Puntaje Total: __ / 100):
+- Comer (0, 5, 10): __
+- Lavarse (0, 5): __
+- Vestirse (0, 5, 10): __
+- Arreglarse (0, 5): __
+- Deposición (0, 5, 10): __
+- Micción (0, 5, 10): __
+- Ir al retrete (0, 5, 10): __
+- Traslado cama/sillón (0, 5, 10, 15): __
+- Deambulación (0, 5, 10, 15): __
+- Subir/Bajar escaleras (0, 5, 10): __
+INTERPRETACIÓN: <20 (Dep. Total), 20-35 (Grave), 40-55 (Moderada), >60 (Leve), 100 (Independiente).`,
+    roles: ["TERAPEUTA_OCUPACIONAL", "ENFERMERA", "MEDICO", "KINESIOLOGO"],
+  },
+  {
+    id: "to_minimental",
+    title: "Mini-Mental Abreviado (MMSE)",
+    content: `MMSE (Puntaje Total: __ / 19):
+1. ORIENTACIÓN TEMPORAL (0-5): Mes, Día mes, Año, Día sem, Hora aprox. [__]
+2. ORIENTACIÓN ESPACIAL (0-5): Región, Ciudad, Comuna, Lugar, Piso. [__]
+3. MEMORIA (0-3): Repetir "Casa, Arbol, Perro". [__]
+4. ATENCIÓN/CÁLCULO (0-5): Restar 7 a 100 (5 veces). [__]
+5. MEMORIA DIFERIDA (0-3): Recordar palabras anteriores. [__]
+6. LENGUAJE: Denominar reloj y lápiz (2), Repetir frase (1), 3 órdenes (3).
+INTERPRETACIÓN: <13 puntos sugiere deterioro cognitivo (ajustar por escolaridad).`,
+    roles: ["TERAPEUTA_OCUPACIONAL", "MEDICO", "PSICOLOGO", "ENFERMERA"],
+  },
+  {
+    id: "to_cognitivo",
+    title: "Estimulación Cognitiva AM",
+    content: `SESIÓN COGNITIVA:
+OBJETIVO: Mantener atención y memoria de trabajo.
+ACTIVIDAD:
+1. Orientación temporo-espacial (Fecha, Lugar).
+2. Categorización de palabras (Frutas, Animales).
+3. Secuencia de números inversa.
+OBSERVACIONES: Usuario cooperador, fatiga leve a los 20 min.`,
+    roles: ["TERAPEUTA_OCUPACIONAL"],
+  },
+
+  // --- PSICOLOGÍA (AMPLIADO) ---
+  {
+    id: "psi_encuadre",
+    title: "Encuadre / Consentimiento",
+    content: `REGISTRO DE ENCUADRE:
+Se explica al paciente:
+1. Confidencialidad de la sesión y sus límites legales (riesgo vital propio o terceros).
+2. Duración de sesiones (45-60 min) y frecuencia semanal/quincenal.
+3. Política de cancelaciones y honorarios.
+Paciente firma consentimiento informado y acepta condiciones de terapia.`,
+    roles: ["PSICOLOGO"],
+  },
+  {
+    id: "psi_anamnesis_infantil",
+    title: "Anamnesis Infanto-Juvenil",
+    content: `ANAMNESIS INFANTO-JUVENIL:
+1. MOTIVO DE CONSULTA (Relato padres vs niño):
+2. ANTECEDENTES DEL DESARROLLO (Embarazo, parto, hitos motor/lenguaje):
+3. CONTEXTO FAMILIAR (Quien vive, dinámica, separaciones):
+4. CONTEXTO ESCOLAR (Rendimiento, conducta, bullying):
+5. SUEÑO Y ALIMENTACIÓN:
+OBSERVACIONES CONDUCTUALES:`,
+    roles: ["PSICOLOGO", "TERAPEUTA_OCUPACIONAL", "FONOAUDIOLOGO"],
+  },
+  {
+    id: "psi_tarea",
+    title: "Tarea Cognitiva (Registro)",
+    content: `TAREA INTERSESIÓN:
+Realizar registro de pensamientos automáticos ante situaciones de ansiedad.
+Columnas:
+1. Situación (¿Qué pasó?).
+2. Emoción (0-10).
+3. Pensamiento (¿Qué se me vino a la mente?).
+4. Respuesta alternativa (¿Qué otra forma hay de verlo?).`,
+    roles: ["PSICOLOGO"],
+  },
+  {
+    id: "as_social",
+    title: "Informe Social Breve",
+    content: `INFORME SOCIAL:
+1. GRUPO FAMILIAR: Nuclear / Extensa / Monoparental.
+2. SITUACIÓN HABITACIONAL: Propietario / Arrendatario / Allegado. Saneamiento básico: [ ] Sí [ ] No.
+3. INGRESOS: Sueldo mínimo / Pensiones / Informal.
+4. REDES DE APOYO: Municipalidad, Consultorio, Vecinos.
+CONCLUSIÓN SOCIO-ECONÓMICA: Vulnerabilidad leve/moderada/alta.`,
+    roles: ["ASISTENTE_SOCIAL"],
+  },
+  {
+    id: "qf_validacion",
+    title: "Validación Farmacoterapéutica",
+    content: `REVISIÓN MEDICAMENTOS:
+1. Conciliación: Medicamentos coinciden con indicación médica.
+2. Interacciones detectadas: Ninguna significativa.
+3. Adherencia: Paciente reporta olvidos ocasionales.
+4. Consejería: Se educa sobre horarios y toma con alimentos.`,
+    roles: ["QUIMICO_FARMACEUTICO", "MEDICO"],
+  },
+  {
+    id: "tm_fundus",
+    title: "Informe Fondo de Ojo (TM)",
+    content: `FONDO DE OJO (NO MIDRIÁTICO):
+- OJO DERECHO: Papila bordes netos, excavación fisiológica, mácula conservada, vasos normales.
+- OJO IZQUIERDO: Papila bordes netos, sin hemorragias ni exudados.
+CONCLUSIÓN: Retinografía normal bilateral.
+SUGERENCIA: Control anual.`,
+    roles: ["TECNOLOGO_MEDICO"],
+  },
+  {
+    id: "tm_ecografia",
+    title: "Informe Ecográfico Básico",
+    content: `ECOGRAFÍA RÁPIDA:
+- Hígado: Tamaño conservado, ecoestructura homogénea.
+- Vía Biliar: Sin litiasis visible.
+- Riñones: Conservados, buena diferenciación córtico-medular.
+CONCLUSIÓN: Sin hallazgos patológicos evidentes al examen.`,
+    roles: ["TECNOLOGO_MEDICO"],
+  },
   {
     id: "nut_anamnesis",
     title: "Anamnesis Alimentaria",
@@ -508,18 +686,59 @@ HABITOS:
 - Alcohol: __
 - Preferencias: Dulces / Salados.
 DIAGNÓSTICO NUTRICIONAL INTEGRADO: Malnutrición por exceso (Obesidad I).`,
-    roles: ["NUTRICIONISTA"],
+    roles: ["NUTRICIONISTA", "MEDICO", "PREPARADOR_FISICO"],
   },
   {
     id: "nut_pauta",
-    title: "Pauta Hipocalórica",
-    content: `PLAN DE ALIMENTACIÓN:
-1. Horarios: Comer cada 3-4 horas (4 comidas + 1 colación).
-2. Desayuno/Once: Lácteo descremado + 1/2 pan (marraqueta/hallulla) sin miga + agregados bajos en grasa (jamón pavo, quesillo, palta).
-3. Almuerzo/Cena: Plato dividido -> 1/2 verduras, 1/4 proteína (carne/pollo/pescado/huevo), 1/4 carbohidrato (arroz/fideos/papa).
-4. Líquidos: 2 Litros de agua al día (sin azúcar).
+    title: "Pauta Hipocalórica General",
+    content: `PLAN DE ALIMENTACIÓN(HIPOCALÓRICO):
+      1. Horarios: Comer cada 3-4 horas(4 comidas + 1 colación).
+2. Desayuno / Once: Lácteo descremado + 1 / 2 pan(marraqueta / hallulla) sin miga + agregados bajos en grasa(jamón pavo, quesillo, palta).
+3. Almuerzo / Cena: Plato dividido -> 1 / 2 verduras, 1 / 4 proteína(carne / pollo / pescado / huevo), 1 / 4 carbohidrato(arroz / fideos / papa).
+4. Líquidos: 2 Litros de agua al día(sin azúcar).
 5. Evitar: Frituras, bebidas azucaradas, pastelería.`,
     roles: ["NUTRICIONISTA"],
+  },
+  {
+    id: "nut_diabetica",
+    title: "Pauta Diabético",
+    content: `PLAN ALIMENTACIÓN DIABETES:
+  1. SELECCIÓN DE CARBOHIDRATOS: Preferir integrales(avena, arroz integral) y legumbres.
+2. FRUTAS: Máximo 2 porciones al día, evitar jugos naturales(comer la fruta entera).
+3. HORARIOS: No saltarse comidas para evitar hipoglicemias.
+4. ELIMINAR: Azúcar, miel, mermeladas con azúcar, bebidas normales.Uso de endulzante permitido(Stevia / Sucralosa).
+5. VERDURAS: Libre consumo de verduras verdes(lechuga, apio, pepino).`,
+    roles: ["NUTRICIONISTA", "MEDICO", "ENFERMERA"],
+  },
+
+  // --- PREPARADOR FÍSICO ---
+  {
+    id: "pf_evaluacion",
+    title: "Evaluación Funcional",
+    content: `EVALUACIÓN INICIAL:
+  - ANTECEDENTES: Lesiones previas, sedentarismo, enfermedades crónicas.
+- OBJETIVO: (Bajar peso / Aumentar masa muscular / Salud).
+- TEST FÍSICOS:
+  1. Sentadilla(fuerza tren inf): __ reps / 30 seg.
+  2. Flexo - extensión(fuerza tren sup): __ reps.
+  3. Plancha(core): __ segundos.
+  4. Flexibilidad(Reach test): __ cm.
+PLAN DE ENTRENAMIENTO: Frecuencia 3 veces por semana.`,
+    roles: ["PREPARADOR_FISICO"],
+  },
+  {
+    id: "pf_metabolica",
+    title: "Pauta Ejercicio Metabólico",
+    content: `RUTINA METABÓLICA(Diabetes / Obesidad):
+  CALENTAMIENTO: 10 min caminata / bici suave.
+PARTE PRINCIPAL(Circuito 3 vueltas):
+  1. Sentadilla en silla(15 reps).
+2. Empuje pared(brazos)(15 reps).
+3. Marcha estática elevando rodillas(1 min).
+4. Puente de glúteos(15 reps).
+VUELTA A LA CALMA: Elongación general 10 min.
+* Mantener hidratación constante.Si siente mareo, detener.`,
+    roles: ["PREPARADOR_FISICO", "KINESIOLOGO"],
   },
 ];
 

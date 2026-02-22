@@ -80,6 +80,11 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                 <span className="text-slate-400 text-base flex items-center gap-1">
                   <User className="w-4 h-4" /> Dr. {c.professionalName || "(No registrado)"}
                 </span>
+                {c.centerName && (
+                  <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-lg text-xs font-bold border border-slate-200 uppercase tracking-tighter">
+                    {c.centerName}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {c.prescriptions && c.prescriptions.length > 0 && (

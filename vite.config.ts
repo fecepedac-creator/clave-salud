@@ -16,5 +16,17 @@ export default defineConfig(({ mode }) => {
         FIREBASE_APP_ID: env.VITE_FIREBASE_APP_ID,
       },
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ["react", "react-dom"],
+            firebase: ["firebase/app", "firebase/auth", "firebase/firestore", "firebase/storage", "firebase/functions"],
+            ui: ["lucide-react"],
+          },
+        },
+      },
+    },
   };
 });

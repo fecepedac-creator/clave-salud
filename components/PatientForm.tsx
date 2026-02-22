@@ -136,66 +136,18 @@ const PatientForm: React.FC<PatientFormProps> = ({
   const [allergies, setAllergies] = useState<Allergy[]>([]);
 
   // AUTOCOMPLETE EFFECT
+  // Consent State
+  const [consent, setConsent] = useState(false);
+
+  // Load consent if exists
   useEffect(() => {
-    if (!validateRUT(rut)) return;
-
-    const found = existingPatients.find((p) => p.rut === rut);
-    if (found) {
-      // SECURITY UPDATE: Only fill non-sensitive identification data.
-      setFullName(found.fullName || "");
-      setPhoneDigits(extractChileanPhoneDigits(found.phone || ""));
-      setEmail(found.email || "");
-      // Only overwrite birthdate if existing record has a valid one (not just generated today)
-      if (found.birthDate) setBirthDate(found.birthDate);
-
-      setAddress(found.address || "");
-      setCommune(found.commune || "");
-      setGender(found.gender || "Masculino");
-      setOccupation(found.occupation || "");
-
-      // SENSITIVE DATA IS NOT LOADED TO PROTECT PRIVACY
-      // Users must re-enter clinical data if they are doing a new admission form.
-      // setLivingWith(found.livingWith || []);
-      // setMedicalHistory(found.medicalHistory || []); ... etc
-      return;
+    if (existingPatients) {
+      const found = existingPatients.find(p => p.rut === rut);
+      if (found && found.consent) {
+        setConsent(true);
+      }
     }
-
-    const preadmission = existingPreadmissions.find((item) => {
-      const draftRut = item.patientDraft?.rut;
-      const contactRut = item.contact?.rut;
-      return draftRut === rut || contactRut === rut;
-    });
-
-    if (preadmission) {
-      const draft = preadmission.patientDraft;
-      const contact = preadmission.contact;
-      const name = draft?.fullName ?? contact?.name ?? "";
-      const phone = draft?.phone ?? contact?.phone ?? "";
-      const emailValue = draft?.email ?? contact?.email ?? "";
-
-      if (name) setFullName(name);
-      if (phone) setPhoneDigits(extractChileanPhoneDigits(phone));
-      if (emailValue) setEmail(emailValue);
-      return;
-    }
-
-    if (prefillContact && prefillContact.rut === rut) {
-      setFullName(prefillContact.name || "");
-      setPhoneDigits(extractChileanPhoneDigits(prefillContact.phone || ""));
-      if (prefillContact.email) setEmail(prefillContact.email);
-    }
-  }, [rut, existingPatients, existingPreadmissions, prefillContact]);
-
-  // IPA Calculation Effect
-  useEffect(() => {
-    if (smoking !== "No fumador" && cigsPerDay && yearsSmoking) {
-      const cigs = parseInt(cigsPerDay) || 0;
-      const years = parseInt(yearsSmoking) || 0;
-      setIpa((cigs * years) / 20);
-    } else {
-      setIpa(0);
-    }
-  }, [cigsPerDay, yearsSmoking, smoking]);
+  }, [rut, existingPatients]);
 
   const toggleSelection = (list: string[], setList: any, item: string) => {
     if (list.includes(item)) {
@@ -234,6 +186,11 @@ const PatientForm: React.FC<PatientFormProps> = ({
       return;
     }
 
+    if (!consent) {
+      alert("⚠️ Debe aceptar el consentimiento informado para continuar.");
+      return;
+    }
+
     // Sanitize and Format
     const finalFullName = capitalizeWords(sanitizeText(fullName));
     const finalAddress = capitalizeWords(sanitizeText(address));
@@ -255,6 +212,11 @@ const PatientForm: React.FC<PatientFormProps> = ({
 
     const newPatient: Patient = {
       id: generateId(),
+      ownerUid: "", // Will be set by useCrudOperations.updatePatient
+      accessControl: {
+        allowedUids: [],
+        centerIds: activeCenterId ? [activeCenterId] : [],
+      },
       centerId: activeCenterId,
       rut,
       fullName: finalFullName,
@@ -291,6 +253,8 @@ const PatientForm: React.FC<PatientFormProps> = ({
       lastUpdated: new Date().toISOString(),
       active: true,
       careTeamUids: [],
+      consent,
+      consentDate: new Date().toISOString(),
     };
     onSave(newPatient);
   };
@@ -767,6 +731,22 @@ const PatientForm: React.FC<PatientFormProps> = ({
                   }}
                 />
               </div>
+
+              {/* CONSENT checkbox */}
+              <div className="mt-8 bg-slate-50 p-6 rounded-2xl border-2 border-slate-200 flex items-start gap-4 cursor-pointer hover:bg-slate-100 transition-colors"
+                onClick={() => setConsent(!consent)}
+              >
+                <div className={`mt-1 w-6 h-6 min-w-[24px] rounded-md border-2 flex items-center justify-center transition-all ${consent ? 'bg-blue-600 border-blue-600' : 'border-slate-400 bg-white'}`}>
+                  {consent && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-lg">Consentimiento Informado</h4>
+                  <p className="text-slate-600">
+                    Declaro que la información entregada es fidedigna y autorizo el almacenamiento de mis datos clínicos en conformidad con la Ley 20.584 de Derechos y Deberes del Paciente.
+                  </p>
+                </div>
+              </div>
+
             </div>
           )}
         </div>
@@ -802,7 +782,8 @@ const PatientForm: React.FC<PatientFormProps> = ({
           ) : (
             <button
               onClick={handleSave}
-              className="w-full md:w-auto px-12 py-4 bg-green-600 text-white font-bold text-xl rounded-xl hover:bg-green-700 shadow-xl shadow-green-200 transition-all transform active:scale-95 flex items-center justify-center gap-3"
+              disabled={!consent}
+              className={`w-full md:w-auto px-12 py-4 font-bold text-xl rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 ${consent ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-200' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
             >
               <Save className="w-6 h-6" /> Finalizar y Guardar
             </button>

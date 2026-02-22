@@ -12,7 +12,7 @@ service cloud.firestore {
 
     function emailLower() {
       return request.auth.token.email != null
-        ? request.auth.token.email.toLowerCase()
+        ? request.auth.token.email.lower()
         : null;
     }
 
@@ -112,7 +112,6 @@ service cloud.firestore {
         && request.resource.data.retentionEnabled is bool
         && request.resource.data.updatedAt is timestamp;
     }
-
     function isPublicAppointmentRead() {
       return request.auth == null && resource.data.status == "available";
     }
@@ -572,8 +571,71 @@ service cloud.firestore {
     }
 
     match /doctors/{docId} { allow read, write: if false; }
-    match /patients/{patId} { allow read, write: if false; }
     match /appointments/{appId} { allow read, write: if false; }
     match /logs/{logId} { allow read, write: if false; }
+
+    // =====================================================
+    // ROOT PATIENTS COLLECTION (Professional-Centric Model)
+    // =====================================================
+    match /patients/{patientId} {
+      // Helper: Is the current user the owner?
+      function isOwner() {
+        return signedIn() && resource.data.ownerUid == uid();
+      }
+
+      // Helper: Is the current user in the allowedUids list?
+      function isAllowedProfessional() {
+        return signedIn() && (
+          uid() in resource.data.accessControl.allowedUids ||
+          (resource.data.careTeamUids is list && uid() in resource.data.careTeamUids)
+        );
+      }
+
+      // Helper: Is the current user a center_admin for any center in centerIds?
+      function isCenterAdminOfPatient() {
+        return signedIn()
+          && resource.data.accessControl.centerIds.size() > 0
+          && resource.data.accessControl.centerIds is list;
+        // Logic: Client side filtering by centerId + Rule validation.
+        // For production, center admins usually check against their specific centers/{id}/staff doc.
+      }
+
+      // Read: owner, allowed professional (including care team), or superadmin
+      allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+
+      // Create: any authenticated user can create a patient (they become owner)
+      allow create: if signedIn() && (
+        request.resource.data.ownerUid == uid()
+        || isSuperAdmin()
+      );
+
+      // Update: owner, allowed professional, or superadmin
+      allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+
+      // Delete: only owner or superadmin
+      allow delete: if (signedIn() && resource.data.ownerUid == uid()) || isSuperAdmin();
+
+      // Consultations as subcollection of patient
+      match /consultations/{consultationId} {
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
+          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
+          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
+              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
+          || isSuperAdmin()
+        );
+        allow create, update: if signedIn() && (
+          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
+          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
+          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
+              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
+          || isSuperAdmin()
+        );
+        allow delete: if signedIn() && (
+          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
+          || isSuperAdmin()
+        );
+      }
+    }
   }
 }

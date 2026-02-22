@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  writeBatch,
+} from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import LogoHeader from "./LogoHeader";
@@ -14,6 +26,10 @@ type InviteData = {
   expiresAt?: any;
   invitedBy?: string;
   createdAt?: any;
+  tempStaffId?: string;
+  migrationCompletedAt?: any;
+  professionalRole?: string;
+  profileData?: any;
 };
 
 type Props = {
@@ -96,9 +112,95 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       console.error(e);
       setError(
         e?.message ||
-          "No se pudo iniciar sesión con Google. Revisa dominios autorizados en Firebase Auth (Authorized domains)."
+        "No se pudo iniciar sesión con Google. Revisa dominios autorizados en Firebase Auth (Authorized domains)."
       );
     }
+  };
+
+  /**
+   * Migrate temp staff → real UID.
+   * 1. Find temp staff doc by emailLower + centerId (or use tempStaffId from invite).
+   * 2. Batch-update all appointments referencing tempStaffId to use real UID.
+   * 3. Delete temp staff + publicStaff docs.
+   * 4. Return migration stats.
+   */
+  const migrateTempStaff = async (
+    centerId: string,
+    tempStaffId: string,
+    realUid: string
+  ): Promise<number> => {
+    // Idempotency: check if already migrated
+    const tempStaffSnap = await getDoc(doc(db, "centers", centerId, "staff", tempStaffId));
+    if (!tempStaffSnap.exists()) return 0;
+    const tempData = tempStaffSnap.data();
+    if (tempData?.migrationCompletedAt) return 0; // already migrated
+
+    // Find all appointments referencing the temp ID
+    const apptQuery = query(
+      collection(db, "centers", centerId, "appointments"),
+      where("doctorUid", "==", tempStaffId)
+    );
+    const apptSnap = await getDocs(apptQuery);
+
+    // Also check doctorId field
+    const apptQuery2 = query(
+      collection(db, "centers", centerId, "appointments"),
+      where("doctorId", "==", tempStaffId)
+    );
+    const apptSnap2 = await getDocs(apptQuery2);
+
+    // Combine unique appointment IDs
+    const allApptDocs = new Map<string, any>();
+    apptSnap.docs.forEach((d) => allApptDocs.set(d.id, d.ref));
+    apptSnap2.docs.forEach((d) => allApptDocs.set(d.id, d.ref));
+
+    // Batch migrate appointments
+    const batch = writeBatch(db);
+    let migratedCount = 0;
+
+    for (const [, ref] of allApptDocs) {
+      batch.update(ref, {
+        doctorId: realUid,
+        doctorUid: realUid,
+        migratedFromTempId: tempStaffId,
+        migratedAt: serverTimestamp(),
+      });
+      migratedCount++;
+    }
+
+    // Mark temp staff as migrated (idempotency flag)
+    batch.update(doc(db, "centers", centerId, "staff", tempStaffId), {
+      migrationCompletedAt: serverTimestamp(),
+      migratedToUid: realUid,
+      active: false,
+      isTemp: false,
+    });
+
+    // Delete temp publicStaff
+    batch.delete(doc(db, "centers", centerId, "publicStaff", tempStaffId));
+
+    await batch.commit();
+
+    // Log audit entry
+    try {
+      const auditId = `migration_${tempStaffId}_${realUid}`;
+      await setDoc(doc(db, "centers", centerId, "auditLogs", auditId), {
+        id: auditId,
+        centerId,
+        timestamp: new Date().toISOString(),
+        actorUid: realUid,
+        actorName: "Sistema (Migración)",
+        actorRole: "system",
+        action: "update",
+        details: `Migración de profesional temporal ${tempStaffId} → ${realUid}. ${migratedCount} cita(s) migrada(s).`,
+        targetId: tempStaffId,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("Audit log write failed (expected if rules block it):", e);
+    }
+
+    return migratedCount;
   };
 
   const handleAcceptInvite = async () => {
@@ -133,9 +235,30 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       const accessRole = String(invite.role || "center_admin").trim() || "center_admin";
       const professionalRole =
         String((invite as any).clinicalRole || (invite as any).professionalRole || "").trim() ||
-        (accessRole === "doctor" ? "Medico" : "");
+        (accessRole === "doctor" ? "Medico" : accessRole);
 
-      // 1) users/{uid} (merge, compat centers/centros)
+      // --- MIGRATE TEMP STAFF ---
+      let migratedCount = 0;
+      const tempStaffId = invite.tempStaffId;
+
+      if (tempStaffId) {
+        migratedCount = await migrateTempStaff(centerId, tempStaffId, user.uid);
+        console.log(`Migrated ${migratedCount} appointments from temp ${tempStaffId} to ${user.uid}`);
+      } else {
+        // Fallback: search by emailLower for any temp staff doc
+        const tempQuery = query(
+          collection(db, "centers", centerId, "staff"),
+          where("emailLower", "==", inviteEmailLower),
+          where("isTemp", "==", true)
+        );
+        const tempSnap = await getDocs(tempQuery);
+        for (const tempDoc of tempSnap.docs) {
+          const count = await migrateTempStaff(centerId, tempDoc.id, user.uid);
+          migratedCount += count;
+        }
+      }
+
+      // 1) users/{uid}
       await setDoc(
         doc(db, "users", user.uid),
         {
@@ -150,51 +273,65 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         { merge: true }
       );
 
-      // 2) staff membership
+      // 2) staff membership (final, with real UID)
+      const profileData = invite.profileData || {};
       await setDoc(
         doc(db, "centers", centerId, "staff", user.uid),
         {
           uid: user.uid,
           emailLower: inviteEmailLower,
-          role: accessRole,
+          fullName: profileData.fullName ?? (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
+          rut: profileData.rut ?? null,
+          role: professionalRole,
           accessRole,
           clinicalRole: professionalRole,
           roles: [accessRole],
+          specialty: profileData.specialty ?? "",
+          photoUrl: profileData.photoUrl ?? user.photoURL ?? "",
+          agendaConfig: profileData.agendaConfig ?? null,
+          isAdmin: profileData.isAdmin ?? false,
           active: true,
           activo: true,
           visibleInBooking: false,
+          isTemp: false,
           createdAt: serverTimestamp(),
           inviteToken: token,
           invitedBy: (invite as any).invitedBy ?? null,
           invitedAt: (invite as any).createdAt ?? null,
+          ...(tempStaffId ? { migratedFromTempId: tempStaffId } : {}),
         },
         { merge: true }
       );
 
+      // 3) publicStaff (final, with real UID)
       await setDoc(
         doc(db, "centers", centerId, "publicStaff", user.uid),
         {
           id: user.uid,
           centerId,
-          fullName: (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
+          fullName: profileData.fullName ?? (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
           accessRole,
           clinicalRole: professionalRole,
           role: professionalRole,
-          specialty: (invite as any).specialty ?? "",
-          photoUrl: (invite as any).photoUrl ?? user.photoURL ?? "",
+          specialty: profileData.specialty ?? (invite as any).specialty ?? "",
+          photoUrl: profileData.photoUrl ?? (invite as any).photoUrl ?? user.photoURL ?? "",
+          agendaConfig: profileData.agendaConfig ?? null,
           visibleInBooking: false,
           active: true,
+          isTemp: false,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      // 3) mark invite accepted
+      // 4) mark invite accepted
       await updateDoc(doc(db, "invites", token), {
         status: "accepted",
         acceptedAt: serverTimestamp(),
         acceptedByUid: user.uid,
-      }).catch(() => {});
+        migrationCompletedAt: serverTimestamp(),
+        migratedAppointments: migratedCount,
+      }).catch(() => { });
 
       setDone(true);
       if (onDone) onDone();

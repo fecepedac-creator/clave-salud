@@ -9,6 +9,7 @@ import {
   signInWithRedirect,
   getRedirectResult,
   GoogleAuthProvider,
+  User,
 } from "firebase/auth";
 import {
   doc,
@@ -21,14 +22,14 @@ import {
   where,
   serverTimestamp,
 } from "firebase/firestore";
-import { ViewMode } from "../types";
+import { ViewMode, UserProfile, AnyRole } from "../types";
 
 const SUPERADMIN_ALLOWED_EMAILS = new Set(["fecepedac@gmail.com", "dr.felipecepeda@gmail.com"]);
 
 export function useAuth() {
-  const [authUser, setAuthUser] = useState<any>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
   const [isSuperAdminClaim, setIsSuperAdminClaim] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -53,7 +54,7 @@ export function useAuth() {
     return () => unsub();
   }, []);
 
-  const assertSuperAdminAccess = async (user: any) => {
+  const assertSuperAdminAccess = async (user: User) => {
     const emailUser = String(user?.email || "")
       .trim()
       .toLowerCase();
@@ -72,7 +73,7 @@ export function useAuth() {
   const handleSuperAdminLogin = useCallback(
     async (
       targetView: ViewMode,
-      onSuccess: (user: any, view: ViewMode, centerId?: string) => void
+      onSuccess: (user: UserProfile, view: ViewMode, centerId?: string) => void
     ) => {
       try {
         setError("");
@@ -88,7 +89,7 @@ export function useAuth() {
         if (profile.activo === false) throw new Error("Usuario inactivo");
 
         const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-        const roles: string[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean);
+        const roles: AnyRole[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean) as AnyRole[];
         const rolesNorm = roles.map((r) => r.toLowerCase());
 
         const centros: string[] = Array.isArray(profile.centros) ? profile.centros : [];
@@ -112,10 +113,11 @@ export function useAuth() {
           return;
         }
 
-        const userFromFirestore = {
+        const userFromFirestore: UserProfile = {
           uid,
           email: profile.email ?? emailNorm,
           roles,
+          centers: centros,
           centros,
           isAdmin: isCenterAdmin || isSuperAdmin,
           fullName: profile.fullName ?? profile.nombre ?? profile.email ?? "Usuario",
@@ -125,7 +127,7 @@ export function useAuth() {
             "Profesional",
           id: uid,
         };
-        setCurrentUser(userFromFirestore as any);
+        setCurrentUser(userFromFirestore);
 
         if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
           onSuccess(userFromFirestore, "superadmin-dashboard" as ViewMode);
@@ -188,7 +190,7 @@ export function useAuth() {
   );
 
   const handleGoogleLogin = useCallback(
-    async (targetView: ViewMode, onSuccess: (user: any) => void) => {
+    async (targetView: ViewMode, onSuccess: (user: UserProfile) => void) => {
       try {
         setError("");
         const provider = new GoogleAuthProvider();
@@ -207,19 +209,103 @@ export function useAuth() {
           if (profile.activo === false) throw new Error("Usuario inactivo");
 
           const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-          const roles: string[] = rolesRaw
+          const roles: AnyRole[] = rolesRaw
             .map((r: any) =>
               String(r ?? "")
                 .trim()
-                .toLowerCase()
+                .toLowerCase() as AnyRole
             )
             .filter(Boolean);
 
-          const centers: string[] = Array.isArray(profile.centros)
+          let centers: string[] = Array.isArray(profile.centros)
             ? profile.centros
             : Array.isArray(profile.centers)
               ? profile.centers
               : [];
+
+          // ── Check for pending invites even for existing users ──
+          // This handles the case where an admin adds an already-registered
+          // professional to a new center via the admin dashboard.
+          const qPendingInv = query(
+            collection(db, "invites"),
+            where("emailLower", "==", emailUser),
+            where("status", "==", "pending")
+          );
+          const pendingInvSnap = await getDocs(qPendingInv);
+
+          if (!pendingInvSnap.empty) {
+            const pendingInvites = pendingInvSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+            const newCenters = pendingInvites
+              .map((i) => String(i.centerId || "").trim())
+              .filter((cId) => cId && !centers.includes(cId));
+            const newRoles: AnyRole[] = pendingInvites
+              .map((i) => String(i.role || "").trim() as AnyRole)
+              .filter((r) => !!r);
+
+            // Merge new centers & roles into the existing profile
+            if (newCenters.length > 0) {
+              centers = [...centers, ...newCenters];
+              const mergedRoles = Array.from(new Set([...roles, ...newRoles]));
+
+              const updateData: any = {
+                centros: centers,
+                centers: centers,
+                roles: mergedRoles,
+                updatedAt: serverTimestamp(),
+              };
+
+              // Sync name from latest invite if available
+              const latestInvite = pendingInvites[pendingInvites.length - 1];
+              if (latestInvite?.profileData?.fullName) {
+                updateData.fullName = latestInvite.profileData.fullName;
+              }
+
+              await updateDoc(doc(db, "users", uid), updateData);
+              roles.push(...newRoles.filter((r) => !roles.includes(r)));
+            }
+
+            // Accept each invite & create staff docs
+            await Promise.all(
+              pendingInvites.map(async (inv) => {
+                await updateDoc(doc(db, "invites", inv.id), {
+                  status: "accepted",
+                  acceptedAt: serverTimestamp(),
+                  acceptedByUid: uid,
+                }).catch(() => { });
+
+                const cId = String(inv.centerId || "").trim();
+                const rId = String(inv.role || "").trim() || "staff";
+                const profileData = inv.profileData || {};
+
+                if (cId) {
+                  await setDoc(
+                    doc(db, "centers", cId, "staff", uid),
+                    {
+                      uid,
+                      emailLower: emailUser,
+                      role: rId,
+                      roles: [rId],
+                      active: true,
+                      activo: true,
+                      createdAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                      inviteToken: inv.id,
+                      invitedBy: inv.invitedBy ?? null,
+                      invitedAt: inv.createdAt ?? null,
+                      fullName: profileData.fullName ?? "",
+                      rut: profileData.rut ?? "",
+                      specialty: profileData.specialty ?? "",
+                      photoUrl: profileData.photoUrl ?? "",
+                      agendaConfig: profileData.agendaConfig ?? null,
+                      professionalRole: profileData.role ?? inv.professionalRole ?? "",
+                      isAdmin: profileData.isAdmin ?? false,
+                    },
+                    { merge: true }
+                  );
+                }
+              })
+            );
+          }
 
           const token = await user.getIdTokenResult(true).catch(() => null as any);
           const claims: any = token?.claims ?? {};
@@ -229,7 +315,7 @@ export function useAuth() {
             claims?.superadmin === true ||
             claims?.superAdmin === true;
 
-          const userFromFirestore = {
+          const userFromFirestore: UserProfile = {
             uid,
             email: profile.email ?? emailUser,
             roles,
@@ -243,7 +329,7 @@ export function useAuth() {
             id: uid,
           };
 
-          setCurrentUser(userFromFirestore as any);
+          setCurrentUser(userFromFirestore);
 
           if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
             onSuccess(userFromFirestore);
@@ -254,7 +340,7 @@ export function useAuth() {
           return;
         }
 
-        // If profile doesn't exist, look for pending invites
+        // If profile doesn't exist, check if user is a Super Admin (whitelist or claims)
         const qInv = query(
           collection(db, "invites"),
           where("emailLower", "==", emailUser),
@@ -262,17 +348,33 @@ export function useAuth() {
         );
         const invSnap = await getDocs(qInv);
 
-        if (invSnap.empty) {
+        const tokenResult = await user.getIdTokenResult(true).catch(() => null);
+        const claims: any = tokenResult?.claims ?? {};
+        const isSuperAdminByClaim = !!(
+          claims.super_admin === true ||
+          claims.superadmin === true ||
+          claims.superAdmin === true ||
+          SUPERADMIN_ALLOWED_EMAILS.has(emailUser)
+        );
+
+        const inviteDocs = invSnap.empty ? [] : invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+
+        if (inviteDocs.length === 0 && !isSuperAdminByClaim) {
           throw new Error(
             "No tienes invitación activa. Pide al administrador del centro que te invite con este correo."
           );
         }
 
-        const inviteDocs = invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        const rolesFromInvites = Array.from(new Set(inviteDocs.map((i) => i.role).filter(Boolean)));
+        const rolesFromInvites: AnyRole[] = Array.from(new Set(inviteDocs.map((i) => i.role).filter(Boolean))) as AnyRole[];
         const centersFromInvites = Array.from(
           new Set(inviteDocs.map((i) => i.centerId).filter(Boolean))
         );
+
+        // If SuperAdmin but no invites, initialize with super_admin role
+        const finalRoles: AnyRole[] = isSuperAdminByClaim ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole])) : rolesFromInvites;
+
+        // Sync name from invite if provided
+        const inviteName = inviteDocs.find(i => i.profileData?.fullName)?.profileData?.fullName;
 
         await setDoc(
           doc(db, "users", uid),
@@ -281,7 +383,8 @@ export function useAuth() {
             email: emailUser,
             displayName: user.displayName ?? "",
             photoURL: user.photoURL ?? "",
-            roles: rolesFromInvites,
+            fullName: inviteName ?? user.displayName ?? "Usuario",
+            roles: finalRoles,
             centers: centersFromInvites,
             centros: centersFromInvites,
             activo: true,
@@ -297,7 +400,7 @@ export function useAuth() {
               status: "accepted",
               acceptedAt: serverTimestamp(),
               acceptedByUid: uid,
-            }).catch(() => {});
+            }).catch(() => { });
 
             const cId = String((inv as any).centerId || "").trim();
             const rId = String((inv as any).role || "").trim() || "staff";
@@ -335,7 +438,7 @@ export function useAuth() {
           })
         );
 
-        const newUser = {
+        const newUser: UserProfile = {
           uid,
           email: emailUser,
           roles: rolesFromInvites,
@@ -348,7 +451,7 @@ export function useAuth() {
           id: uid,
         };
 
-        setCurrentUser(newUser as any);
+        setCurrentUser(newUser);
         onSuccess(newUser);
       } catch (e: any) {
         console.error("GOOGLE LOGIN ERROR", e);
@@ -361,7 +464,7 @@ export function useAuth() {
   const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
-    } catch {}
+    } catch { }
     setCurrentUser(null);
     setEmail("");
     setPassword("");
@@ -388,7 +491,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setError("No autorizado");
     try {
       await signOut(auth);
-    } catch {}
+    } catch { }
     setCurrentUser(null);
   }, []);
 

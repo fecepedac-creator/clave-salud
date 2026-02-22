@@ -13,15 +13,23 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "firebase": "^12.6.0",
+    "firebase-admin": "^13.6.1",
+    "googleapis": "^171.4.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.559.0",
+    "mammoth": "^1.11.0",
     "postcss": "^8.5.6",
+    "qrcode": "^1.5.4",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "react-google-drive-picker": "^1.2.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vitejs/plugin-react": "^5.0.0",
