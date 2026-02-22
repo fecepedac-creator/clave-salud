@@ -823,7 +823,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       auditReason = promptChangeReason("cambiar información de facturación");
       if (!auditReason) return;
     }
-    const billing = ({ ...(center as any).billing, ...billingPatch } || {}) as BillingInfo;
+    const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
     await updateCenterPatch(centerId, { billing }, auditReason ?? undefined);
   };
 
@@ -1158,7 +1158,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Pacientes Totales
+                  Pacientes Totales (Histórico)
                 </div>
                 <div className="text-3xl font-bold text-slate-800">
                   {metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
@@ -1166,23 +1166,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Profesionales Activos
+                  Profesionales Activos (Histórico)
                 </div>
                 <div className="text-3xl font-bold text-slate-800">
                   {metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
                 </div>
               </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Última Actualización
-                </div>
-                <div className="text-lg font-semibold text-slate-800">
-                  {metricsUpdatedAt
-                    ? new Date(metricsUpdatedAt).toLocaleString("es-CL")
-                    : "Sin datos"}
-                </div>
-              </div>
             </div>
+
+            {metricsUpdatedAt && (
+              <div className="text-[10px] text-slate-400 mt-0 italic">
+                Última sincronización de métricas globales: {new Date(metricsUpdatedAt).toLocaleString("es-CL")}
+              </div>
+            )}
             {metricsError && (
               <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-4">
                 {metricsError}

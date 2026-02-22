@@ -1,6 +1,14 @@
 import { AgendaConfig } from "../types";
 import { generateId } from "./common";
 
+/** Genera un ID determinista para un bloque de agenda. */
+export const generateSlotId = (centerId: string, doctorId: string, date: string, time: string): string => {
+    // Formato: slot_centerId_doctorId_date_time
+    // Reemplazamos caracteres que puedan dar problemas en IDs si es necesario, 
+    // aunque Firestore acepta casi todo.
+    return `slot_${centerId}_${doctorId}_${date}_${time.replace(":", "")}`;
+};
+
 export const calculateAge = (birthDate?: string | null): number | null => {
     if (!birthDate) return null;
 
@@ -34,7 +42,12 @@ export const getDaysInMonth = (date: Date) => {
 };
 
 // Returns fixed slots based on config
-export const getStandardSlots = (date: string, doctorId: string, config?: AgendaConfig): any[] => {
+export const getStandardSlots = (
+    date: string,
+    doctorId: string,
+    centerId: string, // Added centerId for deterministic IDs
+    config?: AgendaConfig
+): any[] => {
     // Defaults range widened to 08:00 - 21:00 per requirement
     const startStr = config?.startTime || "08:00";
     const endStr = config?.endTime || "21:00";
@@ -56,7 +69,7 @@ export const getStandardSlots = (date: string, doctorId: string, config?: Agenda
     }
 
     return times.map((time) => ({
-        id: generateId(),
+        id: generateSlotId(centerId, doctorId, date, time),
         doctorId,
         date,
         time,

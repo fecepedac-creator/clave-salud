@@ -13,6 +13,7 @@ import {
 } from "../types";
 import {
   generateId,
+  generateSlotId,
   formatRUT,
   getStandardSlots,
   downloadJSON,
@@ -1098,11 +1099,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       // --- Process adds ---
       const newSlots: Appointment[] = Array.from(pendingAdds).map((time) => ({
-        id: generateId(),
+        id: generateSlotId(resolvedCenterId, selectedDoctorId!, selectedDate!, time as string),
         centerId: resolvedCenterId,
         doctorId: selectedDoctorId,
         doctorUid: selectedDoctorId,
-        date: selectedDate,
+        date: selectedDate!,
         time: time as string,
         status: "available",
         patientName: "",
@@ -1141,7 +1142,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const skip = (dow === 6 && !genIncludeSat) || (dow === 0 && !genIncludeSun);
         if (!skip) {
           const dateStr = cursor.toISOString().split("T")[0];
-          const templateSlots = getStandardSlots(dateStr, selectedDoctorId, savedConfig ?? tempConfig);
+          const templateSlots = getStandardSlots(dateStr, selectedDoctorId, resolvedCenterId, savedConfig ?? tempConfig);
           const existing = new Set(
             appointments
               .filter((a) => ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === dateStr)
@@ -1160,7 +1161,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       const newSlots: Appointment[] = slotsToCreate.map((slot) => ({
-        id: generateId(),
+        id: generateSlotId(resolvedCenterId, selectedDoctorId, slot.date, slot.time),
         centerId: resolvedCenterId,
         doctorId: selectedDoctorId,
         doctorUid: selectedDoctorId,
@@ -1491,22 +1492,71 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* COMMAND CENTER */}
       {activeTab === "command_center" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <TodayActivity
-            appointments={appointments}
-            doctors={doctors}
-            onOpenPatient={(appt) => {
-              // In Admin dashboard we don't have direct patient view in this tab yet
-              // but we could set an "opening" state if needed.
-              showToast(`Abriendo ficha de ${appt.patientName}`, "info");
-            }}
-            onCancel={(appt) => setCancelModal({ isOpen: true, appointment: appt })}
-          />
-          <PreadmissionList
-            preadmissions={sortedPreadmissions}
-            doctors={doctors}
-            onApprove={onApprovePreadmission}
-          />
+        <div className="space-y-8 animate-fadeIn">
+          {/* Métricas del Centro */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Totales</div>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                {activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "—"}
+              </div>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div className="text-xs font-bold text-slate-400 uppercase">Profesionales</div>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                {activeCenter?.stats?.staffCount?.toLocaleString("es-CL") || "—"}
+              </div>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                {activeCenter?.stats?.appointmentCount?.toLocaleString("es-CL") || "—"}
+              </div>
+            </div>
+          </div>
+
+          {activeCenter?.stats?.updatedAt && (
+            <div className="text-[10px] text-slate-500 italic mt-0">
+              Último recalculo de estadísticas: {
+                activeCenter.stats.updatedAt?.seconds
+                  ? new Date(activeCenter.stats.updatedAt.seconds * 1000).toLocaleString("es-CL")
+                  : new Date(activeCenter.stats.updatedAt).toLocaleString("es-CL")
+              }
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <TodayActivity
+              appointments={appointments}
+              doctors={doctors}
+              onOpenPatient={(appt) => {
+                showToast(`Abriendo ficha de ${appt.patientName}`, "info");
+              }}
+              onCancel={(appt) => setCancelModal({ isOpen: true, appointment: appt })}
+            />
+            <PreadmissionList
+              preadmissions={sortedPreadmissions}
+              doctors={doctors}
+              onApprove={onApprovePreadmission}
+            />
+          </div>
         </div>
       )}
 

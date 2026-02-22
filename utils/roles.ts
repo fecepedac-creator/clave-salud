@@ -13,7 +13,8 @@ export function normalizeRole(role: unknown): CanonicalRole | null {
     if (upper === "SUPERADMIN" || upper === "SUPER_ADMIN") return "super_admin";
     if (upper === "CENTER_ADMIN" || upper === "ADMIN_CENTRO") return "center_admin";
     if (upper === "ADMIN" || upper === "ADMINISTRADOR") return "admin";
-    if (upper === "MEDICO") return "doctor";
+    if (upper === "MEDICO" || upper === "DOCTOR") return "doctor";
+    if (upper === "STAFF") return "staff";
 
     return null;
 }

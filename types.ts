@@ -1,5 +1,18 @@
 import type { Timestamp } from "firebase/firestore";
 
+/**
+ * Representa un valor de fecha compatible con Firestore y Serialización JSON.
+ * Se usa para tipar campos que vienen de Firestore como Timestamp pero se
+ * transforman a string (ISO) en el frontend, o viceversa.
+ */
+export type FirestoreDateLike = Timestamp | string | Date | null;
+
+/**
+ * Representa un mapa de datos JSON-safe para metadatos o configuraciones dinámicas.
+ */
+export type JsonValue = string | number | boolean | null | undefined | JsonMap | JsonValue[];
+export type JsonMap = { [key: string]: JsonValue };
+
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -12,7 +25,7 @@ export interface MedicalCenter {
   isActive: boolean; // If false, access is blocked
   isPinned?: boolean; // To pin important centers to top
   maxUsers: number; // Limit number of doctors
-  allowedRoles: AnyRole[]; // Only these roles can be created // Only these roles can be created
+  allowedRoles: AnyRole[]; // Only these roles can be created
   modules: {
     dental: boolean; // Enables Odontogram
     prescriptions: boolean; // Enables Prescription Manager
@@ -45,7 +58,9 @@ export interface MedicalCenter {
     patientCount?: number;
     appointmentCount?: number;
     consultationCount?: number;
-    updatedAt?: any;
+    totalPatients?: number; // Aliased for SuperAdminDashboard logic
+    totalStaff?: number; // Aliased for SuperAdminDashboard logic
+    updatedAt?: FirestoreDateLike;
   };
 }
 
@@ -81,7 +96,7 @@ export type AuditAction =
 export interface AuditLogEntry {
   id: string;
   centerId: string;
-  timestamp: string | Timestamp;
+  timestamp: FirestoreDateLike;
   actorUid?: string;
   actorName?: string; // Who did it
   actorRole?: string;
@@ -90,7 +105,7 @@ export interface AuditLogEntry {
   entityType: AuditEntityType;
   entityId: string;
   patientId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
   details?: string;
   targetId?: string; // legacy compatibility
 }
@@ -100,7 +115,7 @@ export type AuditLogEvent = {
   entityType: AuditEntityType;
   entityId: string;
   patientId?: string;
-  metadata?: Record<string, any>;
+  metadata?: JsonMap;
   details?: string;
 };
 
@@ -158,8 +173,7 @@ export interface Prescription {
   status?: "draft" | "final";
   metadata?: {
     selectedExams?: string[];
-    [key: string]: any;
-  };
+  } & JsonMap;
 }
 
 export interface ClinicalTemplate {
@@ -178,6 +192,7 @@ export interface WhatsappTemplate {
   title: string;
   body: string;
   enabled: boolean;
+  updatedAt?: FirestoreDateLike;
 }
 
 // NEW INTERFACE FOR CUSTOM EXAMS
@@ -204,7 +219,14 @@ export interface ToothState {
 
 export interface NailState {
   id: string; // e.g. "L1" (Left 1, Big toe), "R5" (Right 5, Little toe)
-  status: "Sana" | "Onicomicosis" | "Onicocriptosis" | "Onicogrifosis" | "Ausente" | "Atrofica" | "Traumatica";
+  status:
+  | "Sana"
+  | "Onicomicosis"
+  | "Onicocriptosis"
+  | "Onicogrifosis"
+  | "Ausente"
+  | "Atrofica"
+  | "Traumatica";
   notes?: string;
 }
 
@@ -217,7 +239,7 @@ export interface ExamSheet {
 export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
-  createdAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
   patientId?: string;
   centerId?: string;
   createdBy?: string;
@@ -259,14 +281,14 @@ export interface Consultation extends SoftDeletable {
 export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
-  createdAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
   ownerUid?: string; // UID of the professional who owns this patient
   accessControl?: {
     allowedUids: string[]; // Professional UIDs who can view/edit
-    centerIds: string[];   // Center IDs where admins can manage
+    centerIds: string[]; // Center IDs where admins can manage
   };
   careTeamUids?: string[]; // UIDs of professionals explicitly involved in care
-  careTeamUpdatedAt?: Timestamp;
+  careTeamUpdatedAt?: FirestoreDateLike;
   careTeamUpdatedBy?: string;
   rut: string;
   fullName: string;
@@ -362,7 +384,7 @@ export interface KinesiologySession {
 export interface Appointment extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
-  createdAt?: Timestamp;
+  createdAt?: FirestoreDateLike;
   doctorId: string;
   doctorUid?: string;
   date: string;
@@ -372,8 +394,8 @@ export interface Appointment extends SoftDeletable {
   patientId?: string;
   patientPhone?: string;
   patientEmail?: string;
-  bookedAt?: any;
-  cancelledAt?: any;
+  bookedAt?: FirestoreDateLike;
+  cancelledAt?: FirestoreDateLike;
   status: "available" | "booked";
 }
 
@@ -390,7 +412,7 @@ export interface Preadmission {
   };
   source?: "public" | "staff";
   submittedByUid?: string | null;
-  createdAt?: any;
+  createdAt?: FirestoreDateLike;
   status?: "pending" | "approved" | "rejected";
 }
 
@@ -417,19 +439,20 @@ export type RoleId =
   | "PREPARADOR_FISICO"
   | "MATRONA"
   | "ODONTOLOGO"
-  | "QUIMICO_FARMACEUTICO";
+  | "QUIMICO_FARMACEUTICO"
+  | "SUPER_ADMIN";
 
 /**
  * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
  * Mantener compatibilidad con roles legacy definidos en RoleId.
  */
-export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor";
+export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor" | "staff";
 
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
  * Útil mientras migramos componentes gradualmente.
  */
-export type AnyRole = RoleId | CanonicalRole | "superadmin" | "Administrador" | "Admin";
+export type AnyRole = RoleId | CanonicalRole | "superadmin" | "SUPERADMIN" | "Administrador" | "Admin";
 
 /**
  * @deprecated Mantener por compatibilidad. Usar RoleId.
@@ -471,10 +494,10 @@ export interface CenterInvite {
   role: AnyRole;
   /** Roles múltiples (preferido). Si existe, úsalo sobre `role`. */
   roles?: AnyRole[];
-  createdAt?: any;
+  createdAt?: FirestoreDateLike;
   createdBy?: string; // uid
   status?: "pending" | "claimed" | "revoked";
-  claimedAt?: any;
+  claimedAt?: FirestoreDateLike;
   claimedBy?: string; // uid
   photoUrl?: string;
 }
@@ -499,4 +522,21 @@ export type ViewMode =
   | "terms"
   | "privacy";
 
-
+/**
+ * Representa el perfil global del usuario autenticado (desde /users/{uid}).
+ */
+export interface UserProfile {
+  id: string; // Habitualmente el UID
+  uid: string;
+  email: string;
+  fullName: string;
+  roles: AnyRole[];
+  centers: string[]; // IDs de centros donde tiene acceso
+  centros?: string[]; // Compatibilidad legacy con 'centers'
+  isAdmin?: boolean; // Si tiene permisos administrativos globales o en algún centro
+  role?: string; // Role principal para mostrar en UI
+  displayName?: string;
+  photoURL?: string;
+  activeCenterId?: string | null;
+  activo?: boolean;
+}

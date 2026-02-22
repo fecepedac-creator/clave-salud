@@ -1845,10 +1845,15 @@ export const recalcCenterStats = functions
       const consultSnap = await ref.collection("consultations").count().get();
       const consultationCount = consultSnap.data().count;
 
+      // 4. Count Patients
+      const patientsSnap = await ref.collection("patients").count().get();
+      const patientCount = patientsSnap.data().count;
+
       await ref.set(
         {
           stats: {
             staffCount,
+            patientCount,
             appointmentCount,
             consultationCount,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1860,4 +1865,53 @@ export const recalcCenterStats = functions
     }
 
     return { ok: true, processed };
+  });
+
+/**
+ * Tarea programada para recalcular estadísticas de todos los centros cada 24 horas.
+ */
+export const scheduledRecalcStats = functions.pubsub
+  .schedule("every 24 hours")
+  .onRun(async () => {
+    const centersRef = db.collection("centers");
+    const snapshot = await centersRef.get();
+
+    for (const doc of snapshot.docs) {
+      const ref = doc.ref;
+
+      // Count Staff
+      const staffSnap = await ref.collection("staff").get();
+      const staffCount = staffSnap.docs.filter((d: any) => {
+        const data = d.data();
+        return data.active !== false && data.activo !== false;
+      }).length;
+
+      // Count Appointments
+      const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
+      const appointmentCount = apptSnap.size;
+
+      // Count Consultations
+      const consultSnap = await ref.collection("consultations").count().get();
+      const consultationCount = consultSnap.data().count;
+
+      // Count Patients
+      const patientsSnap = await ref.collection("patients").count().get();
+      const patientCount = patientsSnap.data().count;
+
+      await ref.set(
+        {
+          stats: {
+            staffCount,
+            patientCount,
+            appointmentCount,
+            consultationCount,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+
+    console.log(`[scheduledRecalcStats] Procesados ${snapshot.size} centros.`);
+    return null;
   });

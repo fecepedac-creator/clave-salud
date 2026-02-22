@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { Patient, Doctor, Appointment, AuditLogEntry, MedicalCenter, Preadmission } from "../types";
-import { generateId, sanitizeForFirestore } from "../utils";
+import { generateId, generateSlotId, sanitizeForFirestore } from "../utils";
 import { logAuditEventSafe } from "./useAuditLog";
 
 export function useCrudOperations(
@@ -450,7 +450,14 @@ export function useCrudOperations(
 
       if (item.appointmentDraft) {
         const appointmentDraft = item.appointmentDraft;
-        const appointmentId = (appointmentDraft as any).id ?? generateId();
+        const appointmentId =
+          (appointmentDraft as any).id ||
+          generateSlotId(
+            activeCenterId,
+            (appointmentDraft.doctorId ?? appointmentDraft.doctorUid ?? "") as string,
+            appointmentDraft.date ?? "",
+            appointmentDraft.time ?? ""
+          );
         const appointmentPayload: Appointment = {
           id: appointmentId,
           centerId: activeCenterId,

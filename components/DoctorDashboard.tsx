@@ -17,6 +17,7 @@ import {
 import {
   calculateAge,
   generateId,
+  generateSlotId,
   sanitizeText,
   base64ToBlob,
   normalizePhone,
@@ -69,7 +70,17 @@ import {
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import { collection, serverTimestamp, doc, getDoc, onSnapshot, query, orderBy, setDoc, limit } from "firebase/firestore";
+import {
+  collection,
+  serverTimestamp,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  setDoc,
+  limit,
+} from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
@@ -92,7 +103,11 @@ import Odontogram from "./Odontogram";
 import Podogram from "./Podogram";
 import BioMarkers from "./BioMarkers";
 import LogoHeader from "./LogoHeader";
-import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog, getCategoryLabel } from "../utils/examOrderCatalog";
+import {
+  DEFAULT_EXAM_ORDER_CATALOG,
+  ExamOrderCatalog,
+  getCategoryLabel,
+} from "../utils/examOrderCatalog";
 import LegalLinks from "./LegalLinks";
 import { StartProgramModal, SessionModal } from "./KinesiologyModals";
 import { ExamSheetsSection } from "./ExamSheetsSection";
@@ -208,13 +223,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     filteredPatients,
     handleSelectPatient,
     handleSavePatient,
-    handleOpenPatientFromAppointment
+    handleOpenPatientFromAppointment,
   } = usePatientManagement({
     patients,
     activeCenterId,
     onUpdatePatient,
     onLogActivity,
-    filterNextControl
+    filterNextControl,
   });
 
   const {
@@ -227,7 +242,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     addPrescription,
     removePrescription,
     handleCreateConsultation,
-    getEmptyConsultation
+    getEmptyConsultation,
   } = useConsultationLogic({
     selectedPatient,
     activeCenterId,
@@ -238,7 +253,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     role,
     onUpdatePatient,
     onLogActivity,
-    setActiveTab
+    setActiveTab,
   });
 
   const {
@@ -248,7 +263,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     setIsPrintModalOpen,
     isClinicalReportOpen,
     setIsClinicalReportOpen,
-    handlePrint
+    handlePrint,
   } = usePrescriptionLogic();
 
   const [centerLogoError, setCenterLogoError] = useState(false);
@@ -297,21 +312,28 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
 
   // --- Consultation / Exam / Print State ---
-  const [selectedConsultationForModal, setSelectedConsultationForModal] = useState<Consultation | null>(null);
+  const [selectedConsultationForModal, setSelectedConsultationForModal] =
+    useState<Consultation | null>(null);
   const [isExamOrderModalOpen, setIsExamOrderModalOpen] = useState(false);
-  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(DEFAULT_EXAM_ORDER_CATALOG);
+  const [examOrderCatalog, setExamOrderCatalog] = useState<ExamOrderCatalog>(
+    DEFAULT_EXAM_ORDER_CATALOG
+  );
 
   // ── Administrativo / Secretary role: select which professional's agenda to manage ──
   const isAdministrativo = String(role).toUpperCase() === "ADMINISTRATIVO";
   const NON_CLINICAL_ROLES = ["ADMIN_CENTRO", "ADMINISTRATIVO"];
   const clinicalDoctors = doctors.filter(
-    (d) => !NON_CLINICAL_ROLES.includes(String(d.role).toUpperCase()) && d.centerId === activeCenterId
+    (d) =>
+      !NON_CLINICAL_ROLES.includes(String(d.role).toUpperCase()) && d.centerId === activeCenterId
   );
   const [viewingDoctorId, setViewingDoctorId] = useState<string>("");
   // Effective values for the agenda: use the selected doctor when Administrativo
-  const viewingDoctor = isAdministrativo ? clinicalDoctors.find((d) => d.id === viewingDoctorId) : null;
+  const viewingDoctor = isAdministrativo
+    ? clinicalDoctors.find((d) => d.id === viewingDoctorId)
+    : null;
   const effectiveDoctorId = isAdministrativo && viewingDoctor ? viewingDoctor.id : doctorId;
-  const effectiveAgendaConfig = isAdministrativo && viewingDoctor ? viewingDoctor.agendaConfig : agendaConfig;
+  const effectiveAgendaConfig =
+    isAdministrativo && viewingDoctor ? viewingDoctor.agendaConfig : agendaConfig;
 
   // State for Catalog
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
@@ -401,7 +423,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const getActiveConsultations = (p: Patient) =>
     (p.consultations || []).filter((consultation) => consultation.active !== false);
 
-
   const getNextControlDateFromPatient = (p: Patient): Date | null => {
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
@@ -417,7 +438,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const getNextControlReasonFromPatient = (p: Patient): string => {
     const lastConsult = p.consultations?.[0]
-      ? [...p.consultations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      ? [...p.consultations].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0]
       : null;
     return lastConsult?.nextControlReason || "";
   };
@@ -478,7 +501,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     lines.push(`Paciente: ${formatPersonName(selectedPatient.fullName)}`);
     lines.push(`RUT: ${selectedPatient.rut || "-"}`);
     lines.push(`Fecha: ${dateStr}`);
-    lines.push(`Profesional: ${getProfessionalPrefix(consultation.professionalRole)} ${consultation.professionalName || "-"}`);
+    lines.push(
+      `Profesional: ${getProfessionalPrefix(consultation.professionalRole)} ${consultation.professionalName || "-"}`
+    );
     lines.push("");
     lines.push(`Motivo: ${consultation.reason || "-"}`);
     lines.push(`Diagnóstico / Hipótesis: ${consultation.diagnosis || "-"}`);
@@ -515,26 +540,23 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
   // --- módulos del centro (SuperAdmin) ---
-  const moduleGuards = useMemo(
-    () => {
-      // Calculate individual flags
-      const vitalsBase = isModuleEnabled ? isModuleEnabled("vitals") : true;
-      const vitalsUserPref = currentUser.preferences?.vitalsEnabled;
-      // If user has a preference, use it. Otherwise use center config.
-      const vitalsEffective = vitalsUserPref !== undefined ? vitalsUserPref : vitalsBase;
+  const moduleGuards = useMemo(() => {
+    // Calculate individual flags
+    const vitalsBase = isModuleEnabled ? isModuleEnabled("vitals") : true;
+    const vitalsUserPref = currentUser.preferences?.vitalsEnabled;
+    // If user has a preference, use it. Otherwise use center config.
+    const vitalsEffective = vitalsUserPref !== undefined ? vitalsUserPref : vitalsBase;
 
-      return {
-        patients: isModuleEnabled ? isModuleEnabled("patients") : true,
-        agenda: isModuleEnabled ? isModuleEnabled("agenda") : true,
-        prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
-        vitals: vitalsEffective,
-        exams: isModuleEnabled ? isModuleEnabled("exams") : true,
-        dental: isModuleEnabled ? isModuleEnabled("dental") : true,
-        settings: isModuleEnabled ? isModuleEnabled("settings") : true,
-      };
-    },
-    [isModuleEnabled, currentUser]
-  );
+    return {
+      patients: isModuleEnabled ? isModuleEnabled("patients") : true,
+      agenda: isModuleEnabled ? isModuleEnabled("agenda") : true,
+      prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
+      vitals: vitalsEffective,
+      exams: isModuleEnabled ? isModuleEnabled("exams") : true,
+      dental: isModuleEnabled ? isModuleEnabled("dental") : true,
+      settings: isModuleEnabled ? isModuleEnabled("settings") : true,
+    };
+  }, [isModuleEnabled, currentUser]);
 
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
   const [previewFile, setPreviewFile] = useState<Attachment | null>(null);
@@ -620,7 +642,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     [whatsappTemplates]
   );
 
-
   useEffect(() => {
     if (!activeCenterId || !selectedPatient?.id) {
       setConsultationsFromDb([]);
@@ -642,7 +663,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const docs = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Consultation[];
+        const docs = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        })) as Consultation[];
         setConsultationsFromDb(docs.filter((c) => c.active !== false));
         const legacyCount = getActiveConsultations(selectedPatient).length;
         setIsUsingLegacyConsultations(docs.length === 0 && legacyCount > 0);
@@ -670,7 +694,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           if (centerSnap.exists()) {
             const data = centerSnap.data() as any;
             if (Array.isArray(data?.categories)) {
-              setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+              setExamOrderCatalog({
+                version: Number(data.version || 1),
+                categories: data.categories,
+              });
               return;
             }
           }
@@ -680,7 +707,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         if (globalSnap.exists()) {
           const data = globalSnap.data() as any;
           if (Array.isArray(data?.categories)) {
-            setExamOrderCatalog({ version: Number(data.version || 1), categories: data.categories });
+            setExamOrderCatalog({
+              version: Number(data.version || 1),
+              categories: data.categories,
+            });
             return;
           }
         }
@@ -694,7 +724,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
     loadExamOrderCatalog();
   }, [activeCenterId]);
-
 
   // --- TEMPLATE HANDLERS ---
   const handleSaveTemplate = () => {
@@ -883,7 +912,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     showToast("Programa iniciado", "success");
   };
 
-  const handleSaveKineSession = async (p: Patient, programId: string, session: Partial<KinesiologySession>) => {
+  const handleSaveKineSession = async (
+    p: Patient,
+    programId: string,
+    session: Partial<KinesiologySession>
+  ) => {
     const newSession: KinesiologySession = {
       id: generateId(),
       date: new Date().toISOString(),
@@ -903,9 +936,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // UI Helpers based on Role
   // UI Helpers based on Role
-  const canSeeVitals = ["MEDICO", "ENFERMERA", "KINESIOLOGO", "MATRONA", "NUTRICIONISTA", "PREPARADOR_FISICO"].includes(
-    role
-  );
+  const canSeeVitals = [
+    "MEDICO",
+    "ENFERMERA",
+    "KINESIOLOGO",
+    "MATRONA",
+    "NUTRICIONISTA",
+    "PREPARADOR_FISICO",
+  ].includes(role);
   // Prescriber Logic: Only Medico, Odontologo, Matrona can prescribe drugs/exams
   const canPrescribeDrugs = ["MEDICO", "ODONTOLOGO", "MATRONA"].includes(role);
   // Only Medico and Odontologo can issue licenses. Matronas cannot.
@@ -1081,7 +1119,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           examDefinitions={currentUser?.customExams}
         />
 
-
         <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <button
@@ -1099,7 +1136,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors"
                       value={selectedPatient.fullName}
                       onChange={(e) =>
-                        setSelectedPatient((prev) => prev ? ({ ...prev, fullName: e.target.value }) : null)
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, fullName: e.target.value } : null
+                        )
                       }
                       placeholder="Nombre Completo"
                     />
@@ -1107,7 +1146,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors"
                       value={selectedPatient.rut}
                       onChange={(e) =>
-                        setSelectedPatient((prev) => prev ? ({ ...prev, rut: e.target.value }) : null)
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, rut: e.target.value } : null
+                        )
                       }
                       placeholder="RUT"
                     />
@@ -1116,16 +1157,22 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     <input
                       type="date"
                       className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
-                      value={selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""}
+                      value={
+                        selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""
+                      }
                       onChange={(e) =>
-                        setSelectedPatient((prev) => prev ? ({ ...prev, birthDate: e.target.value }) : null)
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, birthDate: e.target.value } : null
+                        )
                       }
                     />
                     <select
                       className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500"
                       value={selectedPatient.gender}
                       onChange={(e) =>
-                        setSelectedPatient((prev) => prev ? ({ ...prev, gender: e.target.value }) : null)
+                        setSelectedPatient((prev) =>
+                          prev ? { ...prev, gender: e.target.value } : null
+                        )
                       }
                     >
                       <option value="Masculino">Masculino</option>
@@ -1205,7 +1252,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   setIsEditingPatient(true);
                 }
               }}
-              handleEditPatientField={(f, v) => setSelectedPatient((prev) => prev ? ({ ...prev, [f]: v }) : null)}
+              handleEditPatientField={(f, v) =>
+                setSelectedPatient((prev) => (prev ? { ...prev, [f]: v } : null))
+              }
               onFileUpload={async (e) => {
                 if (e.target.files?.[0] && currentUser) {
                   const f = e.target.files[0];
@@ -1213,7 +1262,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   try {
                     const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
                     const { storage } = await import("../firebase");
-                    const storageRef = ref(storage, `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`);
+                    const storageRef = ref(
+                      storage,
+                      `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`
+                    );
                     await uploadBytes(storageRef, f);
                     const downloadUrl = await getDownloadURL(storageRef);
 
@@ -1227,7 +1279,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     const up = {
                       ...selectedPatient,
                       attachments: [...(selectedPatient.attachments || []), att],
-                      lastUpdated: new Date().toISOString()
+                      lastUpdated: new Date().toISOString(),
                     };
                     onUpdatePatient(up);
                     setSelectedPatient(up);
@@ -1235,7 +1287,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     onLogActivity({
                       action: "update",
                       details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
-                      targetId: selectedPatient.id
+                      targetId: selectedPatient.id,
                     } as any);
                   } catch (err) {
                     console.error("Upload error", err);
@@ -1259,8 +1311,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <span className="bg-primary-100 text-primary-800 px-2 py-0.5 rounded text-xs uppercase font-bold">
                         {role}
                       </span>
-                      {selectedPatientConsultations.length}{" "}
-                      atenciones registradas
+                      {selectedPatientConsultations.length} atenciones registradas
                     </p>
                   </div>
                   {!isReadOnly && role !== "KINESIOLOGO" && (
@@ -1290,86 +1341,140 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               )}
 
               {/* KINESIOLOGY DASHBOARD OVERVIEW */}
-              {role === "KINESIOLOGO" && !isCreatingConsultation && (selectedPatient.kinesiologyPrograms?.length || 0) > 0 && (
-                <div className="mb-8 space-y-4">
-                  <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">Programas Activos</h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    {selectedPatient.kinesiologyPrograms?.map(prog => (
-                      <div key={prog.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}>
-                                {prog.type}
-                              </span>
-                              <span className="text-xs text-slate-400 font-medium">{new Date(prog.createdAt).toLocaleDateString()}</span>
+              {role === "KINESIOLOGO" &&
+                !isCreatingConsultation &&
+                (selectedPatient.kinesiologyPrograms?.length || 0) > 0 && (
+                  <div className="mb-8 space-y-4">
+                    <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">
+                      Programas Activos
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      {selectedPatient.kinesiologyPrograms?.map((prog) => (
+                        <div
+                          key={prog.id}
+                          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4"
+                        >
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}
+                                >
+                                  {prog.type}
+                                </span>
+                                <span className="text-xs text-slate-400 font-medium">
+                                  {new Date(prog.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
+                              <p className="text-slate-500 text-sm">
+                                {prog.sessions?.length || 0} / {prog.totalSessions} Sesiones
+                                realizadas
+                              </p>
                             </div>
-                            <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
-                            <p className="text-slate-500 text-sm">{prog.sessions?.length || 0} / {prog.totalSessions} Sesiones realizadas</p>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() =>
+                                  setExpandedProgramId(
+                                    expandedProgramId === prog.id ? null : prog.id
+                                  )
+                                }
+                                className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id
+                                  ? "bg-slate-100 text-slate-700"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                  }`}
+                              >
+                                <History className="w-4 h-4" />{" "}
+                                {expandedProgramId === prog.id
+                                  ? "Ocultar Historial"
+                                  : "Ver Historial"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedKineProgram(prog);
+                                  setIsKineSessionModalOpen(true);
+                                }}
+                                className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2"
+                              >
+                                <Activity className="w-4 h-4" /> Registrar Sesión
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-3">
-                            <button
-                              onClick={() => setExpandedProgramId(expandedProgramId === prog.id ? null : prog.id)}
-                              className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id ? "bg-slate-100 text-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                                }`}
-                            >
-                              <History className="w-4 h-4" /> {expandedProgramId === prog.id ? "Ocultar Historial" : "Ver Historial"}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedKineProgram(prog);
-                                setIsKineSessionModalOpen(true);
-                              }}
-                              className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2"
-                            >
-                              <Activity className="w-4 h-4" /> Registrar Sesión
-                            </button>
-                          </div>
-                        </div>
 
-                        {/* EXPANDED HISTORY */}
-                        {expandedProgramId === prog.id && (
-                          <div className="border-t border-slate-100 pt-4 animate-fadeIn">
-                            <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Historial de Sesiones</h5>
-                            {(!prog.sessions || prog.sessions.length === 0) ? (
-                              <p className="text-sm text-slate-400 italic">No hay sesiones registradas aún.</p>
-                            ) : (
-                              <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-                                {prog.sessions
-                                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Newest first
-                                  .map((session, idx) => (
-                                    <div key={session.id || idx} className="relative pl-8">
-                                      <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
-                                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                        <div className="flex justify-between items-start mb-2">
-                                          <span className="font-bold text-slate-700 text-sm">Sesión #{session.sessionNumber}</span>
-                                          <span className="text-xs text-slate-400">{new Date(session.date).toLocaleDateString()}</span>
-                                        </div>
-                                        <div className="text-sm text-slate-600 space-y-1">
-                                          {session.observations && <p><strong className="text-slate-500">Obs:</strong> {session.observations}</p>}
-                                          {session.techniques && session.techniques.length > 0 && <p><strong className="text-slate-500">Técnicas:</strong> {session.techniques.join(", ")}</p>}
-                                          <div className="flex gap-4 mt-2">
-                                            {session.tolerance && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Tol: {session.tolerance}</span>}
-                                            {session.response && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Resp: {session.response}</span>}
+                          {/* EXPANDED HISTORY */}
+                          {expandedProgramId === prog.id && (
+                            <div className="border-t border-slate-100 pt-4 animate-fadeIn">
+                              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+                                Historial de Sesiones
+                              </h5>
+                              {!prog.sessions || prog.sessions.length === 0 ? (
+                                <p className="text-sm text-slate-400 italic">
+                                  No hay sesiones registradas aún.
+                                </p>
+                              ) : (
+                                <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                                  {prog.sessions
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                                    ) // Newest first
+                                    .map((session, idx) => (
+                                      <div key={session.id || idx} className="relative pl-8">
+                                        <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                          <div className="flex justify-between items-start mb-2">
+                                            <span className="font-bold text-slate-700 text-sm">
+                                              Sesión #{session.sessionNumber}
+                                            </span>
+                                            <span className="text-xs text-slate-400">
+                                              {new Date(session.date).toLocaleDateString()}
+                                            </span>
+                                          </div>
+                                          <div className="text-sm text-slate-600 space-y-1">
+                                            {session.observations && (
+                                              <p>
+                                                <strong className="text-slate-500">Obs:</strong>{" "}
+                                                {session.observations}
+                                              </p>
+                                            )}
+                                            {session.techniques &&
+                                              session.techniques.length > 0 && (
+                                                <p>
+                                                  <strong className="text-slate-500">
+                                                    Técnicas:
+                                                  </strong>{" "}
+                                                  {session.techniques.join(", ")}
+                                                </p>
+                                              )}
+                                            <div className="flex gap-4 mt-2">
+                                              {session.tolerance && (
+                                                <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">
+                                                  Tol: {session.tolerance}
+                                                </span>
+                                              )}
+                                              {session.response && (
+                                                <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">
+                                                  Resp: {session.response}
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* KINESIOLOGY UNIFIED DASHBOARD: Clinical Docs & Next Control inline */}
               {role === "KINESIOLOGO" && !isCreatingConsultation && (
                 <div className="space-y-8 animate-fadeIn">
-
                   {/* Document Manager */}
                   <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
                     <PrescriptionManager
@@ -1383,9 +1488,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       onRemovePrescription={(id) =>
                         setNewConsultation((prev) => ({
                           ...prev,
-                          prescriptions: prev.prescriptions?.filter(
-                            (p) => p.id !== id
-                          ),
+                          prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
                         }))
                       }
                       onPrint={(docs) => {
@@ -1449,7 +1552,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           setSelectedPatient(updatedPatient);
                         }
                       }}
-                      disabled={!hasActiveCenter || ((!newConsultation.prescriptions?.length) && (!newConsultation.nextControlDate))}
+                      disabled={
+                        !hasActiveCenter ||
+                        (!newConsultation.prescriptions?.length && !newConsultation.nextControlDate)
+                      }
                       className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Save className="w-6 h-6" /> Guardar Gestión / Documentos
@@ -1479,8 +1585,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     />
                   )}
                 </>
-              )
-              }
+              )}
 
               {isCreatingConsultation ? (
                 <div className="bg-white rounded-2xl shadow-xl border border-slate-200 animate-slideUp">
@@ -1648,9 +1753,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             onRemovePrescription={(id) =>
                               setNewConsultation((prev) => ({
                                 ...prev,
-                                prescriptions: prev.prescriptions?.filter(
-                                  (p) => p.id !== id
-                                ),
+                                prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
                               }))
                             }
                             onPrint={(docs) => {
@@ -1772,7 +1875,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 <>
                   {isUsingLegacyConsultations && (
                     <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-semibold">
-                      Mostrando historial legacy (patients.consultations). Las nuevas atenciones se guardan en subcolección.
+                      Mostrando historial legacy (patients.consultations). Las nuevas atenciones se
+                      guardan en subcolección.
                     </div>
                   )}
                   <ConsultationHistory
@@ -1793,8 +1897,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               )}
             </section>
           </div>
-        </main >
-      </div >
+        </main>
+      </div>
     );
   }
 
@@ -1985,7 +2089,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               setIsEditingPatient(true);
                             }}
                             disabled={!hasActiveCenter}
-                            title={hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"}
+                            title={
+                              hasActiveCenter ? "Crear paciente" : "Selecciona un centro activo"
+                            }
                             className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-200 transition-transform active:scale-95"
                           >
                             <Plus className="w-5 h-5" /> Nuevo Paciente
@@ -2196,7 +2302,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     onToggleSlot={async (time) => {
                       if (isReadOnly) return;
                       if (!hasActiveCenter) {
-                        showToast("Selecciona un centro activo para modificar la agenda.", "warning");
+                        showToast(
+                          "Selecciona un centro activo para modificar la agenda.",
+                          "warning"
+                        );
                         return;
                       }
                       const date = selectedAgendaDate;
@@ -2220,14 +2329,23 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         // Individual Firestore deletes
                         if (onDeleteAppointment) {
                           for (const slot of matchingSlots) {
-                            try { await onDeleteAppointment(slot.id); } catch (e) { console.error("deleteSlot", e); }
+                            try {
+                              await onDeleteAppointment(slot.id);
+                            } catch (e) {
+                              console.error("deleteSlot", e);
+                            }
                           }
                         }
                         showToast("Bloque cerrado (horario bloqueado).", "info");
                       } else {
                         // Add slot (Open it) — individual write
                         const newSlot: Appointment = {
-                          id: generateId(),
+                          id: generateSlotId(
+                            currentUser?.centerId || activeCenterId || "",
+                            effectiveDoctorId,
+                            date,
+                            time
+                          ),
                           centerId: currentUser?.centerId || activeCenterId || "",
                           doctorId: effectiveDoctorId,
                           doctorUid: effectiveDoctorId,
@@ -2242,7 +2360,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         onUpdateAppointments([...appointments, newSlot]);
                         // Individual Firestore write
                         if (onUpdateAppointment) {
-                          try { await onUpdateAppointment(newSlot); } catch (e) { console.error("createSlot", e); }
+                          try {
+                            await onUpdateAppointment(newSlot);
+                          } catch (e) {
+                            console.error("createSlot", e);
+                          }
                         }
                         showToast("Bloque abierto disponible.", "success");
                       }
@@ -2277,7 +2399,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Módulo de Signos Vitales</h3>
                       <p className="text-sm text-slate-500 max-w-xl">
-                        Habilita los campos de peso, talla, presión arterial y otros datos antropométricos en el formulario de nueva consulta.
+                        Habilita los campos de peso, talla, presión arterial y otros datos
+                        antropométricos en el formulario de nueva consulta.
                         <span className="font-bold text-slate-700 ml-1">
                           (Anula la configuración del centro)
                         </span>
@@ -2288,7 +2411,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
                     <button
                       onClick={() => {
-                        onUpdateDoctor({ ...currentUser, preferences: { ...currentUser.preferences, vitalsEnabled: true } });
+                        onUpdateDoctor({
+                          ...currentUser,
+                          preferences: { ...currentUser.preferences, vitalsEnabled: true },
+                        });
                         showToast("Signos vitales ACTIVADOS (Preferencia personal)", "success");
                       }}
                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${moduleGuards.vitals ? "bg-white text-emerald-600 shadow-sm border border-emerald-100" : "text-slate-400 hover:text-slate-600"}`}
@@ -2297,7 +2423,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                     </button>
                     <button
                       onClick={() => {
-                        onUpdateDoctor({ ...currentUser, preferences: { ...currentUser.preferences, vitalsEnabled: false } });
+                        onUpdateDoctor({
+                          ...currentUser,
+                          preferences: { ...currentUser.preferences, vitalsEnabled: false },
+                        });
                         showToast("Signos vitales DESACTIVADOS (Preferencia personal)", "info");
                       }}
                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${!moduleGuards.vitals ? "bg-white text-rose-600 shadow-sm border border-rose-100" : "text-slate-400 hover:text-slate-600"}`}
@@ -2329,7 +2458,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           >
                             <div className="flex justify-between items-start mb-2">
                               <div>
-                                <h4 className="font-bold text-slate-700 text-sm">{profile.label}</h4>
+                                <h4 className="font-bold text-slate-700 text-sm">
+                                  {profile.label}
+                                </h4>
                                 <p className="text-xs text-slate-400">
                                   {profile.description || "Sin descripción"}
                                 </p>
@@ -2648,10 +2779,17 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                           <div>
-                            <h3 className="font-bold text-lg text-slate-800">Catálogo de Plantillas</h3>
-                            <p className="text-xs text-slate-500">Importe plantillas estándar a su colección personal</p>
+                            <h3 className="font-bold text-lg text-slate-800">
+                              Catálogo de Plantillas
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Importe plantillas estándar a su colección personal
+                            </p>
                           </div>
-                          <button onClick={() => setIsCatalogOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                          <button
+                            onClick={() => setIsCatalogOpen(false)}
+                            className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                          >
                             <X className="w-5 h-5 text-slate-500" />
                           </button>
                         </div>
@@ -2674,11 +2812,17 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               ? [
                                 { id: "all", label: "Todas" },
                                 { id: "Respiratoria", label: "Patología Respiratoria" },
-                                { id: "Musculoesquelética EE.SS", label: "Músculo Esquelética EE.SS" },
-                                { id: "Musculoesquelética EE.II", label: "Músculo Esquelética EE.II" },
+                                {
+                                  id: "Musculoesquelética EE.SS",
+                                  label: "Músculo Esquelética EE.SS",
+                                },
+                                {
+                                  id: "Musculoesquelética EE.II",
+                                  label: "Músculo Esquelética EE.II",
+                                },
                                 { id: "Columna", label: "Patología Columna" },
                                 { id: "Neurología", label: "Neurología" },
-                                { id: "Deporte", label: "Deporte" }
+                                { id: "Deporte", label: "Deporte" },
                               ]
                               : [
                                 { id: "all", label: "Todas" },
@@ -2687,13 +2831,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                 { id: "Salud Mental", label: "Salud Mental" },
                                 { id: "Cirugía", label: "Cirugía" },
                                 { id: "Gastro", label: "Gastroenterología" },
-                                { id: "Diabetes", label: "Metabólico" }
+                                { id: "Diabetes", label: "Metabólico" },
                               ]
-                            ).map(chip => (
+                            ).map((chip) => (
                               <button
                                 key={chip.id}
                                 onClick={() => setCatalogSearch(chip.id === "all" ? "" : chip.id)}
-                                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-bold border transition-colors ${(chip.id === "all" && catalogSearch === "") || (chip.id !== "all" && catalogSearch.includes(chip.id))
+                                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-bold border transition-colors ${(chip.id === "all" && catalogSearch === "") ||
+                                  (chip.id !== "all" && catalogSearch.includes(chip.id))
                                   ? "bg-indigo-100 text-indigo-700 border-indigo-200"
                                   : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
                                   }`}
@@ -2705,31 +2850,58 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
-                          {DEFAULT_CLINICAL_TEMPLATES
-                            .filter(t => t.category !== 'certificate') // Hide certificates (they are global)
+                          {DEFAULT_CLINICAL_TEMPLATES.filter((t) => t.category !== "certificate") // Hide certificates (they are global)
                             // Filter by Role (Legacy check via roles array)
-                            .filter(t => !t.roles || t.roles.includes(role))
-                            .filter(t => {
+                            .filter((t) => !t.roles || t.roles.includes(role))
+                            .filter((t) => {
                               const searchLower = catalogSearch.toLowerCase();
                               if (!searchLower) return true;
 
                               // Check tags first (Robust filtering)
-                              if (t.tags && t.tags.some(tag => tag.toLowerCase().includes(searchLower))) {
+                              if (
+                                t.tags &&
+                                t.tags.some((tag) => tag.toLowerCase().includes(searchLower))
+                              ) {
                                 return true;
                               }
 
                               // Legacy manual mapping fallback for non-tagged templates
-                              if (searchLower === "respiratorio") return t.content.toLowerCase().includes("respiratoria") || t.title.toLowerCase().includes("resfrío") || t.title.toLowerCase().includes("amigdalitis");
-                              if (searchLower === "gastro") return t.content.toLowerCase().includes("gastro") || t.title.toLowerCase().includes("gastro");
-                              if (searchLower === "diabetes") return t.title.toLowerCase().includes("diabetes");
-                              if (searchLower === "salud mental") return t.title.toLowerCase().includes("ansiedad") || t.title.toLowerCase().includes("depresión");
-                              if (searchLower === "traumatología") return t.content.toLowerCase().includes("traumatología") || t.title.toLowerCase().includes("lumbago") || t.title.toLowerCase().includes("esguince");
+                              if (searchLower === "respiratorio")
+                                return (
+                                  t.content.toLowerCase().includes("respiratoria") ||
+                                  t.title.toLowerCase().includes("resfrío") ||
+                                  t.title.toLowerCase().includes("amigdalitis")
+                                );
+                              if (searchLower === "gastro")
+                                return (
+                                  t.content.toLowerCase().includes("gastro") ||
+                                  t.title.toLowerCase().includes("gastro")
+                                );
+                              if (searchLower === "diabetes")
+                                return t.title.toLowerCase().includes("diabetes");
+                              if (searchLower === "salud mental")
+                                return (
+                                  t.title.toLowerCase().includes("ansiedad") ||
+                                  t.title.toLowerCase().includes("depresión")
+                                );
+                              if (searchLower === "traumatología")
+                                return (
+                                  t.content.toLowerCase().includes("traumatología") ||
+                                  t.title.toLowerCase().includes("lumbago") ||
+                                  t.title.toLowerCase().includes("esguince")
+                                );
 
                               // General search
-                              return t.title.toLowerCase().includes(searchLower) || t.content.toLowerCase().includes(searchLower);
+                              return (
+                                t.title.toLowerCase().includes(searchLower) ||
+                                t.content.toLowerCase().includes(searchLower)
+                              );
                             })
-                            .map(t => (
-                              <div key={t.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2">
+                            .map((t) => (
+                              <div
+                                key={t.id}
+                                className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2"
+                              >
                                 <div className="flex justify-between items-start">
                                   <span className="font-bold text-slate-800">{t.title}</span>
                                   <button
@@ -2741,11 +2913,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                 </div>
                                 <p className="text-xs text-slate-500 line-clamp-2">{t.content}</p>
                               </div>
-                            ))
-                          }
-                          {DEFAULT_CLINICAL_TEMPLATES.filter(t => t.category !== 'certificate').length === 0 && (
-                            <p className="text-center text-slate-400 text-sm py-4">No hay plantillas disponibles.</p>
-                          )}
+                            ))}
+                          {DEFAULT_CLINICAL_TEMPLATES.filter((t) => t.category !== "certificate")
+                            .length === 0 && (
+                              <p className="text-center text-slate-400 text-sm py-4">
+                                No hay plantillas disponibles.
+                              </p>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -2887,9 +3061,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                         <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
                       )}
                       {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
-                        <div className="text-xs text-slate-400">
-                          No hay plantillas habilitadas.
-                        </div>
+                        <div className="text-xs text-slate-400">No hay plantillas habilitadas.</div>
                       )}
                       <div className="flex flex-col gap-2">
                         {enabledWhatsappTemplates.map((template) => {
@@ -2935,6 +3107,5 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     </div>
   );
 };
-
 
 export default ProfessionalDashboard;

@@ -19,12 +19,10 @@ import LandingPage from "./components/LandingPage";
 import SupportWidget from "./components/SupportWidget";
 import OnboardingTour, { OnboardingStep } from "./components/OnboardingTour";
 import {
-  extractChileanPhoneDigits,
-  formatChileanPhone,
   formatRUT,
   generateId,
   getDaysInMonth,
-  getStandardSlots,
+  generateSlotId,
   validateRUT,
 } from "./utils";
 import {
@@ -37,7 +35,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
-  ShieldCheck,
   Stethoscope,
   UserRound,
 } from "lucide-react";
@@ -138,7 +135,15 @@ const App: React.FC = () => {
     setAppointments,
     auditLogs,
     preadmissions,
-  } = useFirestoreSync(activeCenterId, authUser, demoMode, isSuperAdminClaim, setCenters, currentUser, portfolioMode);
+  } = useFirestoreSync(
+    activeCenterId,
+    authUser,
+    demoMode,
+    isSuperAdminClaim,
+    setCenters,
+    currentUser,
+    portfolioMode
+  );
   const {
     inviteToken,
     setInviteToken,
@@ -159,7 +164,9 @@ const App: React.FC = () => {
     acceptInviteForUser,
   } = useInvite();
   // Demo overrides
-  const [demoDoctorOverrides, setDemoDoctorOverrides] = useState<Record<string, Partial<Doctor>>>({});
+  const [demoDoctorOverrides, setDemoDoctorOverrides] = useState<Record<string, Partial<Doctor>>>(
+    {}
+  );
 
   const {
     updatePatient,
@@ -235,13 +242,10 @@ const App: React.FC = () => {
   );
   const handleSuperAdminGoogleLogin = useCallback(
     () =>
-      hookHandleSuperAdminGoogleLogin(
-        () => {
-          setView("superadmin-dashboard" as any);
-          setDemoMode(false);
-        },
-        handleSuperAdminUnauthorized
-      ),
+      hookHandleSuperAdminGoogleLogin(() => {
+        setView("superadmin-dashboard" as any);
+        setDemoMode(false);
+      }, handleSuperAdminUnauthorized),
     [hookHandleSuperAdminGoogleLogin, handleSuperAdminUnauthorized]
   );
   const handleGoogleLogin = useCallback(
@@ -426,7 +430,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const applyPath = (pathname: string) => {
       const nextCenterId = getCenterIdFromPath(pathname);
-      const isProAccess = pathname.startsWith("/accesoprofesionales") || pathname.startsWith("/pro");
+      const isProAccess =
+        pathname.startsWith("/accesoprofesionales") || pathname.startsWith("/pro");
 
       isApplyingPopStateRef.current = true; // Prevent pushing state again
 
@@ -467,11 +472,13 @@ const App: React.FC = () => {
 
     let nextPath = "/";
     if (view === ("doctor-login" as ViewMode)) {
-      if (window.location.pathname.startsWith("/accesoprofesionales")) nextPath = window.location.pathname;
+      if (window.location.pathname.startsWith("/accesoprofesionales"))
+        nextPath = window.location.pathname;
       else if (window.location.pathname.startsWith("/pro")) nextPath = window.location.pathname;
       else nextPath = "/pro"; // Default shorthand
     } else {
-      nextPath = view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+      nextPath =
+        view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
     }
 
     if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
@@ -784,33 +791,30 @@ const App: React.FC = () => {
 
     // Exclude management roles from public booking view
     const NON_BOOKABLE_ROLES = ["ADMIN_CENTRO", "ADMINISTRATIVO"];
-    const uniqueRoles = Array.from(new Set(doctors.map((d) => getPublicCategory(d))))
-      .filter((r) => !NON_BOOKABLE_ROLES.includes(String(r)));
+    const uniqueRoles = Array.from(new Set(doctors.map((d) => getPublicCategory(d)))).filter(
+      (r) => !NON_BOOKABLE_ROLES.includes(String(r))
+    );
     const doctorsForRole = selectedRole
-      ? doctors.filter((d) => getPublicCategory(d) === selectedRole && d.centerId === activeCenterId)
+      ? doctors.filter(
+        (d) => getPublicCategory(d) === selectedRole && d.centerId === activeCenterId
+      )
       : [];
 
     const dateStr = bookingDate.toISOString().split("T")[0];
 
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-    const availableSlotsForDay = selectedDoctorForBooking?.agendaConfig
-      ? getStandardSlots(
-        dateStr,
-        selectedDoctorForBooking.id,
-        selectedDoctorForBooking.agendaConfig
+    const availableSlotsForDay = appointments
+      .filter(
+        (a) =>
+          appointmentDoctorUid(a) === selectedDoctorForBooking?.id &&
+          a.date === dateStr &&
+          a.status === "available"
       )
-        .map((slot: any) => {
-          const existing = appointments.find(
-            (a) =>
-              appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-              a.date === dateStr &&
-              a.time === slot.time &&
-              a.status === "available"
-          );
-          return existing ? { ...slot, appointmentId: existing.id } : null;
-        })
-        .filter((slot): slot is { time: string; appointmentId: string } => Boolean(slot))
-      : [];
+      .map((a) => ({
+        time: a.time,
+        appointmentId: a.id,
+      }))
+      .sort((a, b) => a.time.localeCompare(b.time));
 
     return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
@@ -881,7 +885,9 @@ const App: React.FC = () => {
                       <span className="font-bold text-xl text-slate-700 block">
                         {docu.fullName}
                       </span>
-                      <span className="text-sm text-slate-500 font-medium">{docu.specialty || getPublicCategory(docu)}</span>
+                      <span className="text-sm text-slate-500 font-medium">
+                        {docu.specialty || getPublicCategory(docu)}
+                      </span>
                     </div>
                   </button>
                 ))}
@@ -1165,7 +1171,8 @@ const App: React.FC = () => {
   );
 
   const renderLogin = (isDoc: boolean) => {
-    const centerLogoUrl = activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
+    const centerLogoUrl =
+      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="flex flex-col items-center gap-6">
@@ -1660,7 +1667,11 @@ const App: React.FC = () => {
                 onClick={() => handleGoogleLogin("doctor-dashboard" as ViewMode)}
                 className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold shadow-lg hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3 mx-auto"
               >
-                <img src={GOOGLE_ICON_SRC} alt="G" className="w-5 h-5 bg-white rounded-full p-0.5" />
+                <img
+                  src={GOOGLE_ICON_SRC}
+                  alt="G"
+                  className="w-5 h-5 bg-white rounded-full p-0.5"
+                />
                 Ingreso Rápido (Profesional / Admin)
               </button>
               <div className="flex flex-wrap justify-center gap-3">
@@ -1748,7 +1759,7 @@ const App: React.FC = () => {
             </button>
           </div>
         </footer>
-      </div >
+      </div>
     );
   };
   const renderByView = () => {
@@ -1860,15 +1871,17 @@ const App: React.FC = () => {
         </CenterContext.Provider>
       );
 
-    const previewUser = isPreviewActive ? {
-      id: authUser?.uid ?? "preview_user",
-      uid: authUser?.uid ?? "preview_user",
-      email: authUser?.email ?? "preview@demo.cl",
-      fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
-      role: previewRole || "MEDICO",
-      agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
-      savedTemplates: [],
-    } : null;
+    const previewUser = isPreviewActive
+      ? {
+        id: authUser?.uid ?? "preview_user",
+        uid: authUser?.uid ?? "preview_user",
+        email: authUser?.email ?? "preview@demo.cl",
+        fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
+        role: previewRole || "MEDICO",
+        agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
+        savedTemplates: [],
+      }
+      : null;
 
     const userForView = currentUser || previewUser;
 
@@ -1918,7 +1931,7 @@ const App: React.FC = () => {
           // CRITICAL: Preserve the real UID and email from the logged-in user if the staff record is "unclaimed" (uid: null)
           uid: userForView.uid ?? matchedDoctor.uid,
           email: userForView.email ?? matchedDoctor.email,
-          fullName: resolvedDoctorName
+          fullName: resolvedDoctorName,
         } as any)
         : ({ ...userForView, ...demoOverride } as any);
 
@@ -2054,9 +2067,7 @@ const App: React.FC = () => {
 
   return (
     <>
-      <Suspense fallback={<PageLoader />}>
-        {renderByView()}
-      </Suspense>
+      <Suspense fallback={<PageLoader />}>{renderByView()}</Suspense>
       {isPreviewActive && (
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2">
           <button

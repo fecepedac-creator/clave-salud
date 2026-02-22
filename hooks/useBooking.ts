@@ -116,11 +116,11 @@ export function useBooking(
       await runTransaction(db, async (transaction) => {
         const apptSnap = await transaction.get(apptRef);
         if (!apptSnap.exists()) {
-          throw new Error("El horario ya no existe. Selecciona otro.");
+          throw new Error("El horario ya no existe. El profesional puede haberlo cerrado recientemente.");
         }
-        const currentData = apptSnap.data();
+        const currentData = apptSnap.data() as Appointment;
         if (currentData?.status !== "available") {
-          throw new Error("Este horario acaba de ser reservado por otro paciente. Selecciona otro.");
+          throw new Error("Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque.");
         }
 
         transaction.update(apptRef, {
@@ -142,21 +142,22 @@ export function useBooking(
         patientId,
         patientPhone: phone,
         patientEmail: email || undefined,
-        bookedAt: serverTimestamp(),
+        bookedAt: new Date().toISOString(),
         active: slotAppointment.active ?? true,
       };
 
       setAppointments((prev) =>
         prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
       );
-    } catch (txError: any) {
-      showToast(txError?.message || "No se pudo completar la reserva.", "error");
+    } catch (txError: unknown) {
+      const message = txError instanceof Error ? txError.message : "No se pudo completar la reserva.";
+      showToast(message, "error");
       return;
     }
 
     if (activeCenterId && !existingPatient) {
       // Assign patient to the DOCTOR (not the person booking)
-      const doctorUid = (selectedDoctorForBooking as any)?.id ?? "";
+      const doctorUid = selectedDoctorForBooking.id;
       const patientPayload: Patient = {
         id: patientId,
         ownerUid: doctorUid,
@@ -299,7 +300,7 @@ export function useBooking(
       const cancelled = await cancelPatientAppointment(appointment);
       if (!cancelled) return;
       const doctor = doctors.find(
-        (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
+        (doc) => doc.id === (appointment.doctorUid ?? appointment.doctorId)
       );
       if (doctor) {
         setSelectedRole(String(doctor.clinicalRole || doctor.specialty || doctor.role || ""));
