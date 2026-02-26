@@ -39,16 +39,73 @@ export function useAuth() {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       if (user) {
-        const token = await user.getIdTokenResult(true);
-        setIsSuperAdminClaim(
-          !!(
-            (token.claims as any)?.super_admin === true ||
-            (token.claims as any)?.superadmin === true ||
-            (token.claims as any)?.superAdmin === true
-          )
-        );
+        try {
+          const token = await user.getIdTokenResult(true).catch(() => null);
+          setIsSuperAdminClaim(
+            !!(
+              (token?.claims as any)?.super_admin === true ||
+              (token?.claims as any)?.superadmin === true ||
+              (token?.claims as any)?.superAdmin === true
+            )
+          );
+
+          // Restore user profile from Firestore on reload
+          const snap = await getDoc(doc(db, "users", user.uid));
+          if (snap.exists()) {
+            const profile: any = snap.data();
+            const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
+            const roles: AnyRole[] = rolesRaw
+              .map((r: any) => String(r ?? "").trim())
+              .filter(Boolean) as AnyRole[];
+            const rolesNorm = roles.map((r) => r.toLowerCase());
+
+            const centros: string[] = Array.isArray(profile.centros) ? profile.centros : [];
+            const claims: any = token?.claims ?? {};
+            const isSuperAdmin =
+              claims?.super_admin === true ||
+              claims?.superadmin === true ||
+              claims?.superAdmin === true;
+
+            const isCenterAdmin =
+              rolesNorm.some(r =>
+                r.includes("centeradmin") ||
+                r.includes("center_admin") ||
+                r.includes("center-admin") ||
+                r.includes("center admin") ||
+                r === "administrativo" ||
+                r === "administrativa" ||
+                r === "admin" ||
+                r === "secretaria"
+              );
+
+            const userProfile: UserProfile = {
+              uid: user.uid,
+              email: profile.email || user.email || "",
+              roles,
+              centers: centros,
+              centros,
+              isAdmin: !!(isCenterAdmin || isSuperAdmin || profile.isAdmin),
+              fullName:
+                profile.fullName ||
+                profile.nombre ||
+                profile.email ||
+                user.displayName ||
+                "Usuario",
+              role:
+                profile.role ||
+                roles.find((r) => !r.toLowerCase().includes("doc")) ||
+                "Profesional",
+              id: user.uid,
+              billing: profile.billing,
+            };
+            setCurrentUser(userProfile);
+          }
+        } catch (e) {
+          console.error("Error restoring auth session profile:", e);
+        }
       } else {
         setIsSuperAdminClaim(false);
+        setCurrentUser(null);
       }
     });
     return () => unsub();
@@ -86,7 +143,8 @@ export function useAuth() {
         if (!snap.exists()) throw new Error("Usuario sin perfil en el sistema");
 
         const profile: any = snap.data();
-        if (profile.activo === false) throw new Error("Usuario inactivo");
+        if (profile.activo === false) throw new Error("Su cuenta ha sido desactivada por el administrador.");
+        if (profile.billing?.status === "suspended") throw new Error("Su acceso ha sido suspendido por falta de pago.");
 
         const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
         const roles: AnyRole[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean) as AnyRole[];
@@ -106,7 +164,11 @@ export function useAuth() {
           rolesNorm.includes("centeradmin") ||
           rolesNorm.includes("center_admin") ||
           rolesNorm.includes("center-admin") ||
-          rolesNorm.includes("center admin");
+          rolesNorm.includes("center admin") ||
+          rolesNorm.includes("administrativo") ||
+          rolesNorm.includes("administrativa") ||
+          rolesNorm.includes("secretaria") ||
+          rolesNorm.includes("admin");
 
         if (targetView === ("admin-dashboard" as ViewMode) && !(isCenterAdmin || isSuperAdmin)) {
           setError("No tiene permisos administrativos.");
@@ -126,6 +188,7 @@ export function useAuth() {
             roles.find((r) => r !== "center_admin" && r !== "super_admin") ??
             "Profesional",
           id: uid,
+          billing: profile.billing,
         };
         setCurrentUser(userFromFirestore);
 
@@ -170,8 +233,8 @@ export function useAuth() {
             code === "auth/cancelled-popup-request";
 
           if (isPopupError) {
-            await signInWithRedirect(auth, provider);
-            return;
+            // No longer falling back to redirect automatically
+            throw new Error("El popup fue bloqueado o cerrado.");
           }
 
           if (e?.message === "superadmin-unauthorized") {
@@ -196,8 +259,24 @@ export function useAuth() {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
 
-        const cred = await signInWithPopup(auth, provider);
-        const user = cred.user;
+        let user;
+        try {
+          const cred = await signInWithPopup(auth, provider);
+          user = cred.user;
+        } catch (e: any) {
+          const code = String(e?.code || "");
+          const isPopupError =
+            code === "auth/popup-blocked" ||
+            code === "auth/popup-closed-by-user" ||
+            code === "auth/cancelled-popup-request";
+
+          if (isPopupError) {
+            // No longer falling back to redirect automatically to avoid loop in Chrome
+            console.warn("Popup blocked/closed by user.");
+            throw new Error("El popup fue bloqueado o cerrado. Por favor, habilita los popups o intenta nuevamente.");
+          }
+          throw e;
+        }
 
         const uid = user.uid;
         const emailUser = (user.email || "").trim().toLowerCase();
@@ -206,15 +285,14 @@ export function useAuth() {
         const existingSnap = await getDoc(doc(db, "users", uid));
         if (existingSnap.exists()) {
           const profile: any = existingSnap.data();
-          if (profile.activo === false) throw new Error("Usuario inactivo");
+          if (profile.activo === false)
+            throw new Error("Su cuenta ha sido desactivada por el administrador.");
+          if (profile.billing?.status === "suspended")
+            throw new Error("Su acceso ha sido suspendido por falta de pago.");
 
           const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
           const roles: AnyRole[] = rolesRaw
-            .map((r: any) =>
-              String(r ?? "")
-                .trim()
-                .toLowerCase() as AnyRole
-            )
+            .map((r: any) => String(r ?? "").trim().toLowerCase() as AnyRole)
             .filter(Boolean);
 
           let centers: string[] = Array.isArray(profile.centros)
@@ -224,8 +302,6 @@ export function useAuth() {
               : [];
 
           // ── Check for pending invites even for existing users ──
-          // This handles the case where an admin adds an already-registered
-          // professional to a new center via the admin dashboard.
           const qPendingInv = query(
             collection(db, "invites"),
             where("emailLower", "==", emailUser),
@@ -242,29 +318,23 @@ export function useAuth() {
               .map((i) => String(i.role || "").trim() as AnyRole)
               .filter((r) => !!r);
 
-            // Merge new centers & roles into the existing profile
             if (newCenters.length > 0) {
               centers = [...centers, ...newCenters];
               const mergedRoles = Array.from(new Set([...roles, ...newRoles]));
-
               const updateData: any = {
                 centros: centers,
                 centers: centers,
                 roles: mergedRoles,
                 updatedAt: serverTimestamp(),
               };
-
-              // Sync name from latest invite if available
               const latestInvite = pendingInvites[pendingInvites.length - 1];
               if (latestInvite?.profileData?.fullName) {
                 updateData.fullName = latestInvite.profileData.fullName;
               }
-
               await updateDoc(doc(db, "users", uid), updateData);
               roles.push(...newRoles.filter((r) => !roles.includes(r)));
             }
 
-            // Accept each invite & create staff docs
             await Promise.all(
               pendingInvites.map(async (inv) => {
                 await updateDoc(doc(db, "invites", inv.id), {
@@ -272,11 +342,9 @@ export function useAuth() {
                   acceptedAt: serverTimestamp(),
                   acceptedByUid: uid,
                 }).catch(() => { });
-
                 const cId = String(inv.centerId || "").trim();
                 const rId = String(inv.role || "").trim() || "staff";
                 const profileData = inv.profileData || {};
-
                 if (cId) {
                   await setDoc(
                     doc(db, "centers", cId, "staff", uid),
@@ -309,11 +377,19 @@ export function useAuth() {
 
           const token = await user.getIdTokenResult(true).catch(() => null as any);
           const claims: any = token?.claims ?? {};
-
           const isSuperAdmin =
             claims?.super_admin === true ||
             claims?.superadmin === true ||
             claims?.superAdmin === true;
+
+          const isAdmin = !!(
+            roles.some(r => {
+              const low = String(r || "").toLowerCase();
+              return low.includes("admin") || low === "administrativo" || low === "administrativa" || low === "secretaria";
+            }) ||
+            isSuperAdmin ||
+            profile.isAdmin
+          );
 
           const userFromFirestore: UserProfile = {
             uid,
@@ -327,20 +403,15 @@ export function useAuth() {
             fullName:
               profile.fullName ?? profile.nombre ?? profile.email ?? user.displayName ?? "Usuario",
             id: uid,
+            isAdmin,
+            billing: profile.billing,
           };
 
           setCurrentUser(userFromFirestore);
-
-          if (isSuperAdmin && targetView === ("superadmin-dashboard" as ViewMode)) {
-            onSuccess(userFromFirestore);
-            return;
-          }
-
           onSuccess(userFromFirestore);
           return;
         }
 
-        // If profile doesn't exist, check if user is a Super Admin (whitelist or claims)
         const qInv = query(
           collection(db, "invites"),
           where("emailLower", "==", emailUser),
@@ -370,10 +441,7 @@ export function useAuth() {
           new Set(inviteDocs.map((i) => i.centerId).filter(Boolean))
         );
 
-        // If SuperAdmin but no invites, initialize with super_admin role
         const finalRoles: AnyRole[] = isSuperAdminByClaim ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole])) : rolesFromInvites;
-
-        // Sync name from invite if provided
         const inviteName = inviteDocs.find(i => i.profileData?.fullName)?.profileData?.fullName;
 
         await setDoc(

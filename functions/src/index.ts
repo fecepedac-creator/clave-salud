@@ -1,6 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
 import * as crypto from "crypto";
 import { sendEmail } from "./email";
 import {
@@ -11,18 +15,13 @@ import {
   LogAuditEventResult,
 } from "./types";
 
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
-
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
 
-const functionsConfig = (functions as any).config?.() ?? {};
-const BACKUP_TOKEN = process.env.BACKUP_TOKEN || functionsConfig?.backup?.token || "";
-const BACKUP_BUCKET = process.env.BACKUP_BUCKET || functionsConfig?.backup?.bucket || "";
-const BACKUP_PREFIX = process.env.BACKUP_PREFIX || functionsConfig?.backup?.prefix || "backups/firestore";
+const BACKUP_TOKEN = process.env.BACKUP_TOKEN || "";
+const BACKUP_BUCKET = process.env.BACKUP_BUCKET || "";
+const BACKUP_PREFIX = process.env.BACKUP_PREFIX || "backups/firestore";
 
 const METADATA_TOKEN_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
@@ -33,7 +32,6 @@ function getProjectId(): string {
     process.env.GCLOUD_PROJECT ||
     process.env.GCP_PROJECT ||
     admin.app().options.projectId ||
-    functionsConfig?.backup?.projectid ||
     ""
   );
 }
@@ -1915,3 +1913,100 @@ export const scheduledRecalcStats = functions.pubsub
     console.log(`[scheduledRecalcStats] Procesados ${snapshot.size} centros.`);
     return null;
   });
+
+/**
+ * Permite a un profesional vincular un paciente a su lista de acceso si tiene una cita agendada.
+ * Esto resuelve el problema de asociación cuando un paciente ya existe en el sistema global
+ * pero reserva en un nuevo centro o profesional vía flujo público.
+ */
+export const linkPatientToProfessional = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+
+    if (!centerId || !patientId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId y patientId son requeridos."
+      );
+    }
+
+    // 1. Verificar que el profesional sea staff del centro
+    const isStaffMember = await isCenterAdminForCenter(uid, centerId) ||
+      (await db.collection("centers").doc(centerId).collection("staff").doc(uid).get()).exists;
+
+    if (!isStaffMember && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No eres miembro del personal de este centro."
+      );
+    }
+
+    // 2. Buscar si hay una cita agendada para este paciente en este centro
+    // Usamos el patientId (que ahora es determinista p_RUT)
+    const appointmentsSnap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .where("patientId", "==", patientId)
+      .where("status", "==", "booked")
+      .limit(1)
+      .get();
+
+    if (appointmentsSnap.empty && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "No se encontró una cita agendada para este paciente que justifique el acceso."
+      );
+    }
+
+    // 3. Vincular al paciente
+    const patientRef = db.collection("patients").doc(patientId);
+    const patientSnap = await patientRef.get();
+
+    if (!patientSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "El paciente no existe en la colección global.");
+    }
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(patientRef);
+        const pData = snap.data() as any;
+        const currentAllowed = Array.isArray(pData?.accessControl?.allowedUids)
+          ? pData.accessControl.allowedUids
+          : [];
+        const currentCenters = Array.isArray(pData?.accessControl?.centerIds)
+          ? pData.accessControl.centerIds
+          : [];
+
+        const update: any = {};
+        let changed = false;
+
+        if (!currentAllowed.includes(uid)) {
+          update["accessControl.allowedUids"] = admin.firestore.FieldValue.arrayUnion(uid);
+          changed = true;
+        }
+
+        if (!currentCenters.includes(centerId)) {
+          update["accessControl.centerIds"] = admin.firestore.FieldValue.arrayUnion(centerId);
+          changed = true;
+        }
+
+        if (changed) {
+          tx.update(patientRef, {
+            ...update,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      });
+
+      return { ok: true, linked: true };
+    } catch (error) {
+      functions.logger.error("linkPatientToProfessional error", { error: String(error) });
+      throw new functions.https.HttpsError("internal", "Error al vincular el paciente.");
+    }
+  }
+);

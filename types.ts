@@ -539,4 +539,12 @@ export interface UserProfile {
   photoURL?: string;
   activeCenterId?: string | null;
   activo?: boolean;
+  billing?: {
+    plan: "professional" | "basic" | "free";
+    status: "active" | "overdue" | "suspended" | "trial";
+    nextDueDate?: string;
+    monthlyPrice?: number;
+    currency?: "UF" | "CLP";
+    lastPaidAt?: string;
+  };
 }

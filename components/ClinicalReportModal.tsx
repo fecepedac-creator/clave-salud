@@ -12,6 +12,7 @@ type Props = {
   centerLogoUrl?: string;
   professionalName: string;
   professionalRole: ProfessionalRole;
+  professionalRut?: string;
   professionalRegistry?: string;
   examDefinitions?: ExamDefinition[];
 };
@@ -448,6 +449,7 @@ const ClinicalReportModal: React.FC<Props> = ({
   centerLogoUrl,
   professionalName,
   professionalRole,
+  professionalRut,
   professionalRegistry,
   examDefinitions,
 }) => {
@@ -683,9 +685,9 @@ const ClinicalReportModal: React.FC<Props> = ({
             {/* Patient header */}
             <section className="mt-6 p-4 border border-slate-200 rounded-xl">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
+                <div className="col-span-2 border-b border-slate-100 pb-2 mb-1">
                   <span className="font-bold text-slate-500 uppercase text-xs">Paciente</span>
-                  <div className="text-slate-900 font-bold text-base">
+                  <div className="text-slate-900 font-bold text-lg">
                     {formatPersonName(patient.fullName)}
                   </div>
                 </div>
@@ -724,11 +726,17 @@ const ClinicalReportModal: React.FC<Props> = ({
                 <p>Rol profesional: {professionalRole}</p>
               </div>
 
-              <div className="text-center">
-                <div className="w-72 border-t-2 border-slate-800 mb-2"></div>
-                <p className="font-bold text-slate-900 text-sm">{professionalName}</p>
-                <p className="text-xs text-slate-500">{centerName}</p>
-                <p className="text-[10px] text-slate-400 mt-1">Firma y timbre</p>
+              <div className="text-center min-w-[280px]">
+                <div className="w-full border-t-2 border-slate-800 mb-2"></div>
+                <p className="font-bold text-slate-900 text-sm leading-tight">{professionalName}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-tighter">{professionalRole}</p>
+                {professionalRut && (
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">RUT: {professionalRut}</p>
+                )}
+                {professionalRegistry && (
+                  <p className="text-[9px] text-slate-400 mt-0.5">Reg. Prof: {professionalRegistry}</p>
+                )}
+                <p className="text-[10px] text-slate-300 mt-1 italic">Firma y timbre</p>
               </div>
             </footer>
           </div>

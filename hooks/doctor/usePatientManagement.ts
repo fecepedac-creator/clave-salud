@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
 import { Patient, Appointment } from "../../types";
-import { normalizeRut, formatPersonName } from "../../utils";
+import { normalizeRut, formatPersonName, getPatientIdByRut } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 
 interface UsePatientManagementProps {
     patients: Patient[];
@@ -94,15 +97,19 @@ export const usePatientManagement = ({
     };
 
     // Logic to open patient from an appointment click
-    const handleOpenPatientFromAppointment = (appointment: Appointment, setActiveTab: (tab: any) => void) => {
+    const handleOpenPatientFromAppointment = async (appointment: Appointment, setActiveTab: (tab: any) => void) => {
         const foundById = appointment.patientId
             ? patients.find((patient) => patient.id === appointment.patientId)
             : null;
+
         const appointmentRut = normalizeRut(appointment.patientRut);
+        const deterministicId = getPatientIdByRut(appointmentRut);
+
         const foundByRut =
             !foundById && appointmentRut
                 ? patients.find((patient) => normalizeRut(patient.rut) === appointmentRut)
                 : null;
+
         const resolvedPatient = foundById ?? foundByRut ?? null;
 
         if (resolvedPatient) {
@@ -111,7 +118,32 @@ export const usePatientManagement = ({
             return;
         }
 
-        showToast("Paciente no encontrado; revisa si fue creado", "warning");
+        // IMPROVEMENT: If not found in local list, attempt to link/fetch it
+        if (activeCenterId && appointmentRut) {
+            const patientId = appointment.patientId || deterministicId;
+            showToast("Sincronizando acceso a ficha...", "info");
+
+            try {
+                const functions = getFunctions();
+                const linkFn = httpsCallable(functions, "linkPatientToProfessional");
+                await linkFn({ centerId: activeCenterId, patientId });
+
+                // If link successful, try getting the doc (professional should have access now)
+                const patSnap = await getDoc(doc(db, "patients", patientId));
+                if (patSnap.exists()) {
+                    const linkedPatient = { id: patSnap.id, ...(patSnap.data() as any) };
+                    // Optionally update local state or just select it
+                    handleSelectPatient(linkedPatient);
+                    setActiveTab("patients");
+                    showToast("Acceso sincronizado correctamente.", "success");
+                    return;
+                }
+            } catch (err) {
+                console.error("Link patient failed:", err);
+            }
+        }
+
+        showToast("Paciente no encontrado; contacta soporte si el problema persiste", "warning");
     };
 
     return {

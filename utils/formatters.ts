@@ -16,6 +16,11 @@ export const normalizeRut = (value?: string | null) =>
         .replace(/[^0-9kK]/g, "")
         .toUpperCase();
 
+export const getPatientIdByRut = (rut: string): string => {
+    const clean = normalizeRut(rut);
+    return clean ? `p_${clean}` : "";
+};
+
 export const formatChileanPhone = (digits: string): string => {
     const clean = digits.replace(/\D/g, "").slice(0, 8);
     return clean ? `+569${clean}` : "";

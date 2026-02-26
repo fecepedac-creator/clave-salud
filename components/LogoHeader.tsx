@@ -44,11 +44,11 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
 
       {showText && (
         <div className="flex flex-col">
-          <span className={`font-bold text-slate-800 ${textSizes[size]} leading-tight`}>
+          <span className={`font-black text-slate-900 ${size === 'lg' ? 'text-xl' : textSizes[size]} tracking-tight leading-none mb-0.5`}>
             ClaveSalud
           </span>
-          <span className="text-[10px] text-slate-400 leading-tight">
-            Ficha Clínica Electrónica
+          <span className={`${size === 'lg' ? 'text-xs' : 'text-[10px]'} font-semibold text-slate-500/80 leading-tight uppercase tracking-wider`}>
+            Ficha Clínica Digital
           </span>
         </div>
       )}

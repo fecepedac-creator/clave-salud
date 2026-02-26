@@ -9,6 +9,7 @@ import {
   formatRUT,
   generateId,
   validateRUT,
+  getPatientIdByRut,
 } from "../utils";
 
 export function useBooking(
@@ -103,10 +104,10 @@ export function useBooking(
 
     const normalizedRut = normalizeRut(rut);
     const formattedRut = formatRUT(normalizedRut);
+    const patientId = getPatientIdByRut(normalizedRut);
     const existingPatient = patients.find(
       (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
     );
-    const patientId = existingPatient?.id ?? generateId();
 
     // ---- TRANSACTIONAL BOOKING (prevents double bookings) ----
     const apptRef = doc(db, "centers", activeCenterId, "appointments", selectedSlot.appointmentId);
@@ -183,7 +184,16 @@ export function useBooking(
         lastUpdated: new Date().toISOString(),
         active: true,
       };
-      await setDoc(doc(db, "patients", patientId), patientPayload);
+
+      try {
+        // We use setDoc on the GLOBAL collection.
+        // If it already exists, this might fail if the user is public and has no update permissions.
+        // But for a new patient, it will create the record correctly.
+        await setDoc(doc(db, "patients", patientId), patientPayload);
+      } catch (err) {
+        console.warn("Patient already exists or creation failed (Global):", err);
+        // We don't block the booking if patient creation fails (it likely already exists)
+      }
     }
 
     if (!auth.currentUser) {

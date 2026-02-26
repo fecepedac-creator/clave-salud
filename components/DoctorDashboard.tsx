@@ -181,7 +181,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   patients,
   doctorName,
   doctorId,
-  role,
+  role: roleRaw,
   agendaConfig,
   savedTemplates,
   currentUser,
@@ -205,6 +205,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const hasActiveCenter = Boolean(activeCenterId);
 
   const { showToast } = useToast();
+  const role = String(roleRaw || "").toUpperCase() as ProfessionalRole;
   // const { logAccess } = useAuditLog(); // Moved to hooks
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
@@ -1077,7 +1078,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           docs={docsToPrint}
-          doctorName={doctorName}
+          doctorName={selectedConsultationForModal?.professionalName || doctorName}
+          doctorRut={selectedConsultationForModal?.professionalRut || currentUser?.rut}
+          doctorSpecialty={currentUser?.specialty}
+          doctorInstitution={currentUser?.university}
           centerName={activeCenter?.name}
           centerLogoUrl={activeCenter?.logoUrl}
           selectedPatient={selectedPatient}
@@ -1111,11 +1115,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           isOpen={isClinicalReportOpen}
           onClose={() => setIsClinicalReportOpen(false)}
           patient={selectedPatient}
-          centerName={activeCenter?.name ?? "Centro Médico"}
+          centerName={activeCenter?.name || "Clave Salud"}
           centerLogoUrl={activeCenter?.logoUrl}
           professionalName={doctorName}
           professionalRole={role}
-          professionalRegistry={currentUser?.rut}
+          professionalRut={currentUser?.rut}
+          professionalRegistry={currentUser?.clinicalRole} // Using clinicalRole as a placeholder if registry is not specific
           examDefinitions={currentUser?.customExams}
         />
 
@@ -2322,23 +2327,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       if (bookedSlot) {
                         setSlotModal({ isOpen: true, appointment: bookedSlot });
                       } else if (matchingSlots.length > 0) {
-                        // Remove slot (Close it) — individual delete per slot
+                        // Remove slot (Close it)
                         const matchingIds = new Set(matchingSlots.map((slot) => slot.id));
-                        // Optimistic local state update
-                        onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
-                        // Individual Firestore deletes
-                        if (onDeleteAppointment) {
-                          for (const slot of matchingSlots) {
-                            try {
-                              await onDeleteAppointment(slot.id);
-                            } catch (e) {
-                              console.error("deleteSlot", e);
-                            }
-                          }
-                        }
+                        // Trigger Delta Sync logic in plural prop
+                        await onUpdateAppointments(appointments.filter((a) => !matchingIds.has(a.id)));
                         showToast("Bloque cerrado (horario bloqueado).", "info");
                       } else {
-                        // Add slot (Open it) — individual write
+                        // Add slot (Open it)
                         const newSlot: Appointment = {
                           id: generateSlotId(
                             currentUser?.centerId || activeCenterId || "",
@@ -2356,16 +2351,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           patientName: "",
                           patientRut: "",
                         };
-                        // Optimistic local state update
-                        onUpdateAppointments([...appointments, newSlot]);
-                        // Individual Firestore write
-                        if (onUpdateAppointment) {
-                          try {
-                            await onUpdateAppointment(newSlot);
-                          } catch (e) {
-                            console.error("createSlot", e);
-                          }
-                        }
+                        // Trigger Delta Sync logic in plural prop
+                        await onUpdateAppointments([...appointments, newSlot]);
                         showToast("Bloque abierto disponible.", "success");
                       }
                     }}

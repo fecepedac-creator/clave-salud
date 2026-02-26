@@ -28,9 +28,10 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   onOpenClinicalReport,
   onOpenExamOrders,
   templates,
-  role,
+  role: roleRaw,
   currentDiagnosis,
 }) => {
+  const role: ProfessionalRole = (String(roleRaw || "").toUpperCase() as any);
 
   // Authorization Logic
   // Authorization Logic

@@ -21,6 +21,7 @@ import {
   fileToBase64,
   formatPersonName,
   normalizePhone,
+  getPatientIdByRut,
 } from "../utils";
 import {
   Users,
@@ -57,6 +58,7 @@ import {
   User,
   Activity,
   Image as ImageIcon,
+  RefreshCw,
   FileClock,
 } from "lucide-react";
 import { useToast } from "./Toast";
@@ -104,6 +106,7 @@ interface AdminDashboardProps {
   onApprovePreadmission: (item: Preadmission) => void;
   logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
   onLogActivity: (event: AuditLogEvent) => void;
+  currentUser?: any; // Role-based customization
 }
 
 // Build ROLE_LABELS dynamically from ROLE_CATALOG so ALL roles appear in dropdowns
@@ -275,9 +278,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onApprovePreadmission,
   logs,
   onLogActivity,
+  currentUser,
 }) => {
   type AdminTab = "command_center" | "doctors" | "agenda" | "whatsapp" | "marketing" | "audit" | "preadmissions";
-  const [activeTab, setActiveTab] = useState<AdminTab>("doctors");
+
+  const userRoles = currentUser?.roles || [];
+  const isSecretary = userRoles.some(r => {
+    const low = String(r || "").toLowerCase();
+    return low === "administrativo" || low === "administrativa" || low === "secretaria";
+  });
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(isSecretary ? "agenda" : "doctors");
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
@@ -588,6 +599,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const policyText = auditLogPolicy;
 
   const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, "").toUpperCase();
+
+  const [isSyncingPublic, setIsSyncingPublic] = useState(false);
+
+  const handleSyncPublicStaff = async () => {
+    if (!db || !centerId || doctors.length === 0) {
+      showToast("No hay especialistas cargados para sincronizar.", "info");
+      return;
+    }
+    setIsSyncingPublic(true);
+    try {
+      let count = 0;
+      for (const d of doctors) {
+        // Use the common mapping logic to ensure it's published correctly
+        if (d.active !== false && d.visibleInBooking === true) {
+          await upsertStaffAndPublic(d.id, d);
+          count++;
+        }
+      }
+      showToast(`¡Éxito! se sincronizaron ${count} especialistas con el portal de reserva.`, "success");
+      onLogActivity({
+        type: "STAFF_UPDATE",
+        description: `Sincronización manual de catálogo público (${count} profesionales)`,
+        patientId: "SISTEMA",
+        patientName: "Admin"
+      });
+    } catch (err) {
+      console.error("Sync error:", err);
+      showToast("Ocurrió un error al sincronizar el catálogo público.", "error");
+    } finally {
+      setIsSyncingPublic(false);
+    }
+  };
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
   const savedConfig = selectedDoctor?.agendaConfig;
   const isConfigEqual = (a?: AgendaConfig, b?: AgendaConfig) =>
@@ -604,7 +647,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleToggleVisibleInBooking = async (doctor: Doctor, visibleInBooking: boolean) => {
-    if (!db || !hasActiveCenter) return;
+    if (!db || !centerId) return;
     try {
       await setDoc(
         doc(db, "centers", centerId, "staff", doctor.id),
@@ -613,7 +656,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       );
       await setDoc(
         doc(db, "centers", centerId, "publicStaff", doctor.id),
-        { visibleInBooking, updatedAt: serverTimestamp() },
+        {
+          id: doctor.id,
+          centerId,
+          fullName: doctor.fullName ?? "",
+          role: doctor.clinicalRole || doctor.role || "",
+          specialty: doctor.specialty ?? "",
+          photoUrl: doctor.photoUrl ?? "",
+          visibleInBooking,
+          active: doctor.active ?? true,
+          updatedAt: serverTimestamp()
+        },
         { merge: true }
       );
       showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
@@ -625,12 +678,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     const ensureCurrentAdminInStaff = async () => {
-      if (!db || !hasActiveCenter || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
+      if (!db || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
       const uid = auth.currentUser.uid;
       const email = auth.currentUser.email;
+      const emailLower = email.toLowerCase();
+
+      // Check for UID document first
       const staffRef = doc(db, "centers", centerId, "staff", uid);
       const staffSnap = await getDoc(staffRef);
-      if (staffSnap.exists()) return;
+      if (staffSnap.exists()) {
+        const data = staffSnap.data();
+        if (data.active === false || data.activo === false) return; // Don't revive deleted accounts automatically
+        return;
+      }
+
+      // DEDUPLICATION: Check if a profile with this email already exists manually
+      const existing = await findStaffByEmail(email);
+      if (existing) {
+        // If it exists manually, we don't auto-create the UID one to avoid duplicates.
+        // The user should manually link it or keep it as is.
+        return;
+      }
 
       await upsertStaffAndPublic(uid, {
         id: uid,
@@ -640,7 +708,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         clinicalRole: Object.keys(ROLE_LABELS)[0],
         specialty: "",
         isAdmin: true,
-        visibleInBooking: true,
+        visibleInBooking: false,
         active: true,
       });
 
@@ -866,79 +934,85 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleDeleteDoctor = async (id: string) => {
-    if (!hasActiveCenter) {
-      showToast("Selecciona un centro activo para eliminar profesionales.", "warning");
+    if (!db || !centerId) {
+      showToast("Error de conexión o centro no identificado.", "error");
       return;
     }
-    if (
-      window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")
-    ) {
-      if (db) {
-        try {
-          // Try to deactivate the staff document (for accepted professionals)
-          const staffRef = doc(db, "centers", centerId, "staff", id);
-          const staffSnap = await getDoc(staffRef);
 
-          if (staffSnap.exists()) {
-            // Staff member exists - deactivate them
-            await setDoc(
-              staffRef,
-              {
-                active: false,
-                activo: false,
-                updatedAt: serverTimestamp(),
-                deletedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
+    const doctor = doctors.find((d) => d.id === id);
+    if (!doctor) return;
 
-            // Also update publicStaff for syncPublicStaff trigger
-            await setDoc(
-              doc(db, "centers", centerId, "publicStaff", id),
-              {
-                active: false,
-                activo: false,
-                updatedAt: serverTimestamp(),
-                deletedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-            showToast("Profesional desactivado exitosamente.", "success");
-          } else {
-            // Staff member doesn't exist yet - they may have a pending invite
-            // Revoke any pending invites for this email
-            const doctor = doctors.find((d) => d.id === id);
-            if (doctor?.email) {
-              const emailLower = doctor.email.toLowerCase();
-              const qInv = query(
-                collection(db, "invites"),
-                where("emailLower", "==", emailLower),
-                where("centerId", "==", centerId),
-                where("status", "==", "pending")
-              );
-              const invSnap = await getDocs(qInv);
+    if (!window.confirm(`¿Está seguro de eliminar a ${doctor.fullName}? Se desactivará su acceso y se ocultará de la agenda.`)) {
+      return;
+    }
 
-              if (!invSnap.empty) {
-                for (const invDoc of invSnap.docs) {
-                  await setDoc(
-                    doc(db, "invites", invDoc.id),
-                    { status: "revoked", revokedAt: serverTimestamp() },
-                    { merge: true }
-                  );
-                }
-                showToast("Invitación revocada exitosamente.", "success");
-              } else {
-                showToast("Profesional eliminado de la lista local.", "info");
-              }
-            }
-          }
-        } catch (error) {
-          console.error("deactivateStaff", error);
-          showToast("No se pudo desactivar el profesional en Firestore.", "error");
-          return;
+    try {
+      console.log(`[handleDeleteDoctor] Initiating deletion for ID: ${id}, Name: ${doctor.fullName}`);
+
+      // 1. Deactivate in 'staff'
+      const staffRef = doc(db, "centers", centerId, "staff", id);
+      await setDoc(
+        staffRef,
+        {
+          active: false,
+          activo: false,
+          visibleInBooking: false,
+          updatedAt: serverTimestamp(),
+          deletedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      console.log(`[handleDeleteDoctor] Deactivated in 'staff' collection.`);
+
+      // 2. Deactivate in 'publicStaff'
+      await setDoc(
+        doc(db, "centers", centerId, "publicStaff", id),
+        {
+          active: false,
+          activo: false,
+          visibleInBooking: false,
+          updatedAt: serverTimestamp(),
+          deletedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      console.log(`[handleDeleteDoctor] Deactivated in 'publicStaff' collection.`);
+
+      // 3. Revoke any pending invites
+      if (doctor.email) {
+        const emailLower = doctor.email.toLowerCase();
+        console.log(`[handleDeleteDoctor] Checking for pending invites for: ${emailLower}`);
+        const qInv = query(
+          collection(db, "invites"),
+          where("emailLower", "==", emailLower),
+          where("centerId", "==", centerId),
+          where("status", "==", "pending")
+        );
+        const invSnap = await getDocs(qInv);
+        console.log(`[handleDeleteDoctor] Found ${invSnap.size} pending invites.`);
+        for (const invDoc of invSnap.docs) {
+          await setDoc(doc(db, "invites", invDoc.id), {
+            status: "revoked",
+            revokedAt: serverTimestamp(),
+          }, { merge: true });
         }
       }
+
+      // 4. Update local state via callback
+      console.log(`[handleDeleteDoctor] Calling onUpdateDoctors callback...`);
       onUpdateDoctors(doctors.filter((d) => d.id !== id));
+      showToast("Profesional eliminado exitosamente.", "success");
+
+      onLogActivity({
+        action: "STAFF_DELETE",
+        entityType: "staff",
+        entityId: id,
+        details: `Eliminó profesional ${doctor.fullName} (${doctor.email})`
+      });
+
+    } catch (error) {
+      console.error("[handleDeleteDoctor] Error during deletion:", error);
+      showToast("No se pudo completar la eliminación en el servidor.", "error");
     }
   };
 
@@ -1089,15 +1163,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setIsSavingSlots(true);
     try {
-      // --- Process deletes ---
-      for (const id of pendingDeletes) {
-        const slot = appointments.find((a) => a.id === id);
-        if (!slot) continue;
-        onUpdateAppointments(appointments.filter((a) => a.id !== id));
-        if (onDeleteAppointment) {
-          try { await onDeleteAppointment(id); } catch (e) { console.error("deleteSlot", e); }
-        }
-      }
       // --- Process adds ---
       const newSlots: Appointment[] = Array.from(pendingAdds).map((time) => ({
         id: generateSlotId(resolvedCenterId, selectedDoctorId!, selectedDate!, time as string),
@@ -1111,17 +1176,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         patientRut: "",
         active: true,
       }));
-      if (newSlots.length > 0) {
-        onUpdateAppointments([...appointments, ...newSlots]);
-        if (onUpdateAppointment) {
-          for (const slot of newSlots) {
-            try { await onUpdateAppointment(slot); } catch (e) { console.error("createSlot", e); }
-          }
-        }
-      }
+
+      // --- Process changes in a single Delta Sync call ---
+      const filtered = appointments.filter((a) => !pendingDeletes.has(a.id));
+      const finalAppointments = [...filtered, ...newSlots];
+
+      await onUpdateAppointments(finalAppointments);
+
       setPendingAdds(new Set());
       setPendingDeletes(new Set());
-      showToast(`Agenda guardada: ${newSlots.length} abiertos, ${pendingDeletes.size} cerrados.`, "success");
+      showToast(
+        `Agenda guardada: ${newSlots.length} abiertos, ${pendingDeletes.size} cerrados.`,
+        "success"
+      );
     } finally {
       setIsSavingSlots(false);
     }
@@ -1175,11 +1242,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }));
 
       onUpdateAppointments([...appointments, ...newSlots]);
-      if (onUpdateAppointment) {
-        for (const slot of newSlots) {
-          try { await onUpdateAppointment(slot); } catch (e) { console.error("genSlot", e); }
-        }
-      }
       showToast(`¡Disponibilidad generada! ${newSlots.length} bloques abiertos.`, "success");
       setShowGenPanel(false);
     } finally {
@@ -1252,6 +1314,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateAppointments(updated);
 
     const normalizedRut = normalizeRut(bookingRut);
+    const patientId = getPatientIdByRut(normalizedRut);
     const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
     const patientPayload: Patient = existingPatient
       ? {
@@ -1262,7 +1325,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         lastUpdated: new Date().toISOString(),
       }
       : {
-        id: generateId(),
+        id: patientId,
         centerId,
         rut: bookingRut,
         fullName: bookingName,
@@ -1370,6 +1433,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
           <LogoHeader size="md" showText={true} />
+          <div className="h-8 w-px bg-slate-700 hidden md:block mx-1" />
+          <div className="hidden md:block">
+            <h1 className="text-health-400 font-black text-lg uppercase tracking-tight leading-none">
+              {isSecretary ? "Panel Administrativo" : "Administración"}
+            </h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+              Portal de Gestión
+            </p>
+          </div>
         </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           {activeCenter?.logoUrl && (
@@ -1401,19 +1473,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <div className="flex gap-2 w-full md:w-auto justify-center">
-            <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
-              <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
-              <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
-            </label>
-            <button
-              onClick={() => {
-                downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
-                showToast("Descargando backup...", "info");
-              }}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
-            >
-              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
-            </button>
+            {!isSecretary && (
+              <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
+                <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
+                <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
+              </label>
+            )}
+            {!isSecretary && (
+              <button
+                onClick={() => {
+                  downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
+                  showToast("Descargando backup...", "info");
+                }}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+              >
+                <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
+              </button>
+            )}
             <button
               onClick={onLogout}
               className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
@@ -1440,12 +1516,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Activity className="w-4 h-4" /> Centro de Mando
           </button>
-          <button
-            onClick={() => setActiveTab("doctors")}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
-          >
-            <Users className="w-4 h-4" /> Gestión de Profesionales
-          </button>
+          {!isSecretary && (
+            <button
+              onClick={() => setActiveTab("doctors")}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            >
+              <Users className="w-4 h-4" /> Gestión de Profesionales
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("agenda")}
             disabled={!hasActiveCenter}
@@ -1463,15 +1541,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
           </button>
 
-
-          <button
-            onClick={() => setActiveTab("audit")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
-          >
-            <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
-          </button>
+          {!isSecretary && (
+            <button
+              onClick={() => setActiveTab("audit")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
+            >
+              <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("preadmissions")}
             disabled={!hasActiveCenter}
@@ -1600,6 +1679,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 <ImageIcon className="w-4 h-4" />
                 <span className="text-sm font-semibold">Crear Flyer</span>
+              </button>
+
+              <button
+                onClick={handleSyncPublicStaff}
+                disabled={!hasActiveCenter || isSyncingPublic}
+                className={`flex items-center gap-2 px-4 py-2 ${isSyncingPublic ? "bg-slate-700" : "bg-gradient-to-r from-emerald-600 to-teal-600"} text-white rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <div className={isSyncingPublic ? "animate-spin" : ""}>
+                  <RefreshCw className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-semibold">
+                  {isSyncingPublic ? "Sincronizando..." : "Sincronizar Catálogo"}
+                </span>
               </button>
             </div>
 
