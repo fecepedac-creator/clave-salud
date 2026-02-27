@@ -94,9 +94,48 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
   const [quickAddValue, setQuickAddValue] = useState("");
+  const [templateSearchTerm, setTemplateSearchTerm] = useState("");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
   const [pendingExamsMetadata, setPendingExamsMetadata] = useState<string[]>([]);
+
+  // Lógica de filtrado y sugerencia inteligente de plantillas
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearchTerm.trim() && !currentDiagnosis) return allTemplates;
+
+    const normalizedDiag = (currentDiagnosis || "").toLowerCase();
+    const normalizedSearch = templateSearchTerm.toLowerCase();
+
+    return [...allTemplates]
+      .map(t => {
+        let score = 0;
+        const normalizedTitle = t.title.toLowerCase();
+        const normalizedContent = t.content.toLowerCase();
+
+        // 1. Coincidencia con búsqueda de texto (Alta prioridad)
+        if (templateSearchTerm.trim()) {
+          if (normalizedTitle.includes(normalizedSearch)) score += 100;
+          if (normalizedContent.includes(normalizedSearch)) score += 30;
+        }
+
+        // 2. Coincidencia con diagnóstico actual (Inteligencia Clínica)
+        if (currentDiagnosis) {
+          // Dividir diagnóstico en palabras clave para búsqueda parcial
+          const diagKeywords = normalizedDiag.split(" ").filter(k => k.length > 3);
+          diagKeywords.forEach(kw => {
+            if (normalizedTitle.includes(kw)) score += 50;
+            if (normalizedContent.includes(kw)) score += 15;
+          });
+
+          // Coincidencia exacta de palabras clave del diagnóstico en el título
+          if (normalizedTitle.includes(normalizedDiag)) score += 80;
+        }
+
+        return { ...t, score };
+      })
+      .filter(t => !templateSearchTerm.trim() || t.score > 0)
+      .sort((a, b) => b.score - a.score);
+  }, [allTemplates, templateSearchTerm, currentDiagnosis]);
 
   // Parse current text to find already listed exams could be complex, so we just append for now or start fresh.
   // Ideally, we might parse lines, but for simplicity, we treat the text area as the source of truth.
@@ -309,24 +348,52 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
               <Sparkles className="w-4 h-4" /> Plantillas
             </button>
             {showTemplateSelector && allTemplates && (
-              <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 shadow-xl rounded-xl z-20 overflow-hidden animate-fadeIn">
-                <div className="p-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
-                  Seleccionar Plantilla
+              <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl z-20 overflow-hidden animate-fadeIn backdrop-blur-sm bg-white/95">
+                <div className="p-3 bg-slate-50 border-b border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-tight">Buscar Plantilla</span>
+                    <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+                  </div>
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Ej: Lumbago, Gripe..."
+                    value={templateSearchTerm}
+                    onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-indigo-400 outline-none transition-all shadow-inner"
+                  />
+                  {currentDiagnosis && !templateSearchTerm && (
+                    <div className="mt-2 text-[10px] text-indigo-600 font-medium flex items-center gap-1">
+                      <Zap className="w-2 h-2" /> Sugerencias para: {currentDiagnosis}
+                    </div>
+                  )}
                 </div>
-                <div className="max-h-60 overflow-y-auto">
-                  {allTemplates.map((t) => (
+                <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                  {filteredTemplates.map((t) => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => handleInsertTemplate(t)}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 text-slate-700 border-b border-slate-50 last:border-0"
+                      className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 text-slate-700 border-b border-slate-50 last:border-0 group transition-colors"
                     >
-                      {t.title}
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold group-hover:text-indigo-600 truncate">{t.title}</span>
+                        {(t as any).score > 50 && !templateSearchTerm && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-bold">RECOMENDADO</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{t.content.substring(0, 40)}...</p>
                     </button>
                   ))}
-                  {allTemplates.length === 0 && (
-                    <div className="p-4 text-sm text-slate-400 italic">
-                      No hay plantillas configuradas.
+                  {filteredTemplates.length === 0 && (
+                    <div className="p-6 text-center">
+                      <p className="text-sm text-slate-400 italic">No se encontraron plantillas.</p>
+                      <button
+                        onClick={() => setTemplateSearchTerm("")}
+                        className="text-xs text-indigo-600 font-bold mt-2 hover:underline"
+                      >
+                        Ver todas
+                      </button>
                     </div>
                   )}
                 </div>

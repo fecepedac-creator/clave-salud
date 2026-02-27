@@ -5,6 +5,11 @@ import {
   SURGICAL_HISTORY_OPTIONS,
   LIVING_WITH_OPTIONS,
   MAULE_COMMUNES,
+  INSURANCE_OPTIONS,
+  INSURANCE_LEVELS,
+  GENDER_IDENTITY_OPTIONS,
+  PUEBLOS_ORIGINARIOS,
+  NACIONALIDADES,
 } from "../constants";
 import {
   validateRUT,
@@ -109,6 +114,11 @@ const PatientForm: React.FC<PatientFormProps> = ({
   const [gender, setGender] = useState<any>("Masculino");
   const [occupation, setOccupation] = useState("");
   const [livingWith, setLivingWith] = useState<string[]>([]);
+  const [insurance, setInsurance] = useState<any>("Particular");
+  const [insuranceLevel, setInsuranceLevel] = useState<any>("");
+  const [genderIdentity, setGenderIdentity] = useState<any>("Identidad de género no declarada");
+  const [ethnicity, setEthnicity] = useState<any>("Ninguno");
+  const [nationality, setNationality] = useState<any>("Chilena");
 
   // 2. Medical History
   const [medicalHistory, setMedicalHistory] = useState<string[]>([]);
@@ -255,6 +265,11 @@ const PatientForm: React.FC<PatientFormProps> = ({
       careTeamUids: [],
       consent,
       consentDate: new Date().toISOString(),
+      insurance,
+      insuranceLevel,
+      genderIdentity,
+      ethnicity,
+      nationality,
     };
     onSave(newPatient);
   };
@@ -368,80 +383,155 @@ const PatientForm: React.FC<PatientFormProps> = ({
                 />
 
                 <div className="md:col-span-2">
-                  <label className="block text-xl font-bold text-slate-700 mb-2">
-                    Dirección de Residencia
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Calle, Número, Villa/Población"
-                      className={`w-full p-4 text-xl border-2 rounded-xl outline-none transition-all ${errors.address ? "border-red-400 bg-red-50" : "border-slate-200 focus:border-blue-500"}`}
-                    />
-                    <select
-                      value={commune}
-                      onChange={(e) => setCommune(e.target.value)}
-                      className={`w-full p-4 text-xl border-2 rounded-xl outline-none transition-all bg-white ${errors.commune ? "border-red-400 bg-red-50" : "border-slate-200 focus:border-blue-500"}`}
+                  <select
+                    value={commune}
+                    onChange={(e) => setCommune(e.target.value)}
+                    className={`w-full p-4 text-xl border-2 rounded-xl outline-none transition-all bg-white ${errors.commune ? "border-red-400 bg-red-50" : "border-slate-200 focus:border-blue-500"}`}
+                  >
+                    <option value="">Seleccione Comuna (Maule)</option>
+                    {MAULE_COMMUNES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-xl font-bold text-slate-700 mb-2">Nacionalidad</label>
+                      <select
+                        value={nationality}
+                        onChange={(e) => setNationality(e.target.value)}
+                        className="w-full p-4 text-xl border-2 rounded-xl border-slate-200 focus:border-blue-500 outline-none bg-white font-medium"
+                      >
+                        {NACIONALIDADES.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xl font-bold text-slate-700 mb-2">Pueblo Originario</label>
+                      <select
+                        value={ethnicity}
+                        onChange={(e) => setEthnicity(e.target.value)}
+                        className="w-full p-4 text-xl border-2 rounded-xl border-slate-200 focus:border-blue-500 outline-none bg-white font-medium"
+                      >
+                        {PUEBLOS_ORIGINARIOS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {(errors.address || errors.commune) && (
+                  <p className="text-red-600 font-bold mt-1 text-sm flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" /> Dirección completa requerida para recetas.
+                  </p>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xl font-bold text-slate-700 mb-4">Sexo (Registral)</label>
+                <div className="grid grid-cols-3 gap-4">
+                  {["Masculino", "Femenino", "Otro"].map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGender(g)}
+                      className={`py-4 text-lg font-bold rounded-xl border-2 transition-all ${gender === g ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"}`}
                     >
-                      <option value="">Seleccione Comuna (Maule)</option>
-                      {MAULE_COMMUNES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xl font-bold text-slate-700 mb-4">Identidad de Género (Ley 21.120)</label>
+                <select
+                  value={genderIdentity}
+                  onChange={(e) => setGenderIdentity(e.target.value)}
+                  className="w-full p-4 text-xl border-2 rounded-xl border-slate-200 focus:border-blue-500 outline-none bg-white font-medium"
+                >
+                  {GENDER_IDENTITY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xl font-bold text-slate-700 mb-2">Previsión de Salud</label>
+                    <select
+                      value={insurance}
+                      onChange={(e) => setInsurance(e.target.value)}
+                      className="w-full p-4 text-xl border-2 rounded-xl border-slate-200 focus:border-blue-500 outline-none bg-white font-medium"
+                    >
+                      {INSURANCE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
                         </option>
                       ))}
                     </select>
                   </div>
-                  {(errors.address || errors.commune) && (
-                    <p className="text-red-600 font-bold mt-1 text-sm flex items-center gap-1">
-                      <AlertCircle className="w-4 h-4" /> Dirección completa requerida para recetas.
-                    </p>
+                  {insurance === "FONASA" && (
+                    <div>
+                      <label className="block text-xl font-bold text-slate-700 mb-2">Tramo</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {INSURANCE_LEVELS.map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => setInsuranceLevel(level)}
+                            className={`py-4 text-lg font-bold rounded-xl border-2 transition-all ${insuranceLevel === level ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"}`}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
+              </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-xl font-bold text-slate-700 mb-4">Sexo</label>
-                  <div className="grid grid-cols-3 gap-4">
-                    {["Masculino", "Femenino", "Otro"].map((g) => (
-                      <button
-                        key={g}
-                        onClick={() => setGender(g)}
-                        className={`py-4 text-lg font-bold rounded-xl border-2 transition-all ${gender === g ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"}`}
-                      >
-                        {g}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
+                <BigInput
+                  label="Ocupación / Oficio"
+                  value={occupation}
+                  onChange={(e: any) => setOccupation(e.target.value)}
+                  placeholder="Ej: Profesor, Dueña de casa..."
+                />
+              </div>
 
-                <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
-                  <BigInput
-                    label="Ocupación / Oficio"
-                    value={occupation}
-                    onChange={(e: any) => setOccupation(e.target.value)}
-                    placeholder="Ej: Profesor, Dueña de casa..."
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xl font-bold text-slate-700 mb-4 flex items-center gap-2">
-                    <Users className="w-5 h-5" /> ¿Con quién vive?{" "}
-                    <span className="text-sm font-normal text-slate-400">
-                      (Puede marcar varios)
-                    </span>
-                  </label>
-                  {errors.livingWith && (
-                    <p className="text-red-600 font-bold mb-2 text-sm">{errors.livingWith}</p>
-                  )}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {LIVING_WITH_OPTIONS.map((opt) => (
-                      <SelectionCard
-                        key={opt}
-                        label={opt}
-                        selected={livingWith.includes(opt)}
-                        onClick={() => toggleSelection(livingWith, setLivingWith, opt)}
-                      />
-                    ))}
-                  </div>
+              <div className="md:col-span-2">
+                <label className="block text-xl font-bold text-slate-700 mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5" /> ¿Con quién vive?{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    (Puede marcar varios)
+                  </span>
+                </label>
+                {errors.livingWith && (
+                  <p className="text-red-600 font-bold mb-2 text-sm">{errors.livingWith}</p>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {LIVING_WITH_OPTIONS.map((opt) => (
+                    <SelectionCard
+                      key={opt}
+                      label={opt}
+                      selected={livingWith.includes(opt)}
+                      onClick={() => toggleSelection(livingWith, setLivingWith, opt)}
+                    />
+                  ))}
                 </div>
               </div>
             </div>

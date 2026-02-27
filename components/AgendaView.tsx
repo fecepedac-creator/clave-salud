@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Appointment, AgendaConfig } from "../types";
 import { getStandardSlots, getDaysInMonth } from "../utils";
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Zap } from "lucide-react";
 
 interface AgendaViewProps {
   currentMonth: Date;
@@ -30,6 +30,18 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   readOnly = false,
   isSyncingAppointments = false,
 }) => {
+  const slotsSectionRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logic for mobile
+  useEffect(() => {
+    if (selectedAgendaDate && slotsSectionRef.current) {
+      const isMobile = window.innerWidth < 1024; // lg breakpoint in Tailwind
+      if (isMobile) {
+        slotsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [selectedAgendaDate]);
+
   const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
   const activeAppointments = appointments.filter(
     (a) => a?.active !== false && (a as any).activo !== false
@@ -96,13 +108,12 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                     onClick={() => onDateClick(day)}
                     className={`
                                             h-10 rounded-lg flex flex-col items-center justify-center transition-all relative
-                                            ${
-                                              isSelected
-                                                ? "bg-blue-600 text-white shadow-md scale-105 z-10"
-                                                : isPast
-                                                  ? "bg-red-50 text-red-300 border border-red-50 cursor-not-allowed"
-                                                  : "bg-white text-slate-700 hover:bg-blue-50 border border-slate-100"
-                                            }
+                                            ${isSelected
+                        ? "bg-blue-600 text-white shadow-md scale-105 z-10"
+                        : isPast
+                          ? "bg-red-50 text-red-300 border border-red-50 cursor-not-allowed"
+                          : "bg-white text-slate-700 hover:bg-blue-50 border border-slate-100"
+                      }
                                         `}
                   >
                     <span className="font-bold text-sm">{day.getDate()}</span>
@@ -118,7 +129,10 @@ const AgendaView: React.FC<AgendaViewProps> = ({
       </div>
 
       {/* Right: Scheduled Appointments & Slot Management */}
-      <div className="lg:col-span-8 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col min-h-[500px]">
+      <div
+        ref={slotsSectionRef}
+        className="lg:col-span-8 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col min-h-[500px]"
+      >
         <h3 className="font-bold text-2xl text-slate-800 mb-6 flex flex-wrap justify-between items-center gap-2">
           <span>
             {headerDate
@@ -148,7 +162,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
           ) : (
             <div className="space-y-8">
               {/* Grid de Bloques (Gestión) */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                 {standardSlots.map((templateSlot) => {
                   const realSlot = activeAppointments.find(
                     (a) =>
@@ -170,15 +184,14 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                       disabled={isPastDate || readOnly} // Disable if readOnly
                       className={`
                                                 py-3 rounded-xl border-2 font-bold text-sm transition-all flex flex-col items-center justify-center gap-1
-                                                ${
-                                                  isPastDate || readOnly
-                                                    ? "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed opacity-60"
-                                                    : isBooked
-                                                      ? "bg-blue-100 border-blue-300 text-blue-800"
-                                                      : isOpen
-                                                        ? "bg-green-100 border-green-400 text-green-800 shadow-sm hover:bg-green-50"
-                                                        : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
-                                                }
+                                                ${isPastDate || readOnly
+                          ? "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed opacity-60"
+                          : isBooked
+                            ? "bg-blue-100 border-blue-300 text-blue-800"
+                            : isOpen
+                              ? "bg-green-100 border-green-400 text-green-800 shadow-sm hover:bg-green-50"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                        }
                                             `}
                     >
                       {templateSlot.time}

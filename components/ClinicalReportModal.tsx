@@ -93,7 +93,9 @@ const buildClinicalEncountersJSON = (
         return {
           fecha: toDateOnly(c.date),
           motivo: ensureValue(c.reason),
-          hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
+          anamnesis: ensureValue(c.anamnesis),
+          examenFisico: ensureValue(c.physicalExam),
+          hallazgosExamenes: findings.slice(2).length > 0 ? findings.slice(2) : [],
           diagnostico: ensureValue(c.diagnosis),
           procedimientos: MISSING_RECORD,
           indicacionesPlan: planItems.length > 0 ? planItems : [MISSING_RECORD],
@@ -418,10 +420,11 @@ const buildDeterministicReport = (params: {
         lines.push("");
         lines.push(`${idx + 1}) Fecha: ${encounter.fecha}`);
         lines.push(`- Motivo: ${encounter.motivo}`);
-        const findings = Array.isArray(encounter.hallazgosRelevantes)
-          ? encounter.hallazgosRelevantes.join(" | ")
-          : encounter.hallazgosRelevantes;
-        lines.push(`- Hallazgos relevantes: ${findings}`);
+        lines.push(`- Anamnesis: ${encounter.anamnesis}`);
+        lines.push(`- Examen físico: ${encounter.examenFisico}`);
+        if (encounter.hallazgosExamenes && encounter.hallazgosExamenes.length > 0) {
+          lines.push(`- Exámenes: ${encounter.hallazgosExamenes.join(" | ")}`);
+        }
         lines.push(`- Diagnóstico: ${encounter.diagnostico}`);
         lines.push(`- Procedimientos: ${encounter.procedimientos}`);
         const plan = Array.isArray(encounter.indicacionesPlan)

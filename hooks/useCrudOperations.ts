@@ -397,7 +397,7 @@ export function useCrudOperations(
 
         if (count > 0) {
           await Promise.all(batches.map((b) => b.commit()));
-          console.log(`[Delta Sync] Commited ${count} changes in ${batches.length} batches.`);
+          // Omitiendo log de sincronización delta
         }
       } catch (err) {
         console.error("syncAppointments error", err);
@@ -462,13 +462,13 @@ export function useCrudOperations(
           const tokenResult = await authUser.getIdTokenResult();
           const claims = tokenResult?.claims || {};
           isFinalSuper = (claims.super_admin === true || claims.superadmin === true || claims.superAdmin === true);
-          console.log("[Auth Diagnosis] Computed SuperAdmin claims:", claims);
+          // Auth Diagnosis SuperAdmin
         } catch (authDiagErr) {
           console.error("[Auth Diagnosis] Failed to get claims:", authDiagErr);
         }
       }
 
-      console.log("[Auth Diagnosis] Final SuperAdmin assessment:", isFinalSuper);
+      // Auth Diagnosis
 
       if (!isFinalSuper) {
         console.error("User is NOT SuperAdmin. Rejecting fallback flow.");
@@ -497,7 +497,7 @@ export function useCrudOperations(
           updateData.createdAt = cleanPayload?.createdAt ?? serverTimestamp();
         }
 
-        console.log("[Fallback Data Check]: Executing setDoc with:", updateData);
+        // Fallback update
         await setDoc(centerRef, updateData, { merge: true });
         showToast("Centro actualizado vía fallback", "success");
       } catch (fallbackErr: any) {

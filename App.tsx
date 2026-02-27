@@ -228,14 +228,7 @@ const App: React.FC = () => {
 
   // Debug: Monitor specialists and auth state
   useEffect(() => {
-    console.log("[DEBUG App] State Update:", {
-      view,
-      activeCenterId,
-      hasCurrentUser: !!localCurrentUser,
-      isAdmin,
-      doctorsCount: doctors.length,
-      portfolioMode
-    });
+    // [DEBUG App] log omitted for production
   }, [view, activeCenterId, localCurrentUser, isAdmin, doctors.length, portfolioMode]);
 
   const {
@@ -620,17 +613,9 @@ const App: React.FC = () => {
       // Only redirect from public views IF we have an explicit preference (user clicked a button)
       // Otherwise, always redirect if they land on an explicit login/select page while authenticated
       if (isExplicitLoginView || (isPublicView && loginViewPreference)) {
-        console.log("DEBUG REDIRECTION V4 (Non-trap):", {
-          user: localCurrentUser.fullName,
-          loginViewPreference,
-          view,
-          reason: isExplicitLoginView ? "explicit-login-view" : "public-view-with-preference"
-        });
-
         const targetView = resolveDashboardView(localCurrentUser);
 
         if (view !== targetView) {
-          console.log("APPLYING REDIRECTION TO:", targetView);
           setView(targetView);
         }
       }
@@ -926,7 +911,7 @@ const App: React.FC = () => {
             onSave={async (patient: Patient) => {
               const exists = patients.find((p) => p.rut === patient.rut);
               const payload = exists
-                ? { ...patient, id: exists.id, centerId: activeCenterId }
+                ? { ...exists, ...patient, id: exists.id, centerId: activeCenterId }
                 : { ...patient, centerId: activeCenterId };
               const nextPayload = {
                 ...payload,
@@ -991,7 +976,6 @@ const App: React.FC = () => {
 
     if (doctors.length > 0 && bookableDoctors.length === 0) {
       console.warn("[Public Booking] NO bookable doctors found out of", doctors.length, "total records.");
-      console.log("[Public Booking] Raw IDs found:", doctors.map(d => `${d.id} (${d.fullName})`));
     }
 
     // Deduplicate by email to avoid showing same person with different roles
@@ -2240,7 +2224,7 @@ const App: React.FC = () => {
             onSetPortfolioMode={setPortfolioMode}
             onLogActivity={(event: any) => {
               if (isPreviewActive) {
-                console.log("[Demo Log]", event);
+                // Omitir log demo
                 return;
               }
               const log: AuditLogEntry = {
@@ -2274,7 +2258,7 @@ const App: React.FC = () => {
             doctors={doctors}
             onUpdateDoctors={(newDocs: Doctor[]) => {
               if (isPreviewActive) return;
-              console.log("[onUpdateDoctors] Triggered with:", newDocs.length, "docs");
+              // UpdateDoctors UI event
 
               // 1. Optimistic Update: Update UI immediately to prevent lag
               setDoctors(newDocs);
@@ -2283,7 +2267,7 @@ const App: React.FC = () => {
               const existingIds = new Set(newDocs.map((d) => d.id));
               doctors.forEach((d) => {
                 if (!existingIds.has(d.id)) {
-                  console.log("[onUpdateDoctors] Deleting staff:", d.id, d.fullName);
+                  // Deleting deactivated staff
                   deleteStaff(d.id);
                 }
               });

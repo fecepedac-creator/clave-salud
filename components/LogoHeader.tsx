@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { CORPORATE_LOGO } from "../constants";
 
 interface LogoHeaderProps {
   size?: "sm" | "md" | "lg";
@@ -29,7 +30,7 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
     <div className={`flex items-center gap-2 ${className}`}>
       {!logoError ? (
         <img
-          src="/assets/logo.png"
+          src={CORPORATE_LOGO}
           alt="ClaveSalud Logo"
           className={`${sizes[size]} object-contain`}
           onError={() => setLogoError(true)}

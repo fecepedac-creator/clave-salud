@@ -1,10 +1,18 @@
-import { useState, useMemo } from "react";
-import { Patient, Appointment } from "../../types";
-import { normalizeRut, formatPersonName, getPatientIdByRut } from "../../utils";
+import { useState, useMemo, useEffect } from "react";
+import { Patient, Appointment, Consultation } from "../../types";
+import { normalizeRut, formatPersonName, getPatientIdByRut, normalizePhone } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, getDoc } from "firebase/firestore";
+import {
+    doc,
+    getDoc,
+    collection,
+    query,
+    orderBy,
+    limit,
+    onSnapshot
+} from "firebase/firestore";
 import { db } from "../../firebase";
 
 interface UsePatientManagementProps {
@@ -28,6 +36,11 @@ export const usePatientManagement = ({
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [isEditingPatient, setIsEditingPatient] = useState(false);
+    const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
+    const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
+
+    const getActiveConsultations = (p: Patient) =>
+        (p.consultations || []).filter((consultation) => consultation.active !== false);
 
     // Filter Patients
     const filteredPatients = useMemo(() => {
@@ -41,7 +54,8 @@ export const usePatientManagement = ({
             else if (filterNextControl === "month") horizon.setDate(now.getDate() + 30);
 
             result = result.filter((p) => {
-                const lastConsult = p.consultations?.[0]; // Assumes sorted by sync or logic
+                const activeConsults = getActiveConsultations(p);
+                const lastConsult = activeConsults[0];
                 if (!lastConsult?.nextControlDate) return false;
                 const nextDate = new Date(lastConsult.nextControlDate + "T12:00:00");
                 return nextDate >= now && nextDate <= horizon;
@@ -146,6 +160,48 @@ export const usePatientManagement = ({
         showToast("Paciente no encontrado; contacta soporte si el problema persiste", "warning");
     };
 
+    // --- Sync Consultations ---
+    useEffect(() => {
+        if (!activeCenterId || !selectedPatient?.id) {
+            setConsultationsFromDb([]);
+            setIsUsingLegacyConsultations(false);
+            return;
+        }
+
+        const consultationsRef = collection(
+            db,
+            "centers",
+            activeCenterId,
+            "patients",
+            selectedPatient.id,
+            "consultations"
+        );
+
+        const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                const docs = snapshot.docs.map((d) => ({
+                    id: d.id,
+                    ...(d.data() as any),
+                })) as Consultation[];
+                const filtered = docs.filter((c) => c.active !== false);
+                setConsultationsFromDb(filtered);
+
+                const legacyCount = getActiveConsultations(selectedPatient).length;
+                setIsUsingLegacyConsultations(filtered.length === 0 && legacyCount > 0);
+            },
+            () => {
+                setConsultationsFromDb([]);
+                const legacyCount = getActiveConsultations(selectedPatient).length;
+                setIsUsingLegacyConsultations(legacyCount > 0);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [activeCenterId, selectedPatient?.id]);
+
     return {
         selectedPatient,
         setSelectedPatient,
@@ -157,5 +213,7 @@ export const usePatientManagement = ({
         handleSelectPatient,
         handleSavePatient,
         handleOpenPatientFromAppointment,
+        consultations: consultationsFromDb.length > 0 ? consultationsFromDb : (selectedPatient ? getActiveConsultations(selectedPatient) : []),
+        isUsingLegacyConsultations,
     };
 };

@@ -207,6 +207,61 @@ export const MAULE_COMMUNES = [
   "Vichuquén",
 ].sort();
 
+export const INSURANCE_OPTIONS = [
+  "Particular",
+  "FONASA",
+  "ISAPRE",
+  "DIPRECA",
+  "CAPREDENA",
+  "SISA",
+  "Otro",
+];
+
+export const INSURANCE_LEVELS = ["A", "B", "C", "D"];
+
+export const GENDER_IDENTITY_OPTIONS = [
+  "Masculino (Cis)",
+  "Femenino (Cis)",
+  "Mujer Trans",
+  "Hombre Trans",
+  "No binario",
+  "Identidad de género no declarada",
+  "Otro",
+];
+
+export const PUEBLOS_ORIGINARIOS = [
+  "Ninguno",
+  "Mapuche",
+  "Aymara",
+  "Rapa Nui",
+  "Likan Antai (Atacameño)",
+  "Quechua",
+  "Colla",
+  "Diaguita",
+  "Kawésqar",
+  "Yagán (Yámana)",
+  "Chango",
+  "Selk'nam",
+  "Afrodescendiente chileno",
+  "Otro",
+];
+
+export const NACIONALIDADES = [
+  "Chilena",
+  "Argentina",
+  "Boliviana",
+  "Brasileña",
+  "Colombiana",
+  "Cubana",
+  "Ecuatoriana",
+  "Haitiana",
+  "Mexicana",
+  "Peruana",
+  "Uruguaya",
+  "Venezolana",
+  "Otra",
+];
+
 export const COMMON_MEDICATIONS = [
   "Paracetamol 500mg",
   "Ibuprofeno 400mg",

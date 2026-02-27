@@ -13,6 +13,18 @@ export type FirestoreDateLike = Timestamp | string | Date | null;
 export type JsonValue = string | number | boolean | null | undefined | JsonMap | JsonValue[];
 export type JsonMap = { [key: string]: JsonValue };
 
+export interface BrandKit {
+  logoUrls?: string[]; // Multiple versions: primary, secondary, icon
+  backgroundImages?: string[]; // User uploaded backgrounds
+  colors?: {
+    primary?: string; // Hex code
+    secondary?: string; // Hex code
+    accent?: string;
+  };
+  tagline?: string;
+  fontFamily?: string;
+}
+
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -62,6 +74,9 @@ export interface MedicalCenter {
     totalStaff?: number; // Aliased for SuperAdminDashboard logic
     updatedAt?: FirestoreDateLike;
   };
+
+  // --- Branding & Marketing ---
+  branding?: BrandKit;
 }
 
 export type AuditEntityType =
@@ -294,10 +309,15 @@ export interface Patient extends SoftDeletable {
   fullName: string;
   birthDate: string;
   gender: "Masculino" | "Femenino" | "Otro";
+  genderIdentity?: string; // FHIR Core-CL
+  insurance?: "FONASA" | "ISAPRE" | "DIPRECA" | "CAPREDENA" | "Particular" | "Otro";
+  insuranceLevel?: "A" | "B" | "C" | "D" | string;
   email?: string;
   phone?: string;
   address?: string;
   commune?: string;
+  ethnicity?: string; // DEIS Pueblos Originarios
+  nationality?: string; // DEIS Nacionalidad
 
   occupation?: string;
   livingWith?: string[];
@@ -475,7 +495,6 @@ export interface Doctor {
   /** @deprecated Autenticación real se gestiona con Firebase Auth (Google). */
   isAdmin?: boolean; // NEW: Controls access to AdminDashboard
   active?: boolean;
-  activo?: boolean;
   agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
   savedExamProfiles?: ExamProfile[];
@@ -538,7 +557,7 @@ export interface UserProfile {
   displayName?: string;
   photoURL?: string;
   activeCenterId?: string | null;
-  activo?: boolean;
+  active?: boolean;
   billing?: {
     plan: "professional" | "basic" | "free";
     status: "active" | "overdue" | "suspended" | "trial";

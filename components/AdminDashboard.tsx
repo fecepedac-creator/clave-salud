@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import MetricCard from "./MetricCard";
 import { CenterContext } from "../CenterContext";
 import {
@@ -491,6 +491,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Calendar State (must be declared before pending state useEffect)
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const slotsSectionRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logic for mobile (Agenda Tab)
+  useEffect(() => {
+    if (activeTab === "agenda" && selectedDate && slotsSectionRef.current) {
+      const isMobile = window.innerWidth < 1024;
+      if (isMobile) {
+        slotsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [activeTab, selectedDate]);
 
   // Pending slot changes (Option A model)
   const [pendingAdds, setPendingAdds] = useState<Set<string>>(new Set()); // time strings to open
@@ -947,7 +958,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
-      console.log(`[handleDeleteDoctor] Initiating deletion for ID: ${id}, Name: ${doctor.fullName}`);
+      // Inicio de eliminación
 
       // 1. Deactivate in 'staff'
       const staffRef = doc(db, "centers", centerId, "staff", id);
@@ -962,7 +973,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         },
         { merge: true }
       );
-      console.log(`[handleDeleteDoctor] Deactivated in 'staff' collection.`);
+      // Desactivado en staff (historizado)
 
       // 2. Deactivate in 'publicStaff'
       await setDoc(
@@ -976,12 +987,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         },
         { merge: true }
       );
-      console.log(`[handleDeleteDoctor] Deactivated in 'publicStaff' collection.`);
+      // Desactivado en publicStaff (oculto en agendamiento público)
 
       // 3. Revoke any pending invites
       if (doctor.email) {
         const emailLower = doctor.email.toLowerCase();
-        console.log(`[handleDeleteDoctor] Checking for pending invites for: ${emailLower}`);
+        // Revisando invitaciones pendientes
         const qInv = query(
           collection(db, "invites"),
           where("emailLower", "==", emailLower),
@@ -989,7 +1000,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           where("status", "==", "pending")
         );
         const invSnap = await getDocs(qInv);
-        console.log(`[handleDeleteDoctor] Found ${invSnap.size} pending invites.`);
+        // Eliminando invits pendientes
         for (const invDoc of invSnap.docs) {
           await setDoc(doc(db, "invites", invDoc.id), {
             status: "revoked",
@@ -999,7 +1010,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       // 4. Update local state via callback
-      console.log(`[handleDeleteDoctor] Calling onUpdateDoctors callback...`);
+      // Actualizar vista local
       onUpdateDoctors(doctors.filter((d) => d.id !== id));
       showToast("Profesional eliminado exitosamente.", "success");
 
@@ -2213,7 +2224,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {/* Main Agenda Grid */}
-            <div className="lg:col-span-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col">
+            <div
+              ref={slotsSectionRef}
+              className="lg:col-span-8 bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col"
+            >
               {selectedDate ? (
                 <>
                   <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
@@ -2257,7 +2271,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-4">
                     {getStandardSlots(
                       selectedDate,
                       selectedDoctorId,

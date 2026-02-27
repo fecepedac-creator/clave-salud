@@ -487,7 +487,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const recalc = httpsCallable(functions, "recalcCenterStats");
       const result = await recalc({ centerId });
       showToast("Estadísticas recalculadas con éxito.", "success");
-      console.log("Recalc success:", result.data);
+      // Recalc success
       // We don't necessarily need to reload centers here because App.tsx or useCenters might be listening,
       // but usually centers are loaded once or via pagination.
     } catch (error: any) {
@@ -1608,14 +1608,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         Logo del centro
                       </div>
                       <div className="text-sm text-slate-600">
-                        Sube un logo (PNG/JPG/WEBP, máx. 2MB). Se guarda en Firebase Storage como{" "}
-                        <b>logoUrl</b>.
+                        Sube un logo (SVG, PNG, JPG, WEBP, máx. 2MB).
+                        <p className="mt-1 text-[11px] text-slate-500 italic">
+                          💡 Tip: Se recomienda usar <b>SVG</b> o <b>PNG con transparencia</b>. Los logos vectoriales (SVG) mantienen la nitidez en cualquier tamaño.
+                        </p>
                       </div>
                       <div className="mt-3 flex flex-col gap-2">
                         <input
                           id="logo-input"
                           type="file"
-                          accept="image/png, image/jpeg, image/webp"
+                          accept="image/png, image/jpeg, image/webp, image/svg+xml"
                           className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
                           disabled={isUploadingLogo}
                           onChange={(e) => {
@@ -1651,7 +1653,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             <img
                               src={logoPreview || (editingCenter as any).logoUrl}
                               alt="Previsualización del logo"
-                              className="w-14 h-14 rounded-xl object-cover border-2 border-slate-200 bg-white"
+                              className="w-20 h-20 rounded-xl object-contain border-2 border-slate-200 bg-white p-2"
                             />
                             <button
                               type="button"

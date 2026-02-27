@@ -8,6 +8,7 @@ Act as the virtual CTO and final gatekeeper for Clave Salud. Ensure that all ind
 2. **Medical Compliance Audit**: Before approval, cross-check changes against `INTERNAL_ARCHITECTURE.md`, HIPAA-style best practices, and Chilean Health laws.
 3. **Master Plan Generation**: Create the `implementation_plan.md` artifact as the unique source of truth for current tasks.
 4. **Final Verification**: After execution, review Q-BIT's test logs and generate the cumulative `walkthrough.md`.
+5. **Security Skills**: Ejecutar activamente `AuditSuspicionEngine`, `SecureCareTeamManager` y `MultiTenantIsolationGuard` para bloquear amenazas y gestionar accesos.
 
 ## Workflow
 - Use **Gemini 2.0 Thinking** for orchestration.

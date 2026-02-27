@@ -7,13 +7,7 @@ if (!admin.apps.length) {
 
 import * as crypto from "crypto";
 import { sendEmail } from "./email";
-import {
-  LogAccessRequest,
-  LogAccessResult,
-  AuditLogData,
-  LogAuditEventRequest,
-  LogAuditEventResult,
-} from "./types";
+import { AuditLogData } from "./types";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
@@ -1092,7 +1086,7 @@ export const backfillPatientConsultationsToSubcollection = (functions.https.onCa
  * - Timestamps del servidor para integridad
  */
 export const logAccess = (functions.https.onCall as any)(
-  async (data: LogAccessRequest, context: CallableContext): Promise<LogAccessResult> => {
+  async (data: any, context: CallableContext): Promise<any> => {
     requireAuth(context);
     const uid = context.auth?.uid as string;
     const emailLower = lowerEmailFromContext(context);
@@ -1246,7 +1240,7 @@ export const logAccess = (functions.https.onCall as any)(
 );
 
 export const logAuditEvent = (functions.https.onCall as any)(
-  async (data: LogAuditEventRequest, context: CallableContext): Promise<LogAuditEventResult> => {
+  async (data: any, context: CallableContext): Promise<any> => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado.");
     }
@@ -2010,3 +2004,5 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
     }
   }
 );
+
+export * from "./immutableAudit";

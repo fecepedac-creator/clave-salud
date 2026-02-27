@@ -45,17 +45,11 @@ const ConsultationDetailModal: React.FC<ConsultationDetailModalProps> = ({
         </div>
 
         <div className="p-6 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-              <p className="text-xs uppercase font-bold text-slate-500">Profesional</p>
-              <p className="text-slate-800 font-semibold flex items-center gap-2">
-                <User className="w-4 h-4" /> {consultation.professionalName || "-"}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-              <p className="text-xs uppercase font-bold text-slate-500">Diagnóstico</p>
-              <p className="text-slate-800 font-semibold">{consultation.diagnosis || "-"}</p>
-            </div>
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+            <p className="text-xs uppercase font-bold text-slate-500">Profesional</p>
+            <p className="text-slate-800 font-semibold flex items-center gap-2">
+              <User className="w-4 h-4" /> {consultation.professionalName || "-"}
+            </p>
           </div>
 
           <section>
@@ -69,6 +63,10 @@ const ConsultationDetailModal: React.FC<ConsultationDetailModalProps> = ({
           <section>
             <p className="text-xs uppercase font-bold text-slate-500 mb-1">Examen físico</p>
             <p className="text-slate-800 whitespace-pre-wrap">{consultation.physicalExam || "-"}</p>
+          </section>
+          <section className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
+            <p className="text-xs uppercase font-bold text-blue-600 mb-1">Diagnóstico</p>
+            <p className="text-slate-900 font-bold text-lg">{consultation.diagnosis || "-"}</p>
           </section>
 
           <section className="bg-slate-50 rounded-xl p-4 border border-slate-100">

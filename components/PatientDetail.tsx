@@ -26,6 +26,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   center,
   consultations = [],
   generatedBy,
+  onUpdatePatient,
 }) => {
   const { logAccess } = useAuditLog();
   const [isPrintOpen, setIsPrintOpen] = useState(false);
@@ -158,6 +159,20 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         Descargar ficha completa (PDF)
       </button>
 
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Identidad de Género</p>
+          <p className="text-sm font-bold text-slate-700">{patient.genderIdentity || "No declarada"}</p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Previsión de Salud</p>
+          <p className="text-sm font-bold text-slate-700">
+            {patient.insurance || "No registrada"}
+            {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
+          </p>
+        </div>
+      </div>
+
       <FullClinicalRecordPrintView
         isOpen={isPrintOpen}
         onClose={() => setIsPrintOpen(false)}
@@ -169,30 +184,29 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       />
 
       {isAdminUser && (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400 font-bold">
-                Modo de acceso
-              </p>
-              <p className="text-sm font-semibold text-slate-700">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                Modo de acceso:
+              </span>
+              <span className="text-xs font-semibold text-slate-700 bg-white px-2 py-0.5 rounded border shadow-sm">
                 {accessMode === "CARE_TEAM" ? "Equipo tratante" : "Centro completo"}
-              </p>
+              </span>
             </div>
             {accessMode === "CARE_TEAM" && (
-              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full font-semibold">
-                Solo el equipo tratante podrá acceder a esta ficha.
+              <p className="text-[10px] text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded font-semibold">
+                Solo el equipo tratante puede acceder a esta ficha.
               </p>
             )}
           </div>
 
           {showCareTeamEditor && (
-            <div className="mt-4">
-              <p className="text-sm font-bold text-slate-700 mb-2">Equipo tratante</p>
+            <div className="mt-3 pt-3 border-t border-slate-200/60">
+              <p className="text-xs font-bold text-slate-700 mb-2">Equipo tratante</p>
               {accessMode !== "CARE_TEAM" && (
-                <p className="text-xs text-slate-500 mb-3">
-                  En modo centro completo esta asignación es opcional, pero quedará lista si luego
-                  activas el acceso restringido.
+                <p className="text-[10px] text-slate-500 mb-2 leading-tight">
+                  En modo centro completo esta asignación es opcional.
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

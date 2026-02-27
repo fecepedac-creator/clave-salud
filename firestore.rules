@@ -40,11 +40,10 @@ service cloud.firestore {
       return get(staffPath(centerId, uid()));
     }
 
-    // ✅ Compatible: active OR activo
     function isStaff(centerId) {
       return signedIn()
         && exists(staffPath(centerId, uid()))
-        && (staffDoc(centerId).data.active == true || staffDoc(centerId).data.activo == true);
+        && staffDoc(centerId).data.active == true;
     }
 
     function staffAccessRole(centerId) {
@@ -303,7 +302,7 @@ service cloud.firestore {
           && (
             resource.data.active == true
             || resource.data.active == null
-            || !resource.data.keys().hasAny(["active", "activo"])
+            || !resource.data.keys().hasAny(["active"])
           )
           && request.resource.data.deletedAt is timestamp
           && request.resource.data.deletedBy is string
