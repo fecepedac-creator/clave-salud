@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Inicializar Gemini API (Usando la key de pruebas del entorno)
 // Nota: En producción, esto debería inyectarse vía variables de entorno (VITE_GEMINI_API_KEY)
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyB9hFPZRyWLnV4yZR7wjK_KSj04O9Tmf6E";
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 interface CaptionContext {
