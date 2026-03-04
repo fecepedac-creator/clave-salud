@@ -67,6 +67,7 @@ import {
   Shield,
   TestTube,
   History,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
@@ -81,7 +82,8 @@ import {
   setDoc,
   limit,
 } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, auth, functions } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
 import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
@@ -118,6 +120,7 @@ import { DoctorPatientsListTab } from "../features/doctor/components/DoctorPatie
 import { DoctorAgendaTab } from "../features/doctor/components/DoctorAgendaTab";
 import { DoctorSettingsTab } from "../features/doctor/components/DoctorSettingsTab";
 import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatientRecord";
+import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -214,7 +217,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // const { logAccess } = useAuditLog(); // Moved to hooks
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
-  const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings">(
+  const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings" | "performance">(
     "patients"
   );
 
@@ -582,6 +585,29 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     () => whatsappTemplates.filter((template) => template.enabled),
     [whatsappTemplates]
   );
+
+  // --- ATTENDANCE HANDLER ---
+  const handleToggleAttendance = async (apt: Appointment, status: "completed" | "no-show" | "cancelled") => {
+    if (isReadOnly || !activeCenterId) return;
+    try {
+      const callArgs = {
+        centerId: activeCenterId,
+        appointmentId: apt.id,
+        attendanceStatus: status,
+        // Si marcamos como completado, y la prestación NO era gratuita, podríamos pre-checkear facturable.
+        // Asumimos facturable = true por defecto al completar un paciente si no hay lógica local extra.
+        billable: status === "completed" ? true : false,
+      };
+
+      const updateAttendanceFn = httpsCallable(functions, 'updateAppointmentAttendance');
+      await updateAttendanceFn(callArgs);
+
+      showToast(`Estado actualizado: ${status}`, "success");
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || "Error al actualizar estado de asistencia", "error");
+    }
+  };
 
   // --- TEMPLATE HANDLERS ---
   const handleSaveTemplate = () => {
@@ -1017,7 +1043,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         >
           {/* Tabs */}
           <div className="flex-shrink-0 px-4 md:px-8 pt-4 md:pt-8 pb-4">
-            <div className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-full md:w-fit shadow-sm overflow-x-auto">
+            <div data-testid="doctor-tab-bar" className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-full md:w-fit shadow-sm overflow-x-auto">
               <button
                 onClick={() => setActiveTab("patients")}
                 className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "patients" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
@@ -1035,6 +1061,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "settings" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
               >
                 <Settings className="w-4 h-4" /> Configuración
+              </button>
+              <button
+                data-testid="doctor-tab-performance"
+                onClick={() => setActiveTab("performance")}
+                className={`px-3 md:px-6 py-2.5 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "performance" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:bg-white hover:text-slate-800"}`}
+              >
+                <TrendingUp className="w-4 h-4" /> Mi Rendimiento
               </button>
             </div>
           </div>
@@ -1092,6 +1125,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 onUpdateAppointments={onUpdateAppointments}
                 setSlotModal={setSlotModal}
                 handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
+                onToggleAttendance={handleToggleAttendance}
               />
             )}
 
@@ -1126,6 +1160,14 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 setCatalogSearch={setCatalogSearch}
                 pwdState={pwdState}
                 setPwdState={setPwdState}
+              />
+            )}
+
+            {/* CONTENT: PERFORMANCE */}
+            {activeTab === "performance" && activeCenterId && (
+              <DoctorPerformanceTab
+                centerId={activeCenterId}
+                doctorId={doctorId}
               />
             )}
             {/* Slot Modal (For Agenda) */}

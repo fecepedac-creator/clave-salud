@@ -2007,3 +2007,4 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
 
 export * from "./immutableAudit";
 export * from "./whatsapp";
+export * from "./performance";

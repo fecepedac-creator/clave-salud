@@ -442,3 +442,74 @@ export const whatsappWebhook = functions
 
         res.status(405).send("Method Not Allowed");
     });
+
+// --- TRIGGER DE RESERVA (NOTIFICACIONES Y PREPARACIÓN) ---
+
+export const onAppointmentBooked = functions.firestore
+    .document("centers/{centerId}/appointments/{appointmentId}")
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+
+        // 1. Verificar que acaba de ser reservada
+        if (before.status === "booked" || after.status !== "booked") {
+            return;
+        }
+
+        const phone = after.patientPhone;
+        if (!phone) {
+            console.log("No hay teléfono para enviar WhatsApp", context.params.appointmentId);
+            return;
+        }
+
+        // Limpiar teléfono (debe tener código de país sin '+')
+        let waPhone = phone.replace(/\D/g, "");
+        if (waPhone.startsWith("569") && waPhone.length === 11) {
+            // Ya tiene formato +569...
+        } else if (waPhone.length === 8) {
+            waPhone = "569" + waPhone;
+        } else if (waPhone.length === 9 && waPhone.startsWith("9")) {
+            waPhone = "56" + waPhone;
+        }
+
+        try {
+            // 2. Enviar Confirmación General (Si no viene de WhatsApp)
+            if (after.bookedVia !== "whatsapp") {
+                const text = `¡Hola ${after.patientName}!\n\nTu reserva en *Centro Médico* está confirmada. ✅\n\n📌 *Detalles:*\nProfesional: ${after.staffName || "Profesional"}\nFecha: ${after.date}\nHora: ${after.startTime || after.time}\n\nGracias por tu preferencia.`;
+                await sendWhatsAppText(waPhone, text);
+            }
+
+            // 3. Revisar si incluye Examen o Servicio médico que requiere preparación
+            const serviceId = after.serviceId;
+            if (serviceId) {
+                const centerId = context.params.centerId;
+                const serviceSnap = await db.collection("centers").doc(centerId).collection("services").doc(serviceId).get();
+
+                if (serviceSnap.exists) {
+                    const serviceData = serviceSnap.data();
+                    const prepText = serviceData?.preparationInstructions;
+                    const pdfUrl = serviceData?.preparationPdfUrl;
+
+                    // Enviar Instrucciones en Texto
+                    if (prepText && prepText.trim().length > 0) {
+                        const instructions = `⚠ *Información importante para tu examen (${after.serviceName || "Servicio"}):*\n\n${prepText}`;
+                        await sendWhatsAppText(waPhone, instructions);
+                    }
+
+                    // Enviar PDF Adjunto
+                    if (pdfUrl && pdfUrl.trim().length > 0) {
+                        await sendRawWhatsAppPayload({
+                            to: waPhone,
+                            type: "document",
+                            document: {
+                                link: pdfUrl,
+                                filename: `Preparacion_${after.serviceName?.replace(/\s+/g, '_') || "Servicio"}.pdf`
+                            }
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error enviando WhatsApp onAppointmentBooked:", err);
+        }
+    });

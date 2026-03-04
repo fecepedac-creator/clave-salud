@@ -13,6 +13,7 @@ interface AgendaViewProps {
   onDateClick: (date: Date) => void;
   onToggleSlot: (time: string) => void;
   onOpenPatient: (appointment: Appointment) => void;
+  onToggleAttendance?: (app: Appointment, status: "completed" | "no-show" | "cancelled") => void;
   readOnly?: boolean; // NEW PROP
   isSyncingAppointments?: boolean;
 }
@@ -27,6 +28,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   onDateClick,
   onToggleSlot,
   onOpenPatient,
+  onToggleAttendance,
   readOnly = false,
   isSyncingAppointments = false,
 }) => {
@@ -199,7 +201,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                         {isPastDate
                           ? "Pasado"
                           : isBooked
-                            ? "Paciente"
+                            ? (realSlot.type === "SERVICE" ? (realSlot.serviceName || "Servicio") : "Paciente")
                             : isOpen
                               ? "Disponible"
                               : "Cerrado"}
@@ -239,15 +241,52 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                               {apt.time}
                             </div>
                             <div>
-                              <h4 className="font-bold text-lg text-slate-800">
+                              <h4 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                                 {apt.patientName}
+                                {apt.type === "SERVICE" && (
+                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-600 border border-blue-200">
+                                    {apt.serviceName}
+                                  </span>
+                                )}
                               </h4>
                               <p className="text-sm text-slate-500">
                                 {apt.patientRut} • {apt.patientPhone}
                               </p>
                             </div>
                           </div>
-                          <div className="text-right flex items-center justify-end gap-2">
+                          <div className="text-right flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap mt-2 sm:mt-0">
+                            {(() => {
+                              const slotDate = new Date(selectedAgendaDate + "T00:00:00");
+                              const isPast = slotDate < today;
+                              return onToggleAttendance && !readOnly && !isPast && (
+                                <div className="flex bg-slate-100 rounded-full border border-slate-200 overflow-hidden mr-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleAttendance(apt, "completed")}
+                                    className={`px-3 py-1 text-xs font-bold transition-colors ${apt.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-100 text-slate-500"}`}
+                                    title="Marcar como Atendido"
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleAttendance(apt, "no-show")}
+                                    className={`px-3 py-1 text-xs font-bold transition-colors border-l border-r border-slate-200 ${apt.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-100 text-slate-500"}`}
+                                    title="Marcar como No Show (Ausente)"
+                                  >
+                                    ✕
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleAttendance(apt, "cancelled")}
+                                    className={`px-3 py-1 text-xs font-bold transition-colors ${apt.attendanceStatus === "cancelled" ? "bg-slate-500 text-white" : "hover:bg-slate-200 text-slate-500"}`}
+                                    title="Anular"
+                                  >
+                                    /
+                                  </button>
+                                </div>
+                              );
+                            })()}
                             <button
                               type="button"
                               onClick={() => onOpenPatient(apt)}

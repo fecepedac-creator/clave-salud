@@ -22,6 +22,8 @@ export function useBooking(
   showToast: (message: string, type: "success" | "error" | "info" | "warning") => void
 ) {
   const [bookingStep, setBookingStep] = useState(0);
+  const [bookingType, setBookingType] = useState<"medical" | "service" | null>(null);
+  const [selectedMedicalService, setSelectedMedicalService] = useState<any | null>(null);
   const [bookingData, setBookingData] = useState<{
     name: string;
     rut: string;
@@ -131,6 +133,8 @@ export function useBooking(
           patientId,
           patientPhone: phone,
           patientEmail: email || null,
+          serviceId: bookingType === "service" ? selectedMedicalService?.id || null : null,
+          serviceName: bookingType === "service" ? selectedMedicalService?.name || null : null,
           bookedAt: serverTimestamp(),
         });
       });
@@ -143,6 +147,8 @@ export function useBooking(
         patientId,
         patientPhone: phone,
         patientEmail: email || undefined,
+        serviceId: bookingType === "service" ? selectedMedicalService?.id || undefined : undefined,
+        serviceName: bookingType === "service" ? selectedMedicalService?.name || undefined : undefined,
         bookedAt: new Date().toISOString(),
         active: slotAppointment.active ?? true,
       };
@@ -211,7 +217,7 @@ export function useBooking(
       }
     }
 
-    setBookingStep(4);
+    setBookingStep(5);
   }, [
     bookingData,
     selectedSlot,
@@ -226,6 +232,8 @@ export function useBooking(
 
   const resetBooking = useCallback(() => {
     setBookingStep(0);
+    setBookingType(null);
+    setSelectedMedicalService(null);
     setBookingData({ name: "", rut: "", phoneDigits: "", email: "" });
     setSelectedRole("");
     setSelectedDoctorForBooking(null);
@@ -324,7 +332,7 @@ export function useBooking(
       setSelectedSlot(null);
       setBookingDate(new Date());
       setBookingMonth(new Date());
-      setBookingStep(2);
+      setBookingStep(3);
     },
     [cancelPatientAppointment, doctors, bookingData]
   );
@@ -332,6 +340,10 @@ export function useBooking(
   return {
     bookingStep,
     setBookingStep,
+    bookingType,
+    setBookingType,
+    selectedMedicalService,
+    setSelectedMedicalService,
     bookingData,
     setBookingData,
     prefillContact,

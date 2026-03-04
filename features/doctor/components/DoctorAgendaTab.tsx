@@ -63,11 +63,20 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
                         onChange={(e) => setViewingDoctorId(e.target.value)}
                     >
                         <option value="">-- Selecciona un profesional --</option>
-                        {clinicalDoctors.map((d) => (
-                            <option key={d.id} value={d.id}>
-                                {d.fullName} ({d.role})
-                            </option>
-                        ))}
+                        <optgroup label="Médicos / Profesionales">
+                            {clinicalDoctors.filter(d => d.role !== "SERVICIO").map((d) => (
+                                <option key={d.id} value={d.id}>
+                                    {d.fullName} ({d.role})
+                                </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Agendas de Servicio">
+                            {clinicalDoctors.filter(d => d.role === "SERVICIO").map((d) => (
+                                <option key={d.id} value={d.id}>
+                                    {d.fullName}
+                                </option>
+                            ))}
+                        </optgroup>
                     </select>
                 </div>
             )}

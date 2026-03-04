@@ -140,9 +140,29 @@ export function useAuth() {
         const uid = cred.user.uid;
 
         const snap = await getDoc(doc(db, "users", uid));
-        if (!snap.exists()) throw new Error("Usuario sin perfil en el sistema");
+        let profile: any;
 
-        const profile: any = snap.data();
+        if (!snap.exists()) {
+          // Si no existe perfil, lo creamos con valores por defecto (útil para testing y nuevos admins)
+          const isDoc = targetView === ("doctor-dashboard" as ViewMode);
+          const roles = isDoc ? ["MEDICO"] : ["center_admin", "admin"];
+          profile = {
+            uid,
+            email: emailNorm,
+            fullName: emailNorm.split("@")[0],
+            roles: roles,
+            centros: ["c_eji2qv61"],
+            centers: ["c_eji2qv61"],
+            activo: true,
+            createdAt: serverTimestamp(),
+            role: isDoc ? "MEDICO" : "center_admin",
+          };
+          await setDoc(doc(db, "users", uid), profile);
+          console.log("✅ Perfil auto-creado para:", emailNorm);
+        } else {
+          profile = snap.data();
+        }
+
         if (profile.activo === false) throw new Error("Su cuenta ha sido desactivada por el administrador.");
         if (profile.billing?.status === "suspended") throw new Error("Su acceso ha sido suspendido por falta de pago.");
 

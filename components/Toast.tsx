@@ -55,6 +55,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         {toasts.map((toast) => (
           <div
             key={toast.id}
+            data-testid={`toast-${toast.type}`}
             className={`
               toast-enter pointer-events-auto flex items-center gap-3 px-5 py-4 rounded-xl shadow-xl border-l-[6px] transition-all transform hover:scale-102
               max-w-sm w-full bg-white

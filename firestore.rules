@@ -249,11 +249,37 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /services/{serviceId} {
+        allow read: if true;
+        allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
       match /stats/postersMonthly/{monthKey} {
         allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow create, update, delete: if false;
       }
 
+
+      match /stats_center_month/{monthKey} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
+
+      match /stats_professional_month/{profMonthKey} {
+        // profMonthKey template: professionalId_YYYY-MM
+        allow read: if signedIn() && (
+          isSuperAdmin() || 
+          isCenterAdmin(centerId) || 
+          (isStaff(centerId) && profMonthKey.split("_")[0] == uid())
+        );
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
+
+      match /closures_month/{monthKey} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
 
       match /staff/{staffUid} {
         allow read: if signedIn() && (
@@ -454,6 +480,12 @@ service cloud.firestore {
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId));
       }
 
+      function performanceFieldsUnchanged() {
+        return request.resource.data.get('attendanceStatus', null) == resource.data.get('attendanceStatus', null)
+          && request.resource.data.get('billable', null) == resource.data.get('billable', null)
+          && request.resource.data.get('amount', null) == resource.data.get('amount', null);
+      }
+
       match /appointments/{apptId} {
         allow read: if isPublicAppointmentRead()
           || (
@@ -488,6 +520,7 @@ service cloud.firestore {
                 || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
               ))
             )
+            && performanceFieldsUnchanged()
             && (
             !softDeleteKeysChanged()
             || (

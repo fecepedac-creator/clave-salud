@@ -12,7 +12,7 @@ import {
   or,
 } from "firebase/firestore";
 import { User } from "firebase/auth";
-import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter, UserProfile, AnyRole } from "../types";
+import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter, UserProfile, AnyRole, MedicalService } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
 
@@ -30,6 +30,7 @@ export function useFirestoreSync(
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
+  const [services, setServices] = useState<MedicalService[]>([]);
   const normalizeClinicalRole = useCallback((data: Record<string, unknown>): string => {
     const clinicalRole = String(
       (data.clinicalRole as string) ?? (data.professionalRole as string) ?? ""
@@ -115,6 +116,7 @@ export function useFirestoreSync(
       setAppointments([]);
       setAuditLogs([]);
       setPreadmissions([]);
+      setServices([]);
     }
   }, [demoMode, activeCenterId, portfolioMode]);
 
@@ -255,11 +257,27 @@ export function useFirestoreSync(
       () => setPreadmissions([])
     );
 
+    const unsubServices = onSnapshot(
+      query(collection(db, "centers", activeCenterId, "services"), where("active", "==", true)),
+      (snap) => {
+        const rawServices = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalService[];
+        const filteredServices = auth.currentUser
+          ? rawServices
+          : rawServices.filter(s => s.isAgendable !== false);
+        setServices(filteredServices);
+      },
+      (error) => {
+        console.error("services snapshot error", error);
+        setServices([]);
+      }
+    );
+
     return () => {
       unsubDoctors();
       unsubAppts();
       unsubLogs();
       unsubPreadmissions();
+      unsubServices();
     };
   }, [demoMode, activeCenterId, isAdminOrStaff, mapStaffToDoctor]);
 
@@ -274,5 +292,7 @@ export function useFirestoreSync(
     setAuditLogs,
     preadmissions,
     setPreadmissions,
+    services,
+    setServices,
   };
 }
