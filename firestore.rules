@@ -588,6 +588,23 @@ service cloud.firestore {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if false;
       }
+
+      // ── Chatbot: Solicitudes de handoff a secretaria ──────────────────────
+      // Creadas por Cloud Function (Admin SDK) cuando paciente pide atención humana.
+      // Admin y Secretaria pueden leer y actualizar el estado (pending→attended→closed).
+      match /handoff_requests/{requestId} {
+        allow read: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
+        );
+        allow create, delete: if false; // Solo Cloud Functions
+        allow update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
+        );
+      }
     }
 
     match /preadmissions/{docId} {
@@ -628,6 +645,13 @@ service cloud.firestore {
     match /doctors/{docId} { allow read, write: if false; }
     match /appointments/{appId} { allow read, write: if false; }
     match /logs/{logId} { allow read, write: if false; }
+
+    // ── Estado de conversaciones del chatbot WhatsApp ─────────────────────────
+    // Escritura/lectura exclusiva por Cloud Functions (Admin SDK).
+    // Nunca exponer al cliente — contiene datos privados del paciente.
+    match /conversations/{phone} {
+      allow read, write: if false;
+    }
 
     // =====================================================
     // ROOT PATIENTS COLLECTION (Professional-Centric Model)
