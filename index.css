@@ -4,7 +4,7 @@
 /* Si quieres, aquí abajo puedes dejar tus estilos propios (los que tenías antes) */
 
 .home-hero {
-  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.4), rgba(239, 246, 255, 0.2)),
+  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.1), rgba(239, 246, 255, 0.05)),
     var(--home-hero-image);
   background-size: cover;
   background-position: center center;
@@ -13,7 +13,7 @@
 }
 
 .center-hero {
-  background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.9), rgba(240, 249, 255, 0.72)),
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(240, 249, 255, 0.08)),
     var(--center-hero-image);
   background-size: cover;
   background-position: left center;
@@ -28,4 +28,49 @@
   .center-hero {
     background-position: center;
   }
+}
+
+/* --- Premium Animations & Effects --- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes pulse-subtle {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.01);
+    opacity: 0.95;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+.glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.shadow-premium {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }

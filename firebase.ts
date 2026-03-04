@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
 /**
  * Firebase config via Vite env vars.
@@ -26,4 +27,8 @@ const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+// Forzamos persistencia local para facilitar captura E2E
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+
 export const storage = getStorage(app);
+export const functions = getFunctions(app, "us-central1"); // Ensure region matches the cloud function deployment if not default

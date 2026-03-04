@@ -20,9 +20,10 @@ export const ROLE_CATALOG = [
   { id: "MATRONA", label: "Matrona" },
   { id: "ODONTOLOGO", label: "Odontólogo" },
   { id: "QUIMICO_FARMACEUTICO", label: "Químico Farmacéutico" },
+  { id: "SERVICIO", label: "Equipo / Perfil de Servicio" },
 ] as const;
 
-import { Patient, Doctor, ClinicalTemplate, MedicalCenter } from "./types";
+import { Patient, Doctor, ClinicalTemplate, MedicalCenter, ExamOrderCatalog } from "./types";
 
 // --- CORPORATE IDENTITY ---
 // Vectorized version of the Blue/Green Snake & Staff Logo + "ClaveSalud" Text
@@ -206,6 +207,61 @@ export const MAULE_COMMUNES = [
   "Empedrado",
   "Vichuquén",
 ].sort();
+
+export const INSURANCE_OPTIONS = [
+  "Particular",
+  "FONASA",
+  "ISAPRE",
+  "DIPRECA",
+  "CAPREDENA",
+  "SISA",
+  "Otro",
+];
+
+export const INSURANCE_LEVELS = ["A", "B", "C", "D"];
+
+export const GENDER_IDENTITY_OPTIONS = [
+  "Masculino (Cis)",
+  "Femenino (Cis)",
+  "Mujer Trans",
+  "Hombre Trans",
+  "No binario",
+  "Identidad de género no declarada",
+  "Otro",
+];
+
+export const PUEBLOS_ORIGINARIOS = [
+  "Ninguno",
+  "Mapuche",
+  "Aymara",
+  "Rapa Nui",
+  "Likan Antai (Atacameño)",
+  "Quechua",
+  "Colla",
+  "Diaguita",
+  "Kawésqar",
+  "Yagán (Yámana)",
+  "Chango",
+  "Selk'nam",
+  "Afrodescendiente chileno",
+  "Otro",
+];
+
+export const NACIONALIDADES = [
+  "Chilena",
+  "Argentina",
+  "Boliviana",
+  "Brasileña",
+  "Colombiana",
+  "Cubana",
+  "Ecuatoriana",
+  "Haitiana",
+  "Mexicana",
+  "Peruana",
+  "Uruguaya",
+  "Venezolana",
+  "Otra",
+];
 
 export const COMMON_MEDICATIONS = [
   "Paracetamol 500mg",
@@ -893,3 +949,38 @@ export const MOCK_PATIENTS: Patient[] = [
     active: true,
   },
 ];
+
+export const DEFAULT_EXAM_ORDER_CATALOG: ExamOrderCatalog = {
+  version: 1,
+  categories: [
+    {
+      id: "lab_general",
+      label: "Laboratorio General",
+      exams: [
+        { id: "hemograma", label: "Hemograma" },
+        { id: "perfil_lipidico", label: "Perfil Lipídico" },
+        { id: "glicemia", label: "Glicemia" },
+        { id: "hba1c", label: "HbA1c" },
+        { id: "u_crea", label: "Urea / Creatinina" },
+      ]
+    },
+    {
+      id: "imagenes",
+      label: "Imagenología",
+      exams: [
+        { id: "rx_torax", label: "RX Tórax" },
+        { id: "eco_abdominal", label: "Ecografía Abdominal" },
+        { id: "mamografia", label: "Mamografía" },
+      ]
+    },
+    {
+      id: "cardio",
+      label: "Cardiología",
+      exams: [
+        { id: "ecg", label: "Electrocardiograma (ECG)" },
+        { id: "holter_arritmia", label: "Holter de Arritmia" },
+        { id: "holter_presion", label: "Holter de Presión (MAPA)" },
+      ]
+    }
+  ]
+};

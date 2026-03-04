@@ -19,6 +19,7 @@ import {
   BarChart3,
   TrendingUp,
   Users,
+  RefreshCw,
 } from "lucide-react";
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
@@ -27,6 +28,7 @@ import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
 import MarketingFlyerModal from "./MarketingFlyerModal";
+import MetricCard from "./MetricCard";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -53,7 +55,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
  * Mejora: Invitación admin abre correo prellenado (mailto) + opción "Abrir en Gmail"
  */
 
-type Tab = "general" | "centers" | "finanzas" | "metrics" | "comunicacion";
+type Tab = "general" | "centers" | "finanzas" | "metrics" | "comunicacion" | "users";
 
 type PlanKey = "trial" | "basic" | "pro" | "enterprise";
 type BillingStatus = "paid" | "due" | "overdue" | "grace" | "suspended";
@@ -306,6 +308,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [examOrderCatalogDraft, setExamOrderCatalogDraft] = useState<string>(JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2));
   const [savingExamCatalog, setSavingExamCatalog] = useState(false);
+  const [globalUsers, setGlobalUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [editingUser, setEditingUser] = useState<any | null>(null);
 
   // Handler to apply selected template
   const loadExamOrderCatalog = async () => {
@@ -474,6 +480,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
+  const handleRecalcStats = async (centerId?: string) => {
+    try {
+      setMetricsLoading(true);
+      const functions = getFunctions();
+      const recalc = httpsCallable(functions, "recalcCenterStats");
+      const result = await recalc({ centerId });
+      showToast("Estadísticas recalculadas con éxito.", "success");
+      // Recalc success
+      // We don't necessarily need to reload centers here because App.tsx or useCenters might be listening,
+      // but usually centers are loaded once or via pagination.
+    } catch (error: any) {
+      console.error("handleRecalcStats error", error);
+      showToast("Error al recalcular estadísticas.", "error");
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
   const resetLogoState = () => {
     if (logoPreview) {
       try {
@@ -582,6 +606,40 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     void loadMetrics();
   }, []);
 
+  const fetchGlobalUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const q = query(collection(db, "users"), orderBy("email"), limit(200));
+      const snap = await getDocs(q);
+      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      setGlobalUsers(items);
+    } catch (e: any) {
+      console.error("fetchGlobalUsers error", e);
+      showToast("Error al cargar usuarios globales.", "error");
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "users") {
+      void fetchGlobalUsers();
+    }
+  }, [activeTab]);
+
+  const handleSaveUser = async (user: any) => {
+    try {
+      const userRef = doc(db, "users", user.id);
+      await setDoc(userRef, user, { merge: true });
+      showToast("Usuario actualizado con éxito.", "success");
+      setEditingUser(null);
+      void fetchGlobalUsers();
+    } catch (e: any) {
+      console.error("handleSaveUser error", e);
+      showToast("Error al actualizar usuario.", "error");
+    }
+  };
+
   useEffect(() => {
     if (!editingCenter?.id) return;
     void fetchCenterInvites(editingCenter.id);
@@ -626,13 +684,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       adminAccess: { manageUsers: true, configAgenda: true, securityLogs: true, analytics: true },
       createdAt: new Date().toISOString(),
       adminEmail: "",
-      billing: {
-        plan: "trial",
-        monthlyUF: 0,
-        billingStatus: "grace",
-        nextDueDate: "",
-        lastPaidAt: "",
-        notes: "Centro en prueba.",
+      subscription: {
+        planName: "trial",
+        price: 0,
+        currency: "UF",
+        status: "active",
+        lastPaymentDate: "",
       },
     } as CenterExt);
 
@@ -707,6 +764,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         adminEmail: isCreating
           ? newCenterAdminEmail.trim()
           : (editingCenter as any).adminEmail || "",
+        // Mapping internal 'billing' to 'subscription' for backend compatibility
+        subscription: (editingCenter as any).billing ? {
+          planName: (editingCenter as any).billing?.plan || "trial",
+          price: (editingCenter as any).billing?.monthlyUF || 0,
+          currency: "UF",
+          status: (editingCenter as any).billing?.billingStatus === "paid" ? "active" : "late",
+          lastPaymentDate: (editingCenter as any).billing?.lastPaidAt || "",
+        } : (editingCenter as any).subscription,
       };
 
       if (!isCreating) {
@@ -740,6 +805,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
     } catch (e: any) {
       console.error("SAVE CENTER ERROR", e);
+      // Detailed error logging for internal diagnostics
+      if (e?.code || e?.message) {
+        console.error("DEBUG INFO:", {
+          code: e.code,
+          message: e.message,
+          details: e.details,
+          payload: editingCenter
+        });
+      }
       showToast(e?.message || "Error guardando centro", "error");
     } finally {
       setIsUploadingLogo(false);
@@ -1009,11 +1083,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pl-64">
+    <div className="min-h-screen bg-slate-50 font-sans pl-64 transition-all duration-300">
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full fixed left-0 top-0 border-r border-slate-800 z-50">
-        <div className="p-6 border-b border-slate-800">
+        <div className="p-6 border-b border-white/5 bg-slate-900/50 backdrop-blur-md">
           <LogoHeader size="sm" showText={true} className="mb-3" />
-          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-emerald-500">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-health-400">
             <Shield className="w-3 h-3" /> Super Admin
           </div>
         </div>
@@ -1052,6 +1126,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             "Uso de Plataforma",
             <span className="inline-flex w-5 justify-center">
               <BarChart3 className="w-4 h-4" />
+            </span>
+          )}
+          {renderSidebarButton(
+            "users",
+            "Usuarios",
+            <span className="inline-flex w-5 justify-center">
+              <Users className="w-4 h-4" />
             </span>
           )}
         </nav>
@@ -1120,58 +1201,68 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="space-y-6">
             <h1 className="text-3xl font-bold text-slate-800">Visión General</h1>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Total Centros</div>
-                <div className="text-3xl font-bold text-slate-800">{totals.total}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Centros Activos
-                </div>
-                <div className="text-3xl font-bold text-slate-800">{totals.active}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Cupos (maxUsers)
-                </div>
-                <div className="text-3xl font-bold text-slate-800">{totals.maxUsers}</div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Atrasados</div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {totals.billingStats.overdue || 0}
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveTab("metrics")}
-                className="bg-red-50 p-6 rounded-2xl shadow-sm border border-red-100 text-left hover:bg-red-100 transition-colors group"
-              >
-                <div className="text-xs font-bold text-red-400 uppercase mb-2">En Riesgo (Bajo Uso)</div>
-                <div className="text-3xl font-bold text-red-600 flex items-center justify-between">
-                  {totals.atRisk}
-                  <TrendingUp className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <MetricCard
+                title="Total Centros"
+                value={totals.total}
+                icon="Building2"
+                colorClass="text-indigo-400"
+              />
+              <MetricCard
+                title="Centros Activos"
+                value={totals.active}
+                icon="Zap"
+                colorClass="text-health-400"
+              />
+              <MetricCard
+                title="Cupos Totales"
+                value={totals.maxUsers}
+                icon="Users"
+                colorClass="text-sky-400"
+              />
+              <MetricCard
+                title="Atrasados"
+                value={totals.billingStats.overdue || 0}
+                icon="AlertTriangle"
+                colorClass="text-amber-400"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Pacientes Totales (Histórico)
+              <MetricCard
+                title="Pacientes Totales"
+                value={metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
+                icon="Activity"
+                colorClass="text-rose-400"
+                loading={metricsLoading}
+              />
+              <MetricCard
+                title="Profesionales Activos"
+                value={metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
+                icon="ShieldCheck"
+                colorClass="text-health-400"
+                loading={metricsLoading}
+              />
+              <button
+                onClick={() => setActiveTab("metrics")}
+                className="bg-slate-800 p-6 rounded-3xl border border-slate-700 hover:border-red-500/50 transition-all group hover:shadow-[0_0_20px_rgba(239,68,68,0.15)] transform hover:-translate-y-1 text-left"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-3 rounded-2xl bg-slate-900/50 text-red-400">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    Crítico
+                  </div>
                 </div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {metricsLoading ? "—" : metrics.patients.toLocaleString("es-CL")}
+                <h3 className="text-slate-400 text-sm font-medium mb-1">En Riesgo (Bajo Uso)</h3>
+                <div className="flex items-center justify-between">
+                  <span className="text-3xl font-bold text-white tracking-tight">{totals.atRisk}</span>
+                  <div className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Analizar →
+                  </div>
                 </div>
-              </div>
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-                  Profesionales Activos (Histórico)
-                </div>
-                <div className="text-3xl font-bold text-slate-800">
-                  {metricsLoading ? "—" : metrics.professionals.toLocaleString("es-CL")}
-                </div>
-              </div>
+              </button>
             </div>
 
             {metricsUpdatedAt && (
@@ -1517,14 +1608,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         Logo del centro
                       </div>
                       <div className="text-sm text-slate-600">
-                        Sube un logo (PNG/JPG/WEBP, máx. 2MB). Se guarda en Firebase Storage como{" "}
-                        <b>logoUrl</b>.
+                        Sube un logo (SVG, PNG, JPG, WEBP, máx. 2MB).
+                        <p className="mt-1 text-[11px] text-slate-500 italic">
+                          💡 Tip: Se recomienda usar <b>SVG</b> o <b>PNG con transparencia</b>. Los logos vectoriales (SVG) mantienen la nitidez en cualquier tamaño.
+                        </p>
                       </div>
                       <div className="mt-3 flex flex-col gap-2">
                         <input
                           id="logo-input"
                           type="file"
-                          accept="image/png, image/jpeg, image/webp"
+                          accept="image/png, image/jpeg, image/webp, image/svg+xml"
                           className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
                           disabled={isUploadingLogo}
                           onChange={(e) => {
@@ -1560,7 +1653,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             <img
                               src={logoPreview || (editingCenter as any).logoUrl}
                               alt="Previsualización del logo"
-                              className="w-14 h-14 rounded-xl object-cover border-2 border-slate-200 bg-white"
+                              className="w-20 h-20 rounded-xl object-contain border-2 border-slate-200 bg-white p-2"
                             />
                             <button
                               type="button"
@@ -2529,9 +2622,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         {/* METRICS / USAGE */}
         {activeTab === "metrics" && (
           <div className="space-y-6">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
-              <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
+                <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+              </div>
+              <button
+                onClick={() => handleRecalcStats()}
+                disabled={metricsLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${metricsLoading ? "animate-spin" : ""}`} />
+                Actualizar Todo
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2551,7 +2654,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <Users className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Profesionales Activos</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Profesionales (Total)</div>
                   <div className="text-2xl font-bold text-slate-800">
                     {centers.reduce((acc, c) => acc + (c.stats?.staffCount || 0), 0)}
                   </div>
@@ -2562,9 +2665,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <TrendingUp className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Registrados</div>
                   <div className="text-2xl font-bold text-slate-800">
-                    {centers.reduce((acc, c) => acc + (c.stats?.appointmentCount || 0), 0)}
+                    {centers.reduce((acc, c) => acc + (c.stats?.patientCount || 0), 0)}
                   </div>
                 </div>
               </div>
@@ -2587,23 +2690,25 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <tbody className="divide-y divide-slate-50">
                     {centers.map((c) => {
                       const centerDoctors = doctors.filter(d => d.centerId === c.id);
-                      const seed = c.id.charCodeAt(0) + c.id.length;
-                      const mockAttentions = (seed % 300) + 10;
+                      const staffCount = c.stats?.staffCount || 0;
+                      const consultationCount = c.stats?.consultationCount || 0;
 
-                      let health = "Activo / Creciendo";
+                      let health = "Activo / Privado";
                       let healthColor = "text-emerald-500 bg-emerald-50 border-emerald-100";
 
-                      if (mockAttentions < 150) {
-                        health = "Uso Moderado";
+                      if (consultationCount > 50) {
+                        health = "Activo / Estable";
+                      } else if (consultationCount > 0) {
+                        health = "Inicio de operación";
                         healthColor = "text-blue-500 bg-blue-50 border-blue-100";
+                      } else {
+                        health = "Inactivo / Demo";
+                        healthColor = "text-slate-400 bg-slate-50 border-slate-100";
                       }
-                      if (mockAttentions < 60) {
-                        health = "Bajo Uso (Riesgo)";
+
+                      if (consultationCount > 0 && staffCount === 0) {
+                        health = "Anomalía (Sin staff)";
                         healthColor = "text-amber-500 bg-amber-50 border-amber-100";
-                      }
-                      if (mockAttentions < 15) {
-                        health = "Inactivo / Fuga";
-                        healthColor = "text-red-500 bg-red-50 border-red-100";
                       }
 
                       return (
@@ -2614,12 +2719,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-700">{centerDoctors.length}</span>
+                              <span className="font-semibold text-slate-700">{staffCount}</span>
                               <span className="text-xs text-slate-400">/ {c.maxUsers || 10}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-800 text-lg">
-                            {mockAttentions}
+                            {consultationCount}
                           </td>
                           <td className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider">
                             <span className={`px-3 py-1 rounded-full border ${healthColor}`}>
@@ -2633,27 +2738,217 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </table>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="bg-indigo-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-700/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
-              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div>
-                  <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
-                  <p className="text-indigo-200 text-sm max-w-md">
-                    Hemos detectado centros con una caída en actividad.
-                    Activa una campaña de comunicación para recuperar su interés.
-                  </p>
+        {/* USUARIOS */}
+        {activeTab === "users" && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <h1 className="text-3xl font-bold text-slate-800">Gestión de Usuarios</h1>
+                <p className="text-slate-500">Control global de perfiles, roles y suscripciones profesionales.</p>
+              </div>
+              <div className="flex gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Buscar por email o nombre..."
+                    className="pl-10 pr-4 py-2 border rounded-xl text-sm w-64 bg-white"
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                  />
+                  <Users className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                 </div>
                 <button
-                  onClick={() => setActiveTab("comunicacion")}
-                  className="px-8 py-3 bg-white text-indigo-900 font-bold rounded-2xl hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+                  onClick={fetchGlobalUsers}
+                  className="p-2 bg-white border rounded-xl text-slate-600 hover:bg-slate-50"
+                  title="Refrescar lista"
                 >
-                  Ir a comunicación
+                  <RefreshCw className={`w-4 h-4 ${usersLoading ? "animate-spin" : ""}`} />
                 </button>
               </div>
             </div>
+
+            {editingUser ? (
+              <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-slate-800">Editar Usuario: {editingUser.email}</h3>
+                  <button onClick={() => setEditingUser(null)} className="text-slate-400 font-bold">Cerrar</button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <label className="block">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Nombre Completo</span>
+                      <input
+                        className="w-full p-3 border rounded-xl bg-slate-50"
+                        value={editingUser.fullName || ""}
+                        readOnly
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Estado Cuenta</span>
+                      <div className="flex items-center gap-3 mt-2 px-3 py-2 bg-slate-50 rounded-xl border">
+                        <input
+                          type="checkbox"
+                          checked={editingUser.activo !== false}
+                          onChange={(e) => setEditingUser({ ...editingUser, activo: e.target.checked })}
+                          className="w-5 h-5 accent-health-600"
+                        />
+                        <span className="font-bold text-slate-700">Usuario Activo</span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
+                    <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-indigo-600" /> Suscripción Profesional
+                    </h4>
+
+                    <label className="block">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Estado de Pago</span>
+                      <select
+                        className="w-full p-3 border rounded-xl bg-white mt-1"
+                        value={editingUser.billing?.status || "trial"}
+                        onChange={(e) => setEditingUser({
+                          ...editingUser,
+                          billing: { ...(editingUser.billing || {}), status: e.target.value }
+                        })}
+                      >
+                        <option value="active">Activo / Al día</option>
+                        <option value="trial">Periodo de Prueba</option>
+                        <option value="overdue">Pendiente de Pago</option>
+                        <option value="suspended">Suspendido / Bloqueado</option>
+                      </select>
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className="block">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Plan</span>
+                        <select
+                          className="w-full p-3 border rounded-xl bg-white mt-1"
+                          value={editingUser.billing?.plan || "free"}
+                          onChange={(e) => setEditingUser({
+                            ...editingUser,
+                            billing: { ...(editingUser.billing || {}), plan: e.target.value }
+                          })}
+                        >
+                          <option value="free">Gratuito</option>
+                          <option value="basic">Básico</option>
+                          <option value="professional">Profesional</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Vencimiento</span>
+                        <input
+                          type="date"
+                          className="w-full p-3 border rounded-xl bg-white mt-1"
+                          value={editingUser.billing?.nextDueDate || ""}
+                          onChange={(e) => setEditingUser({
+                            ...editingUser,
+                            billing: { ...(editingUser.billing || {}), nextDueDate: e.target.value }
+                          })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-8 pt-6 border-t">
+                  <button onClick={() => setEditingUser(null)} className="px-6 py-2 font-bold text-slate-500">Cancelar</button>
+                  <button
+                    onClick={() => handleSaveUser(editingUser)}
+                    className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700"
+                  >
+                    Guardar Cambios
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Usuario / Email</th>
+                      <th className="px-6 py-4">Rol Principal</th>
+                      <th className="px-6 py-4">Suscripción</th>
+                      <th className="px-6 py-4">Estado</th>
+                      <th className="px-6 py-4">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {globalUsers
+                      .filter(u =>
+                        u.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                        u.fullName?.toLowerCase().includes(userSearchTerm.toLowerCase())
+                      )
+                      .map((u) => (
+                        <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-800">{u.fullName || "Sin nombre"}</div>
+                            <div className="text-xs text-slate-400">{u.email}</div>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-medium text-slate-600 uppercase">
+                            {u.role || u.roles?.[0] || "—"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-bold text-slate-700 uppercase">
+                                {u.billing?.plan || "free"}
+                              </span>
+                              {u.billing?.nextDueDate && (
+                                <span className="text-[10px] text-slate-400">
+                                  Vence: {u.billing.nextDueDate}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.activo === false || u.billing?.status === 'suspended'
+                              ? "bg-red-100 text-red-700"
+                              : u.billing?.status === 'overdue'
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-emerald-100 text-emerald-700"
+                              }`}>
+                              {u.activo === false ? "Inactivo" : u.billing?.status || "active"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => setEditingUser(u)}
+                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
+
+        <div className="mt-12 bg-indigo-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-700/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
+              <p className="text-indigo-200 text-sm max-w-md">
+                Hemos detectado centros con una caída en actividad.
+                Activa una campaña de comunicación para recuperar su interés.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab("comunicacion")}
+              className="px-8 py-3 bg-white text-indigo-900 font-bold rounded-2xl hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+            >
+              Ir a comunicación
+            </button>
+          </div>
+        </div>
       </main>
 
       {/* Marketing Flyer Modal */}

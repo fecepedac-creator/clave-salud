@@ -6,6 +6,11 @@ import {
   LIVING_WITH_OPTIONS,
   MAULE_COMMUNES,
   COMMON_MEDICATIONS,
+  INSURANCE_OPTIONS,
+  INSURANCE_LEVELS,
+  GENDER_IDENTITY_OPTIONS,
+  PUEBLOS_ORIGINARIOS,
+  NACIONALIDADES,
 } from "../constants";
 import { generateId } from "../utils";
 import {
@@ -219,119 +224,6 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             )}
           </div>
         )}
-      </div>
-
-      {/* Social Data */}
-      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 transition-all hover:shadow-md">
-        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Users className="w-4 h-4" /> Social
-        </h4>
-        <div className="space-y-3">
-          <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Ocupación</span>
-            {isEditingPatient && !readOnly ? (
-              <input
-                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                value={selectedPatient.occupation || ""}
-                onChange={(e) => handleEditPatientField("occupation", e.target.value)}
-              />
-            ) : (
-              <span>{selectedPatient.occupation || "No registrada"}</span>
-            )}
-          </div>
-
-          <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Dirección</span>
-            {isEditingPatient && !readOnly ? (
-              <input
-                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                value={selectedPatient.address || ""}
-                onChange={(e) => handleEditPatientField("address", e.target.value)}
-              />
-            ) : (
-              <span>{selectedPatient.address || "No registrada"}</span>
-            )}
-          </div>
-
-          <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Comuna</span>
-            {isEditingPatient && !readOnly ? (
-              <select
-                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                value={selectedPatient.commune || ""}
-                onChange={(e) => handleEditPatientField("commune", e.target.value)}
-              >
-                <option value="">Seleccione...</option>
-                {MAULE_COMMUNES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span>{selectedPatient.commune || "-"}</span>
-            )}
-          </div>
-
-          <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Teléfono</span>
-            {isEditingPatient && !readOnly ? (
-              <input
-                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                value={selectedPatient.phone || ""}
-                onChange={(e) => handleEditPatientField("phone", e.target.value)}
-              />
-            ) : (
-              <span>{selectedPatient.phone || "-"}</span>
-            )}
-          </div>
-
-          <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Vive Con</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {livingWith.map((person, idx) => (
-                <span
-                  key={idx}
-                  className="bg-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-700 flex items-center gap-1"
-                >
-                  {person}
-                  {isEditingPatient && !readOnly && (
-                    <button
-                      onClick={() =>
-                        handleEditPatientField(
-                          "livingWith",
-                          livingWith.filter((_, i) => i !== idx)
-                        )
-                      }
-                      className="hover:text-red-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-              {livingWith.length === 0 && (
-                <span className="text-slate-400 italic">No especificado</span>
-              )}
-            </div>
-            {isEditingPatient && !readOnly && (
-              <select
-                className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:border-blue-500"
-                onChange={(e) => {
-                  handleAddSocial(e.target.value);
-                  e.target.value = "";
-                }}
-              >
-                <option value="">+ Agregar persona...</option>
-                {LIVING_WITH_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Antecedentes Mórbidos */}
@@ -597,6 +489,211 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </button>
           </div>
         )}
+      </div>
+      {/* Social Data */}
+      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 transition-all hover:shadow-md">
+        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Users className="w-4 h-4" /> Social
+        </h4>
+        <div className="space-y-3">
+          <div className="text-base text-slate-700">
+            <span className="font-bold block text-xs text-slate-400 uppercase">Ocupación</span>
+            {isEditingPatient && !readOnly ? (
+              <input
+                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                value={selectedPatient.occupation || ""}
+                onChange={(e) => handleEditPatientField("occupation", e.target.value)}
+              />
+            ) : (
+              <span>{selectedPatient.occupation || "No registrada"}</span>
+            )}
+          </div>
+
+          <div className="text-base text-slate-700">
+            <span className="font-bold block text-xs text-slate-400 uppercase">Dirección</span>
+            {isEditingPatient && !readOnly ? (
+              <input
+                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                value={selectedPatient.address || ""}
+                onChange={(e) => handleEditPatientField("address", e.target.value)}
+              />
+            ) : (
+              <span>{selectedPatient.address || "No registrada"}</span>
+            )}
+          </div>
+
+          <div className="text-base text-slate-700">
+            <span className="font-bold block text-xs text-slate-400 uppercase">Comuna</span>
+            {isEditingPatient && !readOnly ? (
+              <select
+                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                value={selectedPatient.commune || ""}
+                onChange={(e) => handleEditPatientField("commune", e.target.value)}
+              >
+                <option value="">Seleccione...</option>
+                {MAULE_COMMUNES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span>{selectedPatient.commune || "-"}</span>
+            )}
+          </div>
+
+          <div className="text-base text-slate-700">
+            <span className="font-bold block text-xs text-slate-400 uppercase">Teléfono</span>
+            {isEditingPatient && !readOnly ? (
+              <input
+                className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                value={selectedPatient.phone || ""}
+                onChange={(e) => handleEditPatientField("phone", e.target.value)}
+              />
+            ) : (
+              <span>{selectedPatient.phone || "-"}</span>
+            )}
+          </div>
+
+          <div className="text-base text-slate-700">
+            <span className="font-bold block text-xs text-slate-400 uppercase">Vive Con</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {livingWith.map((person, idx) => (
+                <span
+                  key={idx}
+                  className="bg-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-700 flex items-center gap-1"
+                >
+                  {person}
+                  {isEditingPatient && !readOnly && (
+                    <button
+                      onClick={() =>
+                        handleEditPatientField(
+                          "livingWith",
+                          livingWith.filter((_, i) => i !== idx)
+                        )
+                      }
+                      className="hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {livingWith.length === 0 && (
+                <span className="text-slate-400 italic">No especificado</span>
+              )}
+            </div>
+            {isEditingPatient && !readOnly && (
+              <select
+                className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:border-blue-500"
+                onChange={(e) => {
+                  handleAddSocial(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="">+ Agregar persona...</option>
+                {LIVING_WITH_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Información Regulatoria</h5>
+
+            <div className="text-base text-slate-700">
+              <span className="font-bold block text-xs text-slate-400 uppercase">Identidad de Género</span>
+              {isEditingPatient && !readOnly ? (
+                <select
+                  className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                  value={selectedPatient.genderIdentity || "Identidad de género no declarada"}
+                  onChange={(e) => handleEditPatientField("genderIdentity", e.target.value)}
+                >
+                  {GENDER_IDENTITY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <span>{selectedPatient.genderIdentity || "No declarada"}</span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-base text-slate-700">
+                <span className="font-bold block text-xs text-slate-400 uppercase">Nacionalidad</span>
+                {isEditingPatient && !readOnly ? (
+                  <select
+                    className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                    value={selectedPatient.nationality || "Chilena"}
+                    onChange={(e) => handleEditPatientField("nationality", e.target.value)}
+                  >
+                    {NACIONALIDADES.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{selectedPatient.nationality || "Chilena"}</span>
+                )}
+              </div>
+
+              <div className="text-base text-slate-700">
+                <span className="font-bold block text-xs text-slate-400 uppercase">Pueblo Originario</span>
+                {isEditingPatient && !readOnly ? (
+                  <select
+                    className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                    value={selectedPatient.ethnicity || "Ninguno"}
+                    onChange={(e) => handleEditPatientField("ethnicity", e.target.value)}
+                  >
+                    {PUEBLOS_ORIGINARIOS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{selectedPatient.ethnicity || "Ninguno"}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="text-base text-slate-700">
+              <span className="font-bold block text-xs text-slate-400 uppercase">Previsión de Salud</span>
+              {isEditingPatient && !readOnly ? (
+                <div className="space-y-2">
+                  <select
+                    className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                    value={selectedPatient.insurance || "FONASA"}
+                    onChange={(e) => handleEditPatientField("insurance", e.target.value)}
+                  >
+                    {INSURANCE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  {selectedPatient.insurance === "FONASA" && (
+                    <div className="flex gap-2">
+                      {INSURANCE_LEVELS.map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => handleEditPatientField("insuranceLevel", level)}
+                          className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${selectedPatient.insuranceLevel === level ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-slate-500 border-slate-200"}`}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span>
+                  {selectedPatient.insurance || "No registrada"}
+                  {selectedPatient.insurance === "FONASA" && selectedPatient.insuranceLevel && ` (${selectedPatient.insuranceLevel})`}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </aside>
   );

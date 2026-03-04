@@ -12,7 +12,7 @@ import {
   or,
 } from "firebase/firestore";
 import { User } from "firebase/auth";
-import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter, UserProfile, AnyRole } from "../types";
+import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter, UserProfile, AnyRole, MedicalService } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
 
@@ -30,15 +30,26 @@ export function useFirestoreSync(
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
+  const [services, setServices] = useState<MedicalService[]>([]);
   const normalizeClinicalRole = useCallback((data: Record<string, unknown>): string => {
     const clinicalRole = String(
       (data.clinicalRole as string) ?? (data.professionalRole as string) ?? ""
     ).trim();
     if (clinicalRole) return clinicalRole;
+
     const legacyRole = String((data.role as string) ?? "").trim();
     if (!legacyRole) return "";
+
+    // If it's a known management/access role and we have no explicit clinical role,
+    // we return empty to avoid it appearing as a "Specialty" in the booking flow.
     const lower = legacyRole.toLowerCase();
-    return lower === "center_admin" ? "" : legacyRole;
+    const managementVariants = [
+      "center_admin", "admin_centro", "admin", "superadmin", "super_admin",
+      "secretaria", "administrativo", "administrativa", "secretary", "management"
+    ];
+
+    if (managementVariants.includes(lower)) return "";
+    return legacyRole;
   }, []);
 
   const mapStaffToDoctor = useCallback(
@@ -46,6 +57,9 @@ export function useFirestoreSync(
       const accessRole = String(payload.accessRole ?? "").trim();
       const clinicalRole = normalizeClinicalRole(payload);
       const roleStr = clinicalRole || (payload.role as string)?.trim() || "MEDICO";
+
+      const isActive = payload.active !== false && payload.activo !== false;
+      const isVisible = payload.visibleInBooking === true || (payload.visibleInBooking as any) === "true";
 
       return {
         id,
@@ -59,14 +73,14 @@ export function useFirestoreSync(
             ? "center_admin"
             : undefined),
         clinicalRole,
-        visibleInBooking: payload.visibleInBooking === true,
-        active: payload.active !== false && payload.activo !== false,
+        visibleInBooking: isVisible,
+        active: isActive,
       } as Doctor;
     },
     [normalizeClinicalRole]
   );
 
-  const isAdminRole = useMemo(() => {
+  const isAdmin = useMemo(() => {
     if (!currentUser) return false;
     return (
       currentUser.isAdmin === true ||
@@ -78,12 +92,12 @@ export function useFirestoreSync(
   const isAdminOrStaff = useMemo(() => {
     if (!currentUser && !isSuperAdminClaim) return false;
     return (
-      isAdminRole ||
+      isAdmin ||
       hasRole(currentUser?.roles, "doctor") ||
       hasRole(currentUser?.roles, "staff") ||
       isSuperAdminClaim
     );
-  }, [isAdminRole, currentUser, isSuperAdminClaim]);
+  }, [isAdmin, currentUser, isSuperAdminClaim]);
 
   // 1. Reset / Demo Mode Effect
   useEffect(() => {
@@ -102,29 +116,11 @@ export function useFirestoreSync(
       setAppointments([]);
       setAuditLogs([]);
       setPreadmissions([]);
+      setServices([]);
     }
   }, [demoMode, activeCenterId, portfolioMode]);
 
-  // 2. Centers Effect (SuperAdmin)
-  useEffect(() => {
-    if (demoMode) return;
-    if (!isSuperAdminClaim || !setCenters) return;
-
-    const unsub = onSnapshot(
-      collection(db, "centers"),
-      (snap) => {
-        const items = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        })) as MedicalCenter[];
-        setCenters(items);
-      },
-      (error) => {
-        console.error("Firestore centers subscription error:", error);
-      }
-    );
-    return () => unsub();
-  }, [demoMode, isSuperAdminClaim, setCenters]);
+  // 2. Centers Effect removed - handled by useCenters centrally
 
   // 3. Patients Effect
   useEffect(() => {
@@ -140,7 +136,7 @@ export function useFirestoreSync(
     }
 
     let patientsQuery;
-    if (isAdminRole && activeCenterId && portfolioMode === "center") {
+    if (isAdmin && activeCenterId && portfolioMode === "center") {
       // Admin View: Everything in this center
       patientsQuery = query(
         collection(db, "patients"),
@@ -177,7 +173,7 @@ export function useFirestoreSync(
     );
 
     return () => unsub();
-  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdminRole]);
+  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdmin]);
 
   // 4. Center Data Effect (Staff, Appointments, Logs, Preadmissions)
   useEffect(() => {
@@ -194,37 +190,40 @@ export function useFirestoreSync(
         const filtered = auth.currentUser
           ? items.filter((doctor) => doctor.active !== false)
           : items.filter((doctor) => doctor.active !== false && doctor.visibleInBooking === true);
+
         setDoctors(filtered);
       },
-      () => setDoctors([])
+      (error) => {
+        console.error("[useFirestoreSync] doctors error:", error);
+        setDoctors([]);
+      }
     );
 
     const apptCollection = collection(db, "centers", activeCenterId, "appointments");
     const startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 30);
     const startDateStr = startDate.toISOString().split("T")[0];
-    const endDateStr = endDate.toISOString().split("T")[0];
 
-    const baseApptQuery = [
-      where("date", ">=", startDateStr),
-      where("date", "<=", endDateStr),
-      orderBy("date", "asc"),
-      orderBy("time", "asc"),
-      limit(500),
-    ];
-
+    // We fetch the collection without complex queries to avoid index dependencies (Legacy Orientation)
     const apptQuery = auth.currentUser
-      ? query(apptCollection, ...baseApptQuery)
-      : query(apptCollection, where("status", "==", "available"), ...baseApptQuery);
+      ? query(apptCollection, limit(1000))
+      : query(apptCollection, where("status", "==", "available"), limit(500));
 
     const unsubAppts = onSnapshot(
       apptQuery,
-      (snap) =>
-        setAppointments(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[]
-        ),
+      (snap) => {
+        const raw = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[];
+        // Filter and Sort client-side to be 100% robust against missing Firestore indexes
+        const filtered = raw
+          .filter((a) => a.active !== false)
+          .filter((a) => a.date >= startDateStr) // Keep it relevant to current/future
+          .sort((a, b) => {
+            const dateCompare = (a.date || "").localeCompare(b.date || "");
+            if (dateCompare !== 0) return dateCompare;
+            return (a.time || "").localeCompare(b.time || "");
+          });
+        setAppointments(filtered);
+      },
       (error) => {
         console.error("appointments snapshot error", error);
         setAppointments([]);
@@ -258,11 +257,27 @@ export function useFirestoreSync(
       () => setPreadmissions([])
     );
 
+    const unsubServices = onSnapshot(
+      query(collection(db, "centers", activeCenterId, "services"), where("active", "==", true)),
+      (snap) => {
+        const rawServices = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalService[];
+        const filteredServices = auth.currentUser
+          ? rawServices
+          : rawServices.filter(s => s.isAgendable !== false);
+        setServices(filteredServices);
+      },
+      (error) => {
+        console.error("services snapshot error", error);
+        setServices([]);
+      }
+    );
+
     return () => {
       unsubDoctors();
       unsubAppts();
       unsubLogs();
       unsubPreadmissions();
+      unsubServices();
     };
   }, [demoMode, activeCenterId, isAdminOrStaff, mapStaffToDoctor]);
 
@@ -277,5 +292,7 @@ export function useFirestoreSync(
     setAuditLogs,
     preadmissions,
     setPreadmissions,
+    services,
+    setServices,
   };
 }

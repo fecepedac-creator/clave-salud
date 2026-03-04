@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
+import MetricCard from "./MetricCard";
 import { CenterContext } from "../CenterContext";
 import {
   Doctor,
@@ -10,6 +11,7 @@ import {
   ProfessionalRole,
   WhatsappTemplate,
   Preadmission,
+  MedicalService,
 } from "../types";
 import {
   generateId,
@@ -20,6 +22,7 @@ import {
   fileToBase64,
   formatPersonName,
   normalizePhone,
+  getPatientIdByRut,
 } from "../utils";
 import {
   Users,
@@ -56,10 +59,13 @@ import {
   User,
   Activity,
   Image as ImageIcon,
+  RefreshCw,
   FileClock,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "./Toast";
-import { db, auth } from "../firebase";
+import { db, auth, functions } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   query,
@@ -85,6 +91,9 @@ import MarketingPosterModule from "./MarketingPosterModule";
 import MarketingFlyerModal from "./MarketingFlyerModal";
 import { MigrationModal } from "./MigrationModal";
 import { ROLE_CATALOG } from "../constants";
+import ServicesManager from "./ServicesManager";
+import ServiceAgendasManager from "./ServiceAgendasManager";
+import { AdminPerformanceTab } from "../features/admin/components/AdminPerformanceTab";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -103,6 +112,7 @@ interface AdminDashboardProps {
   onApprovePreadmission: (item: Preadmission) => void;
   logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
   onLogActivity: (event: AuditLogEvent) => void;
+  currentUser?: any; // Role-based customization
 }
 
 // Build ROLE_LABELS dynamically from ROLE_CATALOG so ALL roles appear in dropdowns
@@ -167,7 +177,14 @@ export const TodayActivity: React.FC<TodayActivityProps> = ({
                       <div onClick={() => appt.status === "booked" && onOpenPatient(appt)} className={appt.status === "booked" ? "cursor-pointer hover:underline" : ""}>
                         {appt.status === "booked" ? (
                           <>
-                            <p className="font-bold text-white">{appt.patientName}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-white">{appt.patientName}</p>
+                              {appt.type === "SERVICE" && (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  {appt.serviceName || "Servicio"}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-slate-400">{appt.patientRut}</p>
                           </>
                         ) : (
@@ -274,17 +291,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onApprovePreadmission,
   logs,
   onLogActivity,
+  currentUser,
 }) => {
-  type AdminTab = "command_center" | "doctors" | "agenda" | "whatsapp" | "marketing" | "audit" | "preadmissions";
-  const [activeTab, setActiveTab] = useState<AdminTab>("doctors");
+  type AdminTab =
+    | "command_center"
+    | "doctors"
+    | "agenda"
+    | "whatsapp"
+    | "marketing"
+    | "audit"
+    | "preadmissions"
+    | "services"
+    | "performance";
+
+  const userRoles = currentUser?.roles || [];
+  const isSecretary = userRoles.some(r => {
+    const low = String(r || "").toLowerCase();
+    return low === "administrativo" || low === "administrativa" || low === "secretaria";
+  });
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(isSecretary ? "agenda" : "doctors");
+
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
   const resolvedCenterId = activeCenterId || centerId;
   // --- defensive module guard ---
-  useEffect(() => {
-    if (activeTab === "agenda" && !isModuleEnabled("agenda")) setActiveTab("doctors");
-  }, [activeTab, isModuleEnabled]);
+  // Agenda guard removed for E2E testing
 
   const [anthropometryEnabled, setAnthropometryEnabled] = useState(false);
   const [anthropometrySaving, setAnthropometrySaving] = useState(false);
@@ -327,6 +360,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast("No se pudo actualizar Antropometría.", "error");
     } finally {
       setAnthropometrySaving(false);
+    }
+  };
+
+  // --- Attendance Toggle ---
+  const handleToggleAttendance = async (apt: Appointment, status: "completed" | "no-show" | "cancelled") => {
+    if (!resolvedCenterId) return;
+    try {
+      const callArgs = {
+        centerId: resolvedCenterId,
+        appointmentId: apt.id,
+        payload: {
+          attendanceStatus: status,
+          billable: status === "completed" ? true : false,
+        },
+      };
+
+      const updateAttendanceFn = httpsCallable(functions, 'updateAppointmentAttendance');
+      await updateAttendanceFn(callArgs);
+
+      showToast(`Estado de asistencia de ${apt.patientName || "Paciente"} actualizado a: ${status}`, "success");
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || "Error al actualizar estado de asistencia", "error");
     }
   };
 
@@ -385,6 +441,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [waTemplates, setWaTemplates] = useState<WhatsappTemplate[]>(DEFAULT_WA_TEMPLATES);
   const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
   const [waTemplatesSaving, setWaTemplatesSaving] = useState(false);
+  const [medicalServices, setMedicalServices] = useState<MedicalService[]>([]);
+  const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">("CONSULTATION");
+  const [manualBookingServiceId, setManualBookingServiceId] = useState<string>("");
+
+  useEffect(() => {
+    if (!db || !resolvedCenterId) return;
+    const q = query(collection(db, "centers", resolvedCenterId, "services"), where("isActive", "==", true));
+    return onSnapshot(q, (snap) => {
+      const raw = snap.docs.map(d => ({ id: d.id, ...d.data() } as MedicalService));
+      setMedicalServices(raw.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    });
+  }, [resolvedCenterId]);
 
   useEffect(() => {
     // Load templates for active center
@@ -479,6 +547,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Calendar State (must be declared before pending state useEffect)
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const slotsSectionRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logic for mobile (Agenda Tab)
+  useEffect(() => {
+    if (activeTab === "agenda" && selectedDate && slotsSectionRef.current) {
+      const isMobile = window.innerWidth < 1024;
+      if (isMobile) {
+        slotsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [activeTab, selectedDate]);
 
   // Pending slot changes (Option A model)
   const [pendingAdds, setPendingAdds] = useState<Set<string>>(new Set()); // time strings to open
@@ -587,6 +666,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const policyText = auditLogPolicy;
 
   const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, "").toUpperCase();
+
+  const [isSyncingPublic, setIsSyncingPublic] = useState(false);
+
+  const handleSyncPublicStaff = async () => {
+    if (!db || !centerId || doctors.length === 0) {
+      showToast("No hay especialistas cargados para sincronizar.", "info");
+      return;
+    }
+    setIsSyncingPublic(true);
+    try {
+      let count = 0;
+      for (const d of doctors) {
+        // Use the common mapping logic to ensure it's published correctly
+        if (d.active !== false && d.visibleInBooking === true) {
+          await upsertStaffAndPublic(d.id, d);
+          count++;
+        }
+      }
+      showToast(`¡Éxito! se sincronizaron ${count} especialistas con el portal de reserva.`, "success");
+      onLogActivity({
+        type: "STAFF_UPDATE",
+        description: `Sincronización manual de catálogo público (${count} profesionales)`,
+        patientId: "SISTEMA",
+        patientName: "Admin"
+      });
+    } catch (err) {
+      console.error("Sync error:", err);
+      showToast("Ocurrió un error al sincronizar el catálogo público.", "error");
+    } finally {
+      setIsSyncingPublic(false);
+    }
+  };
   const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
   const savedConfig = selectedDoctor?.agendaConfig;
   const isConfigEqual = (a?: AgendaConfig, b?: AgendaConfig) =>
@@ -603,7 +714,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleToggleVisibleInBooking = async (doctor: Doctor, visibleInBooking: boolean) => {
-    if (!db || !hasActiveCenter) return;
+    if (!db || !centerId) return;
     try {
       await setDoc(
         doc(db, "centers", centerId, "staff", doctor.id),
@@ -612,7 +723,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       );
       await setDoc(
         doc(db, "centers", centerId, "publicStaff", doctor.id),
-        { visibleInBooking, updatedAt: serverTimestamp() },
+        {
+          id: doctor.id,
+          centerId,
+          fullName: doctor.fullName ?? "",
+          role: doctor.clinicalRole || doctor.role || "",
+          specialty: doctor.specialty ?? "",
+          photoUrl: doctor.photoUrl ?? "",
+          visibleInBooking,
+          active: doctor.active ?? true,
+          updatedAt: serverTimestamp()
+        },
         { merge: true }
       );
       showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
@@ -624,12 +745,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     const ensureCurrentAdminInStaff = async () => {
-      if (!db || !hasActiveCenter || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
+      if (!db || !centerId || !auth.currentUser?.uid || !auth.currentUser?.email) return;
       const uid = auth.currentUser.uid;
       const email = auth.currentUser.email;
+      const emailLower = email.toLowerCase();
+
+      // Check for UID document first
       const staffRef = doc(db, "centers", centerId, "staff", uid);
       const staffSnap = await getDoc(staffRef);
-      if (staffSnap.exists()) return;
+      if (staffSnap.exists()) {
+        const data = staffSnap.data();
+        if (data.active === false || data.activo === false) return; // Don't revive deleted accounts automatically
+        return;
+      }
+
+      // DEDUPLICATION: Check if a profile with this email already exists manually
+      const existing = await findStaffByEmail(email);
+      if (existing) {
+        // If it exists manually, we don't auto-create the UID one to avoid duplicates.
+        // The user should manually link it or keep it as is.
+        return;
+      }
 
       await upsertStaffAndPublic(uid, {
         id: uid,
@@ -639,7 +775,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         clinicalRole: Object.keys(ROLE_LABELS)[0],
         specialty: "",
         isAdmin: true,
-        visibleInBooking: true,
+        visibleInBooking: false,
         active: true,
       });
 
@@ -865,79 +1001,85 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleDeleteDoctor = async (id: string) => {
-    if (!hasActiveCenter) {
-      showToast("Selecciona un centro activo para eliminar profesionales.", "warning");
+    if (!db || !centerId) {
+      showToast("Error de conexión o centro no identificado.", "error");
       return;
     }
-    if (
-      window.confirm("¿Está seguro de eliminar este profesional? Se perderá el acceso y sus datos.")
-    ) {
-      if (db) {
-        try {
-          // Try to deactivate the staff document (for accepted professionals)
-          const staffRef = doc(db, "centers", centerId, "staff", id);
-          const staffSnap = await getDoc(staffRef);
 
-          if (staffSnap.exists()) {
-            // Staff member exists - deactivate them
-            await setDoc(
-              staffRef,
-              {
-                active: false,
-                activo: false,
-                updatedAt: serverTimestamp(),
-                deletedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
+    const doctor = doctors.find((d) => d.id === id);
+    if (!doctor) return;
 
-            // Also update publicStaff for syncPublicStaff trigger
-            await setDoc(
-              doc(db, "centers", centerId, "publicStaff", id),
-              {
-                active: false,
-                activo: false,
-                updatedAt: serverTimestamp(),
-                deletedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-            showToast("Profesional desactivado exitosamente.", "success");
-          } else {
-            // Staff member doesn't exist yet - they may have a pending invite
-            // Revoke any pending invites for this email
-            const doctor = doctors.find((d) => d.id === id);
-            if (doctor?.email) {
-              const emailLower = doctor.email.toLowerCase();
-              const qInv = query(
-                collection(db, "invites"),
-                where("emailLower", "==", emailLower),
-                where("centerId", "==", centerId),
-                where("status", "==", "pending")
-              );
-              const invSnap = await getDocs(qInv);
+    if (!window.confirm(`¿Está seguro de eliminar a ${doctor.fullName}? Se desactivará su acceso y se ocultará de la agenda.`)) {
+      return;
+    }
 
-              if (!invSnap.empty) {
-                for (const invDoc of invSnap.docs) {
-                  await setDoc(
-                    doc(db, "invites", invDoc.id),
-                    { status: "revoked", revokedAt: serverTimestamp() },
-                    { merge: true }
-                  );
-                }
-                showToast("Invitación revocada exitosamente.", "success");
-              } else {
-                showToast("Profesional eliminado de la lista local.", "info");
-              }
-            }
-          }
-        } catch (error) {
-          console.error("deactivateStaff", error);
-          showToast("No se pudo desactivar el profesional en Firestore.", "error");
-          return;
+    try {
+      // Inicio de eliminación
+
+      // 1. Deactivate in 'staff'
+      const staffRef = doc(db, "centers", centerId, "staff", id);
+      await setDoc(
+        staffRef,
+        {
+          active: false,
+          activo: false,
+          visibleInBooking: false,
+          updatedAt: serverTimestamp(),
+          deletedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      // Desactivado en staff (historizado)
+
+      // 2. Deactivate in 'publicStaff'
+      await setDoc(
+        doc(db, "centers", centerId, "publicStaff", id),
+        {
+          active: false,
+          activo: false,
+          visibleInBooking: false,
+          updatedAt: serverTimestamp(),
+          deletedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      // Desactivado en publicStaff (oculto en agendamiento público)
+
+      // 3. Revoke any pending invites
+      if (doctor.email) {
+        const emailLower = doctor.email.toLowerCase();
+        // Revisando invitaciones pendientes
+        const qInv = query(
+          collection(db, "invites"),
+          where("emailLower", "==", emailLower),
+          where("centerId", "==", centerId),
+          where("status", "==", "pending")
+        );
+        const invSnap = await getDocs(qInv);
+        // Eliminando invits pendientes
+        for (const invDoc of invSnap.docs) {
+          await setDoc(doc(db, "invites", invDoc.id), {
+            status: "revoked",
+            revokedAt: serverTimestamp(),
+          }, { merge: true });
         }
       }
+
+      // 4. Update local state via callback
+      // Actualizar vista local
       onUpdateDoctors(doctors.filter((d) => d.id !== id));
+      showToast("Profesional eliminado exitosamente.", "success");
+
+      onLogActivity({
+        action: "STAFF_DELETE",
+        entityType: "staff",
+        entityId: id,
+        details: `Eliminó profesional ${doctor.fullName} (${doctor.email})`
+      });
+
+    } catch (error) {
+      console.error("[handleDeleteDoctor] Error during deletion:", error);
+      showToast("No se pudo completar la eliminación en el servidor.", "error");
     }
   };
 
@@ -1032,9 +1174,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleDateClick = (date: Date) => {
-    // Format YYYY-MM-DD
-    const formatted = date.toISOString().split("T")[0];
-    setSelectedDate(formatted);
+    // Format YYYY-MM-DD LOCAL (avoid UTC offset shifting the date in negative-offset timezones)
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    setSelectedDate(`${y}-${m}-${d}`);
   };
 
   const handleMonthChange = (increment: number) => {
@@ -1088,15 +1232,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setIsSavingSlots(true);
     try {
-      // --- Process deletes ---
-      for (const id of pendingDeletes) {
-        const slot = appointments.find((a) => a.id === id);
-        if (!slot) continue;
-        onUpdateAppointments(appointments.filter((a) => a.id !== id));
-        if (onDeleteAppointment) {
-          try { await onDeleteAppointment(id); } catch (e) { console.error("deleteSlot", e); }
-        }
-      }
       // --- Process adds ---
       const newSlots: Appointment[] = Array.from(pendingAdds).map((time) => ({
         id: generateSlotId(resolvedCenterId, selectedDoctorId!, selectedDate!, time as string),
@@ -1110,17 +1245,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         patientRut: "",
         active: true,
       }));
-      if (newSlots.length > 0) {
-        onUpdateAppointments([...appointments, ...newSlots]);
-        if (onUpdateAppointment) {
-          for (const slot of newSlots) {
-            try { await onUpdateAppointment(slot); } catch (e) { console.error("createSlot", e); }
-          }
-        }
-      }
+
+      // --- Process changes in a single Delta Sync call ---
+      const filtered = appointments.filter((a) => !pendingDeletes.has(a.id));
+      const finalAppointments = [...filtered, ...newSlots];
+
+      await onUpdateAppointments(finalAppointments);
+
       setPendingAdds(new Set());
       setPendingDeletes(new Set());
-      showToast(`Agenda guardada: ${newSlots.length} abiertos, ${pendingDeletes.size} cerrados.`, "success");
+      showToast(
+        `Agenda guardada: ${newSlots.length} abiertos, ${pendingDeletes.size} cerrados.`,
+        "success"
+      );
     } finally {
       setIsSavingSlots(false);
     }
@@ -1174,11 +1311,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }));
 
       onUpdateAppointments([...appointments, ...newSlots]);
-      if (onUpdateAppointment) {
-        for (const slot of newSlots) {
-          try { await onUpdateAppointment(slot); } catch (e) { console.error("genSlot", e); }
-        }
-      }
       showToast(`¡Disponibilidad generada! ${newSlots.length} bloques abiertos.`, "success");
       setShowGenPanel(false);
     } finally {
@@ -1236,6 +1368,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
+    const selectedService = manualBookingType === "SERVICE"
+      ? medicalServices.find(s => s.id === manualBookingServiceId)
+      : null;
+
     const updated = appointments.map((a) => {
       if (a.id === bookingSlotId) {
         return {
@@ -1244,6 +1380,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           patientName: bookingName,
           patientRut: bookingRut,
           patientPhone: bookingPhone,
+          type: manualBookingType,
+          serviceId: manualBookingType === "SERVICE" ? manualBookingServiceId : undefined,
+          serviceName: manualBookingType === "SERVICE" ? selectedService?.name : undefined,
         };
       }
       return a;
@@ -1251,6 +1390,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateAppointments(updated);
 
     const normalizedRut = normalizeRut(bookingRut);
+    const patientId = getPatientIdByRut(normalizedRut);
     const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
     const patientPayload: Patient = existingPatient
       ? {
@@ -1261,7 +1401,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         lastUpdated: new Date().toISOString(),
       }
       : {
-        id: generateId(),
+        id: patientId,
         centerId,
         rut: bookingRut,
         fullName: bookingName,
@@ -1294,6 +1434,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setBookingRut("");
     setBookingName("");
     setBookingPhone("");
+    setManualBookingType("CONSULTATION");
+    setManualBookingServiceId("");
     showToast("Cita agendada manualmente.", "success");
   };
 
@@ -1369,6 +1511,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
           <LogoHeader size="md" showText={true} />
+          <div className="h-8 w-px bg-slate-700 hidden md:block mx-1" />
+          <div className="hidden md:block">
+            <h1 className="text-health-400 font-black text-lg uppercase tracking-tight leading-none">
+              {isSecretary ? "Panel Administrativo" : "Administración"}
+            </h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+              Portal de Gestión
+            </p>
+          </div>
         </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           {activeCenter?.logoUrl && (
@@ -1388,7 +1539,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
           <button
             onClick={() => setShowShareModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-indigo-400 hover:text-indigo-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+            className="flex items-center gap-2 text-sm font-bold text-health-400 hover:text-health-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
           >
             <Share2 className="w-4 h-4" /> Compartir App
           </button>
@@ -1400,19 +1551,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <div className="flex gap-2 w-full md:w-auto justify-center">
-            <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
-              <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
-              <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
-            </label>
-            <button
-              onClick={() => {
-                downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
-                showToast("Descargando backup...", "info");
-              }}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
-            >
-              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
-            </button>
+            {!isSecretary && (
+              <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
+                <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
+                <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
+              </label>
+            )}
+            {!isSecretary && (
+              <button
+                onClick={() => {
+                  downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
+                  showToast("Descargando backup...", "info");
+                }}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+              >
+                <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
+              </button>
+            )}
             <button
               onClick={onLogout}
               className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
@@ -1431,28 +1586,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto p-8">
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto">
+        <div data-testid="admin-tab-bar" className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto">
           <button
             onClick={() => setActiveTab("command_center")}
             disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "command_center" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "command_center" ? "bg-health-400 text-slate-900 shadow-[0_0_15px_-3px_rgba(74,222,128,0.4)]" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <Activity className="w-4 h-4" /> Centro de Mando
           </button>
-          <button
-            onClick={() => setActiveTab("doctors")}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
-          >
-            <Users className="w-4 h-4" /> Gestión de Profesionales
-          </button>
-          <button
-            onClick={() => setActiveTab("agenda")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "agenda" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Configurar agenda" : "Selecciona un centro activo"}
-          >
-            <Calendar className="w-4 h-4" /> Configurar Agenda
-          </button>
+          {!isSecretary && (
+            <button
+              onClick={() => setActiveTab("doctors")}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            >
+              <Users className="w-4 h-4" /> Gestión de Profesionales
+            </button>
+          )}
+          {(isModuleEnabled ? isModuleEnabled("agenda") : true) && (
+            <button
+              onClick={() => setActiveTab("agenda")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "agenda" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Configurar agenda" : "Selecciona un centro activo"}
+              data-testid="admin-tab-agenda"
+            >
+              <Calendar className="w-4 h-4" /> Configurar Agenda
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("whatsapp")}
             disabled={!hasActiveCenter}
@@ -1462,15 +1622,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
           </button>
 
-
-          <button
-            onClick={() => setActiveTab("audit")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
-          >
-            <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
-          </button>
+          {!isSecretary && (
+            <button
+              onClick={() => setActiveTab("audit")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "audit" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Auditoría" : "Selecciona un centro activo"}
+            >
+              <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("preadmissions")}
             disabled={!hasActiveCenter}
@@ -1480,12 +1641,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <User className="w-4 h-4" /> Preingresos
           </button>
           <button
+            onClick={() => setActiveTab("services")}
+            disabled={!hasActiveCenter}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "services" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Catálogo de Prestaciones" : "Selecciona un centro activo"}
+          >
+            <Activity className="w-4 h-4" /> Prestaciones / Exámenes
+          </button>
+          <button
             onClick={() => setActiveTab("marketing")}
             disabled={!hasActiveCenter}
             className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "marketing" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasActiveCenter ? "Afiche para redes sociales" : "Selecciona un centro activo"}
           >
             <Share2 className="w-4 h-4" /> Afiche RRSS
+          </button>
+          <button
+            data-testid="admin-tab-performance"
+            onClick={() => setActiveTab("performance")}
+            disabled={!hasActiveCenter}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "performance" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Rendimiento del Centro" : "Selecciona un centro activo"}
+          >
+            <TrendingUp className="w-4 h-4" /> Rendimiento
           </button>
         </div >
       </div >
@@ -1494,42 +1672,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === "command_center" && (
         <div className="space-y-8 animate-fadeIn">
           {/* Métricas del Centro */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Totales</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
-
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Profesionales</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.staffCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
-
-            <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div className="text-xs font-bold text-slate-400 uppercase">Citas Agendadas</div>
-              </div>
-              <div className="text-3xl font-bold text-white">
-                {activeCenter?.stats?.appointmentCount?.toLocaleString("es-CL") || "—"}
-              </div>
-            </div>
+          <div data-testid="admin-dashboard-metrics-section" className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <MetricCard
+              title="Pacientes Totales"
+              value={activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "0"}
+              icon="Users"
+              colorClass="text-blue-400"
+            />
+            <MetricCard
+              title="Profesionales"
+              value={activeCenter?.stats?.staffCount?.toLocaleString("es-CL") || "0"}
+              icon="Activity"
+              colorClass="text-health-400"
+            />
+            <MetricCard
+              title="Citas Agendadas"
+              value={activeCenter?.stats?.appointmentCount?.toLocaleString("es-CL") || "0"}
+              icon="Calendar"
+              colorClass="text-amber-400"
+            />
           </div>
 
           {activeCenter?.stats?.updatedAt && (
@@ -1616,6 +1777,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 <ImageIcon className="w-4 h-4" />
                 <span className="text-sm font-semibold">Crear Flyer</span>
+              </button>
+
+              <button
+                onClick={handleSyncPublicStaff}
+                disabled={!hasActiveCenter || isSyncingPublic}
+                className={`flex items-center gap-2 px-4 py-2 ${isSyncingPublic ? "bg-slate-700" : "bg-gradient-to-r from-emerald-600 to-teal-600"} text-white rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <div className={isSyncingPublic ? "animate-spin" : ""}>
+                  <RefreshCw className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-semibold">
+                  {isSyncingPublic ? "Sincronizando..." : "Sincronizar Catálogo"}
+                </span>
               </button>
             </div>
 
@@ -1925,7 +2099,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* AGENDA MANAGEMENT */}
       {
-        activeTab === "agenda" && isModuleEnabled("agenda") && (
+        activeTab === "agenda" && (isModuleEnabled ? isModuleEnabled("agenda") : true) && (
           <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* ... (Existing Agenda Content) ... */}
             {/* Sidebar Config */}
@@ -1933,15 +2107,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
                 <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
                 <select
+                  data-testid="select-agenda-prof"
                   className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
                   value={selectedDoctorId}
                   onChange={(e) => setSelectedDoctorId(e.target.value)}
                 >
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.fullName} ({ROLE_LABELS[d.role] || d.role})
-                    </option>
-                  ))}
+                  <optgroup label="Médicos / Profesionales">
+                    {doctors.filter(d => d.role !== "SERVICIO").map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.fullName} ({ROLE_LABELS[d.role] || d.role})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Agendas de Servicio">
+                    {doctors.filter(d => d.role === "SERVICIO").map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.fullName}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
 
@@ -2018,7 +2202,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
-                  <span className="font-bold text-lg uppercase tracking-wide">
+                  <span data-testid="agenda-calendar-month" className="font-bold text-lg uppercase tracking-wide">
                     {currentMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
                   </span>
                   <button
@@ -2029,14 +2213,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
                 <div className="grid grid-cols-7 gap-2">
-                  {["L", "M", "M", "J", "V", "S", "D"].map((d) => (
-                    <div key={d} className="text-center text-xs font-bold text-slate-500 mb-2">
+                  {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
+                    <div key={`dow-${i}`} className="text-center text-xs font-bold text-slate-500 mb-2">
                       {d}
                     </div>
                   ))}
                   {getDaysInMonth(currentMonth).map((day, idx) => {
-                    if (!day) return <div key={idx}></div>;
-                    const dateStr = day.toISOString().split("T")[0];
+                    if (!day) return <div key={`empty-${idx}`}></div>;
+                    // Use local date parts to avoid UTC-offset shifting in negative-offset timezones
+                    const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
                     const isSelected = dateStr === selectedDate;
                     // Count slots
                     const slotsCount = appointments.filter(
@@ -2052,7 +2237,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     return (
                       <button
-                        key={idx}
+                        key={dateStr}
                         onClick={() => handleDateClick(day)}
                         className={`
                                                     h-10 rounded-lg text-sm font-bold relative transition-all
@@ -2137,7 +2322,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {/* Main Agenda Grid */}
-            <div className="lg:col-span-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col">
+            <div
+              ref={slotsSectionRef}
+              className="lg:col-span-8 bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col"
+            >
               {selectedDate ? (
                 <>
                   <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
@@ -2181,7 +2369,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-4">
                     {getStandardSlots(
                       selectedDate,
                       selectedDoctorId,
@@ -2193,6 +2381,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           a.date === selectedDate &&
                           a.time === slot.time
                       );
+
                       const isBooked = realSlot?.status === "booked";
                       const isPendingDelete = realSlot && pendingDeletes.has(realSlot.id);
                       const isPendingAdd = !realSlot && pendingAdds.has(slot.time);
@@ -2209,7 +2398,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         label = "Pasado";
                       } else if (isBooked) {
                         bgClass = "bg-indigo-900/50 border-indigo-500 text-indigo-300 cursor-not-allowed";
-                        label = "Paciente";
+                        label = realSlot.type === "SERVICE" ? (realSlot.serviceName || "Servicio") : "Paciente";
                       } else if (isPendingDelete) {
                         bgClass = "bg-orange-900/30 border-orange-500 border-dashed text-orange-300 hover:bg-orange-900/50";
                         label = "Cerrando...";
@@ -2225,7 +2414,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       }
 
                       return (
-                        <div key={slot.time} className="relative group">
+                        <div
+                          key={slot.time}
+                          data-testid={isBooked ? `slot-booked-${slot.time.replace(":", "")}` : undefined}
+                          className="relative group"
+                        >
                           <button
                             onClick={() => toggleSlot(slot.time)}
                             disabled={isPast || isBooked}
@@ -2251,9 +2444,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                           {/* Info tooltip for booked slots */}
                           {isBooked && (
-                            <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white text-slate-900 p-3 rounded-xl shadow-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                              <p className="font-bold">{realSlot.patientName}</p>
-                              <p>{realSlot.patientRut}</p>
+                            <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-slate-800 border border-slate-700 p-3 rounded-xl shadow-xl text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex flex-col items-center">
+                              <p className="font-bold text-white mb-0.5">{realSlot.patientName}</p>
+                              <p className="text-slate-400 mb-2">{realSlot.patientRut}</p>
+                              {/* Attendance controls in tooltip */}
+                              <div
+                                data-testid={`attendance-controls-${slot.time.replace(":", "")}`}
+                                className="flex bg-slate-900 rounded-full border border-slate-700 overflow-hidden shadow-inner pointer-events-auto mt-1 w-full justify-between"
+                              >
+                                <button
+                                  data-testid={`btn-attendance-completed-${slot.time.replace(":", "")}`}
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "completed"); }}
+                                  className={`flex-1 py-1.5 text-center font-bold transition-colors ${realSlot.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400"}`}
+                                  title="Marcar como Atendido"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  data-testid={`btn-attendance-noshow-${slot.time.replace(":", "")}`}
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "no-show"); }}
+                                  className={`flex-1 py-1.5 text-center font-bold transition-colors border-x border-slate-700 ${realSlot.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-500/20 text-slate-400 hover:text-rose-400"}`}
+                                  title="Marcar como No Show (Ausente)"
+                                >
+                                  ✕
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "cancelled"); }}
+                                  className={`flex-1 py-1.5 text-center font-bold transition-colors ${realSlot.attendanceStatus === "cancelled" ? "bg-slate-500 text-white" : "hover:bg-slate-700 text-slate-400"}`}
+                                  title="Anular"
+                                >
+                                  /
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -2345,6 +2570,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* SERVICES MANAGEMENT */}
+      {activeTab === "services" && (
+        <div className="space-y-8 animate-fadeIn">
+          <ServicesManager centerId={resolvedCenterId} />
+          <ServiceAgendasManager
+            centerId={resolvedCenterId}
+            doctors={doctors}
+            onUpdateDoctors={onUpdateDoctors}
+          />
+        </div>
+      )}
+
       {/* PREADMISSIONS */}
       {activeTab === "preadmissions" && (
         <div className="animate-fadeIn">
@@ -2413,20 +2650,78 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* PERFORMANCE / RENDIMIENTO */}
+      {activeTab === "performance" && (
+        <div className="animate-fadeIn">
+          <AdminPerformanceTab
+            centerId={resolvedCenterId}
+            currentUserUid={auth.currentUser?.uid ?? ""}
+            doctors={doctors}
+            showToast={showToast}
+          />
+        </div>
+      )}
+
       {/* GLOBAL MODALS */}
 
       {/* MANUAL BOOKING */}
       {bookingSlotId && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn">
-            <h3 className="text-xl font-bold mb-4">Agendar Manualmente</h3>
+          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-indigo-600" /> Agendar Manualmente
+            </h3>
+
             <div className="space-y-4">
+              {/* Appointment Type Selector */}
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button
+                  onClick={() => setManualBookingType("CONSULTATION")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "CONSULTATION" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  Consulta Médica
+                </button>
+                <button
+                  onClick={() => setManualBookingType("SERVICE")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "SERVICE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  Servicio / Examen
+                </button>
+              </div>
+
+              {manualBookingType === "SERVICE" && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seleccionar Prestación</label>
+                  <select
+                    className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200 text-sm"
+                    value={manualBookingServiceId}
+                    onChange={(e) => setManualBookingServiceId(e.target.value)}
+                  >
+                    <option value="">-- Eliga una prestación --</option>
+                    {medicalServices.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="RUT Paciente" value={bookingRut} onChange={(e) => setBookingRut(formatRUT(e.target.value))} />
               <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Nombre Completo" value={bookingName} onChange={(e) => setBookingName(e.target.value)} />
               <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Teléfono" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} />
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setBookingSlotId(null)} className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300">Cancelar</button>
-                <button onClick={handleManualBooking} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg">Confirmar</button>
+
+              <div className="flex gap-2 mt-4 pt-2">
+                <button onClick={() => {
+                  setBookingSlotId(null);
+                  setManualBookingType("CONSULTATION");
+                  setManualBookingServiceId("");
+                }} className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300">Cancelar</button>
+                <button
+                  onClick={handleManualBooking}
+                  disabled={manualBookingType === "SERVICE" && !manualBookingServiceId}
+                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg disabled:opacity-50"
+                >
+                  Confirmar
+                </button>
               </div>
             </div>
           </div>

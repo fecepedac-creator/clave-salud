@@ -6,6 +6,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      port: 5175,
+      strictPort: true,
+    },
     define: {
       "process.env": {
         FIREBASE_API_KEY: env.VITE_FIREBASE_API_KEY,

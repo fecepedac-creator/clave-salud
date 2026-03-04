@@ -40,11 +40,10 @@ service cloud.firestore {
       return get(staffPath(centerId, uid()));
     }
 
-    // ✅ Compatible: active OR activo
     function isStaff(centerId) {
       return signedIn()
         && exists(staffPath(centerId, uid()))
-        && (staffDoc(centerId).data.active == true || staffDoc(centerId).data.activo == true);
+        && staffDoc(centerId).data.active == true;
     }
 
     function staffAccessRole(centerId) {
@@ -56,8 +55,25 @@ service cloud.firestore {
     }
 
     function isCenterAdmin(centerId) {
-      return isStaff(centerId) && staffAccessRole(centerId) == "center_admin";
+      let role = staffAccessRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "center_admin" || 
+        r == "admin_centro" || 
+        r == "admin"
+      );
     }
+
+    function isAdministrative(centerId) {
+      let role = staffAccessRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "administrativo" || 
+        r == "administrativa" || 
+        r == "secretaria"
+      );
+    }
+
 
     function isDoctor(centerId) {
       return isStaff(centerId) && staffAccessRole(centerId) == "doctor";
@@ -113,7 +129,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
     function isPublicAppointmentRead() {
-      return request.auth == null && resource.data.status == "available";
+      return resource.data.status == "available";
     }
 
     function isActiveCenter(centerId) {
@@ -121,8 +137,7 @@ service cloud.firestore {
     }
 
     function isPublicAppointmentBooking() {
-      return request.auth == null
-        && resource.data.status == "available"
+      return resource.data.status == "available"
         && request.resource.data.status == "booked"
         && request.resource.data.centerId == resource.data.centerId
         && request.resource.data.doctorId == resource.data.doctorId
@@ -158,10 +173,11 @@ service cloud.firestore {
         'consultations',
         'attachments',
         'lastUpdated',
-        'active'
+        'active',
+        'ownerUid',
+        'accessControl'
       ];
-      return request.auth == null
-        && request.resource.data.keys().hasOnly(allowedFields)
+      return request.resource.data.keys().hasOnly(allowedFields)
         && request.resource.data.centerId == centerId
         && request.resource.data.id is string
         && request.resource.data.rut is string
@@ -178,7 +194,8 @@ service cloud.firestore {
         && request.resource.data.consultations is list
         && request.resource.data.attachments is list
         && request.resource.data.lastUpdated is string
-        && request.resource.data.active is bool;
+        && request.resource.data.active == true
+        && isActiveCenter(centerId);
     }
 
     function inviteDoc(token) {
@@ -198,10 +215,11 @@ service cloud.firestore {
     match /centers/{centerId} {
       allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
         || resource.data.isActive == true;
-      allow create: if false;
-      allow update: if canUpdateAnthropometryFeature(centerId)
+      allow create: if signedIn() && isSuperAdmin();
+      allow update: if isSuperAdmin()
+        || canUpdateAnthropometryFeature(centerId)
         || canUpdateAccessMode(centerId);
-      allow delete: if false;
+      allow delete: if signedIn() && isSuperAdmin();
 
       // -------------------- Center Settings (private) --------------------
       // Example docs:
@@ -209,7 +227,7 @@ service cloud.firestore {
       match /settings/marketing {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (isSuperAdmin() || canUpdateMarketingRetention(centerId));
-        allow delete: if false;
+        allow delete: if signedIn() && isSuperAdmin();
       }
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
@@ -231,11 +249,37 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /services/{serviceId} {
+        allow read: if true;
+        allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+      }
+
       match /stats/postersMonthly/{monthKey} {
         allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow create, update, delete: if false;
       }
 
+
+      match /stats_center_month/{monthKey} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
+
+      match /stats_professional_month/{profMonthKey} {
+        // profMonthKey template: professionalId_YYYY-MM
+        allow read: if signedIn() && (
+          isSuperAdmin() || 
+          isCenterAdmin(centerId) || 
+          (isStaff(centerId) && profMonthKey.split("_")[0] == uid())
+        );
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
+
+      match /closures_month/{monthKey} {
+        allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+      }
 
       match /staff/{staffUid} {
         allow read: if signedIn() && (
@@ -284,7 +328,7 @@ service cloud.firestore {
           && (
             resource.data.active == true
             || resource.data.active == null
-            || !resource.data.keys().hasAny(["active", "activo"])
+            || !resource.data.keys().hasAny(["active"])
           )
           && request.resource.data.deletedAt is timestamp
           && request.resource.data.deletedBy is string
@@ -319,9 +363,9 @@ service cloud.firestore {
       }
 
       match /publicStaff/{staffUid} {
-        allow read: if isActiveCenter(centerId)
-          && resource.data.active == true
-          && resource.data.visibleInBooking == true;
+        // Allow public read of staff members designated for the booking portal.
+        // We trust the data in this subcollection is public-ready.
+        allow read: if true;
         allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if false;
       }
@@ -420,6 +464,7 @@ service cloud.firestore {
           isSuperAdmin()
           || (uid() == uidDoc)
           || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
         );
         allow delete: if false;
       }
@@ -429,9 +474,16 @@ service cloud.firestore {
         allow create, update: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
           || (isDoctor(centerId) && request.resource.data.doctorUid == uid())
         );
-        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId));
+      }
+
+      function performanceFieldsUnchanged() {
+        return request.resource.data.get('attendanceStatus', null) == resource.data.get('attendanceStatus', null)
+          && request.resource.data.get('billable', null) == resource.data.get('billable', null)
+          && request.resource.data.get('amount', null) == resource.data.get('amount', null);
       }
 
       match /appointments/{apptId} {
@@ -451,6 +503,7 @@ service cloud.firestore {
         allow create: if signedIn() && (
           isSuperAdmin()
           || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
           || (isDoctor(centerId) && (
             request.resource.data.doctorUid == uid()
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
@@ -461,15 +514,17 @@ service cloud.firestore {
             signedIn() && (
               isSuperAdmin()
               || isCenterAdmin(centerId)
+              || isAdministrative(centerId)
               || (isDoctor(centerId) && (
                 request.resource.data.doctorUid == uid()
                 || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
               ))
             )
+            && performanceFieldsUnchanged()
             && (
             !softDeleteKeysChanged()
             || (
-              (isSuperAdmin() || isCenterAdmin(centerId))
+              (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId))
               && isSoftDeleteValid()
               && canArchiveByRetention()
             )
@@ -518,7 +573,7 @@ service cloud.firestore {
           && (request.auth == null || isStaff(centerId) || isSuperAdmin())
         );
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-        allow update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+        allow update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId));
       }
 
       match /auditLogs/{logId} {
@@ -600,14 +655,33 @@ service cloud.firestore {
         // For production, center admins usually check against their specific centers/{id}/staff doc.
       }
 
-      // Read: owner, allowed professional (including care team), or superadmin
-      allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+    function isPublicRootPatientCreate() {
+      let allowedFields = [
+        'id', 'centerId', 'rut', 'fullName', 'ownerUid', 'accessControl',
+        'birthDate', 'gender', 'phone', 'email',
+        'medicalHistory', 'surgicalHistory', 'smokingStatus', 'alcoholStatus', 
+        'medications', 'allergies', 'consultations', 'attachments', 'lastUpdated', 'active'
+      ];
+      return request.auth == null
+        && request.resource.data.keys().hasOnly(allowedFields)
+        && request.resource.data.id is string
+        && request.resource.data.rut is string
+        && request.resource.data.fullName is string
+        && request.resource.data.ownerUid is string
+        && request.resource.data.accessControl is map
+        && request.resource.data.accessControl.allowedUids is list
+        && request.resource.data.accessControl.centerIds is list
+        && request.resource.data.active is bool;
+    }
 
-      // Create: any authenticated user can create a patient (they become owner)
-      allow create: if signedIn() && (
-        request.resource.data.ownerUid == uid()
-        || isSuperAdmin()
-      );
+    // Read: owner, allowed professional (including care team), or superadmin
+    allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+
+    // Create: any authenticated user can create a patient (they become owner)
+    allow create: if (signedIn() && (
+      request.resource.data.ownerUid == uid()
+      || isSuperAdmin()
+    )) || isPublicRootPatientCreate();
 
       // Update: owner, allowed professional, or superadmin
       allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();

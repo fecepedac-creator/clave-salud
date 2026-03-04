@@ -243,7 +243,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
 
       if (tempStaffId) {
         migratedCount = await migrateTempStaff(centerId, tempStaffId, user.uid);
-        console.log(`Migrated ${migratedCount} appointments from temp ${tempStaffId} to ${user.uid}`);
+        // log de migración de turnos removido
       } else {
         // Fallback: search by emailLower for any temp staff doc
         const tempQuery = query(

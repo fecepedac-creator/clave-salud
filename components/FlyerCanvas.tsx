@@ -14,6 +14,7 @@ interface FlyerCanvasProps {
     specialties?: string[];
     availableSlots?: { date: string; times: string[] }[];
     backgroundGradient?: string;
+    customCorporateLogo?: string;
 }
 
 const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
@@ -27,6 +28,7 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
     specialties,
     availableSlots,
     backgroundGradient = 'linear-gradient(135deg, #0ea5e9 0%, #0f766e 100%)',
+    customCorporateLogo,
 }) => {
     const dims = FLYER_DIMENSIONS[format];
     const isSquare = format === 'instagram-post';
@@ -78,9 +80,14 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
                         {/* Logo ClaveSalud */}
                         <div style={{ marginBottom: isStory ? '40px' : '50px', display: 'flex', justifyContent: 'center' }}>
                             <img
-                                src={CORPORATE_LOGO}
+                                src={customCorporateLogo || CORPORATE_LOGO}
                                 alt="ClaveSalud"
-                                style={{ width: isStory ? '350px' : isFacebook ? '400px' : '450px', height: 'auto' }}
+                                style={{
+                                    width: isStory ? '350px' : isFacebook ? '400px' : '450px',
+                                    height: 'auto',
+                                    maxHeight: isStory ? '150px' : '200px',
+                                    objectFit: 'contain'
+                                }}
                             />
                         </div>
 
@@ -192,7 +199,7 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
                         width: `${dims.width}px`,
                         height: `${dims.height}px`,
                         transform: `scale(${scale})`,
-                        background: `linear-gradient(135deg, ${colorMap[primaryColor] || '#14b8a6'}, #1e293b)`,
+                        background: backgroundGradient.includes('linear-gradient') ? backgroundGradient : `linear-gradient(135deg, ${colorMap[center?.primaryColor || 'teal'] || '#14b8a6'}, #1e293b)`,
                         padding: isStory ? '50px 40px' : '50px 50px',
                         paddingBottom: '35px',
                         boxSizing: 'border-box',
@@ -215,10 +222,10 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
                                 marginBottom: '40px',
                             }}
                         >
-                            {/* Logo del Centro */}
-                            {center.logoUrl ? (
+                            {/* Logo del Centro (Prioriza BrandKit) */}
+                            {center.branding?.logoUrls?.[0] || center.logoUrl ? (
                                 <img
-                                    src={center.logoUrl}
+                                    src={center.branding?.logoUrls?.[0] || center.logoUrl}
                                     alt={center.name}
                                     style={{ maxWidth: '180px', maxHeight: '100px', objectFit: 'contain' }}
                                 />
@@ -230,9 +237,9 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
 
                             {/* Logo ClaveSalud (marca de agua) */}
                             <img
-                                src={CORPORATE_LOGO}
+                                src={customCorporateLogo || CORPORATE_LOGO}
                                 alt="ClaveSalud"
-                                style={{ width: '120px', opacity: 0.6 }}
+                                style={{ width: '120px', maxHeight: '60px', opacity: 0.6, objectFit: 'contain' }}
                             />
                         </div>
 
@@ -317,6 +324,12 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
                                 <div style={{ fontSize: '24px', opacity: 0.9 }}>clavesalud.cl</div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Sello de Confianza ClaveSalud (Esquina inferior derecha) */}
+                    <div style={{ position: 'absolute', bottom: '20px', right: '30px', opacity: 0.5, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>Digitalizado por</span>
+                        <img src={customCorporateLogo || CORPORATE_LOGO} alt="ClaveSalud" style={{ height: '30px', width: 'auto', objectFit: 'contain' }} />
                     </div>
 
                     {/* Legal - Sin absolute */}
@@ -463,6 +476,10 @@ const FlyerCanvas: React.FC<FlyerCanvasProps> = ({
                                     style={{ maxWidth: '120px', maxHeight: '60px', objectFit: 'contain' }}
                                 />
                             )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', opacity: 0.6 }}>
+                                <span style={{ fontSize: '10px', fontWeight: 'bold' }}>RESPALDADO POR</span>
+                                <img src={customCorporateLogo || CORPORATE_LOGO} alt="ClaveSalud" style={{ height: '25px', width: 'auto', objectFit: 'contain' }} />
+                            </div>
                             <div style={{ fontSize: '22px', opacity: 0.8 }}>clavesalud.cl</div>
                         </div>
 

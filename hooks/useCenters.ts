@@ -28,9 +28,13 @@ function isValidCenter(c: any): c is MedicalCenter {
   );
 }
 
-export function useCenters(demoMode: boolean, isSuperAdminClaim: boolean) {
+export function useCenters(
+  demoMode: boolean,
+  isSuperAdminClaim: boolean,
+  activeCenterId: string,
+  setActiveCenterId: (id: string) => void
+) {
   const [centers, setCenters] = useState<MedicalCenter[]>([]);
-  const [activeCenterId, setActiveCenterId] = useState<string>("");
   const [lastCenterDoc, setLastCenterDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [hasMoreCenters, setHasMoreCenters] = useState<boolean>(false);
   const [isLoadingMoreCenters, setIsLoadingMoreCenters] = useState<boolean>(false);

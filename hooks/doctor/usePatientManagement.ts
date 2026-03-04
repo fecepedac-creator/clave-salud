@@ -1,8 +1,19 @@
-import { useState, useMemo } from "react";
-import { Patient, Appointment } from "../../types";
-import { normalizeRut, formatPersonName } from "../../utils";
+import { useState, useMemo, useEffect } from "react";
+import { Patient, Appointment, Consultation } from "../../types";
+import { normalizeRut, formatPersonName, getPatientIdByRut, normalizePhone } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import {
+    doc,
+    getDoc,
+    collection,
+    query,
+    orderBy,
+    limit,
+    onSnapshot
+} from "firebase/firestore";
+import { db } from "../../firebase";
 
 interface UsePatientManagementProps {
     patients: Patient[];
@@ -25,6 +36,11 @@ export const usePatientManagement = ({
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [isEditingPatient, setIsEditingPatient] = useState(false);
+    const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
+    const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
+
+    const getActiveConsultations = (p: Patient) =>
+        (p.consultations || []).filter((consultation) => consultation.active !== false);
 
     // Filter Patients
     const filteredPatients = useMemo(() => {
@@ -38,7 +54,8 @@ export const usePatientManagement = ({
             else if (filterNextControl === "month") horizon.setDate(now.getDate() + 30);
 
             result = result.filter((p) => {
-                const lastConsult = p.consultations?.[0]; // Assumes sorted by sync or logic
+                const activeConsults = getActiveConsultations(p);
+                const lastConsult = activeConsults[0];
                 if (!lastConsult?.nextControlDate) return false;
                 const nextDate = new Date(lastConsult.nextControlDate + "T12:00:00");
                 return nextDate >= now && nextDate <= horizon;
@@ -94,15 +111,19 @@ export const usePatientManagement = ({
     };
 
     // Logic to open patient from an appointment click
-    const handleOpenPatientFromAppointment = (appointment: Appointment, setActiveTab: (tab: any) => void) => {
+    const handleOpenPatientFromAppointment = async (appointment: Appointment, setActiveTab: (tab: any) => void) => {
         const foundById = appointment.patientId
             ? patients.find((patient) => patient.id === appointment.patientId)
             : null;
+
         const appointmentRut = normalizeRut(appointment.patientRut);
+        const deterministicId = getPatientIdByRut(appointmentRut);
+
         const foundByRut =
             !foundById && appointmentRut
                 ? patients.find((patient) => normalizeRut(patient.rut) === appointmentRut)
                 : null;
+
         const resolvedPatient = foundById ?? foundByRut ?? null;
 
         if (resolvedPatient) {
@@ -111,8 +132,75 @@ export const usePatientManagement = ({
             return;
         }
 
-        showToast("Paciente no encontrado; revisa si fue creado", "warning");
+        // IMPROVEMENT: If not found in local list, attempt to link/fetch it
+        if (activeCenterId && appointmentRut) {
+            const patientId = appointment.patientId || deterministicId;
+            showToast("Sincronizando acceso a ficha...", "info");
+
+            try {
+                const functions = getFunctions();
+                const linkFn = httpsCallable(functions, "linkPatientToProfessional");
+                await linkFn({ centerId: activeCenterId, patientId });
+
+                // If link successful, try getting the doc (professional should have access now)
+                const patSnap = await getDoc(doc(db, "patients", patientId));
+                if (patSnap.exists()) {
+                    const linkedPatient = { id: patSnap.id, ...(patSnap.data() as any) };
+                    // Optionally update local state or just select it
+                    handleSelectPatient(linkedPatient);
+                    setActiveTab("patients");
+                    showToast("Acceso sincronizado correctamente.", "success");
+                    return;
+                }
+            } catch (err) {
+                console.error("Link patient failed:", err);
+            }
+        }
+
+        showToast("Paciente no encontrado; contacta soporte si el problema persiste", "warning");
     };
+
+    // --- Sync Consultations ---
+    useEffect(() => {
+        if (!activeCenterId || !selectedPatient?.id) {
+            setConsultationsFromDb([]);
+            setIsUsingLegacyConsultations(false);
+            return;
+        }
+
+        const consultationsRef = collection(
+            db,
+            "centers",
+            activeCenterId,
+            "patients",
+            selectedPatient.id,
+            "consultations"
+        );
+
+        const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                const docs = snapshot.docs.map((d) => ({
+                    id: d.id,
+                    ...(d.data() as any),
+                })) as Consultation[];
+                const filtered = docs.filter((c) => c.active !== false);
+                setConsultationsFromDb(filtered);
+
+                const legacyCount = getActiveConsultations(selectedPatient).length;
+                setIsUsingLegacyConsultations(filtered.length === 0 && legacyCount > 0);
+            },
+            () => {
+                setConsultationsFromDb([]);
+                const legacyCount = getActiveConsultations(selectedPatient).length;
+                setIsUsingLegacyConsultations(legacyCount > 0);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [activeCenterId, selectedPatient?.id]);
 
     return {
         selectedPatient,
@@ -125,5 +213,7 @@ export const usePatientManagement = ({
         handleSelectPatient,
         handleSavePatient,
         handleOpenPatientFromAppointment,
+        consultations: consultationsFromDb.length > 0 ? consultationsFromDb : (selectedPatient ? getActiveConsultations(selectedPatient) : []),
+        isUsingLegacyConsultations,
     };
 };

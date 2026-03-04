@@ -8,6 +8,9 @@ interface PrintPreviewModalProps {
   onClose: () => void;
   docs: Prescription[];
   doctorName: string;
+  doctorRut?: string;
+  doctorSpecialty?: string;
+  doctorInstitution?: string;
   centerName?: string;
   centerLogoUrl?: string;
   selectedPatient: Patient | null;
@@ -25,6 +28,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   onClose,
   docs,
   doctorName,
+  doctorRut: propRut,
+  doctorSpecialty: propSpecialty,
+  doctorInstitution: propInstitution,
   centerName,
   centerLogoUrl,
   selectedPatient,
@@ -37,10 +43,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
-  // TODO (mejora futura): hacer que estos datos vengan desde el perfil del profesional/centro
-  const doctorRut = "16.459.999-1";
-  const doctorSpecialty = "MEDICINA INTERNA";
-  const doctorInstitution = "Universidad Católica del Maule";
+  // Fallback values for missing info
+  const doctorRut = propRut || "No registrado";
+  const doctorSpecialty = propSpecialty || "MEDICINA GENERAL";
+  const doctorInstitution = propInstitution || "";
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
@@ -85,14 +91,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                       className="h-8 w-auto object-contain"
                     />
                     <div>
-                      <h1 className="text-lg font-serif font-bold text-slate-900 tracking-wide uppercase">
+                      <h1 className="text-base font-serif font-bold text-slate-900 tracking-wide uppercase leading-tight">
                         {doctorName}
                       </h1>
-                      {doctorRut ? (
-                        <p className="text-[10px] font-mono font-bold text-slate-600 mt-0.5">
+                      {doctorRut && (
+                        <p className="text-[9px] font-mono font-bold text-slate-500 mt-0.5">
                           RUT: {doctorRut}
                         </p>
-                      ) : null}
+                      )}
                     </div>
                   </div>
 
@@ -127,27 +133,27 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
               {/* 2. Patient Info (Required by Law) */}
               <div className="mb-6 py-3 px-4 bg-slate-50 border border-slate-200 rounded-lg print:border-slate-300 print:bg-transparent print:break-inside-avoid">
-                <div className="grid grid-cols-2 gap-y-2 text-[11px] font-serif text-slate-800">
-                  <div>
-                    <span className="font-bold uppercase text-[10px] text-slate-500 mr-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-[11px] font-serif text-slate-800">
+                  <div className="col-span-full border-b border-slate-200 pb-1 mb-1 print:border-slate-300">
+                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
                       Paciente:
                     </span>{" "}
-                    <span className="text-base">{selectedPatient.fullName}</span>
+                    <span className="text-base font-bold">{selectedPatient.fullName}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-[10px] text-slate-500 mr-2">
+                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
                       RUT:
                     </span>{" "}
                     <span className="font-mono text-sm">{selectedPatient.rut}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-[10px] text-slate-500 mr-2">
+                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
                       Edad:
                     </span>{" "}
                     {(calculateAge(selectedPatient.birthDate) ?? "-")} años
                   </div>
-                  <div>
-                    <span className="font-bold uppercase text-[10px] text-slate-500 mr-2">
+                  <div className="col-span-full">
+                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
                       Dirección:
                     </span>{" "}
                     {selectedPatient.address || "No registrada"}{" "}
@@ -176,14 +182,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     Documento generado electrónicamente.
                   </p>
                 </div>
-                <div className="text-center relative">
+                <div className="text-center relative min-w-[200px]">
                   {/* Signature Line */}
-                  <div className="w-56 border-t-2 border-slate-800 mb-2"></div>
-                  <p className="font-bold text-slate-900 text-[11px]">{doctorName}</p>
-                  <p className="text-[10px] text-slate-500 uppercase">Médico Cirujano</p>
-                  {doctorRut ? (
-                    <p className="text-[10px] text-slate-500 font-mono">{doctorRut}</p>
-                  ) : null}
+                  <div className="w-full border-t-2 border-slate-800 mb-2"></div>
+                  <p className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">{doctorName}</p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter">{doctorSpecialty || "Médico Cirujano"}</p>
+                  {doctorRut && (
+                    <p className="text-[9px] text-slate-400 font-mono mt-0.5">RUT: {doctorRut}</p>
+                  )}
                 </div>
               </footer>
             </div>

@@ -13,6 +13,18 @@ export type FirestoreDateLike = Timestamp | string | Date | null;
 export type JsonValue = string | number | boolean | null | undefined | JsonMap | JsonValue[];
 export type JsonMap = { [key: string]: JsonValue };
 
+export interface BrandKit {
+  logoUrls?: string[]; // Multiple versions: primary, secondary, icon
+  backgroundImages?: string[]; // User uploaded backgrounds
+  colors?: {
+    primary?: string; // Hex code
+    secondary?: string; // Hex code
+    accent?: string;
+  };
+  tagline?: string;
+  fontFamily?: string;
+}
+
 export interface MedicalCenter {
   id: string;
   slug: string; // For URL: ?center=saludmass
@@ -62,6 +74,9 @@ export interface MedicalCenter {
     totalStaff?: number; // Aliased for SuperAdminDashboard logic
     updatedAt?: FirestoreDateLike;
   };
+
+  // --- Branding & Marketing ---
+  branding?: BrandKit;
 }
 
 export type AuditEntityType =
@@ -84,6 +99,9 @@ export type AuditAction =
   | "APPOINTMENT_UPDATE"
   | "APPOINTMENT_CANCEL"
   | "APPOINTMENT_ARCHIVE"
+  | "APPOINTMENT_ATTENDANCE_CHANGE"
+  | "APPOINTMENT_BILLABLE_CHANGE"
+  | "APPOINTMENT_AMOUNT_CHANGE"
   | "CARE_TEAM_UPDATE"
   | "CENTER_ACCESSMODE_UPDATE"
   | "ARCHIVE_BLOCKED_RETENTION"
@@ -195,6 +213,24 @@ export interface WhatsappTemplate {
   updatedAt?: FirestoreDateLike;
 }
 
+export interface MedicalService extends SoftDeletable {
+  id: string;
+  name: string;
+  category: "LABORATORY" | "IMAGING" | "CARDIOLOGY" | "PROCEDURE" | "OTHER";
+  price: number;
+  description: string;
+  preparationInstructions: string;
+  durationMinutes: number;
+  isActive: boolean;
+  createdAt?: FirestoreDateLike;
+  updatedAt?: FirestoreDateLike;
+
+  // File support
+  instructionsFile?: string; // Base64
+  instructionsFileName?: string;
+  isAgendable?: boolean;
+}
+
 // NEW INTERFACE FOR CUSTOM EXAMS
 export interface ExamDefinition {
   id: string;
@@ -294,10 +330,15 @@ export interface Patient extends SoftDeletable {
   fullName: string;
   birthDate: string;
   gender: "Masculino" | "Femenino" | "Otro";
+  genderIdentity?: string; // FHIR Core-CL
+  insurance?: "FONASA" | "ISAPRE" | "DIPRECA" | "CAPREDENA" | "Particular" | "Otro";
+  insuranceLevel?: "A" | "B" | "C" | "D" | string;
   email?: string;
   phone?: string;
   address?: string;
   commune?: string;
+  ethnicity?: string; // DEIS Pueblos Originarios
+  nationality?: string; // DEIS Nacionalidad
 
   occupation?: string;
   livingWith?: string[];
@@ -397,6 +438,56 @@ export interface Appointment extends SoftDeletable {
   bookedAt?: FirestoreDateLike;
   cancelledAt?: FirestoreDateLike;
   status: "available" | "booked";
+
+  // Service/Exam Extension
+  type?: "CONSULTATION" | "SERVICE";
+  serviceId?: string;
+  serviceName?: string;
+
+  // --- Performance & Billing Tracking ---
+  attendanceStatus?: "completed" | "cancelled" | "no-show" | null;
+  billable?: boolean;
+  amount?: number | null;
+  attendanceUpdatedAt?: FirestoreDateLike;
+  attendanceUpdatedBy?: string;
+}
+
+export interface MonthlyProfessionalStats {
+  id: string; // {doctorId}_{YYYY-MM}
+  centerId: string;
+  doctorId: string; // The professional ID
+  yearMonth: string; // YYYY-MM format
+  /** Nombre completo del profesional (guardado en el documento para no depender de doctors[]) */
+  fullName?: string;
+  totalAppointments: number;
+  completed: number;
+  noShow: number;
+  cancelled: number;
+  billableCount: number;
+  totalAmountBillable: number;
+  lastUpdated: FirestoreDateLike;
+}
+
+export interface MonthlyCenterStats {
+  id: string; // {YYYY-MM}
+  centerId: string;
+  yearMonth: string; // YYYY-MM format
+  totalAppointments: number;
+  completed: number;
+  noShow: number;
+  cancelled: number;
+  billableCount: number;
+  totalAmountBillable: number;
+  lastUpdated: FirestoreDateLike;
+}
+
+export interface MonthClosure {
+  id: string; // {YYYY-MM}
+  centerId: string;
+  yearMonth: string; // YYYY-MM format
+  status: "open" | "closed";
+  closedAt?: FirestoreDateLike;
+  closedBy?: string;
 }
 
 export interface Preadmission {
@@ -440,6 +531,7 @@ export type RoleId =
   | "MATRONA"
   | "ODONTOLOGO"
   | "QUIMICO_FARMACEUTICO"
+  | "SERVICIO"
   | "SUPER_ADMIN";
 
 /**
@@ -475,7 +567,6 @@ export interface Doctor {
   /** @deprecated Autenticación real se gestiona con Firebase Auth (Google). */
   isAdmin?: boolean; // NEW: Controls access to AdminDashboard
   active?: boolean;
-  activo?: boolean;
   agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
   savedExamProfiles?: ExamProfile[];
@@ -538,5 +629,26 @@ export interface UserProfile {
   displayName?: string;
   photoURL?: string;
   activeCenterId?: string | null;
-  activo?: boolean;
+  active?: boolean;
+  billing?: {
+    plan: "professional" | "basic" | "free";
+    status: "active" | "overdue" | "suspended" | "trial";
+    nextDueDate?: string;
+    monthlyPrice?: number;
+    currency?: "UF" | "CLP";
+    lastPaidAt?: string;
+  };
+}
+
+export interface ExamOrderCatalog {
+  version: number;
+  categories: Array<{
+    id: string;
+    label: string;
+    exams: Array<{
+      id: string;
+      label: string;
+      code?: string;
+    }>;
+  }>;
 }

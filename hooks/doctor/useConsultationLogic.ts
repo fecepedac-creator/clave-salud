@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Consultation, Patient, AuditLogEntry, MedicalCenter, ProfessionalRole } from "../../types";
 import { generateId, sanitizeForFirestore } from "../../utils";
 import { useToast } from "../../components/Toast";
@@ -55,6 +55,47 @@ export const useConsultationLogic = ({
 
     const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>(getEmptyConsultation());
     const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+
+    // Auto-Save Draft Logic
+    const DRAFT_KEY = selectedPatient ? `consultation_draft_${selectedPatient.id}` : null;
+
+    useEffect(() => {
+        // Cargar draft inicial si existe
+        if (DRAFT_KEY) {
+            const savedDraft = localStorage.getItem(DRAFT_KEY);
+            if (savedDraft) {
+                try {
+                    const parsed = JSON.parse(savedDraft);
+                    // Solo restaurar si tiene al menos algun campo con datos relevantes
+                    if (parsed.reason || parsed.anamnesis || parsed.physicalExam || parsed.diagnosis) {
+                        setNewConsultation(parsed);
+                        showToast("Borrador recuperado", "info");
+                    }
+                } catch (e) {
+                    console.error("Error parseando borrador", e);
+                }
+            }
+        }
+    }, [DRAFT_KEY]);
+
+    // Usar timeout para debouncing del guardado local
+    useEffect(() => {
+        if (!DRAFT_KEY) return;
+        const handler = setTimeout(() => {
+            // Guardar solo si hay algo escrito que valga la pena (motivo, anamnesis, diagnostico)
+            if (newConsultation.reason || newConsultation.anamnesis || newConsultation.diagnosis) {
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(newConsultation));
+            }
+        }, 1500); // 1.5s de inactividad para guardar
+
+        return () => clearTimeout(handler);
+    }, [newConsultation, DRAFT_KEY]);
+
+    const clearDraft = useCallback(() => {
+        if (DRAFT_KEY) {
+            localStorage.removeItem(DRAFT_KEY);
+        }
+    }, [DRAFT_KEY]);
 
     // Vitals logic
     const handleVitalsChange = (field: keyof Consultation, value: string) => {
@@ -201,8 +242,8 @@ export const useConsultationLogic = ({
             // no-op
         }
 
-        // 4) Reset UI
-        // Note: setSelectedPatient needs to be called by the consumer if they want to update the selected patient view immediately with the new consultation
+        // 4) Reset UI & Clear Draft
+        clearDraft();
         setIsCreatingConsultation(false);
         setNewConsultation(getEmptyConsultation());
         setActiveTab("patients");
@@ -221,5 +262,6 @@ export const useConsultationLogic = ({
         removePrescription,
         handleCreateConsultation,
         getEmptyConsultation,
+        clearDraft,
     };
 };

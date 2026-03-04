@@ -154,6 +154,14 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   <span className="font-semibold">Dirección:</span>{" "}
                   {patient.address ? `${patient.address}${patient.commune ? `, ${patient.commune}` : ""}` : "No registrado"}
                 </div>
+                <div>
+                  <span className="font-semibold">Identidad de Género:</span> {patient.genderIdentity || "No declarada"}
+                </div>
+                <div>
+                  <span className="font-semibold">Previsión:</span>{" "}
+                  {patient.insurance || "No registrada"}
+                  {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-700">
                 <div>
@@ -174,8 +182,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   <span className="font-semibold">Fármacos en uso:</span>{" "}
                   {patient.medications?.length
                     ? patient.medications
-                        .map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`)
-                        .join(", ")
+                      .map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`)
+                      .join(", ")
                     : "No registrado"}
                 </div>
               </div>
@@ -208,15 +216,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                           <span className="font-semibold">Anamnesis:</span>{" "}
                           {c.anamnesis || "No registrado"}
                         </div>
-                        <div>
-                          <span className="font-semibold">Examen físico:</span>{" "}
-                          {c.physicalExam || "No registrado"}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Diagnóstico:</span>{" "}
-                          {c.diagnosis || "No registrado"}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
                           <div>
                             <span className="font-semibold">PA:</span>{" "}
                             {c.bloodPressure || "No registrado"}
@@ -241,6 +241,14 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                             <span className="font-semibold">Cintura/Cadera:</span>{" "}
                             {c.waist || "No registrado"} / {c.hip || "No registrado"}
                           </div>
+                        </div>
+                        <div className="mt-2">
+                          <span className="font-semibold">Examen físico:</span>{" "}
+                          {c.physicalExam || "No registrado"}
+                        </div>
+                        <div>
+                          <span className="font-semibold">Diagnóstico:</span>{" "}
+                          {c.diagnosis || "No registrado"}
                         </div>
                         {c.exams && Object.keys(c.exams).length > 0 ? (
                           <div>

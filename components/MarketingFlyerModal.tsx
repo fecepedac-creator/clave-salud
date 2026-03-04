@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     X,
     Download,
@@ -6,6 +6,9 @@ import {
     Check,
     Image as ImageIcon,
     Loader,
+    Upload,
+    Palette,
+    PlusCircle,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import FlyerCanvas from './FlyerCanvas';
@@ -20,6 +23,7 @@ import {
 } from '../utils/flyerGenerator';
 import { MedicalCenter, Doctor, Appointment } from '../types';
 import { useToast } from './Toast';
+import { generateAICaption } from '../utils/gemini';
 
 interface MarketingFlyerModalProps {
     type: FlyerType;
@@ -51,6 +55,15 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
     const [caption, setCaption] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [captionCopied, setCaptionCopied] = useState(false);
+    const [customLogo, setCustomLogo] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [captionSource, setCaptionSource] = useState<'default' | 'ai' | 'manual'>('default');
+
+    // AI Generative State
+    const [ideaPrompt, setIdeaPrompt] = useState('');
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const resultRef = useRef<HTMLDivElement>(null);
+    const [highlightResult, setHighlightResult] = useState(false);
 
     // Opciones de gradientes
     const gradientOptions = [
@@ -60,15 +73,16 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
         { id: 'gradient4', name: 'Azul-Índigo', value: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' },
         { id: 'gradient5', name: 'Verde-Esmeralda', value: 'linear-gradient(135deg, #10b981 0%, #14b8a6 100%)' },
         { id: 'gradient6', name: 'Pizarra-Oscuro', value: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)' },
+        { id: 'custom', name: 'Personalizado', value: center?.branding?.colors?.primary ? `linear-gradient(135deg, ${center.branding.colors.primary} 0%, #1e293b 100%)` : '' },
     ];
 
     const selectedGradient = gradientOptions.find(g => g.id === backgroundGradient)?.value || gradientOptions[0].value;
 
-    const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
-    const availableSlots = selectedDoctor
+    const selectedDoctor = useMemo(() => doctors.find(d => d.id === selectedDoctorId), [doctors, selectedDoctorId]);
+    const availableSlots = useMemo(() => selectedDoctor
         ? getAvailableSlots(appointments, selectedDoctorId)
-        : [];
-    const specialties = center ? extractSpecialties(doctors) : [];
+        : [], [appointments, selectedDoctorId, selectedDoctor]);
+    const specialties = useMemo(() => center ? extractSpecialties(doctors) : [], [center, doctors]);
 
     // Generar QR Code
     useEffect(() => {
@@ -95,6 +109,10 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
 
     // Generar Caption
     useEffect(() => {
+        // Solo actualizar el caption si es el original. Si el usuario escribió
+        // algo (manual) o usó IA (ai), no deberíamos sobrescribir su texto
+        if (captionSource !== 'default') return;
+
         if (type === 'platform') {
             setCaption(
                 generateCaption({
@@ -123,6 +141,49 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
             );
         }
     }, [type, center, selectedDoctor, availableSlots, specialties, selectedDoctorId]);
+
+    // Generar caption con IA
+    const handleGenerateAICaption = async () => {
+        if (!ideaPrompt.trim()) {
+            showToast('Por favor, ingresa una idea sobre qué quieres comunicar', 'warning');
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            let url = 'https://clavesalud.cl';
+            if (center) {
+                url = generateBookingURL(
+                    center.slug || center.id,
+                    type === 'professional' ? selectedDoctorId : undefined
+                );
+            }
+
+            const context = {
+                type,
+                centerName: center?.name,
+                doctorName: selectedDoctor?.fullName,
+                specialties,
+                url
+            };
+
+            const generatedText = await generateAICaption(ideaPrompt, context);
+            setCaption(generatedText);
+            setCaptionSource('ai');
+            showToast('¡Caption inteligente generado con éxito!', 'success');
+
+            // Scroll to result and highlight
+            setTimeout(() => {
+                resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setHighlightResult(true);
+                setTimeout(() => setHighlightResult(false), 2000);
+            }, 100);
+        } catch (error: any) {
+            showToast(error.message || 'Error al generar el texto', 'error');
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
 
     // Copiar caption
     const handleCopyCaption = () => {
@@ -204,7 +265,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                 <select
                                     value={format}
                                     onChange={e => setFormat(e.target.value as FlyerFormat)}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 bg-white"
                                 >
                                     <option value="instagram-post">Instagram Post (1080x1080)</option>
                                     <option value="instagram-story">Instagram Story (1080x1920)</option>
@@ -221,7 +282,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                     <select
                                         value={selectedDoctorId}
                                         onChange={e => setSelectedDoctorId(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 bg-white"
                                     >
                                         <option value="">Selecciona un profesional</option>
                                         {doctors.map(doc => (
@@ -243,8 +304,9 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                     value={customTitle}
                                     onChange={e => setCustomTitle(e.target.value)}
                                     placeholder="Deja vacío para usar el predeterminado"
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-800 bg-white"
                                 />
+
                             </div>
 
                             {/* Subtítulo personalizado */}
@@ -257,8 +319,9 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                     onChange={e => setCustomSubtitle(e.target.value)}
                                     placeholder="Deja vacío para usar el predeterminado"
                                     rows={2}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-slate-800 bg-white"
                                 />
+
                             </div>
 
                             {/* Selector de Fondo */}
@@ -267,7 +330,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                     Fondo
                                 </label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {gradientOptions.map(gradient => (
+                                    {gradientOptions.map(gradient => gradient.value && (
                                         <button
                                             key={gradient.id}
                                             onClick={() => setBackgroundGradient(gradient.id)}
@@ -283,38 +346,138 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                             )}
                                         </button>
                                     ))}
+                                    {/* Upload custom background (Placeholder/Simulado por ahora ya que requiere Firebase Storage) */}
+                                    <button
+                                        className="h-16 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-slate-400 transition-colors"
+                                        title="Subir fondo propio"
+                                        onClick={() => showToast('Funcionalidad de subida de archivos en desarrollo...', 'info')}
+                                    >
+                                        <Upload className="w-4 h-4" />
+                                        <span className="text-[10px] uppercase font-bold mt-1">Subir</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Brand Kit Section */}
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Palette className="w-4 h-4 text-slate-500" />
+                                    <span className="text-sm font-bold text-slate-700 uppercase">Configuración de Marca</span>
+                                </div>
+                                <div className="space-y-3">
+                                    <button
+                                        className="w-full py-2 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition flex items-center justify-between"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <span>{customLogo ? 'Cambiar Logo' : 'Personalizar Logo'}</span>
+                                        <Upload className="w-3 h-3" />
+                                    </button>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        accept="image/png, image/jpeg, image/webp, image/svg+xml"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                if (file.size > 1 * 1024 * 1024) {
+                                                    showToast("Logo muy grande. Máximo 1MB para el flyer.", "warning");
+                                                }
+                                                const reader = new FileReader();
+                                                reader.onload = (prev) => setCustomLogo(prev.target?.result as string);
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                    />
+                                    {customLogo && (
+                                        <button
+                                            className="text-[10px] text-red-500 font-bold uppercase hover:underline"
+                                            onClick={() => setCustomLogo(null)}
+                                        >
+                                            Restablecer logo original
+                                        </button>
+                                    )}
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <label className="text-[10px] text-slate-500 font-bold uppercase">Color Primario</label>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded border border-slate-200" style={{ background: center?.primaryColor || '#14b8a6' }}></div>
+                                                <span className="text-xs font-mono text-slate-400 uppercase">{center?.primaryColor}</span>
+                                            </div>
+                                        </div>
+                                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                                            <PlusCircle className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Caption generado */}
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="block text-sm font-semibold text-slate-700">
-                                        Caption para Redes Sociales
+                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mt-4 space-y-4">
+                                {/* Zona de Prompt IA */}
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-sm font-bold text-blue-900">
+                                        ✨ Redactor Inteligente (IA)
                                     </label>
-                                    <button
-                                        onClick={handleCopyCaption}
-                                        className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                                    >
-                                        {captionCopied ? (
-                                            <>
-                                                <Check className="w-4 h-4" />
-                                                Copiado
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Copy className="w-4 h-4" />
-                                                Copiar
-                                            </>
-                                        )}
-                                    </button>
+                                    <p className="text-xs text-blue-700 leading-tight">
+                                        Escribe la idea principal que deseas comunicar y dejaremos que la Inteligencia Artificial de ClaveSalud redacte el mensaje perfecto.
+                                    </p>
+                                    <div className="flex flex-col gap-2">
+                                        <textarea
+                                            value={ideaPrompt}
+                                            onChange={e => setIdeaPrompt(e.target.value)}
+                                            placeholder='Ej: "Anunciar que tenemos 20% de dcto en kinesiología este mes de marzo"'
+                                            rows={2}
+                                            className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-slate-800 bg-white resize-none"
+                                        />
+                                        <button
+                                            onClick={handleGenerateAICaption}
+                                            disabled={isGeneratingAI || !ideaPrompt.trim()}
+                                            className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                        >
+                                            {isGeneratingAI ? (
+                                                <><Loader className="w-4 h-4 animate-spin" /> Creando magia...</>
+                                            ) : (
+                                                <><Palette className="w-4 h-4" /> Generar Mensaje</>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-                                <textarea
-                                    value={caption}
-                                    onChange={e => setCaption(e.target.value)}
-                                    rows={10}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
-                                />
+
+                                {/* Resultado Final */}
+                                <div ref={resultRef} className="pt-2 border-t border-blue-200">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className={`block text-sm font-semibold transition-colors duration-500 ${highlightResult ? 'text-green-600' : 'text-slate-700'}`}>
+                                            Resultado Final (Listo para publicar)
+                                        </label>
+                                        <button
+                                            onClick={handleCopyCaption}
+                                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-bold"
+                                        >
+                                            {captionCopied ? (
+                                                <>
+                                                    <Check className="w-4 h-4" />
+                                                    Copiado
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Copy className="w-4 h-4" />
+                                                    Copiar
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        value={caption}
+                                        onChange={e => {
+                                            setCaption(e.target.value);
+                                            setCaptionSource('manual');
+                                        }}
+                                        rows={8}
+                                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm text-slate-800 font-medium transition-all duration-500 ${highlightResult ? 'border-green-400 ring-4 ring-green-100 bg-green-50' : 'border-slate-300 bg-white'}`}
+                                        placeholder="Tu mensaje aparecerá aquí..."
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -333,6 +496,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                         specialties={specialties}
                                         availableSlots={availableSlots}
                                         backgroundGradient={selectedGradient}
+                                        customCorporateLogo={customLogo || undefined}
                                     />
                                 </div>
                             </div>
