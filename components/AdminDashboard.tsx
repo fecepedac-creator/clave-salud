@@ -441,6 +441,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [waTemplates, setWaTemplates] = useState<WhatsappTemplate[]>(DEFAULT_WA_TEMPLATES);
   const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
   const [waTemplatesSaving, setWaTemplatesSaving] = useState(false);
+
+  // --- BOT CONFIG (secretaryPhone) ---
+  const [botSecretaryPhone, setBotSecretaryPhone] = useState("");
+  const [botConfigSaving, setBotConfigSaving] = useState(false);
+  const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [medicalServices, setMedicalServices] = useState<MedicalService[]>([]);
   const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">("CONSULTATION");
   const [manualBookingServiceId, setManualBookingServiceId] = useState<string>("");
@@ -482,6 +487,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCenterId]);
+
+  // Load whatsappConfig (secretaryPhone) from center document
+  useEffect(() => {
+    const loadBotConfig = async () => {
+      if (!db || !resolvedCenterId) return;
+      setBotConfigLoading(true);
+      try {
+        const centerRef = doc(db, "centers", resolvedCenterId);
+        const snap = await getDoc(centerRef);
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          setBotSecretaryPhone(data?.whatsappConfig?.secretaryPhone || "");
+        }
+      } catch (e) {
+        console.error("load bot config", e);
+      } finally {
+        setBotConfigLoading(false);
+      }
+    };
+    loadBotConfig();
+  }, [resolvedCenterId]);
 
   const saveWaTemplates = async () => {
     if (!db || !activeCenterId) return;
@@ -525,6 +551,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const removeWaTemplate = (id: string) => {
     setWaTemplates((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const saveBotConfig = async () => {
+    if (!db || !resolvedCenterId) return;
+    setBotConfigSaving(true);
+    try {
+      await setDoc(
+        doc(db, "centers", resolvedCenterId),
+        { whatsappConfig: { secretaryPhone: botSecretaryPhone.trim() } },
+        { merge: true }
+      );
+      showToast("Configuración del bot guardada correctamente.", "success");
+    } catch (e) {
+      console.error("save bot config", e);
+      showToast("No se pudo guardar la configuración del bot.", "error");
+    } finally {
+      setBotConfigSaving(false);
+    }
   };
 
   // --- STATE FOR DOCTORS MANAGEMENT ---
@@ -2553,224 +2597,299 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
           </div>
+
+          {/* BOT CONFIG CARD */}
+          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 mt-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <Phone className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-xl">Configuración del Bot</h3>
+                <p className="text-slate-400 text-sm mt-0.5">Número que recibirá notificaciones cuando un paciente solicite hablar con la secretaria.</p>
+              </div>
+            </div>
+
+            {botConfigLoading ? (
+              <div className="text-slate-400 text-sm italic">Cargando configuración...</div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    📱 Número de WhatsApp de la Secretaria
+                  </label>
+                  <div className="flex gap-3 items-center">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">+</span>
+                      <input
+                        type="tel"
+                        value={botSecretaryPhone}
+                        onChange={(e) => setBotSecretaryPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="56912345678"
+                        className="w-full bg-slate-900 border border-slate-600 rounded-xl pl-7 pr-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={saveBotConfig}
+                      disabled={botConfigSaving}
+                      className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <Save className="w-4 h-4" />
+                      {botConfigSaving ? "Guardando..." : "Guardar"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Ingresa el número completo con código de país, sin el símbolo +. Ejemplo: <span className="font-mono text-slate-400">56912345678</span>
+                  </p>
+                </div>
+
+                {botSecretaryPhone && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-sm text-emerald-300">
+                      Las notificaciones de handoff se enviarán a <span className="font-mono font-bold">+{botSecretaryPhone}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* MARKETING */}
-      {activeTab === "marketing" && (activeCenter || centerId) && (
-        <div className="animate-fadeIn">
-          <MarketingPosterModule centerId={resolvedCenterId} centerName={activeCenter?.name || ""} />
-        </div>
-      )}
+      {
+        activeTab === "marketing" && (activeCenter || centerId) && (
+          <div className="animate-fadeIn">
+            <MarketingPosterModule centerId={resolvedCenterId} centerName={activeCenter?.name || ""} />
+          </div>
+        )
+      }
 
       {/* AUDIT LOGS */}
-      {activeTab === "audit" && (
-        <div className="animate-fadeIn">
-          <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
-        </div>
-      )}
+      {
+        activeTab === "audit" && (
+          <div className="animate-fadeIn">
+            <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
+          </div>
+        )
+      }
 
       {/* SERVICES MANAGEMENT */}
-      {activeTab === "services" && (
-        <div className="space-y-8 animate-fadeIn">
-          <ServicesManager centerId={resolvedCenterId} />
-          <ServiceAgendasManager
-            centerId={resolvedCenterId}
-            doctors={doctors}
-            onUpdateDoctors={onUpdateDoctors}
-          />
-        </div>
-      )}
+      {
+        activeTab === "services" && (
+          <div className="space-y-8 animate-fadeIn">
+            <ServicesManager centerId={resolvedCenterId} />
+            <ServiceAgendasManager
+              centerId={resolvedCenterId}
+              doctors={doctors}
+              onUpdateDoctors={onUpdateDoctors}
+            />
+          </div>
+        )
+      }
 
       {/* PREADMISSIONS */}
-      {activeTab === "preadmissions" && (
-        <div className="animate-fadeIn">
-          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="font-bold text-white text-2xl flex items-center gap-2">
-                  <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
-                </h3>
-                <p className="text-slate-400 text-sm mt-2">
-                  Solicitudes enviadas sin autenticación o por el equipo.
-                </p>
+      {
+        activeTab === "preadmissions" && (
+          <div className="animate-fadeIn">
+            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="font-bold text-white text-2xl flex items-center gap-2">
+                    <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
+                  </h3>
+                  <p className="text-slate-400 text-sm mt-2">
+                    Solicitudes enviadas sin autenticación o por el equipo.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                  Total: {sortedPreadmissions.length}
+                </span>
               </div>
-              <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                Total: {sortedPreadmissions.length}
-              </span>
-            </div>
 
-            <div className="space-y-4">
-              {sortedPreadmissions.map((item) => {
-                const date = resolvePreadmissionDate(item);
-                const contactName = item.contact?.name || item.patientDraft?.fullName || "Paciente";
-                const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
-                const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
-                const contactEmail = item.contact?.email || item.patientDraft?.email || "";
-                const apptDate = item.appointmentDraft?.date;
-                const apptTime = item.appointmentDraft?.time;
-                const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
+              <div className="space-y-4">
+                {sortedPreadmissions.map((item) => {
+                  const date = resolvePreadmissionDate(item);
+                  const contactName = item.contact?.name || item.patientDraft?.fullName || "Paciente";
+                  const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
+                  const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
+                  const contactEmail = item.contact?.email || item.patientDraft?.email || "";
+                  const apptDate = item.appointmentDraft?.date;
+                  const apptTime = item.appointmentDraft?.time;
+                  const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
 
-                return (
-                  <div key={item.id} className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div>
-                        <h4 className="text-lg font-bold text-white">{contactName}</h4>
-                        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
-                          {contactRut && <span className="font-mono">{contactRut}</span>}
-                          {date && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
-                            </span>
-                          )}
+                  return (
+                    <div key={item.id} className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <h4 className="text-lg font-bold text-white">{contactName}</h4>
+                          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
+                            {contactRut && <span className="font-mono">{contactRut}</span>}
+                            {date && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
+                            {sourceLabel}
+                          </span>
+                          <button
+                            onClick={() => onApprovePreadmission(item)}
+                            className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                          >
+                            <Check className="w-4 h-4" /> Aprobar
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
-                          {sourceLabel}
-                        </span>
-                        <button
-                          onClick={() => onApprovePreadmission(item)}
-                          className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
-                        >
-                          <Check className="w-4 h-4" /> Aprobar
-                        </button>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div className="flex items-center gap-2 text-slate-300"><Phone className="w-4 h-4 text-emerald-400" />{contactPhone || "Sin teléfono"}</div>
+                        <div className="flex items-center gap-2 text-slate-300"><Mail className="w-4 h-4 text-indigo-400" />{contactEmail || "Sin email"}</div>
+                        <div className="flex items-center gap-2 text-slate-300"><Calendar className="w-4 h-4 text-blue-400" />{apptDate ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}` : "Sin hora solicitada"}</div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div className="flex items-center gap-2 text-slate-300"><Phone className="w-4 h-4 text-emerald-400" />{contactPhone || "Sin teléfono"}</div>
-                      <div className="flex items-center gap-2 text-slate-300"><Mail className="w-4 h-4 text-indigo-400" />{contactEmail || "Sin email"}</div>
-                      <div className="flex items-center gap-2 text-slate-300"><Calendar className="w-4 h-4 text-blue-400" />{apptDate ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}` : "Sin hora solicitada"}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* PERFORMANCE / RENDIMIENTO */}
-      {activeTab === "performance" && (
-        <div className="animate-fadeIn">
-          <AdminPerformanceTab
-            centerId={resolvedCenterId}
-            currentUserUid={auth.currentUser?.uid ?? ""}
-            doctors={doctors}
-            showToast={showToast}
-          />
-        </div>
-      )}
+      {
+        activeTab === "performance" && (
+          <div className="animate-fadeIn">
+            <AdminPerformanceTab
+              centerId={resolvedCenterId}
+              currentUserUid={auth.currentUser?.uid ?? ""}
+              doctors={doctors}
+              showToast={showToast}
+            />
+          </div>
+        )
+      }
 
       {/* GLOBAL MODALS */}
 
       {/* MANUAL BOOKING */}
-      {bookingSlotId && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-indigo-600" /> Agendar Manualmente
-            </h3>
+      {
+        bookingSlotId && (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn shadow-2xl">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-indigo-600" /> Agendar Manualmente
+              </h3>
 
-            <div className="space-y-4">
-              {/* Appointment Type Selector */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button
-                  onClick={() => setManualBookingType("CONSULTATION")}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "CONSULTATION" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
-                >
-                  Consulta Médica
-                </button>
-                <button
-                  onClick={() => setManualBookingType("SERVICE")}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "SERVICE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
-                >
-                  Servicio / Examen
-                </button>
-              </div>
-
-              {manualBookingType === "SERVICE" && (
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seleccionar Prestación</label>
-                  <select
-                    className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200 text-sm"
-                    value={manualBookingServiceId}
-                    onChange={(e) => setManualBookingServiceId(e.target.value)}
+              <div className="space-y-4">
+                {/* Appointment Type Selector */}
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setManualBookingType("CONSULTATION")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "CONSULTATION" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
                   >
-                    <option value="">-- Eliga una prestación --</option>
-                    {medicalServices.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    Consulta Médica
+                  </button>
+                  <button
+                    onClick={() => setManualBookingType("SERVICE")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "SERVICE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                  >
+                    Servicio / Examen
+                  </button>
                 </div>
-              )}
 
-              <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="RUT Paciente" value={bookingRut} onChange={(e) => setBookingRut(formatRUT(e.target.value))} />
-              <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Nombre Completo" value={bookingName} onChange={(e) => setBookingName(e.target.value)} />
-              <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Teléfono" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} />
+                {manualBookingType === "SERVICE" && (
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seleccionar Prestación</label>
+                    <select
+                      className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200 text-sm"
+                      value={manualBookingServiceId}
+                      onChange={(e) => setManualBookingServiceId(e.target.value)}
+                    >
+                      <option value="">-- Eliga una prestación --</option>
+                      {medicalServices.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-              <div className="flex gap-2 mt-4 pt-2">
-                <button onClick={() => {
-                  setBookingSlotId(null);
-                  setManualBookingType("CONSULTATION");
-                  setManualBookingServiceId("");
-                }} className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300">Cancelar</button>
-                <button
-                  onClick={handleManualBooking}
-                  disabled={manualBookingType === "SERVICE" && !manualBookingServiceId}
-                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg disabled:opacity-50"
-                >
-                  Confirmar
-                </button>
+                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="RUT Paciente" value={bookingRut} onChange={(e) => setBookingRut(formatRUT(e.target.value))} />
+                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Nombre Completo" value={bookingName} onChange={(e) => setBookingName(e.target.value)} />
+                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Teléfono" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} />
+
+                <div className="flex gap-2 mt-4 pt-2">
+                  <button onClick={() => {
+                    setBookingSlotId(null);
+                    setManualBookingType("CONSULTATION");
+                    setManualBookingServiceId("");
+                  }} className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300">Cancelar</button>
+                  <button
+                    onClick={handleManualBooking}
+                    disabled={manualBookingType === "SERVICE" && !manualBookingServiceId}
+                    className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg disabled:opacity-50"
+                  >
+                    Confirmar
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* CANCEL MODAL */}
-      {cancelModal.isOpen && cancelModal.appointment && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-md w-full animate-fadeIn">
-            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle className="w-8 h-8 text-amber-600" /></div>
-            <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
-              <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
-              <p className="text-slate-500">{cancelModal.appointment.date} - {cancelModal.appointment.time}</p>
-            </div>
-            <div className="space-y-3">
-              <button onClick={() => handleConfirmCancellation(true)} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200"><MessageCircle className="w-5 h-5" /> Cancelar y Notificar WhatsApp</button>
-              <button onClick={() => handleConfirmCancellation(false)} className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300">Solo Cancelar</button>
-              <button onClick={() => setCancelModal({ isOpen: false, appointment: null })} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600">Volver Atrás</button>
+      {
+        cancelModal.isOpen && cancelModal.appointment && (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-md w-full animate-fadeIn">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle className="w-8 h-8 text-amber-600" /></div>
+              <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
+                <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
+                <p className="text-slate-500">{cancelModal.appointment.date} - {cancelModal.appointment.time}</p>
+              </div>
+              <div className="space-y-3">
+                <button onClick={() => handleConfirmCancellation(true)} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200"><MessageCircle className="w-5 h-5" /> Cancelar y Notificar WhatsApp</button>
+                <button onClick={() => handleConfirmCancellation(false)} className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300">Solo Cancelar</button>
+                <button onClick={() => setCancelModal({ isOpen: false, appointment: null })} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600">Volver Atrás</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* MARKETING FLYER */}
-      {showMarketingModal && activeCenter && (
-        <MarketingFlyerModal
-          type={marketingFlyerType}
-          center={activeCenter}
-          doctors={doctors}
-          appointments={appointments}
-          onClose={() => setShowMarketingModal(false)}
-          onStatsUpdate={async (type) => {
-            if (!db || !resolvedCenterId) return;
-            try {
-              const statsRef = doc(db, "centers", resolvedCenterId, "statistics", "marketing");
-              const statsDoc = await getDoc(statsRef);
-              const currentStats = statsDoc.exists() ? statsDoc.data() : {};
-              await setDoc(statsRef, { ...currentStats, [`flyers_${type}`]: (currentStats[`flyers_${type}`] || 0) + 1, lastUpdated: serverTimestamp() }, { merge: true });
-            } catch (error) { console.error("Error updating marketing stats:", error); }
-          }}
-        />
-      )}
+      {
+        showMarketingModal && activeCenter && (
+          <MarketingFlyerModal
+            type={marketingFlyerType}
+            center={activeCenter}
+            doctors={doctors}
+            appointments={appointments}
+            onClose={() => setShowMarketingModal(false)}
+            onStatsUpdate={async (type) => {
+              if (!db || !resolvedCenterId) return;
+              try {
+                const statsRef = doc(db, "centers", resolvedCenterId, "statistics", "marketing");
+                const statsDoc = await getDoc(statsRef);
+                const currentStats = statsDoc.exists() ? statsDoc.data() : {};
+                await setDoc(statsRef, { ...currentStats, [`flyers_${type}`]: (currentStats[`flyers_${type}`] || 0) + 1, lastUpdated: serverTimestamp() }, { merge: true });
+              } catch (error) { console.error("Error updating marketing stats:", error); }
+            }}
+          />
+        )
+      }
 
       {/* MIGRATION */}
-      {showMigrationModal && activeCenter && (
-        <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
-      )}
+      {
+        showMigrationModal && activeCenter && (
+          <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
+        )
+      }
 
       {/* FEEDBACK BUTTON */}
       <a
@@ -2782,7 +2901,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
         Reportar Problema
       </a>
-    </div>
+    </div >
   );
 };
 
