@@ -12,10 +12,25 @@ if (admin.apps.length === 0) {
 const db = admin.firestore();
 
 // ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
-const API_KEY = process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(API_KEY);
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN || "";
+// Las secrets se inyectan en process.env en runtime via Firebase Secret Manager.
+// Usamos getters lazy para garantizar que se lean DESPUÉS de que la función
+// haya sido inicializada y las secrets estén disponibles.
 const VERIFY_TOKEN = "clavesalud_bot_2026";
+
+let _genAI: GoogleGenerativeAI | null = null;
+function getGenAI(): GoogleGenerativeAI {
+    if (!_genAI) {
+        const key = process.env.GEMINI_API_KEY || "";
+        if (!key) console.error("[Config] GEMINI_API_KEY no disponible — verificar Firebase Secrets");
+        _genAI = new GoogleGenerativeAI(key);
+    }
+    return _genAI;
+}
+function getWhatsappToken(): string {
+    const token = process.env.WHATSAPP_TOKEN || "";
+    if (!token) console.error("[Config] WHATSAPP_TOKEN no disponible — verificar Firebase Secrets");
+    return token;
+}
 
 // ─── CACHE POR CENTRO (multi-centro) ─────────────────────────────────────────
 // Cacheamos por centerId para soportar múltiples centros simultáneamente.
@@ -132,6 +147,7 @@ export async function _resetConversation(phone: string) {
 // ─── MENSAJERÍA WHATSAPP ──────────────────────────────────────────────────────
 
 async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any) {
+    const WHATSAPP_TOKEN = getWhatsappToken();
     if (!WHATSAPP_TOKEN || !phoneNumberId) return;
     const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
     try {
@@ -309,7 +325,7 @@ function getStateLabel(state: BotState): string {
 
 async function processWithAI(message: string, patientName: string, centerName: string) {
     try {
-        const model = genAI.getGenerativeModel({
+        const model = getGenAI().getGenerativeModel({
             model: "gemini-2.0-flash",
             generationConfig: { temperature: 0.1, maxOutputTokens: 250 }
         });
@@ -673,7 +689,11 @@ async function workerProcessor(
 // ─── WEBHOOK ─────────────────────────────────────────────────────────────────
 
 export const whatsappWebhook = functions
-    .runWith({ timeoutSeconds: 60, memory: "512MB" })
+    .runWith({
+        timeoutSeconds: 60,
+        memory: "512MB",
+        secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN"],
+    })
     .https.onRequest(async (req, res) => {
 
         // GET — verificación del webhook por Meta
@@ -730,7 +750,9 @@ export const whatsappWebhook = functions
  * Cuando se reserva una cita desde la web pública (no desde WhatsApp),
  * envía confirmación y — si aplica — instrucciones de preparación del servicio.
  */
-export const onAppointmentBooked = functions.firestore
+export const onAppointmentBooked = functions
+    .runWith({ secrets: ["WHATSAPP_TOKEN"] })
+    .firestore
     .document("centers/{centerId}/appointments/{appointmentId}")
     .onUpdate(async (change, context) => {
         const before = change.before.data();
