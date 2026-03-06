@@ -557,10 +557,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!db || !resolvedCenterId) return;
     setBotConfigSaving(true);
     try {
-      await setDoc(
+      // IMPORTANTE: usar dot-notation para no sobreescribir whatsappConfig.phoneNumberId
+      await updateDoc(
         doc(db, "centers", resolvedCenterId),
-        { whatsappConfig: { secretaryPhone: botSecretaryPhone.trim() } },
-        { merge: true }
+        { "whatsappConfig.secretaryPhone": botSecretaryPhone.trim() }
       );
       showToast("Configuración del bot guardada correctamente.", "success");
     } catch (e) {
