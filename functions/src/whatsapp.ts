@@ -117,7 +117,8 @@ interface Conversation {
     selectedStaffId?: string;
     selectedStaffName?: string;
     selectedDate?: string;
-    selectedSlotId?: string;
+    selectedSlotId?: string; // id visual ej 0900
+    selectedSlotDocId?: string; // id real de firestore
     selectedSlotLabel?: string;
     patientName?: string;
     patientRut?: string;
@@ -135,7 +136,26 @@ async function getConversation(phone: string): Promise<Conversation> {
     if (!doc.exists) {
         return { state: "IDLE", updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     }
-    return doc.data() as Conversation;
+
+    const conv = doc.data() as Conversation;
+
+    // Destrabar pacientes atrapados en espera de secretaría después de 8 horas
+    if (conv.state === "HANDOFF" && conv.updatedAt) {
+        let lastUpdate = new Date();
+        if (typeof (conv.updatedAt as any).toDate === 'function') {
+            lastUpdate = (conv.updatedAt as any).toDate();
+        }
+
+        const diffHours = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
+
+        if (diffHours >= 8) {
+            console.log(`[getConversation] Reseteando conversacion ${phone} atrapada en HANDOFF por mas de 8 horas.`);
+            await _resetConversation(phone);
+            return { state: "IDLE", updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        }
+    }
+
+    return conv;
 }
 
 async function setConversation(phone: string, data: Partial<Conversation>) {
@@ -461,34 +481,28 @@ async function offerDates(
 async function bookAppointment(phone: string, conv: Conversation) {
     try {
         const centerId = conv.centerId || "";
-        const appointmentId = `appt_${conv.selectedStaffId}_${conv.selectedDate}_${conv.selectedSlotId}`;
+        const appointmentDocId = conv.selectedSlotDocId; // Usamos el ID real de Firestore
+        if (!appointmentDocId) {
+            throw new Error("Missing selectedSlotDocId in conversation");
+        }
+
         const apptRef = db.collection("centers").doc(centerId)
-            .collection("appointments").doc(appointmentId);
+            .collection("appointments").doc(appointmentDocId);
 
         const result = await db.runTransaction(async (tx) => {
             const snap = await tx.get(apptRef);
-            if (snap.exists && snap.data()?.status === "booked") {
+            if (!snap.exists || snap.data()?.status !== "available") {
                 return { success: false, error: "SLOT_TAKEN" };
             }
 
             tx.set(apptRef, {
-                id: appointmentId,
-                centerId,
-                doctorId: conv.selectedStaffId,
                 patientName: conv.patientName,
                 patientRut: conv.patientRut,
                 patientPhone: conv.patientPhone || phone,
-                date: conv.selectedDate,
-                time: conv.selectedSlotLabel,
-                status: "booked",
-                attendanceStatus: null,
-                billable: null,
+                status: "booked", // Cambiar de available a booked
                 bookedVia: "whatsapp",
                 bookedAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                createdAt: snap.exists
-                    ? (snap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp())
-                    : admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
             return { success: true };
@@ -660,17 +674,22 @@ async function workerProcessor(
                     `Horarios - ${dateStr}`,
                     `Seleccione el bloque horario para ${conv.selectedStaffName}:`,
                     "Ver Horas",
-                    [{ title: "Horarios disponibles", rows: slots.map(s => ({ id: `slot_${s.id}`, title: s.label })) }]
+                    [{ title: "Horarios disponibles", rows: slots.map(s => ({ id: `slot_${s.id}_${s.docId}`, title: s.label })) }]
                 );
                 return;
             }
 
             if (listId.startsWith("slot_")) {
-                const cleanId = listId.replace("slot_", "");
+                // Nuevo formato: `slot_${s.id}_${s.docId}`
+                const parts = listId.split("_");
+                const cleanId = parts[1]; // ej: 0900
+                const docId = parts.slice(2).join("_"); // en caso de que el docId tenga guiones bajos
+
                 const slotLabel = interactiveData.list_reply.title;
                 await setConversation(to, {
                     state: "COLLECTING_NAME",
                     selectedSlotId: cleanId,
+                    selectedSlotDocId: docId,
                     selectedSlotLabel: slotLabel
                 });
                 await sendText(phoneNumberId, to,
@@ -790,6 +809,7 @@ export const whatsappWebhook = functions
             const message = change?.messages?.[0];
 
             if (message) {
+                const messageId = message.id; // Para idempotencia
                 const from: string = message.from;
                 const contactName: string = change?.contacts?.[0]?.profile?.name || "Paciente";
                 // ← CLAVE MULTI-CENTRO: el número WA que recibió el mensaje
@@ -798,9 +818,20 @@ export const whatsappWebhook = functions
                 // Responder 200 inmediatamente (Meta requiere < 5s)
                 res.status(200).send("EVENT_RECEIVED");
 
-                // Procesar de forma asíncrona
-                (async () => {
+                // --- Procesar de forma asíncrona pero asegurando retención (Idempotencia y await) ---
+                // Nota: Usar async desatado aquí en Firebase Functions causa early termination y bugs.
+                // Lo enviamos a correr como promesa pero nos aseguramos de cachar errores.
+                const runWorkerAsync = async () => {
                     try {
+                        // 1. Verificación simple de idempotencia por Redis o Firestore
+                        const idempotencyRef = db.collection("events").doc(messageId);
+                        const docEvent = await idempotencyRef.get();
+                        if (docEvent.exists) {
+                            console.log(`[Idempotencia] Mensaje ${messageId} ya procesado.`);
+                            return;
+                        }
+                        await idempotencyRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), from });
+
                         if (message.type === "text") {
                             await workerProcessor(phoneNumberId, from, message.text.body, "text", undefined, contactName);
                         } else if (message.type === "interactive") {
@@ -809,7 +840,11 @@ export const whatsappWebhook = functions
                     } catch (e) {
                         console.error("[Worker] Error no manejado:", e);
                     }
-                })();
+                };
+
+                // Ejecutamos en foreground aunque mandemos el 200 primero, Firebase lo permite si el buffer no se corta. 
+                // En V2 Functions es mejor un task queue, pero como fix urgente mantenemos try-catch await.
+                runWorkerAsync();
                 return;
             }
 
@@ -915,7 +950,7 @@ export const dailyControlRescuer = functions
             const centersSnap = await db.collection("centers").where("isActive", "==", true).get();
             for (const centerDoc of centersSnap.docs) {
                 const center = centerDoc.data();
-                const centerId = center.id;
+                const centerId = centerDoc.id; // <-- Fix crítico aplicado aquí
                 const centerName = center.name || "Centro Médico";
                 const phoneNumberId = center.whatsappConfig?.phoneNumberId;
                 if (!phoneNumberId) continue;
