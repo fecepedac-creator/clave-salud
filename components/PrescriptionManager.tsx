@@ -3,10 +3,8 @@ import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
 import { generateId } from "../utils";
 import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles, FileText, CheckSquare } from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
-import { EXAM_MODULES } from "../constants/examCatalog";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import AutocompleteInput from "./AutocompleteInput";
-import ExamSelectionModal from "./ExamSelectionModal";
 
 interface PrescriptionManagerProps {
   prescriptions: Prescription[];
@@ -96,7 +94,6 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   const [quickAddValue, setQuickAddValue] = useState("");
   const [templateSearchTerm, setTemplateSearchTerm] = useState("");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
-  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
   const [pendingExamsMetadata, setPendingExamsMetadata] = useState<string[]>([]);
 
   // Lógica de filtrado y sugerencia inteligente de plantillas
@@ -148,77 +145,6 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       setCurrentPrescriptionText(autoText);
     }
   }, [currentPrescriptionType, currentDiagnosis]);
-
-  const handleExamSelection = (selectedExams: string[], otherText: string) => {
-    // Strategy: Group exams by correct module (Laboratory, Imaging, Cardio, etc.)
-    // and create SEPARATE prescriptions for each group immediately.
-
-    const buckets: Record<string, string[]> = {};
-    const fallbackCategory = "Laboratorio";
-
-    // Helper to identify category
-    const findCategory = (examName: string) => {
-      // 1. Clean suffixes like " con Contraste"
-      const cleanName = examName.replace(" con Contraste", "").trim();
-
-      // 2. Check manual group override: e.g. "My Exam (Radiografías)"
-      const groupMatch = examName.match(/\((.*?)\)$/);
-      if (groupMatch) {
-        const potentialGroup = groupMatch[1];
-        for (const mod of EXAM_MODULES) {
-          if (mod.groups.some(g => g.label === potentialGroup)) return mod.label;
-        }
-      }
-
-      // 3. Normal lookup
-      for (const mod of EXAM_MODULES) {
-        for (const grp of mod.groups) {
-          // Check if catalog item is part of the name (e.g. "TC Cerebro" matches "TC Cerebro con Contraste")
-          if (grp.items.includes(cleanName)) return mod.label;
-        }
-      }
-      return fallbackCategory;
-    };
-
-    selectedExams.forEach((exam) => {
-      const cat = findCategory(exam);
-      if (!buckets[cat]) buckets[cat] = [];
-      buckets[cat].push(exam);
-    });
-
-    // Handle "Other" text -> Add to first bucket or create "Otros"
-    if (otherText.trim()) {
-      const extras = otherText.split("\n").map(l => l.trim()).filter(Boolean);
-      if (extras.length > 0) {
-        // Add to 'Otros' or append to 'Laboratorio' if exists?
-        // User wants distinct sheets. Better to put unique things in "Otros" or "Laboratorio".
-        // Let's optimize: If we have "Laboratorio", add there. Else custom bucket.
-        const target = buckets["Laboratorio"] ? "Laboratorio" : "Otros Exámenes";
-        if (!buckets[target]) buckets[target] = [];
-        buckets[target].push(...extras);
-      }
-    }
-
-    // Generate Documents
-    Object.entries(buckets).forEach(([category, items]) => {
-      const titleHeader = `SOLICITUD DE EXÁMENES: ${category.toUpperCase()}`;
-      const body = items.map(i => `- ${i}`).join("\n");
-      const fullContent = `${titleHeader}\n\n${body}`;
-
-      const newDoc: Prescription = {
-        id: generateId(),
-        type: "Solicitud de Examen",
-        content: fullContent,
-        createdAt: new Date().toISOString(),
-        metadata: { selectedExams: items }
-      };
-      onAddPrescription(newDoc);
-    });
-
-    // Clear UI
-    setCurrentPrescriptionText("");
-    setPendingExamsMetadata([]);
-  };
 
   const handleAdd = () => {
     if (!currentPrescriptionText.trim()) return;
@@ -330,13 +256,13 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
           {/* Template Button */}
           <div className="relative flex gap-2">
-            {currentPrescriptionType === "Solicitud de Examen" && (
+            {currentPrescriptionType === "Solicitud de Examen" && onOpenExamOrders && (
               <button
                 type="button"
-                onClick={() => setIsExamModalOpen(true)}
+                onClick={() => onOpenExamOrders()}
                 className="h-[50px] px-4 bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200 hover:bg-emerald-200 transition-colors flex items-center gap-2 whitespace-nowrap"
               >
-                <CheckSquare className="w-4 h-4" /> Seleccionar Exámenes
+                <CheckSquare className="w-4 h-4" /> Configurar Órdenes de Exámenes
               </button>
             )}
 
@@ -407,12 +333,6 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
             )}
           </div>
         </div>
-
-        <ExamSelectionModal
-          isOpen={isExamModalOpen}
-          onClose={() => setIsExamModalOpen(false)}
-          onConfirm={handleExamSelection}
-        />
 
         <textarea
           placeholder={
