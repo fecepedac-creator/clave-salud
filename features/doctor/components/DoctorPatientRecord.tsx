@@ -87,6 +87,10 @@ export interface DoctorPatientRecordProps {
 
     sendConsultationByEmail: (c: Consultation) => void;
     safeAgeLabel: (d?: string) => string;
+
+    onSaveExamOrderProfile?: (profile: { label: string; exams: string[] }) => void;
+    onDeleteExamOrderProfile?: (id: string) => void;
+    savedExamOrderProfiles?: Array<{ id: string; label: string; exams: string[] }>;
 }
 
 export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
@@ -98,7 +102,8 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
     selectedConsultationForModal, setSelectedConsultationForModal,
     isExamOrderModalOpen, setIsExamOrderModalOpen, examOrderCatalog,
     myExamProfiles, allExamOptions, myTemplates,
-    sendConsultationByEmail, safeAgeLabel
+    sendConsultationByEmail, safeAgeLabel,
+    onSaveExamOrderProfile, onDeleteExamOrderProfile, savedExamOrderProfiles
 }) => {
     const { showToast } = useToast();
 
@@ -243,6 +248,9 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 catalog={examOrderCatalog}
                 createdBy={doctorId}
                 onClose={() => setIsExamOrderModalOpen(false)}
+                onSaveProfile={onSaveExamOrderProfile}
+                onDeleteProfile={onDeleteExamOrderProfile}
+                customProfiles={savedExamOrderProfiles}
                 onSave={(docs) => {
                     setNewConsultation((prev) => ({
                         ...prev,
@@ -265,15 +273,15 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 examDefinitions={currentUser?.customExams}
             />
 
-            <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-30">
-                <div className="flex items-center gap-4">
+            <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-2 flex items-center justify-between sticky top-0 z-30">
+                <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full">
                         <ChevronRight className="w-5 h-5 rotate-180" />
                     </button>
                     {selectedPatient.attachments?.filter(a => a.type === 'profile_picture' || (a.type === 'image' && a.name.toLowerCase().includes('perfil'))).length ? (
-                        <img src={selectedPatient.attachments.filter(a => a.type === 'profile_picture' || (a.type === 'image' && a.name.toLowerCase().includes('perfil'))).pop()?.url} alt="Profile" className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 shadow-sm" />
+                        <img src={selectedPatient.attachments.filter(a => a.type === 'profile_picture' || (a.type === 'image' && a.name.toLowerCase().includes('perfil'))).pop()?.url} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 shadow-sm" />
                     ) : (
-                        <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xl border-2 border-indigo-200 shadow-sm uppercase">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg border-2 border-indigo-200 shadow-sm uppercase">
                             {selectedPatient.fullName.substring(0, 2)}
                         </div>
                     )}
@@ -299,33 +307,51 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                         <option value="Género Fluido">Género Fluido</option>
                                         <option value="Cisgénero">Cisgénero</option>
                                     </select>
-                                    <select className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500" value={selectedPatient.insurance} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, insurance: e.target.value } : null)}>
+                                    <select
+                                        className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500 font-bold"
+                                        value={selectedPatient.insurance || "FONASA"}
+                                        onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, insurance: e.target.value as any } : null)}
+                                    >
                                         <option value="FONASA">FONASA</option>
                                         <option value="ISAPRE">ISAPRE</option>
                                         <option value="Particular">Particular</option>
                                         <option value="DIPRECA">DIPRECA</option>
                                         <option value="CAPREDENA">CAPREDENA</option>
+                                        <option value="SISA">SISA</option>
+                                        <option value="Otro">Otro</option>
                                     </select>
+                                    {selectedPatient.insurance === "FONASA" && (
+                                        <select
+                                            className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500 font-bold"
+                                            value={selectedPatient.insuranceLevel || "A"}
+                                            onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, insuranceLevel: e.target.value } : null)}
+                                        >
+                                            <option value="A">A</option>
+                                            <option value="B">B</option>
+                                            <option value="C">C</option>
+                                            <option value="D">D</option>
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                         ) : (
                             <>
-                                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 group">
+                                <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2 group leading-none">
                                     {formatPersonName(selectedPatient.fullName)}
-                                    <span className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full font-mono font-medium border border-primary-100">{selectedPatient.rut}</span>
+                                    <span className="px-4 py-1 bg-indigo-50 text-indigo-700 text-xl rounded-full font-mono font-black border-2 border-indigo-100 shadow-md tracking-tighter">{selectedPatient.rut}</span>
                                     {!isReadOnly && (
-                                        <button onClick={() => setIsEditingPatient(true)} className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-full" title="Editar datos básicos">
-                                            <Edit className="w-4 h-4" />
+                                        <button onClick={() => setIsEditingPatient(true)} className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-100 hover:bg-slate-200 text-slate-600 p-1 rounded-full" title="Editar datos básicos">
+                                            <Edit className="w-3.5 h-3.5" />
                                         </button>
                                     )}
                                 </h1>
-                                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 font-medium">
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium mt-1">
                                     <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 border border-slate-200">{safeAgeLabel(selectedPatient.birthDate)}</span>
                                     <span className="bg-indigo-50 px-2 py-0.5 rounded text-indigo-700 border border-indigo-100">{selectedPatient.gender} {selectedPatient.genderIdentity && selectedPatient.genderIdentity !== 'Identidad de género no declarada' && `(${selectedPatient.genderIdentity})`}</span>
                                     {selectedPatient.insurance && (
-                                        <span className="bg-emerald-50 px-2 py-0.5 rounded text-emerald-700 border border-emerald-100 flex items-center gap-1">
+                                        <span className="bg-emerald-50 px-2 py-0.5 rounded text-emerald-700 border border-emerald-100 flex items-center gap-1 font-bold">
                                             {selectedPatient.insurance}
-                                            {selectedPatient.insurance === 'FONASA' && selectedPatient.insuranceLevel && ` - ${selectedPatient.insuranceLevel}`}
+                                            {selectedPatient.insurance === 'FONASA' && selectedPatient.insuranceLevel && ` (${selectedPatient.insuranceLevel})`}
                                         </span>
                                     )}
                                     <BioMarkers activeExams={selectedPatient.activeExams || []} consultations={selectedPatientConsultations} examOptions={allExamOptions} />

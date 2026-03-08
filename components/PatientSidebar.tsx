@@ -11,6 +11,8 @@ import {
   GENDER_IDENTITY_OPTIONS,
   PUEBLOS_ORIGINARIOS,
   NACIONALIDADES,
+  SMOKING_STATUS_OPTIONS,
+  ALCOHOL_STATUS_OPTIONS,
 } from "../constants";
 import { generateId } from "../utils";
 import {
@@ -60,6 +62,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     frequency: "",
   });
   const [tempAllergy, setTempAllergy] = useState("");
+  const [customMedical, setCustomMedical] = useState("");
+  const [customSurgical, setCustomSurgical] = useState("");
+  const [customSocial, setCustomSocial] = useState("");
 
   // Safety accessors
   const livingWith = selectedPatient.livingWith || [];
@@ -86,6 +91,38 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     } else {
       if (!surgicalHistory.includes(value)) {
         handleEditPatientField("surgicalHistory", [...surgicalHistory, value]);
+      }
+    }
+  };
+
+  const toggleHistoryItem = (type: "medical" | "surgical", itemId: string) => {
+    const list = type === "medical" ? medicalHistory : surgicalHistory;
+    const field = type === "medical" ? "medicalHistory" : "surgicalHistory";
+    const options = type === "medical" ? MEDICAL_HISTORY_OPTIONS : SURGICAL_HISTORY_OPTIONS;
+
+    // Normalizar para admitir tanto 'string' (legacy) como 'objeto' (FHIR)
+    const isItemSelected = list.some(item =>
+      typeof item === "string" ? item === itemId : item.id === itemId
+    );
+
+    if (isItemSelected) {
+      handleEditPatientField(field, list.filter(item =>
+        typeof item === "string" ? item !== itemId : item.id !== itemId
+      ));
+    } else {
+      // Buscar información de codificación en constantes
+      const option = options.find(o => o.id === itemId);
+      if (option && option.snomedCode) {
+        // Guardar como objeto codificado (FHIR Ready)
+        handleEditPatientField(field, [...list, {
+          id: option.id,
+          snomedCode: option.snomedCode,
+          system: option.system || "http://snomed.info/sct",
+          label: option.label
+        }]);
+      } else {
+        // Legacy fallback o texto libre
+        handleEditPatientField(field, [...list, itemId]);
       }
     }
   };
@@ -227,18 +264,86 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
       </div>
 
       {/* Antecedentes Mórbidos */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <Activity className="w-4 h-4 text-red-500" /> Patologías
         </h4>
-        <div className="flex flex-wrap gap-2">
-          {medicalHistory.map((h) => (
-            <span
-              key={h}
-              className="px-3 py-1.5 bg-red-50 text-red-700 text-sm font-bold rounded-lg border border-red-100 flex items-center gap-2"
-            >
-              {MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
-              {isEditingPatient && !readOnly && (
+
+        {isEditingPatient && !readOnly ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {MEDICAL_HISTORY_OPTIONS.filter(opt => opt.id !== 'OTRO').map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => toggleHistoryItem("medical", opt.id)}
+                  className={`text-[10px] p-2 rounded-xl border font-bold transition-all text-left flex items-center justify-between ${medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
+                    ? "bg-red-500 text-white border-red-600 shadow-sm"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-red-200 hover:bg-red-50"
+                    }`}
+                >
+                  {opt.label}
+                  {medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id) && <CheckCircle className="w-3 h-3" />}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-red-500 bg-white"
+                placeholder="+ Otra patología..."
+                value={customMedical}
+                onChange={(e) => setCustomMedical(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddHistory("medical", customMedical);
+                    setCustomMedical("");
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  handleAddHistory("medical", customMedical);
+                  setCustomMedical("");
+                }}
+                className="bg-red-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-red-600"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {medicalHistory.map((h) => {
+              const id = typeof h === "string" ? h : h.id;
+              const label = typeof h === "string" ? h : h.label;
+              const code = typeof h === "string" ? "" : h.snomedCode;
+
+              return (
+                <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
+                  <span className="px-3 py-1.5 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-100 flex items-center gap-2">
+                    {code && <Activity className="w-3 h-3 text-red-400" />}
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+            {!medicalHistory.length && (
+              <p className="text-xs text-slate-400 italic">Sin antecedentes.</p>
+            )}
+          </div>
+        )}
+
+        {/* Muestra los antecedentes actuales en modo edición también, pero con opción de borrar */}
+        {isEditingPatient && medicalHistory.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
+            {medicalHistory.map((h) => (
+              <span
+                key={h}
+                className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
+              >
+                {MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
                 <button
                   onClick={() =>
                     handleEditPatientField(
@@ -246,60 +351,188 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       medicalHistory.filter((item) => item !== h)
                     )
                   }
-                  className="text-red-500 hover:bg-red-200 rounded-full p-0.5"
+                  className="text-slate-400 hover:text-red-500"
                 >
                   <X className="w-3 h-3" />
                 </button>
-              )}
-            </span>
-          ))}
-          {!medicalHistory.length && (
-            <p className="text-sm text-slate-400 italic">Sin antecedentes.</p>
-          )}
-        </div>
-        {isEditingPatient && !readOnly && (
-          <select
-            className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:border-red-500"
-            onChange={(e) => {
-              handleAddHistory("medical", e.target.value);
-              e.target.value = "";
-            }}
-          >
-            <option value="">+ Agregar Patología...</option>
-            {MEDICAL_HISTORY_OPTIONS.filter((opt) => !medicalHistory.includes(opt.id)).map(
-              (opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              )
-            )}
-          </select>
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Consumo de Drogas */}
-      {selectedPatient.drugUse === "Si" && (
-        <div className="space-y-2 p-4 bg-purple-50 rounded-xl border border-purple-100">
-          <h4 className="text-sm font-bold text-purple-900 flex items-center gap-2">
-            Consumo de Drogas
-          </h4>
-          <p className="text-slate-700 font-medium">{selectedPatient.drugDetails}</p>
-        </div>
-      )}
+      {/* ESTILO DE VIDA (Hábitos) */}
+      <div className="space-y-4 pt-4 border-t border-slate-100">
+        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <Pill className="w-4 h-4 text-emerald-500" /> Estilo de Vida
+        </h4>
+
+        {isEditingPatient && !readOnly ? (
+          <div className="space-y-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Tabaco</p>
+              <div className="flex flex-wrap gap-1.5">
+                {SMOKING_STATUS_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => handleEditPatientField("smokingStatus", opt)}
+                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.smokingStatus === opt
+                      ? "bg-slate-700 text-white border-slate-800 shadow-sm"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Alcohol</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ALCOHOL_STATUS_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => handleEditPatientField("alcoholStatus", opt)}
+                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.alcoholStatus === opt
+                      ? "bg-slate-700 text-white border-slate-800 shadow-sm"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Otras Sustancias</p>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => handleEditPatientField("drugUse", selectedPatient.drugUse === "Si" ? "No" : "Si")}
+                  className={`flex-1 text-[10px] py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.drugUse === "Si" ? "bg-purple-600 text-white border-purple-700" : "bg-white text-slate-600 border-slate-200"}`}
+                >
+                  {selectedPatient.drugUse === "Si" ? "Consumo declarado" : "Sin consumo declaredo"}
+                </button>
+              </div>
+              {selectedPatient.drugUse === "Si" && (
+                <textarea
+                  className="w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-purple-500 min-h-[60px]"
+                  placeholder="Especifique qué y frecuencia..."
+                  value={selectedPatient.drugDetails || ""}
+                  onChange={(e) => handleEditPatientField("drugDetails", e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            <div className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.smokingStatus === 'Fumador actual' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+              <span className="text-[10px] font-bold text-slate-500">TABACO</span>
+              <span className={`text-[10px] font-black ${selectedPatient.smokingStatus === 'Fumador actual' ? 'text-amber-700' : 'text-slate-700'}`}>{selectedPatient.smokingStatus || "No registrado"}</span>
+            </div>
+            <div className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.alcoholStatus === 'Frecuente' ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
+              <span className="text-[10px] font-bold text-slate-500">ALCOHOL</span>
+              <span className={`text-[10px] font-black ${selectedPatient.alcoholStatus === 'Frecuente' ? 'text-red-700' : 'text-slate-700'}`}>{selectedPatient.alcoholStatus || "No registrado"}</span>
+            </div>
+            {selectedPatient.drugUse === "Si" && (
+              <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+                <p className="text-[10px] font-black text-purple-700 mb-1 uppercase">Sustancias</p>
+                <p className="text-xs text-purple-900 font-medium">{selectedPatient.drugDetails}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Antecedentes Quirúrgicos */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <Scissors className="w-4 h-4 text-indigo-500" /> Cirugías
         </h4>
-        <div className="flex flex-wrap gap-2">
-          {surgicalHistory.map((h) => (
-            <span
-              key={h}
-              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-lg border border-indigo-100 flex items-center gap-2"
-            >
-              {SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
-              {isEditingPatient && !readOnly && (
+
+        {isEditingPatient && !readOnly ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SURGICAL_HISTORY_OPTIONS.filter(opt => opt.id !== 'OTRO').map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => toggleHistoryItem("surgical", opt.id)}
+                  className={`text-[10px] p-2 rounded-xl border font-bold transition-all text-left flex items-center justify-between ${surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
+                    ? "bg-indigo-500 text-white border-indigo-600 shadow-sm"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50"
+                    }`}
+                >
+                  {opt.label}
+                  {surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id) && <CheckCircle className="w-3 h-3" />}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-indigo-500 bg-white"
+                placeholder="+ Otra cirugía..."
+                value={customSurgical}
+                onChange={(e) => setCustomSurgical(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddHistory("surgical", customSurgical);
+                    setCustomSurgical("");
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  handleAddHistory("surgical", customSurgical);
+                  setCustomSurgical("");
+                }}
+                className="bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-indigo-600"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {surgicalHistory.map((h) => {
+              const id = typeof h === "string" ? h : h.id;
+              const label = typeof h === "string" ? h : h.label;
+              const code = typeof h === "string" ? "" : h.snomedCode;
+
+              return (
+                <div
+                  key={id}
+                  className="group relative"
+                  title={code ? `SNOMED: ${code}` : ""}
+                >
+                  <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100 flex items-center gap-2">
+                    {code && <Activity className="w-3 h-3 text-indigo-400" />}
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+            {!surgicalHistory.length && (
+              <p className="text-xs text-slate-400 italic">No registradas.</p>
+            )}
+          </div>
+        )}
+
+        {/* Muestra los antecedentes actuales en modo edición también */}
+        {isEditingPatient && surgicalHistory.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
+            {surgicalHistory.map((h) => (
+              <span
+                key={h}
+                className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
+              >
+                {SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
                 <button
                   onClick={() =>
                     handleEditPatientField(
@@ -307,34 +540,13 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       surgicalHistory.filter((item) => item !== h)
                     )
                   }
-                  className="text-indigo-500 hover:bg-indigo-200 rounded-full p-0.5"
+                  className="text-slate-400 hover:text-red-500"
                 >
                   <X className="w-3 h-3" />
                 </button>
-              )}
-            </span>
-          ))}
-          {!surgicalHistory.length && (
-            <p className="text-sm text-slate-400 italic">Sin cirugías.</p>
-          )}
-        </div>
-        {isEditingPatient && !readOnly && (
-          <select
-            className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:border-indigo-500"
-            onChange={(e) => {
-              handleAddHistory("surgical", e.target.value);
-              e.target.value = "";
-            }}
-          >
-            <option value="">+ Agregar Cirugía...</option>
-            {SURGICAL_HISTORY_OPTIONS.filter((opt) => !surgicalHistory.includes(opt.id)).map(
-              (opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              )
-            )}
-          </select>
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
@@ -557,47 +769,73 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
           <div className="text-base text-slate-700">
             <span className="font-bold block text-xs text-slate-400 uppercase">Vive Con</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {livingWith.map((person, idx) => (
-                <span
-                  key={idx}
-                  className="bg-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-700 flex items-center gap-1"
-                >
-                  {person}
-                  {isEditingPatient && !readOnly && (
+            {isEditingPatient && !readOnly ? (
+              <div className="space-y-3 mt-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {LIVING_WITH_OPTIONS.filter(o => o !== 'Otro').map(opt => (
                     <button
-                      onClick={() =>
-                        handleEditPatientField(
-                          "livingWith",
-                          livingWith.filter((_, i) => i !== idx)
-                        )
-                      }
-                      className="hover:text-red-500"
+                      key={opt}
+                      type="button"
+                      onClick={() => handleAddSocial(opt)}
+                      className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all ${livingWith.includes(opt) ? "bg-blue-600 text-white border-blue-700 shadow-sm" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
                     >
-                      <X className="w-3 h-3" />
+                      {opt}
                     </button>
-                  )}
-                </span>
-              ))}
-              {livingWith.length === 0 && (
-                <span className="text-slate-400 italic">No especificado</span>
-              )}
-            </div>
-            {isEditingPatient && !readOnly && (
-              <select
-                className="w-full mt-2 p-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:border-blue-500"
-                onChange={(e) => {
-                  handleAddSocial(e.target.value);
-                  e.target.value = "";
-                }}
-              >
-                <option value="">+ Agregar persona...</option>
-                {LIVING_WITH_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                    placeholder="+ Otra persona..."
+                    value={customSocial}
+                    onChange={(e) => setCustomSocial(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddSocial(customSocial);
+                        setCustomSocial("");
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAddSocial(customSocial);
+                      setCustomSocial("");
+                    }}
+                    className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {livingWith.map((person, idx) => (
+                  <span
+                    key={idx}
+                    className="bg-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-700 flex items-center gap-1"
+                  >
+                    {person}
+                  </span>
                 ))}
-              </select>
+                {livingWith.length === 0 && (
+                  <span className="text-slate-400 italic">No especificado</span>
+                )}
+              </div>
+            )}
+
+            {isEditingPatient && livingWith.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2 p-2 bg-white rounded-lg border border-slate-100">
+                {livingWith.map((person, idx) => (
+                  <span key={idx} className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                    {person}
+                    <button onClick={() => handleEditPatientField("livingWith", livingWith.filter((_, i) => i !== idx))}
+                      className="text-slate-400 hover:text-red-500">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
 

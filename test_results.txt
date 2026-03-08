@@ -1,0 +1,8 @@
+[dotenv@17.3.1] injecting env (16) from .env.test -- tip: ⚙️  override existing env vars with { override: true }
+Error: Cannot find module 'C:\Users\fecep\clave-salud\tests\admin\fixtures\test-data' imported from C:\Users\fecep\clave-salud\tests\admin\navigation-ux.spec.ts
+
+Error: No tests found.
+Make sure that arguments are regular expressions matching test files.
+You may need to escape symbols like "$" or "*" and quote the arguments.
+
+[1A[2K

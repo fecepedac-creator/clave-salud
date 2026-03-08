@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MedicalCenter, Patient, Consultation, Doctor } from "../types";
 import { auth, db } from "../firebase";
 import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAuditLog";
-import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
+import { ChevronDown, FileText, Users } from "lucide-react";
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
+import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
 
 interface GeneratedByInfo {
   name: string;
@@ -35,6 +36,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   const [careTeamUids, setCareTeamUids] = useState<string[]>(patient?.careTeamUids ?? []);
   const [savingCareTeam, setSavingCareTeam] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [isCareTeamExpanded, setIsCareTeamExpanded] = useState(false);
 
   useEffect(() => {
     if (!patient || !centerId) return;
@@ -150,23 +152,25 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   };
 
   return (
-    <>
+    <div className="flex items-center gap-3">
       <button
         type="button"
         onClick={handleDownload}
-        className="bg-slate-900 text-white px-4 py-2 rounded-lg font-semibold hover:bg-slate-800 transition-colors"
+        className="flex items-center gap-2 bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200 whitespace-nowrap"
       >
-        Descargar ficha completa (PDF)
+        <FileText className="w-4 h-4" />
+        Ficha PDF
       </button>
 
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Identidad de Género</p>
-          <p className="text-sm font-bold text-slate-700">{patient.genderIdentity || "No declarada"}</p>
+      {/* Basic Info Cards - More compact */}
+      <div className="hidden xl:flex items-center gap-2">
+        <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Identidad</p>
+          <p className="text-[11px] font-bold text-slate-700 leading-none">{patient.genderIdentity || "No declarada"}</p>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Previsión de Salud</p>
-          <p className="text-sm font-bold text-slate-700">
+        <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Previsión</p>
+          <p className="text-[11px] font-bold text-slate-700 leading-none">
             {patient.insurance || "No registrada"}
             {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
           </p>
@@ -184,63 +188,79 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       />
 
       {isAdminUser && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                Modo de acceso:
-              </span>
-              <span className="text-xs font-semibold text-slate-700 bg-white px-2 py-0.5 rounded border shadow-sm">
-                {accessMode === "CARE_TEAM" ? "Equipo tratante" : "Centro completo"}
-              </span>
-            </div>
-            {accessMode === "CARE_TEAM" && (
-              <p className="text-[10px] text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded font-semibold">
-                Solo el equipo tratante puede acceder a esta ficha.
-              </p>
-            )}
-          </div>
+        <div className="relative">
+          <button
+            onClick={() => setIsCareTeamExpanded(!isCareTeamExpanded)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all font-bold text-xs ${isCareTeamExpanded
+              ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-inner"
+              : "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:text-indigo-600 shadow-sm"
+              }`}
+          >
+            <Users className="w-4 h-4" />
+            <span className="hidden lg:inline">Modo: {accessMode === "CARE_TEAM" ? "Equipo" : "Centro"}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isCareTeamExpanded ? "rotate-180" : ""}`} />
+          </button>
 
-          {showCareTeamEditor && (
-            <div className="mt-3 pt-3 border-t border-slate-200/60">
-              <p className="text-xs font-bold text-slate-700 mb-2">Equipo tratante</p>
-              {accessMode !== "CARE_TEAM" && (
-                <p className="text-[10px] text-slate-500 mb-2 leading-tight">
-                  En modo centro completo esta asignación es opcional.
-                </p>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {staffMembers.map((member) => (
-                  <label
-                    key={member.id}
-                    className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={careTeamUids.includes(member.id)}
-                      onChange={() => toggleCareTeam(member.id)}
-                      className="h-4 w-4"
-                    />
-                    <span className="font-medium">{member.fullName || member.email}</span>
-                    {member.role && (
-                      <span className="text-xs text-slate-400">({member.role})</span>
-                    )}
-                  </label>
-                ))}
+          {isCareTeamExpanded && (
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 z-50 animate-scaleIn origin-top-right">
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Configurar Acceso</p>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${accessMode === "CARE_TEAM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                  {accessMode === "CARE_TEAM" ? "Restringido" : "Abierto"}
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveCareTeam}
-                disabled={savingCareTeam}
-                className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {savingCareTeam ? "Guardando..." : "Guardar equipo tratante"}
-              </button>
+
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Equipo tratante asignado:</p>
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                  {staffMembers.map((member) => (
+                    <label
+                      key={member.id}
+                      className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border transition-colors cursor-pointer ${careTeamUids.includes(member.id)
+                        ? "bg-indigo-50 border-indigo-100 text-indigo-700"
+                        : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-white"
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={careTeamUids.includes(member.id)}
+                        onChange={() => toggleCareTeam(member.id)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-bold leading-tight">{member.fullName || member.email}</span>
+                        {member.role && (
+                          <span className="text-[9px] opacity-70 uppercase font-bold">{member.role}</span>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleSaveCareTeam();
+                      setIsCareTeamExpanded(false);
+                    }}
+                    disabled={savingCareTeam}
+                    className="w-full bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-lg shadow-indigo-100"
+                  >
+                    {savingCareTeam ? "Guardando..." : "Guardar Cambios"}
+                  </button>
+                  {accessMode === "CARE_TEAM" && (
+                    <p className="text-[9px] text-amber-600 font-bold text-center mt-2 leading-tight">
+                      * Solo los seleccionados podrán ver esta ficha.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
       )}
-    </>
+    </div>
   );
 };
 

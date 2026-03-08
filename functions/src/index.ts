@@ -309,11 +309,6 @@ function buildPosterSvg(params: {
 </svg>`;
 }
 
-const SUPERADMIN_WHITELIST = new Set<string>([
-  "fecepedac@gmail.com",
-  "dr.felipecepeda@gmail.com",
-]);
-
 /**
  * INVITE schema (Firestore: invites/{token})
  * {
@@ -662,23 +657,23 @@ export const setSuperAdmin = (functions.https.onCall as any)(
     const callerUid = context.auth?.uid as string;
     const callerEmail = lowerEmailFromContext(context);
 
-    const isAllowed =
-      isSuperAdmin(context) ||
-      (callerEmail && SUPERADMIN_WHITELIST.has(callerEmail));
-
-    if (!isAllowed) {
-      throw new functions.https.HttpsError("permission-denied", "No tienes permisos para esta acción.");
+    // Hardened: Only an existing SuperAdmin can promote another user (or themselves)
+    // The previous whitelist-based elevation is removed for security (audit P1)
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tienes permisos de SuperAdmin para elevar privilegios."
+      );
     }
 
     const targetUidRaw = String(data?.uid || "").trim();
-    const targetUid = targetUidRaw || callerUid;
-
-    if (!isSuperAdmin(context) && targetUid !== callerUid) {
+    if (!targetUidRaw) {
       throw new functions.https.HttpsError(
-        "permission-denied",
-        "Solo puedes elevar tu propio usuario."
+        "invalid-argument",
+        "El UID del objetivo es requerido."
       );
     }
+    const targetUid = targetUidRaw;
 
     const targetUser = await admin.auth().getUser(targetUid);
     const existingClaims = (targetUser.customClaims || {}) as Record<string, unknown>;
@@ -1928,9 +1923,17 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
       );
     }
 
-    // 1. Verificar que el profesional sea staff del centro
-    const isStaffMember = await isCenterAdminForCenter(uid, centerId) ||
-      (await db.collection("centers").doc(centerId).collection("staff").doc(uid).get()).exists;
+    // 1. Verificar que el profesional sea staff del centro y esté ACTIVO
+    const staffDoc = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    const isStaffMember = staffDoc.exists;
+    const isActive = resolveActive(staffDoc.data());
+
+    if (!isActive && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "El acceso profesional está desactivado o el usuario no existe."
+      );
+    }
 
     if (!isStaffMember && !isSuperAdmin(context)) {
       throw new functions.https.HttpsError(

@@ -312,6 +312,14 @@ export interface Consultation extends SoftDeletable {
   nextControlDate?: string;
   nextControlReason?: string;
   reminderActive?: boolean;
+
+  // --- FHIR R4 / Encounter Alignment ---
+  encounterMetadata?: {
+    status: "planned" | "arrived" | "triaged" | "in-progress" | "onleave" | "finished" | "cancelled";
+    class: "AMB" | "EMER" | "FLD" | "HOME"; // Ambulatory, Emergency, etc.
+    type?: string[]; // Codes
+    serviceType?: string;
+  };
 }
 
 export interface Patient extends SoftDeletable {
@@ -343,14 +351,26 @@ export interface Patient extends SoftDeletable {
   occupation?: string;
   livingWith?: string[];
 
+  // --- FHIR R4 / Core-CL Alignment ---
+  fhirMetadata?: {
+    identifier?: Array<{
+      use?: "official" | "secondary";
+      system?: string;
+      value?: string;
+    }>;
+    communeCode?: string; // DEIS code
+    regionCode?: string; // DEIS code
+    lastUpdated?: string;
+  };
+
   // --- Bio-Markers Subscription ---
   activeExams?: string[]; // List of exam IDs (e.g., ['hba1c', 'tsh'])
 
-  medicalHistory: string[];
+  medicalHistory: Array<string | { id: string, snomedCode: string, system: string, label: string }>;
   medicalHistoryDetails?: string;
   cancerDetails?: string;
 
-  surgicalHistory: string[];
+  surgicalHistory: Array<string | { id: string, snomedCode: string, system: string, label: string }>;
   surgicalHistoryDetails?: string;
   herniaDetails?: string;
 
@@ -570,6 +590,12 @@ export interface Doctor {
   agendaConfig?: AgendaConfig;
   savedTemplates?: ClinicalTemplate[];
   savedExamProfiles?: ExamProfile[];
+  savedExamOrderProfiles?: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    exams: string[];
+  }>;
   customExams?: ExamDefinition[]; // NEW: Allows doctor to define their own exams
   preferences?: {
     vitalsEnabled?: boolean;
@@ -638,14 +664,36 @@ export interface UserProfile {
     currency?: "UF" | "CLP";
     lastPaidAt?: string;
   };
+  savedExamOrderProfiles?: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    exams: string[];
+  }>;
 }
 
 export interface ExamOrderCatalog {
   version: number;
+  profiles?: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    exams: string[]; // List of exam labels to select
+  }>;
   categories: Array<{
     id: string;
     label: string;
-    exams: Array<{
+    groups?: Array<{
+      id: string;
+      label: string;
+      items: Array<{
+        label: string;
+        code?: string;
+        modality?: "RX" | "TC" | "RM" | "ECO" | null;
+        contrast?: "con" | "sin" | null;
+      }>;
+    }>;
+    exams?: Array<{
       id: string;
       label: string;
       code?: string;

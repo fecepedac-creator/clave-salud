@@ -38,6 +38,7 @@ export function useCenters(
   const [lastCenterDoc, setLastCenterDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [hasMoreCenters, setHasMoreCenters] = useState<boolean>(false);
   const [isLoadingMoreCenters, setIsLoadingMoreCenters] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const activeCenter = useMemo(
     () => centers.find((c) => c.id === activeCenterId) ?? null,
@@ -64,6 +65,7 @@ export function useCenters(
       setCenters(INITIAL_CENTERS);
       setHasMoreCenters(false);
       setLastCenterDoc(null);
+      setIsLoading(false);
       return;
     }
     const unsubscribers: Array<() => void> = [];
@@ -156,7 +158,9 @@ export function useCenters(
       }
     };
 
-    run();
+    run().finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
 
     return () => {
       cancelled = true;
@@ -203,5 +207,6 @@ export function useCenters(
     hasMoreCenters,
     loadMoreCenters,
     isLoadingMoreCenters,
+    isLoading,
   };
 }

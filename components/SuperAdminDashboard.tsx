@@ -183,6 +183,8 @@ const MESSAGE_TEMPLATES = {
   }
 } as const;
 
+import { Menu, X } from "lucide-react";
+
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   centers,
   doctors,
@@ -1082,59 +1084,104 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pl-64 transition-all duration-300">
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full fixed left-0 top-0 border-r border-slate-800 z-50">
-        <div className="p-6 border-b border-white/5 bg-slate-900/50 backdrop-blur-md">
-          <LogoHeader size="sm" showText={true} className="mb-3" />
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-health-400">
-            <Shield className="w-3 h-3" /> Super Admin
+    <div
+      className={`min-h-screen bg-slate-50 font-sans transition-all duration-300 ${isSidebarOpen ? "overflow-hidden pt-0" : "pt-16"}`}
+      data-testid="superadmin-dashboard-root"
+    >
+      {/* MOBILE/TABLET HEADER */}
+      <header className="fixed top-0 left-0 right-0 z-[60] bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-lg h-16">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            data-testid="superadmin-drawer-toggle"
+            title={isSidebarOpen ? "Cerrar menú" : "Abrir menú"}
+          >
+            {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black text-health-400 uppercase tracking-widest">SuperAdmin</span>
+            <span className="text-sm font-bold truncate" data-testid="superadmin-active-tab-label">
+              {activeTab === 'general' ? 'Visión General' :
+                activeTab === 'centers' ? 'Gestión de Centros' :
+                  activeTab === 'finanzas' ? 'Finanzas' :
+                    activeTab === 'comunicacion' ? 'Comunicación' :
+                      activeTab === 'metrics' ? 'Uso Plataforma' : 'Usuarios'}
+            </span>
           </div>
         </div>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:block">
+            <LogoHeader size="sm" showText={true} />
+          </div>
+          <div className="sm:hidden">
+            <LogoHeader size="sm" showText={false} />
+          </div>
+        </div>
+      </header>
 
-        <nav className="flex-1 p-4 space-y-2">
-          {renderSidebarButton(
-            "general",
-            "Visión General",
-            <span className="inline-flex w-5 justify-center">
-              <Megaphone className="w-4 h-4" />
-            </span>
-          )}
-          {renderSidebarButton(
-            "centers",
-            "Centros",
-            <span className="inline-flex w-5 justify-center">
-              <Building2 className="w-4 h-4" />
-            </span>
-          )}
-          {renderSidebarButton(
-            "finanzas",
-            "Finanzas",
-            <span className="inline-flex w-5 justify-center">
-              <CreditCard className="w-4 h-4" />
-            </span>
-          )}
-          {renderSidebarButton(
-            "comunicacion",
-            "Comunicación",
-            <span className="inline-flex w-5 justify-center">
-              <Mail className="w-4 h-4" />
-            </span>
-          )}
-          {renderSidebarButton(
-            "metrics",
-            "Uso de Plataforma",
-            <span className="inline-flex w-5 justify-center">
-              <BarChart3 className="w-4 h-4" />
-            </span>
-          )}
-          {renderSidebarButton(
-            "users",
-            "Usuarios",
-            <span className="inline-flex w-5 justify-center">
-              <Users className="w-4 h-4" />
-            </span>
-          )}
+      {/* OVERLAY for drawer */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 transition-opacity animate-fadeIn"
+          onClick={() => setIsSidebarOpen(false)}
+          data-testid="superadmin-drawer-overlay"
+        />
+      )}
+
+      {/* SIDEBAR / DRAWER */}
+      <aside
+        className={`
+          fixed left-0 top-0 h-full bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 z-[55] transition-all duration-300 shadow-2xl
+          w-72
+          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+        data-testid="superadmin-sidebar-drawer"
+      >
+        <div className="p-6 border-b border-white/5 bg-slate-900/50 backdrop-blur-md flex items-center justify-between">
+          <div className="flex-1">
+            <LogoHeader size="sm" showText={true} className="mb-2" />
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-health-400">
+              <Shield className="w-3 h-3" /> Super Admin
+            </div>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="lg:hidden p-6 border-b border-white/5 flex items-center justify-between">
+          <div className="font-bold text-white tracking-wider">MENÚ PRINCIPAL</div>
+          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500"><X className="w-5 h-5" /></button>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto mt-2">
+          {(() => {
+            const btn = (tab: Tab, label: string, icon: any) => (
+              <button
+                key={tab}
+                onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"}`}
+                data-testid={`superadmin-tab-${tab}`}
+              >
+                {icon}
+                <span className="font-bold text-sm tracking-wide">{label}</span>
+              </button>
+            );
+            return (
+              <>
+                {btn("general", "Visión General", <Megaphone className="w-4 h-4" />)}
+                {btn("centers", "Centros Médicos", <Building2 className="w-4 h-4" />)}
+                {btn("finanzas", "Finanzas & Billing", <CreditCard className="w-4 h-4" />)}
+                {btn("comunicacion", "Comunicación", <Mail className="w-4 h-4" />)}
+                {btn("metrics", "Uso de Plataforma", <BarChart3 className="w-4 h-4" />)}
+                {btn("users", "Gestión de Usuarios", <Users className="w-4 h-4" />)}
+              </>
+            );
+          })()}
         </nav>
 
         <div className="p-4 space-y-4 border-t border-slate-800">
@@ -1164,14 +1211,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm font-bold"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors mt-2"
           >
-            <LogOut className="w-4 h-4" /> Cerrar Sesión
+            <LogOut className="w-4 h-4" />
+            <span className="font-bold text-sm">Cerrar Sesión</span>
           </button>
         </div>
       </aside>
 
-      <main className="p-8 max-w-6xl mx-auto">
+      {/* MAIN CONTENT AREA */}
+      <main
+        className="transition-all duration-300 min-h-screen flex flex-col p-4 md:p-8 lg:p-12"
+        data-testid="superadmin-main-content"
+      >
         <div className="flex justify-end mb-6">
           <img src={CORPORATE_LOGO} alt="ClaveSalud" className="h-10 w-auto" />
         </div>

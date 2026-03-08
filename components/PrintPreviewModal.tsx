@@ -2,6 +2,18 @@ import React from "react";
 import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
 import { Printer } from "lucide-react";
+import QRCode from "qrcode";
+
+const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
+  const [qrSrc, setQrSrc] = React.useState<string>("");
+
+  React.useEffect(() => {
+    QRCode.toDataURL(value, { margin: 1, width: size }).then(setQrSrc);
+  }, [value, size]);
+
+  if (!qrSrc) return <div style={{ width: size, height: size }} className="bg-slate-100 animate-pulse rounded" />;
+  return <img src={qrSrc} alt="QR de Verificación" width={size} height={size} />;
+};
 
 interface PrintPreviewModalProps {
   isOpen: boolean;
@@ -173,15 +185,30 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               </div>
 
               {/* 4. Footer (Date & Signature) */}
-              <footer className="mt-auto pt-8 flex justify-between items-end print:break-inside-avoid">
-                <div className="text-[11px] font-serif text-slate-600">
-                  <p>
-                    <span className="font-bold">Fecha de Emisión:</span> {today}
-                  </p>
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    Documento generado electrónicamente.
-                  </p>
+              <footer className="mt-auto pt-8 flex justify-between items-end print:break-inside-avoid relative">
+                <div className="text-[11px] font-serif text-slate-600 flex flex-col gap-2">
+                  <div className="flex items-start gap-3">
+                    {/* QR Verification (Placeholder for real URL) */}
+                    <div className="bg-white p-1 border border-slate-200 rounded">
+                      <QRCodeComponent
+                        value={`https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
+                        size={64}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p>
+                        <span className="font-bold">Fecha de Emisión:</span> {today}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-slate-400">
+                        ID: <span className="font-mono">{doc.id}</span>
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-500 leading-tight">
+                        Escanee el QR para validar la<br />autenticidad de este documento.
+                      </p>
+                    </div>
+                  </div>
                 </div>
+
                 <div className="text-center relative min-w-[200px]">
                   {/* Signature Line */}
                   <div className="w-full border-t-2 border-slate-800 mb-2"></div>

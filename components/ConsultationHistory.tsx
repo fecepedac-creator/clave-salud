@@ -280,7 +280,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                     {c.nextControlDate && (
                       <div className="flex items-center gap-2 text-base text-emerald-700 bg-emerald-50 px-4 py-3 rounded-xl w-fit">
                         <Calendar className="w-5 h-5" /> Próximo Control:{" "}
-                        {new Date(c.nextControlDate).toLocaleDateString()} ({c.nextControlReason})
+                        {new Date((c.nextControlDate?.includes("T") ? c.nextControlDate : c.nextControlDate + "T12:00:00")).toLocaleDateString()} ({c.nextControlReason})
                       </div>
                     )}
                   </div>

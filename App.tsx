@@ -25,6 +25,9 @@ import {
   generateSlotId,
   validateRUT,
 } from "./utils";
+import VerifyDocument from "./components/VerifyDocument";
+import TestBanner from "./components/TestBanner";
+import Breadcrumbs from "./components/Breadcrumbs";
 import { hasRole } from "./utils/roles";
 import {
   AlertCircle,
@@ -40,6 +43,7 @@ import {
   UserRound,
   Activity,
   Plus,
+  LogOut,
 } from "lucide-react";
 import { useToast } from "./components/Toast";
 import { CenterContext, CenterModules } from "./CenterContext";
@@ -87,6 +91,9 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>(() => {
     const path = window.location.pathname;
+    if (path.startsWith("/verify/")) {
+      return "verify-document" as ViewMode;
+    }
     if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) {
       return "doctor-login" as ViewMode;
     }
@@ -96,14 +103,16 @@ const App: React.FC = () => {
     if (path.startsWith("/center/")) {
       return "center-portal" as ViewMode;
     }
+    if (path.startsWith("/superadmin")) {
+      return "superadmin-dashboard" as ViewMode;
+    }
     return "home" as ViewMode;
   });
 
   const [activeCenterId, setActiveCenterId] = useState(() => {
-    const path = window.location.pathname;
-    if (path.startsWith("/center/")) {
-      return path.split("/")[2];
-    }
+    const p = window.location.pathname;
+    if (p.startsWith("/superadmin")) return "";
+    if (p.startsWith("/center/")) return p.split("/")[2];
     const params = new URLSearchParams(window.location.search);
     if (params.has("master_access") || params.has("agent_test")) return "c_eji2qv61"; // Los Andes
     return "";
@@ -139,6 +148,13 @@ const App: React.FC = () => {
     handleRedirectResult,
   } = useAuth();
 
+  useEffect(() => {
+    const p = window.location.pathname;
+    if (p.startsWith("/superadmin") && view !== "superadmin-dashboard") {
+      setView("superadmin-dashboard" as ViewMode);
+    }
+  }, [view]);
+
   const isAdmin = useMemo(() => {
     if (isSuperAdminClaim) return true;
     if (!localCurrentUser) return false;
@@ -158,6 +174,7 @@ const App: React.FC = () => {
     hasMoreCenters,
     loadMoreCenters,
     isLoadingMoreCenters,
+    isLoading: isLoadingCenters,
   } = useCenters(demoMode, isSuperAdminClaim, activeCenterId, setActiveCenterId);
 
   // Sync URL with activeCenterId
@@ -306,16 +323,29 @@ const App: React.FC = () => {
     [hookSyncAppointments]
   );
   const resolveDashboardView = useCallback((user: UserProfile | null, targetView?: ViewMode): ViewMode => {
-    // 1. Explicit preference from URL/Path has top priority
+    // 0. SuperAdmin Path Priority
+    if (window.location.pathname.startsWith("/superadmin")) {
+      return "superadmin-dashboard" as ViewMode;
+    }
+
+    // 1. Explicit preference from URL/Path
     if (loginViewPreference === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
     if (loginViewPreference === "admin-dashboard") return "admin-dashboard" as ViewMode;
+    if (loginViewPreference === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
+
+    const userRoles = user?.roles || [];
+    const isSuperAdmin = isMaster || userRoles.some(r => String(r || "").toLowerCase().includes("super_admin") || String(r || "").toLowerCase().includes("superadmin"));
+
+    if (isSuperAdmin && (targetView === "superadmin-dashboard" || loginViewPreference === "superadmin-dashboard")) {
+      return "superadmin-dashboard" as ViewMode;
+    }
 
     // 2. Explicit target requested by caller
     if (targetView === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
     if (targetView === "admin-dashboard") return "admin-dashboard" as ViewMode;
+    if (targetView === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
 
     // 3. Fallback to Role detection
-    const userRoles = user?.roles || [];
     const isAdminUser = !!(
       user?.isAdmin ||
       userRoles.some(r => {
@@ -328,7 +358,7 @@ const App: React.FC = () => {
     );
 
     return isAdminUser ? ("admin-dashboard" as ViewMode) : ("doctor-dashboard" as ViewMode);
-  }, [loginViewPreference]);
+  }, [loginViewPreference, masterAccess]);
 
   const handleSuperAdminLogin = useCallback(
     (targetView: ViewMode) =>
@@ -544,7 +574,7 @@ const App: React.FC = () => {
 
       isApplyingPopStateRef.current = true;
 
-      // Handle Professional Intent
+      // Handle browser back/forward buttons
       if (isProPortal) {
         if (nextCenterId) {
           if (nextCenterId !== activeCenterIdRef.current) {
@@ -602,6 +632,8 @@ const App: React.FC = () => {
       else nextPath = "/pro";
     } else if (view === ("doctor-dashboard" as ViewMode)) {
       nextPath = activeCenterId ? `/pro/center/${activeCenterId}` : "/pro";
+    } else if (view === ("superadmin-dashboard" as ViewMode)) {
+      nextPath = "/superadmin";
     } else {
       nextPath =
         view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
@@ -624,11 +656,15 @@ const App: React.FC = () => {
       const isExplicitLoginView =
         view === ("doctor-login" as ViewMode) ||
         view === ("admin-login" as ViewMode) ||
-        view === ("select-center" as ViewMode);
+        view === ("select-center" as ViewMode) ||
+        view === ("superadmin-login" as ViewMode);
 
-      // Only redirect from public views IF we have an explicit preference (user clicked a button)
-      // OR if we are on HOME and have an active session (useful for E2E storageState)
       const isAgentTest = window.location.search.includes("agent_test=true");
+
+      // Skip redirect if already on SuperAdmin dashboard and it's the intended view
+      if (view === "superadmin-dashboard" && (window.location.pathname.startsWith("/superadmin") || isAgentTest)) {
+        return;
+      }
 
       // FORCING REDIRECT for E2E: If agent_test is active and we have a user, go to dashboard
       if (isAgentTest && localCurrentUser && (isPublicView || isExplicitLoginView)) {
@@ -685,7 +721,36 @@ const App: React.FC = () => {
   }, [localCurrentUser, activeCenterId, view, centers.length, resolveDashboardView]);
 
   const renderCenterPortal = () => {
+    if (isLoadingCenters && activeCenterId) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600 mb-4"></div>
+          <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-xs">Sincronizando Centro Médico...</p>
+        </div>
+      );
+    }
+
     if (!activeCenterId || !isValidCenter(activeCenter)) {
+      if (activeCenterId && !isLoadingCenters) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
+            <div className="bg-red-50 p-6 rounded-[2.5rem] border border-red-100 shadow-xl max-w-md">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-black text-slate-800 mb-2">Centro No Encontrado</h2>
+              <p className="text-slate-500 mb-8 font-medium">No hemos podido localizar el centro médico solicitado o no posees los permisos necesarios para visualizarlo.</p>
+              <button
+                onClick={() => {
+                  setActiveCenterId("");
+                  setView("home" as ViewMode);
+                }}
+                className="w-full bg-slate-800 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-900 transition-all shadow-lg"
+              >
+                Volver al Directorio
+              </button>
+            </div>
+          </div>
+        );
+      }
       return renderHomeDirectory();
     }
 
@@ -770,12 +835,9 @@ const App: React.FC = () => {
     renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="max-w-4xl w-full">
-          <button
-            onClick={() => setView("center-portal" as ViewMode)}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" /> Volver
-          </button>
+          <div className="flex justify-center mb-8">
+            <LogoHeader size="lg" showText={true} />
+          </div>
 
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-slate-800">¿Qué deseas realizar?</h2>
@@ -829,12 +891,9 @@ const App: React.FC = () => {
     renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="max-w-xl w-full">
-          <button
-            onClick={() => setView("patient-menu" as ViewMode)}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" /> Volver
-          </button>
+          <div className="flex justify-center mb-8">
+            <LogoHeader size="md" showText={true} />
+          </div>
 
           <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
             <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
@@ -1058,15 +1117,9 @@ const App: React.FC = () => {
     return renderCenterBackdrop(
       <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-4xl">
-          <div className="mb-6">
+          <div className="flex justify-center mb-8">
             <LogoHeader size="md" showText={true} />
           </div>
-          <button
-            onClick={() => setView("patient-menu" as ViewMode)}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold mb-8 bg-white/50 px-4 py-2 rounded-full w-fit transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" /> Volver
-          </button>
 
           {/* Step 0: Tipo de Atención */}
           {bookingStep === 0 && (
@@ -1503,6 +1556,7 @@ const App: React.FC = () => {
   const renderLogin = (isDoc: boolean) => {
     const centerLogoUrl =
       activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
+
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
         <div className="flex flex-col items-center gap-6">
@@ -1589,11 +1643,11 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+          <LegalLinks
+            onOpenTerms={() => openLegal("terms")}
+            onOpenPrivacy={() => openLegal("privacy")}
+          />
         </div>
-        <LegalLinks
-          onOpenTerms={() => openLegal("terms")}
-          onOpenPrivacy={() => openLegal("privacy")}
-        />
       </div>
     );
 
@@ -1650,6 +1704,7 @@ const App: React.FC = () => {
     return renderHomeBackdrop(content);
   };
 
+
   const renderSelectCenter = () => {
     const allowed: string[] = Array.isArray(localCurrentUser?.centros)
       ? localCurrentUser.centros
@@ -1659,16 +1714,24 @@ const App: React.FC = () => {
     const available = centers.filter((c) => allowed.includes(c.id));
 
     return (
-      <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50">
-        <div className="w-full max-w-3xl bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-extrabold text-slate-800">Selecciona un centro</h2>
+      <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-sky-200 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-200 rounded-full blur-[120px]" />
+        </div>
+
+        <div className="w-full max-w-3xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.08)] border border-white p-8 sm:p-12 relative z-10">
+          <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-4">
+            <div>
+              <h2 className="text-3xl font-black text-slate-800 tracking-tight">Selecciona un centro</h2>
+              <p className="text-slate-500 font-medium">Elige el lugar de trabajo para comenzar</p>
+            </div>
             <button
               type="button"
               onClick={handleLogout}
-              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
+              className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 hover:text-rose-600 hover:border-rose-100 hover:bg-rose-50 transition-all flex items-center gap-2"
             >
-              Cerrar sesión
+              <LogOut className="w-4 h-4" /> Cerrar sesión
             </button>
           </div>
 
@@ -1712,7 +1775,7 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -2009,37 +2072,56 @@ const App: React.FC = () => {
             <p className="text-slate-500 mt-3 text-lg">
               Ficha clínica digital para equipos de salud.
             </p>
-            <div className="mt-8 flex flex-col items-center gap-4">
-              <button
-                onClick={() => handleGoogleLogin("doctor-dashboard" as ViewMode)}
-                className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold shadow-lg hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3 mx-auto"
-              >
-                <img
-                  src={GOOGLE_ICON_SRC}
-                  alt="G"
-                  className="w-5 h-5 bg-white rounded-full p-0.5"
-                />
-                Ingreso Rápido (Profesional / Admin)
-              </button>
+            <div className="mt-8 flex flex-col items-center gap-6">
+              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-lg">
+                <button
+                  onClick={() => {
+                    setLoginViewPreference("doctor-dashboard" as ViewMode);
+                    handleGoogleLogin("doctor-dashboard" as ViewMode);
+                  }}
+                  className="flex-1 bg-slate-900 text-white p-4 rounded-2xl font-bold shadow-xl hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center gap-2 group"
+                >
+                  <div className="bg-emerald-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                    <Stethoscope className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <span className="text-sm">Acceso Profesional</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setLoginViewPreference("admin-dashboard" as ViewMode);
+                    handleGoogleLogin("admin-dashboard" as ViewMode);
+                  }}
+                  className="flex-1 bg-white border-2 border-slate-200 text-slate-800 p-4 rounded-2xl font-bold shadow-md hover:border-slate-400 hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center gap-2 group"
+                >
+                  <div className="bg-slate-100 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                    <Building2 className="w-6 h-6 text-slate-600" />
+                  </div>
+                  <span className="text-sm">Acceso Portal Admin</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-4 w-full max-w-xs">
+                <div className="h-[1px] bg-slate-200 flex-1"></div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">o también</span>
+                <div className="h-[1px] bg-slate-200 flex-1"></div>
+              </div>
+
               <div className="flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => setView("landing" as ViewMode)}
-                  className="px-6 py-3 rounded-xl bg-emerald-500 text-slate-900 font-bold hover:bg-emerald-400"
+                  className="px-6 py-3 rounded-xl bg-teal-50 text-teal-700 border border-teal-100 font-bold hover:bg-teal-100 transition-colors flex items-center gap-2"
                 >
-                  Conoce la plataforma
+                  <Activity className="w-4 h-4" /> Conoce la plataforma
                 </button>
                 <button
                   type="button"
                   onClick={() => setView("center-portal" as ViewMode)}
-                  className="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-white"
+                  className="px-6 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:border-slate-400 transition-all flex items-center gap-2"
                 >
-                  Ingresar al portal
+                  <Building2 className="w-4 h-4" /> Ingresar a un portal público
                 </button>
               </div>
-              <p className="text-xs text-slate-400">
-                Ingresa con tu correo y selecciona tu centro después.
-              </p>
             </div>
           </div>
 
@@ -2065,16 +2147,24 @@ const App: React.FC = () => {
                       setActiveCenterId(c.id);
                       setView("center-portal" as ViewMode);
                     }}
-                    className={`bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left relative overflow-hidden ${!isActive ? "opacity-60 grayscale-[0.5]" : ""
+                    data-testid={`center-card-${c.slug}`}
+                    className={`group bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:border-teal-200 hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left relative overflow-hidden flex flex-col h-full ${!isActive ? "opacity-60 grayscale-[0.5]" : ""
                       }`}
                   >
-                    {!isActive && (
-                      <div className="absolute top-0 right-0 bg-slate-800 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider z-20">
-                        Oculto / Inactivo
-                      </div>
-                    )}
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+                    <div className="absolute top-0 right-0 z-20">
+                      {!isActive ? (
+                        <div className="bg-slate-800 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider">
+                          Inactivo
+                        </div>
+                      ) : (
+                        <div className="bg-teal-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                          <Check className="w-2.5 h-2.5" /> Activo
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-inner group-hover:scale-110 transition-transform">
                         {(c as any).logoUrl ? (
                           <img
                             src={(c as any).logoUrl}
@@ -2082,21 +2172,28 @@ const App: React.FC = () => {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <Building2 className="w-7 h-7 text-slate-700" />
+                          <Building2 className="w-8 h-8 text-slate-400" />
                         )}
                       </div>
 
                       <div className="flex-1">
-                        <div className="font-extrabold text-slate-900 text-lg leading-tight">
+                        <div className="font-black text-slate-900 text-lg leading-tight group-hover:text-teal-700 transition-colors">
                           {c.name}
                         </div>
-                        <div className="text-slate-500 text-sm">
-                          {c.commune ?? c.region ?? "Chile"}
+                        <div className="text-slate-400 text-[10px] font-bold uppercase mt-1 tracking-wider">
+                          {c.commune || c.region || "Centro de Salud"}
                         </div>
                       </div>
                     </div>
-                    <div className="mt-5 text-sm font-bold text-slate-700 inline-flex items-center gap-2">
-                      Ingresar <ArrowRight className="w-4 h-4" />
+
+                    <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-400 group-hover:text-teal-600 transition-colors uppercase tracking-widest flex items-center gap-1">
+                        Portal Público <ArrowRight className="w-3 h-3" />
+                      </span>
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-teal-300"></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-teal-300"></div>
+                      </div>
                     </div>
                   </button>
                 );
@@ -2123,126 +2220,106 @@ const App: React.FC = () => {
     );
   };
   const renderByView = () => {
-    if (view === ("invite" as any))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderInviteRegister()}
-        </CenterContext.Provider>
-      );
+    const activeCenterName =
+      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).name : undefined;
 
-    if (view === ("center-portal" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderCenterPortal()}
-        </CenterContext.Provider>
-      );
+    const handleClosePanel = () => {
+      const allowed = Array.isArray(localCurrentUser?.centros)
+        ? localCurrentUser.centros
+        : Array.isArray(localCurrentUser?.centers)
+          ? localCurrentUser.centers
+          : [];
 
-    if (view === ("patient-menu" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderPatientMenu()}
-        </CenterContext.Provider>
-      );
+      if (allowed.length > 1) {
+        setView("select-center" as ViewMode);
+        setActiveCenterId("");
+      } else {
+        setView("home" as ViewMode);
+        setActiveCenterId("");
+      }
+    };
 
-    if (view === ("patient-cancel" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderPatientCancel()}
-        </CenterContext.Provider>
-      );
+    const wrapView = (content: React.ReactNode, showBreadcrumbs = true) => (
+      <CenterContext.Provider value={centerCtxValue}>
+        <div
+          key={view}
+          className="animate-fadeIn min-h-screen w-full relative"
+          data-testid={`view-container-${view}`}
+        >
+          {showBreadcrumbs && view !== "home" && (
+            <div className="fixed top-6 left-6 z-50 pointer-events-auto">
+              <Breadcrumbs
+                view={view}
+                centerName={activeCenterName}
+                onNavigate={(v) => setView(v as ViewMode)}
+              />
+            </div>
+          )}
+          {content}
+        </div>
+      </CenterContext.Provider>
+    );
 
-    if (view === ("patient-form" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderPatientForm()}
-        </CenterContext.Provider>
-      );
-
-    if (view === ("patient-booking" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>{renderBooking()}</CenterContext.Provider>
-      );
-
-    if (view === ("doctor-login" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>{renderLogin(true)}</CenterContext.Provider>
-      );
-
-    if (view === ("superadmin-login" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderSuperAdminLogin()}
-        </CenterContext.Provider>
-      );
+    if (view === ("invite" as any)) return wrapView(renderInviteRegister(), false);
+    if (view === ("center-portal" as ViewMode)) return wrapView(renderCenterPortal(), true);
+    if (view === ("patient-menu" as ViewMode)) return wrapView(renderPatientMenu(), true);
+    if (view === ("patient-cancel" as ViewMode)) return wrapView(renderPatientCancel(), true);
+    if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
+    if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
+    if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
+    if (view === ("superadmin-login" as ViewMode)) return wrapView(renderSuperAdminLogin(), false);
 
     if (view === ("superadmin-dashboard" as ViewMode)) {
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          <SuperAdminDashboard
-            centers={centers}
-            doctors={doctors}
-            demoMode={demoMode}
-            onToggleDemo={() => setDemoMode((d) => !d)}
-            canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true}
-            previewCenterId={previewCenterId}
-            previewRole={previewRole}
-            onStartPreview={handleStartPreview}
-            onExitPreview={handleExitPreview}
-            onLogout={() => {
-              setLocalCurrentUser(null);
-              setActiveCenterId("");
-              setView("home" as ViewMode);
-            }}
-            onOpenLegal={openLegal}
-            onUpdateCenters={async (updates) => {
-              // 1. Optimistic Update for SuperAdmin
-              setCenters((prev) => {
-                const map = new Map(prev.map((c) => [c.id, c]));
-                updates.forEach((u) => {
-                  const existing = (map.get(u.id) || {}) as object;
-                  map.set(u.id, { ...existing, ...u } as any);
-                });
-                return Array.from(map.values());
+      return wrapView(
+        <SuperAdminDashboard
+          centers={centers}
+          doctors={doctors}
+          demoMode={demoMode}
+          onToggleDemo={() => setDemoMode((d) => !d)}
+          canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true || masterAccess}
+          previewCenterId={previewCenterId}
+          previewRole={previewRole}
+          onStartPreview={handleStartPreview}
+          onExitPreview={handleExitPreview}
+          onLogout={() => {
+            setLocalCurrentUser(null);
+            setActiveCenterId("");
+            setView("home" as ViewMode);
+          }}
+          onOpenLegal={openLegal}
+          onUpdateCenters={async (updates) => {
+            setCenters((prev) => {
+              const map = new Map(prev.map((c) => [c.id, c]));
+              updates.forEach((u) => {
+                const existing = (map.get(u.id) || {}) as object;
+                map.set(u.id, { ...existing, ...u } as any);
               });
-              // 2. Persist
-              for (const c of updates) await updateCenter(c as any);
-            }}
-            onDeleteCenter={async (id, reason) => {
-              // 1. Optimistic
-              setCenters((prev) => prev.filter((c) => c.id !== id));
-              // 2. Persist
-              await deleteCenter(id, reason);
-            }}
-            onUpdateDoctors={async () => { }}
-            hasMoreCenters={hasMoreCenters}
-            onLoadMoreCenters={loadMoreCenters}
-            isLoadingMoreCenters={isLoadingMoreCenters}
-          />
-        </CenterContext.Provider>
+              return Array.from(map.values());
+            });
+            for (const c of updates) await updateCenter(c as any);
+          }}
+          onDeleteCenter={async (id, reason) => {
+            setCenters((prev) => prev.filter((c) => c.id !== id));
+            await deleteCenter(id, reason);
+          }}
+          onUpdateDoctors={async () => { }}
+          hasMoreCenters={hasMoreCenters}
+          onLoadMoreCenters={loadMoreCenters}
+          isLoadingMoreCenters={isLoadingMoreCenters}
+        />,
+        true
       );
     }
 
-    if (view === ("admin-login" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>{renderLogin(false)}</CenterContext.Provider>
-      );
-
+    if (view === ("admin-login" as ViewMode)) return wrapView(renderLogin(false), false);
     if (view === ("landing" as ViewMode))
       return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
-
     if (view === ("terms" as ViewMode)) return renderLegalPage("Términos y Condiciones", termsText);
-
-    if (view === ("privacy" as ViewMode))
-      return renderLegalPage("Política de Privacidad", privacyText);
-
+    if (view === ("privacy" as ViewMode)) return renderLegalPage("Política de Privacidad", privacyText);
     if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
-
-    if (view === ("select-center" as ViewMode))
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          {renderSelectCenter()}
-        </CenterContext.Provider>
-      );
+    if (view === ("verify-document" as ViewMode))
+      return <VerifyDocument onClose={() => setView("home" as ViewMode)} />;
+    if (view === ("select-center" as ViewMode)) return wrapView(renderSelectCenter(), true);
 
     const previewUser = isPreviewActive
       ? {
@@ -2263,24 +2340,13 @@ const App: React.FC = () => {
       const currentEmailLower = String(userForView.email ?? "")
         .trim()
         .toLowerCase();
-
-      // PRIORITIZE EMAIL MATCHING to avoid "UID squatting" from previous tests
       const matchedDoctor =
+        doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
         doctors.find(
-          (doc) =>
-            String(doc.email ?? "")
-              .trim()
-              .toLowerCase() === currentEmailLower
-        ) ||
-        doctors.find(
-          (doc) =>
-            String((doc as any).emailLower ?? "")
-              .trim()
-              .toLowerCase() === currentEmailLower
+          (doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower
         ) ||
         doctors.find((doc) => doc.id === currentUid) ||
         doctors.find((doc) => (doc as any).uid === currentUid) ||
-        // In preview mode, if we haven't matched by ID/Email, try to match by Role in current center
         (isPreviewActive
           ? doctors.find((doc) => doc.role === previewRole && doc.centerId === activeCenterId)
           : null) ||
@@ -2289,7 +2355,6 @@ const App: React.FC = () => {
       const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
       const resolvedDoctorName =
         matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
-
       const demoOverride =
         isPreviewActive && demoDoctorOverrides[resolvedDoctorId]
           ? demoDoctorOverrides[resolvedDoctorId]
@@ -2301,7 +2366,6 @@ const App: React.FC = () => {
           ...matchedDoctor,
           ...demoOverride,
           id: resolvedDoctorId,
-          // CRITICAL: Preserve the real UID and email from the logged-in user if the staff record is "unclaimed" (uid: null)
           uid: userForView.uid ?? matchedDoctor.uid,
           email: userForView.email ?? matchedDoctor.email,
           fullName: resolvedDoctorName,
@@ -2309,151 +2373,137 @@ const App: React.FC = () => {
         : ({ ...userForView, ...demoOverride } as any);
 
       const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          <ProfessionalDashboard
-            patients={patients}
-            doctorName={resolvedDoctorName}
-            doctorId={resolvedDoctorId}
-            role={effectiveRole}
-            agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
-            savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
-            currentUser={mergedCurrentUser}
-            doctors={doctors}
-            onUpdatePatient={(p: Patient) => {
-              if (isPreviewActive) {
-                setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
-              } else {
-                updatePatient(p);
-              }
-            }}
-            onUpdateDoctor={(d: Doctor) => {
-              if (isPreviewActive) {
-                const targetId = d.id;
-                setDemoDoctorOverrides((prev) => ({
-                  ...prev,
-                  [targetId]: { ...prev[targetId], ...d },
-                }));
-                showToast("Configuración guardada (Modo Demo - Temporal)", "success");
-              } else {
-                updateStaff(d);
-              }
-            }}
-            onLogout={handleLogout}
-            appointments={appointments}
-            onUpdateAppointments={(newAppts: Appointment[]) => {
-              setAppointments(newAppts);
-              syncAppointments(newAppts);
-            }}
-            onUpdateAppointment={updateAppointment}
-            onDeleteAppointment={deleteAppointment}
-            isSyncingAppointments={isSyncingAppointments}
-            portfolioMode={portfolioMode}
-            onSetPortfolioMode={setPortfolioMode}
-            onLogActivity={(event: any) => {
-              if (isPreviewActive) {
-                // Omitir log demo
-                return;
-              }
-              const log: AuditLogEntry = {
-                id: generateId(),
-                centerId: activeCenterId,
-                timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? userForView.id,
-                actorName: userForView.fullName ?? "Usuario",
-                actorRole: userForView.role ?? "Profesional",
-                action: event.action,
-                entityType: event.entityType,
-                entityId: event.entityId,
-                patientId: event.patientId,
-                metadata: event.metadata,
-                details: event.details,
-              } as any;
-              updateAuditLog(log);
-            }}
-            isReadOnly={isPreviewActive}
-            onOpenLegal={openLegal}
-          />
-        </CenterContext.Provider>
+      return wrapView(
+        <ProfessionalDashboard
+          patients={patients}
+          doctorName={resolvedDoctorName}
+          doctorId={resolvedDoctorId}
+          role={effectiveRole}
+          agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
+          savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
+          currentUser={mergedCurrentUser}
+          doctors={doctors}
+          onUpdatePatient={(p: Patient) => {
+            if (isPreviewActive) {
+              setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
+            } else {
+              updatePatient(p);
+            }
+          }}
+          onUpdateDoctor={(d: Doctor) => {
+            if (isPreviewActive) {
+              const targetId = d.id;
+              setDemoDoctorOverrides((prev) => ({
+                ...prev,
+                [targetId]: { ...prev[targetId], ...d },
+              }));
+              showToast("Configuración guardada (Modo Demo - Temporal)", "success");
+            } else {
+              updateStaff(d);
+            }
+          }}
+          onLogout={handleLogout}
+          appointments={appointments}
+          onUpdateAppointments={(newAppts: Appointment[]) => {
+            setAppointments(newAppts);
+            syncAppointments(newAppts);
+          }}
+          onUpdateAppointment={updateAppointment}
+          onDeleteAppointment={deleteAppointment}
+          isSyncingAppointments={isSyncingAppointments}
+          portfolioMode={portfolioMode}
+          onSetPortfolioMode={setPortfolioMode}
+          onLogActivity={(event: any) => {
+            if (isPreviewActive) return;
+            const log: AuditLogEntry = {
+              id: generateId(),
+              centerId: activeCenterId,
+              timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? userForView.id,
+              actorName: userForView.fullName ?? "Usuario",
+              actorRole: userForView.role ?? "Profesional",
+              action: event.action,
+              entityType: event.entityType,
+              entityId: event.entityId,
+              patientId: event.patientId,
+              metadata: event.metadata,
+              details: event.details,
+            } as any;
+            updateAuditLog(log);
+          }}
+          onClosePanel={handleClosePanel}
+          isReadOnly={isPreviewActive}
+          onOpenLegal={openLegal}
+        />,
+        true
       );
     }
 
     if (view === ("admin-dashboard" as ViewMode) && userForView) {
-      return (
-        <CenterContext.Provider value={centerCtxValue}>
-          <AdminDashboard
-            centerId={activeCenterId}
-            doctors={doctors}
-            onUpdateDoctors={(newDocs: Doctor[]) => {
-              if (isPreviewActive) return;
-              // UpdateDoctors UI event
-
-              // 1. Optimistic Update: Update UI immediately to prevent lag
-              setDoctors(newDocs);
-
-              // 2. Persist changes (Deletions & Updates)
-              const existingIds = new Set(newDocs.map((d) => d.id));
-              doctors.forEach((d) => {
-                if (!existingIds.has(d.id)) {
-                  // Deleting deactivated staff
-                  deleteStaff(d.id);
-                }
-              });
-              newDocs.forEach((d) => updateStaff(d));
-            }}
-            appointments={appointments}
-            onUpdateAppointments={(newAppts: Appointment[]) => {
-              if (isPreviewActive) return;
-              setAppointments(newAppts);
-              syncAppointments(newAppts);
-            }}
-            isSyncingAppointments={isSyncingAppointments}
-            patients={patients}
-            onUpdatePatients={(newPatients: Patient[]) => {
-              if (isPreviewActive) return;
-              newPatients.forEach((p) => updatePatient(p));
-            }}
-            preadmissions={preadmissions}
-            onApprovePreadmission={(p) => {
-              if (isPreviewActive) return;
-              approvePreadmission(p);
-            }}
-            onLogout={handleLogout}
-            onOpenLegal={openLegal}
-            logs={auditLogs}
-            onLogActivity={(event) => {
-              if (isPreviewActive) return;
-              const log: AuditLogEntry = {
-                id: generateId(),
-                centerId: activeCenterId,
-                timestamp: new Date().toISOString(),
-                actorUid: auth.currentUser?.uid ?? userForView.id,
-                actorName: userForView.fullName ?? "Usuario",
-                actorRole: userForView.role ?? "Admin",
-                action: event.action,
-                entityType: event.entityType,
-                entityId: event.entityId,
-                patientId: event.patientId,
-                metadata: event.metadata,
-                details: event.details,
-              } as any;
-              updateAuditLog(log);
-            }}
-            currentUser={userForView}
-          />
-        </CenterContext.Provider>
+      return wrapView(
+        <AdminDashboard
+          centerId={activeCenterId}
+          doctors={doctors}
+          onUpdateDoctors={(newDocs: Doctor[]) => {
+            if (isPreviewActive) return;
+            setDoctors(newDocs);
+            const existingIds = new Set(newDocs.map((d) => d.id));
+            doctors.forEach((d) => {
+              if (!existingIds.has(d.id)) deleteStaff(d.id);
+            });
+            newDocs.forEach((d) => updateStaff(d));
+          }}
+          appointments={appointments}
+          onUpdateAppointments={(newAppts: Appointment[]) => {
+            if (isPreviewActive) return;
+            setAppointments(newAppts);
+            syncAppointments(newAppts);
+          }}
+          isSyncingAppointments={isSyncingAppointments}
+          patients={patients}
+          onUpdatePatients={(newPatients: Patient[]) => {
+            if (isPreviewActive) return;
+            newPatients.forEach((p) => updatePatient(p));
+          }}
+          preadmissions={preadmissions}
+          onApprovePreadmission={(p) => {
+            if (isPreviewActive) return;
+            approvePreadmission(p);
+          }}
+          onLogout={handleLogout}
+          onClosePanel={handleClosePanel}
+          onOpenLegal={openLegal}
+          logs={auditLogs}
+          onLogActivity={(event) => {
+            if (isPreviewActive) return;
+            const log: AuditLogEntry = {
+              id: generateId(),
+              centerId: activeCenterId,
+              timestamp: new Date().toISOString(),
+              actorUid: auth.currentUser?.uid ?? userForView.id,
+              actorName: userForView.fullName ?? "Usuario",
+              actorRole: userForView.role ?? "Admin",
+              action: event.action,
+              entityType: event.entityType,
+              entityId: event.entityId,
+              patientId: event.patientId,
+              metadata: event.metadata,
+              details: event.details,
+            } as any;
+            updateAuditLog(log);
+          }}
+          currentUser={userForView}
+        />,
+        true
       );
     }
 
-    return (
-      <CenterContext.Provider value={centerCtxValue}>
-        <div className="p-6 text-slate-600">Vista no encontrada</div>
-      </CenterContext.Provider>
-    );
+    return wrapView(<div className="p-6 text-slate-600">Vista no encontrada</div>, false);
   };
 
   return (
     <>
+      <TestBanner isVisible={masterAccess} />
       <Suspense fallback={<PageLoader />}>{renderByView()}</Suspense>
       {isPreviewActive && (
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2">

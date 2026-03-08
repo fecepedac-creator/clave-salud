@@ -113,6 +113,7 @@ interface AdminDashboardProps {
   logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
   onLogActivity: (event: AuditLogEvent) => void;
   currentUser?: any; // Role-based customization
+  onClosePanel?: () => void;
 }
 
 // Build ROLE_LABELS dynamically from ROLE_CATALOG so ALL roles appear in dropdowns
@@ -292,6 +293,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   logs,
   onLogActivity,
   currentUser,
+  onClosePanel,
 }) => {
   type AdminTab =
     | "command_center"
@@ -366,6 +368,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- Attendance Toggle ---
   const handleToggleAttendance = async (apt: Appointment, status: "completed" | "no-show" | "cancelled") => {
     if (!resolvedCenterId) return;
+
+    // Verificar Guard del Mes Cerrado
+    try {
+      if (apt.date) {
+        const aptYearMonth = apt.date.substring(0, 7);
+        const closureRef = doc(db, "centers", resolvedCenterId, "closures_month", aptYearMonth);
+        const closureSnap = await getDoc(closureRef);
+        if (closureSnap.exists() && closureSnap.data().status === "closed") {
+          showToast(`El mes contable ${aptYearMonth} está cerrado. No se permite modificar asistencia.`, "error");
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Error checking month closure:", e);
+    }
+
     try {
       const callArgs = {
         centerId: resolvedCenterId,
@@ -1612,11 +1630,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
               </button>
             )}
+            {onClosePanel && (
+              <button
+                onClick={onClosePanel}
+                className="flex-none flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white transition-colors bg-slate-700 px-4 py-2 rounded-lg border border-slate-600 shadow-sm"
+                title="Cerrar Panel y Volver"
+              >
+                <X className="w-4 h-4" /> <span className="hidden sm:inline">Cerrar Panel</span>
+              </button>
+            )}
             <button
               onClick={onLogout}
               className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
+              title="Cerrar Sesión"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline text-[x-small] uppercase tracking-widest font-black opacity-60">Salir</span>
             </button>
           </div>
           <LegalLinks

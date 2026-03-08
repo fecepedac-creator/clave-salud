@@ -140,29 +140,41 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
 ];
 
 export const MEDICAL_HISTORY_OPTIONS = [
-  { id: "HTA", label: "Hipertensión Arterial" },
-  { id: "DM1", label: "Diabetes Mellitus Tipo 1" },
-  { id: "DM2", label: "Diabetes Mellitus Tipo 2" },
-  { id: "DLP", label: "Dislipidemia (Colesterol Alto)" },
-  { id: "HIPO", label: "Hipotiroidismo" },
-  { id: "HIPER", label: "Hipertiroidismo" },
-  { id: "ERC", label: "Enfermedad Renal Crónica" },
-  { id: "IC", label: "Insuficiencia Cardíaca" },
-  { id: "COR", label: "Cardiopatía Coronaria (Infartos)" },
-  { id: "ACV", label: "Accidente Cerebrovascular" },
-  { id: "EPOC", label: "Asma / EPOC" },
-  { id: "CANCER", label: "Cáncer" },
-  { id: "OTRO", label: "Otras" },
+  { id: "HTA", label: "Hipertensión Arterial", snomedCode: "38341003", system: "http://snomed.info/sct" },
+  { id: "DM1", label: "Diabetes Mellitus Tipo 1", snomedCode: "46635009", system: "http://snomed.info/sct" },
+  { id: "DM2", label: "Diabetes Mellitus Tipo 2", snomedCode: "44054006", system: "http://snomed.info/sct" },
+  { id: "DLP", label: "Dislipidemia (Colesterol Alto)", snomedCode: "55822004", system: "http://snomed.info/sct" },
+  { id: "HIPO", label: "Hipotiroidismo", snomedCode: "40930008", system: "http://snomed.info/sct" },
+  { id: "HIPER", label: "Hipertiroidismo", snomedCode: "34486009", system: "http://snomed.info/sct" },
+  { id: "ERC", label: "Enfermedad Renal Crónica", snomedCode: "709044004", system: "http://snomed.info/sct" },
+  { id: "IC", label: "Insuficiencia Cardíaca", snomedCode: "42343007", system: "http://snomed.info/sct" },
+  { id: "COR", label: "Cardiopatía Coronaria (Infartos)", snomedCode: "53741008", system: "http://snomed.info/sct" },
+  { id: "ACV", label: "Accidente Cerebrovascular", snomedCode: "230690007", system: "http://snomed.info/sct" },
+  { id: "EPOC", label: "Asma / EPOC", snomedCode: "185086009", system: "http://snomed.info/sct" },
+  { id: "CANCER", label: "Cáncer", snomedCode: "363346000", system: "http://snomed.info/sct" },
+  { id: "OTRO", label: "Otras", snomedCode: null, system: null },
 ];
 
 export const SURGICAL_HISTORY_OPTIONS = [
-  { id: "APENDICE", label: "Apendicetomía" },
-  { id: "VESICULA", label: "Colecistectomía" },
-  { id: "HERNIA", label: "Hernias" },
-  { id: "UTERO", label: "Histerectomía" },
-  { id: "PROSTATA", label: "Cirugía Prostática" },
-  { id: "OTRO", label: "Otras" },
+  { id: "APENDICE", label: "Apendicetomía", snomedCode: "80146002", system: "http://snomed.info/sct" },
+  { id: "VESICULA", label: "Colecistectomía", snomedCode: "38102005", system: "http://snomed.info/sct" },
+  { id: "HERNIA", label: "Hernias", snomedCode: "50448004", system: "http://snomed.info/sct" },
+  { id: "UTERO", label: "Histerectomía", snomedCode: "236886002", system: "http://snomed.info/sct" },
+  { id: "PROSTATA", label: "Cirugía Prostática", snomedCode: "11116008", system: "http://snomed.info/sct" },
+  { id: "OTRO", label: "Otras", snomedCode: null, system: null },
 ];
+
+export const SMOKING_STATUS_OPTIONS = [
+  "No fumador",
+  "Ex fumador",
+  "Fumador actual",
+] as const;
+
+export const ALCOHOL_STATUS_OPTIONS = [
+  "No consumo",
+  "Ocasional",
+  "Frecuente",
+] as const;
 
 export const LIVING_WITH_OPTIONS = [
   "Solo/a",
@@ -951,36 +963,94 @@ export const MOCK_PATIENTS: Patient[] = [
 ];
 
 export const DEFAULT_EXAM_ORDER_CATALOG: ExamOrderCatalog = {
-  version: 1,
+  version: 2,
   categories: [
     {
       id: "lab_general",
-      label: "Laboratorio General",
-      exams: [
-        { id: "hemograma", label: "Hemograma" },
-        { id: "perfil_lipidico", label: "Perfil Lipídico" },
-        { id: "glicemia", label: "Glicemia" },
-        { id: "hba1c", label: "HbA1c" },
-        { id: "u_crea", label: "Urea / Creatinina" },
-      ]
+      label: "Laboratorio Clínico",
+      groups: [
+        {
+          id: "bioquimica",
+          label: "Bioquímicos",
+          items: [
+            { label: "Perfil Bioquímico" },
+            { label: "BUN" },
+            { label: "Creatinina" },
+            { label: "Glicemia" },
+            { label: "Perfil Hepático" },
+            { label: "Electrolitos Plasmáticos (ELP)" },
+            { label: "Perfil Lipídico" },
+            { label: "Proteínas Totales y Albúmina" },
+            { label: "Ácido Úrico" },
+            { label: "Calcio" },
+            { label: "Fósforo" },
+            { label: "Magnesio" },
+            { label: "Hemoglobina Glicosilada (HbA1c)" },
+            { label: "Insulina Basal" },
+          ],
+        },
+        {
+          id: "hematologia",
+          label: "Hematológicos",
+          items: [
+            { label: "Hemograma" },
+            { label: "VHS" },
+            { label: "Tiempo de Protrombina (INR)" },
+            { label: "TTPK" },
+            { label: "Ferritina" },
+            { label: "Vitamina B12" },
+            { label: "Ácido Fólico" },
+          ],
+        },
+        {
+          id: "orina",
+          label: "Orina / Renal",
+          items: [
+            { label: "Orina Completa" },
+            { label: "Urocultivo + Antibiograma" },
+            { label: "Razón Albúmina/Creatinina (RAC)" },
+            { label: "Sedimento Urinario" },
+          ],
+        },
+      ],
+    },
+    {
+      id: "reuma",
+      label: "Inmunológicos / Reumatología",
+      groups: [
+        {
+          id: "autoanticuerpos",
+          label: "Autoanticuerpos y Perfiles",
+          items: [
+            { label: "ANA (Antinucleares)" },
+            { label: "ENA (Perfil Extractable)" },
+            { label: "ANCA (p-ANCA, c-ANCA)" },
+            { label: "Anti-DNA" },
+            { label: "Complemento C3 y C4" },
+            { label: "Ac. Anti Citrulina (CCP)" },
+            { label: "HLA-B27" },
+            { label: "Factor Reumatoideo" },
+            { label: "Proteína C Reactiva (PCR to)" },
+          ],
+        },
+      ],
     },
     {
       id: "imagenes",
       label: "Imagenología",
-      exams: [
-        { id: "rx_torax", label: "RX Tórax" },
-        { id: "eco_abdominal", label: "Ecografía Abdominal" },
-        { id: "mamografia", label: "Mamografía" },
-      ]
+      groups: [
+        {
+          id: "tc",
+          label: "Tomografía (TC/Scanner)",
+          items: [
+            { label: "TC Cerebro", modality: "TC", contrast: "sin" },
+            { label: "TC Tórax", modality: "TC", contrast: "sin" },
+            { label: "TC Abdomen y Pelvis", modality: "TC", contrast: "sin" },
+            { label: "TC Columna Lumbar", modality: "TC", contrast: "sin" },
+            { label: "UroTAC", modality: "TC", contrast: "con" },
+          ],
+        },
+      ],
     },
-    {
-      id: "cardio",
-      label: "Cardiología",
-      exams: [
-        { id: "ecg", label: "Electrocardiograma (ECG)" },
-        { id: "holter_arritmia", label: "Holter de Arritmia" },
-        { id: "holter_presion", label: "Holter de Presión (MAPA)" },
-      ]
-    }
-  ]
+  ],
 };

@@ -121,7 +121,8 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
             </div>
 
             {/* Table */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Desktop Table View */}
+            <div className="hidden md:block flex-1 overflow-y-auto">
                 {filteredPatients.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                         <UsersRound className="w-16 h-16 mb-4 opacity-20" />
@@ -132,8 +133,8 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                         <thead className="bg-slate-50/80 sticky top-0 z-10 text-slate-500 text-xs uppercase font-bold tracking-wider">
                             <tr>
                                 <th className="p-5 border-b border-slate-200">Paciente</th>
-                                <th className="p-5 border-b border-slate-200 hidden md:table-cell">Edad / RUT</th>
-                                <th className="p-5 border-b border-slate-200 hidden md:table-cell">Última Atención</th>
+                                <th className="p-5 border-b border-slate-200">Edad / RUT</th>
+                                <th className="p-5 border-b border-slate-200">Última Atención</th>
                                 <th className="p-5 border-b border-slate-200">Próximo Control</th>
                                 <th className="p-5 border-b border-slate-200 text-right">Acción</th>
                             </tr>
@@ -149,13 +150,12 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => handleSelectPatient(p)}>
                                         <td className="p-5">
                                             <div className="font-bold text-slate-800 text-base">{formatPersonName(p.fullName)}</div>
-                                            <div className="text-xs text-slate-400 font-medium md:hidden">{p.rut}</div>
                                         </td>
-                                        <td className="p-5 hidden md:table-cell">
+                                        <td className="p-5">
                                             <div className="text-slate-600 font-medium">{safeAgeLabel(p.birthDate)}</div>
                                             <div className="text-xs text-slate-400 font-mono">{p.rut}</div>
                                         </td>
-                                        <td className="p-5 hidden md:table-cell">
+                                        <td className="p-5">
                                             {lastConsult ? (
                                                 <div>
                                                     <span className="text-slate-700 font-medium">{new Date(lastConsult.date).toLocaleDateString()}</span>
@@ -186,7 +186,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                                                                 <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                                                     <div className="px-3 py-2 text-xs font-bold bg-slate-50">Plantillas WhatsApp</div>
                                                                     <div className="p-1">
-                                                                        {whatsAppTemplates.filter((t) => t.enabled).map((t) => (
+                                                                        {whatsAppTemplates.filter((t: any) => t.enabled).map((t: any) => (
                                                                             <button key={t.id} className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" onClick={() => { openWhatsApp(p, t.body); setWhatsAppMenuForPatientId(null); }}>{t.title}</button>
                                                                         ))}
                                                                     </div>
@@ -203,6 +203,51 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                             })}
                         </tbody>
                     </table>
+                )}
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4">
+                {filteredPatients.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                        <p>No se encontraron pacientes</p>
+                    </div>
+                ) : (
+                    filteredPatients.map((p) => {
+                        const patientConsultations = getActiveConsultations(p);
+                        const lastConsult = patientConsultations.length > 0 ? patientConsultations[0] : null;
+                        const nextCtrl = lastConsult?.nextControlDate ? new Date(lastConsult.nextControlDate + "T12:00:00") : null;
+                        const isControlNear = nextCtrl && nextCtrl <= new Date(new Date().setDate(new Date().getDate() + 7));
+
+                        return (
+                            <div
+                                key={p.id}
+                                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm active:bg-slate-50 active:scale-[0.98] transition-all"
+                                onClick={() => handleSelectPatient(p)}
+                            >
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 text-lg">{formatPersonName(p.fullName)}</h4>
+                                        <p className="text-xs text-slate-400 font-mono">{p.rut} • {safeAgeLabel(p.birthDate)}</p>
+                                    </div>
+                                    <ChevronRight className="text-slate-300 w-5 h-5" />
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 mt-4">
+                                    {nextCtrl && (
+                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${isControlNear ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
+                                            Control: {nextCtrl.toLocaleDateString()}
+                                        </div>
+                                    )}
+                                    {lastConsult && (
+                                        <div className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600">
+                                            Última: {new Date(lastConsult.date).toLocaleDateString()}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })
                 )}
             </div>
         </div>

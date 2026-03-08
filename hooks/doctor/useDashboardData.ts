@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
 import { WhatsappTemplate, ExamOrderCatalog } from "../../types";
-import { DEFAULT_EXAM_ORDER_CATALOG } from "../../constants";
+import { DEFAULT_EXAM_ORDER_CATALOG } from "../../utils/examOrderCatalog";
 
 interface UseDashboardDataProps {
     activeCenterId: string | null;

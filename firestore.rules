@@ -263,7 +263,7 @@ service cloud.firestore {
 
       match /stats_center_month/{monthKey} {
         allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
-        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+        allow write: if false; // Managed by Cloud Functions only
       }
 
       match /stats_professional_month/{profMonthKey} {
@@ -273,12 +273,12 @@ service cloud.firestore {
           isCenterAdmin(centerId) || 
           (isStaff(centerId) && profMonthKey.split("_")[0] == uid())
         );
-        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+        allow write: if false; // Managed by Cloud Functions only
       }
 
       match /closures_month/{monthKey} {
         allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
-        allow write: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId)); // Temporarily for E2E seeding
+        allow write: if false; // Managed by Cloud Functions only
       }
 
       match /staff/{staffUid} {
@@ -679,33 +679,15 @@ service cloud.firestore {
         // For production, center admins usually check against their specific centers/{id}/staff doc.
       }
 
-    function isPublicRootPatientCreate() {
-      let allowedFields = [
-        'id', 'centerId', 'rut', 'fullName', 'ownerUid', 'accessControl',
-        'birthDate', 'gender', 'phone', 'email',
-        'medicalHistory', 'surgicalHistory', 'smokingStatus', 'alcoholStatus', 
-        'medications', 'allergies', 'consultations', 'attachments', 'lastUpdated', 'active'
-      ];
-      return request.auth == null
-        && request.resource.data.keys().hasOnly(allowedFields)
-        && request.resource.data.id is string
-        && request.resource.data.rut is string
-        && request.resource.data.fullName is string
-        && request.resource.data.ownerUid is string
-        && request.resource.data.accessControl is map
-        && request.resource.data.accessControl.allowedUids is list
-        && request.resource.data.accessControl.centerIds is list
-        && request.resource.data.active is bool;
-    }
-
     // Read: owner, allowed professional (including care team), or superadmin
     allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
 
-    // Create: any authenticated user can create a patient (they become owner)
-    allow create: if (signedIn() && (
+    // Create: only authenticated users can create a patient
+    // They automatically become the owner in the model
+    allow create: if signedIn() && (
       request.resource.data.ownerUid == uid()
       || isSuperAdmin()
-    )) || isPublicRootPatientCreate();
+    );
 
       // Update: owner, allowed professional, or superadmin
       allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
