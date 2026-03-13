@@ -482,19 +482,54 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
+  const loadMetrics = async () => {
+    if (!db) {
+      setMetricsError("Firestore no disponible para métricas.");
+      return;
+    }
+    setMetricsLoading(true);
+    setMetricsError("");
+    try {
+      // Intentamos obtener conteos uno por uno para mejor diagnóstico
+      const patientsSnap = await getCountFromServer(collection(db, "patients"));
+      const staffSnap = await getCountFromServer(collectionGroup(db, "staff"));
+
+      setMetrics({
+        patients: Number(patientsSnap.data().count ?? 0),
+        professionals: Number(staffSnap.data().count ?? 0),
+      });
+      setMetricsUpdatedAt(new Date().toISOString());
+    } catch (error: any) {
+      console.error("load metrics error", error);
+      const errorMsg = error?.message || String(error);
+      setMetricsError(`Error al cargar métricas: ${errorMsg}`);
+      showToast(`Métricas: ${errorMsg}`, "error");
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
   const handleRecalcStats = async (centerId?: string) => {
     try {
       setMetricsLoading(true);
       const functions = getFunctions();
       const recalc = httpsCallable(functions, "recalcCenterStats");
       const result = await recalc({ centerId });
-      showToast("Estadísticas recalculadas con éxito.", "success");
-      // Recalc success
-      // We don't necessarily need to reload centers here because App.tsx or useCenters might be listening,
-      // but usually centers are loaded once or via pagination.
+      showToast("Estadísticas recalculadas con éxito. Actualizando vista...", "success");
+
+      // After recalculating on backend, refresh the global counters too
+      await loadMetrics();
+
     } catch (error: any) {
       console.error("handleRecalcStats error", error);
-      showToast("Error al recalcular estadísticas.", "error");
+      const msg = error?.message || "Error al recalcular estadísticas.";
+
+      // Si el error contiene una URL de Firebase (índice faltante), intentamos mostrarla mejor
+      if (msg.includes("https://console.firebase.google.com")) {
+        showToast("Falta un índice de base de datos. Revisa la consola para el link de creación.", "error");
+      } else {
+        showToast(msg, "error");
+      }
     } finally {
       setMetricsLoading(false);
     }
@@ -580,31 +615,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   }, [financeCenterId]);
 
   useEffect(() => {
-    const loadMetrics = async () => {
-      if (!db) {
-        setMetricsError("Firestore no disponible para métricas.");
-        return;
-      }
-      setMetricsLoading(true);
-      setMetricsError("");
-      try {
-        const [patientsSnap, staffSnap] = await Promise.all([
-          getCountFromServer(collectionGroup(db, "patients")),
-          getCountFromServer(collectionGroup(db, "staff")),
-        ]);
-        setMetrics({
-          patients: Number(patientsSnap.data().count ?? 0),
-          professionals: Number(staffSnap.data().count ?? 0),
-        });
-        setMetricsUpdatedAt(new Date().toISOString());
-      } catch (error) {
-        console.error("load metrics", error);
-        setMetricsError("No se pudieron cargar las métricas.");
-      } finally {
-        setMetricsLoading(false);
-      }
-    };
-
     void loadMetrics();
   }, []);
 

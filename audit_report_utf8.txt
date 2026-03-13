@@ -1,0 +1,9 @@
+﻿--- INICIANDO AUDITOR├ìA DE AISLAMIENTO DE DATOS (MULTI-TENANCY) ---
+
+Auditando Colecci├│n Global de Pacientes [patients]...
+Resultado: 18 v├ílidos, 0 hu├®rfanos.
+
+Auditando Colecciones de Centros (Sub-colecciones) [centers]...
+Sub-colecciones de centros validadas.
+
+--- AUDITOR├ìA FINALIZADA ---

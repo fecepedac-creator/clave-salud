@@ -2688,7 +2688,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* MARKETING */}
       {
         activeTab === "marketing" && (activeCenter || centerId) && (
-          <div className="animate-fadeIn">
+          <div className="animate-fadeIn space-y-6">
+            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <ImageIcon className="w-8 h-8 text-purple-400" /> Generador de Afiches
+                  </h3>
+                  <p className="text-slate-400 text-sm max-w-xl">
+                    Crea piezas gráficas profesionales para tus redes sociales con QR de agendamiento automático y descargas en alta calidad.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setMarketingFlyerType('center');
+                      setShowMarketingModal(true);
+                    }}
+                    disabled={!hasActiveCenter}
+                    className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Plus className="w-5 h-5" /> Crear Flyer Centro
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMarketingFlyerType('professional');
+                      setShowMarketingModal(true);
+                    }}
+                    disabled={!hasActiveCenter || doctors.length === 0}
+                    className="flex items-center gap-2 px-8 py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition-all border border-slate-600 shadow-lg disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Users className="w-5 h-5" /> Por Especialista
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <MarketingPosterModule centerId={resolvedCenterId} centerName={activeCenter?.name || ""} />
           </div>
         )

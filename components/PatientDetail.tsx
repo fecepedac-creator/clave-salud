@@ -166,12 +166,12 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       <div className="hidden xl:flex items-center gap-2">
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Identidad</p>
-          <p className="text-[11px] font-bold text-slate-700 leading-none">{patient.genderIdentity || "No declarada"}</p>
+          <p className="text-[11px] font-bold text-slate-700 leading-none">{patient.genderIdentity && patient.genderIdentity !== 'Identidad de género no declarada' ? patient.genderIdentity : "Identidad no declarada"}</p>
         </div>
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Previsión</p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
-            {patient.insurance || "No registrada"}
+            {patient.insurance || "Sin previsión"}
             {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
           </p>
         </div>

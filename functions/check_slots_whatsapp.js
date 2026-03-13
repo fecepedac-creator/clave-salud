@@ -1,0 +1,25 @@
+const admin = require("firebase-admin");
+try { admin.initializeApp(); } catch (e) { }
+const db = admin.firestore();
+
+async function getAvailableSlots(centerId, staffId, date) {
+    let snap = await db.collection("centers").doc(centerId).collection("appointments")
+        .where("doctorId", "==", staffId).where("date", "==", date).where("status", "==", "available").orderBy("time", "asc").get();
+    if (snap.empty) {
+        snap = await db.collection("centers").doc(centerId).collection("appointments")
+            .where("doctorUid", "==", staffId).where("date", "==", date).where("status", "==", "available").orderBy("time", "asc").get();
+    }
+    return snap.docs.map(d => ({ id: d.id, time: d.data().time }));
+}
+
+async function run() {
+    const dates = ["2026-03-12", "2026-03-13", "2026-03-14", "2026-03-15", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-21", "2026-03-22", "2026-03-23", "2026-03-24", "2026-03-25"];
+    console.log("Checking slots...");
+    for (const d of dates) {
+        const s1 = await getAvailableSlots("c_cf35oz9w", "1tdw3xy", d);
+        const s2 = await getAvailableSlots("c_cf35oz9w", "2fFcAftcfuW4OoJnCxjTejs9kvy2", d);
+        if (s1.length) console.log(d, "Dr 1tdw3xy:", s1.length, "slots");
+        if (s2.length) console.log(d, "Dr 2fFcAftcfuW4OoJnCxjTejs9kvy2:", s2.length, "slots");
+    }
+}
+run().catch(console.error);

@@ -15,30 +15,33 @@ interface CaptionContext {
 
 export async function generateAICaption(idea: string, context: CaptionContext): Promise<string> {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const prompt = `
-Actúa como un experto Community Manager especializado en marketing para el sector salud.
-Tu tarea es redactar un "caption" (texto para redes sociales) atractivo, profesional y empático.
+Actúa como un Director Creativo Senior de una agencia de marketing digital de lujo especializada en Healthcare. 
+Tu misión es redactar un "Copy" (texto para redes sociales) que sea IRRESISTIBLE, elegante y que transmita CONFIANZA absoluta.
 
 CONTEXTO DEL NEGOCIO:
-- Tipo de cuenta: ${context.type === 'center' ? 'Centro Médico' : context.type === 'professional' ? 'Profesional de la Salud' : 'Plataforma de Salud Emprendedora'}
-- Nombre: ${context.doctorName || context.centerName || 'ClaveSalud'}
-${context.specialties ? `- Especialidades: ${context.specialties.join(', ')}` : ''}
-- URL de Agendamiento (Debe ir en el llamado a la acción): ${context.url}
+- Marca/Entidad: ${context.doctorName || context.centerName || 'ClaveSalud'}
+- Categoría: ${context.type === 'center' ? 'Centro Médico de Excelencia' : context.type === 'professional' ? 'Especialista en Salud' : 'Innovación en Gestión Clínica'}
+${context.specialties ? `- Portfolio de Servicios: ${context.specialties.join(', ')}` : ''}
+- Enlace Estrellado (Call To Action): ${context.url}
 
-IDEA/PROPÓSITO CENTRAL A COMUNICAR:
+IDEA CREATIVA A DESARROLLAR:
 "${idea}"
 
-INSTRUCCIONES:
-1. Escribe un copy persuasivo, amigable y que conecte emocionalmente con los pacientes.
-2. Utiliza emojis con moderación y estrategia.
-3. Incluye un claro Llamado a la Acción (Call to Action) invitando a agendar en la URL compartida.
-4. Añade hashtags relevantes (máximo 5).
-5. Estructura el texto con saltos de línea para facilitar la lectura.
-6. NO escribas como robot, usa un tono natural, cercano pero ético (evita promesas médicas exageradas).
+DIRECTRICES ESTRATÉGICAS:
+1. TONO: Sofisticado, empático y profesional. No uses clichés médicos genéricos.
+2. ESTRUCTURA: 
+   - Un Gancho (Hook) potente que detenga el scroll.
+   - Un cuerpo que resuelva un punto de dolor o despierte un deseo de bienestar.
+   - Un Cierre con Autoridad.
+3. ESTÉTICA VISUAL: Utiliza saltos de línea elegantes y micro-emojis (✨, 🏥, 🩺) con mucha clase.
+4. CALL TO ACTION: Debe ser directo pero elegante, invitando a la reserva mediante el enlace.
+5. HASHTAGS: Usa una mezcla de 4-5 etiquetas premium y locales.
+6. NO menciones precios bajos; prioriza el VALOR y la CALIDAD de vida.
 
-Responde ÚNICAMENTE con el texto final listo para copiar y pegar en Instagram o Facebook.
+Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook o LinkedIn. Sin introducciones ni comentarios del asistente.
 `;
 
         const result = await model.generateContent(prompt);

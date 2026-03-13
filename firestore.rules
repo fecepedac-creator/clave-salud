@@ -25,6 +25,18 @@ service cloud.firestore {
       );
     }
 
+    // 🔥 REGLAS PARA CONSULTAS DE GRUPO DE COLECCIONES (Collection Group)
+    // Permite que el SuperAdmin cuente registros en todas las profundidades
+    match /{path=**}/patients/{id} {
+        allow read: if isSuperAdmin();
+    }
+    match /{path=**}/staff/{id} {
+        allow read: if isSuperAdmin();
+    }
+    match /{path=**}/consultations/{id} {
+        allow read: if isSuperAdmin();
+    }
+
     match /users/{userId} {
       allow read: if signedIn() && (isSuperAdmin() || uid() == userId);
       allow create: if signedIn() && uid() == userId;
@@ -524,7 +536,13 @@ service cloud.firestore {
             && (
             !softDeleteKeysChanged()
             || (
-              (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId))
+              (
+                isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId)
+                || (isDoctor(centerId) && (
+                  request.resource.data.doctorUid == uid()
+                  || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
+                ))
+              )
               && isSoftDeleteValid()
               && canArchiveByRetention()
             )

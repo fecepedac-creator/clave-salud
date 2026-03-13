@@ -1768,19 +1768,25 @@ export const aggregateAppointments = functions.firestore
 
 /**
  * Mantiene un contador de atenciones realizadas.
- * Trigger: centers/{centerId}/consultations/{consultationId}
+ * Trigger: patients/{patientId}/consultations/{consultationId}
+ * Importante: se usa centerId dentro del documento para saber qué centro actualizar.
  */
 export const aggregateConsultations = functions.firestore
-  .document("centers/{centerId}/consultations/{consultationId}")
-  .onWrite(async (change, context) => {
-    const centerId = context.params.centerId;
+  .document("patients/{patientId}/consultations/{consultationId}")
+  .onWrite(async (change) => {
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    const data = afterData || beforeData;
+    const centerId = data?.centerId;
+
+    if (!centerId) return;
     const centerRef = db.collection("centers").doc(centerId);
     let increment = 0;
 
     if (!change.before.exists && change.after.exists) {
-      increment = 1; // Created
+      increment = 1; // Creado
     } else if (change.before.exists && !change.after.exists) {
-      increment = -1; // Deleted
+      increment = -1; // Borrado
     }
 
     if (increment !== 0) {
@@ -1793,6 +1799,51 @@ export const aggregateConsultations = functions.firestore
         },
         { merge: true }
       );
+    }
+  });
+
+/**
+ * Mantiene el contador de pacientes por centro.
+ * Trigger: patients/{patientId}
+ * Un paciente puede pertenecer a múltiples centros (accessControl.centerIds).
+ */
+export const aggregatePatients = functions.firestore
+  .document("patients/{patientId}")
+  .onWrite(async (change) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    const beforeCenters = new Set<string>(before?.accessControl?.centerIds || []);
+    const afterCenters = new Set<string>(after?.accessControl?.centerIds || []);
+
+    // Incrementar en centros nuevos
+    for (const cId of afterCenters) {
+      if (!beforeCenters.has(cId)) {
+        await db.collection("centers").doc(cId).set(
+          {
+            stats: {
+              patientCount: admin.firestore.FieldValue.increment(1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    // Decrementar en centros de los que salió
+    for (const cId of beforeCenters) {
+      if (!afterCenters.has(cId)) {
+        await db.collection("centers").doc(cId).set(
+          {
+            stats: {
+              patientCount: admin.firestore.FieldValue.increment(-1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+          },
+          { merge: true }
+        );
+      }
     }
   });
 
@@ -1817,38 +1868,54 @@ export const recalcCenterStats = functions
     let processed = 0;
 
     for (const ref of targetCenters) {
-      // 1. Count Active Staff
-      const staffSnap = await ref.collection("staff").get();
-      const staffCount = staffSnap.docs.filter((d) => {
-        const data = d.data();
-        return data.active !== false && data.activo !== false;
-      }).length;
+      try {
+        console.log(`Recalculating stats for center: ${ref.id}`);
+        // 1. Count Active Staff
+        const staffSnap = await ref.collection("staff").get();
+        const staffCount = staffSnap.docs.filter((d) => {
+          const data = d.data();
+          return data.active !== false && data.activo !== false;
+        }).length;
 
-      // 2. Count Booked Appointments
-      const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
-      const appointmentCount = apptSnap.size;
+        // 2. Count Booked Appointments
+        const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
+        const appointmentCount = apptSnap.size;
 
-      // 3. Count Consultations
-      const consultSnap = await ref.collection("consultations").count().get();
-      const consultationCount = consultSnap.data().count;
+        // 3. Count Consultations (Collection Group query since they are under patients)
+        const consultSnap = await db.collectionGroup("consultations")
+          .where("centerId", "==", ref.id)
+          .count()
+          .get();
+        const consultationCount = consultSnap.data().count;
 
-      // 4. Count Patients
-      const patientsSnap = await ref.collection("patients").count().get();
-      const patientCount = patientsSnap.data().count;
+        // 4. Count Patients (Root collection /patients, filtering by accessControl.centerIds)
+        const patientsSnap = await db.collection("patients")
+          .where("accessControl.centerIds", "array-contains", ref.id)
+          .count()
+          .get();
+        const patientCount = patientsSnap.data().count;
 
-      await ref.set(
-        {
-          stats: {
-            staffCount,
-            patientCount,
-            appointmentCount,
-            consultationCount,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        await ref.set(
+          {
+            stats: {
+              staffCount,
+              patientCount,
+              appointmentCount,
+              consultationCount,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
           },
-        },
-        { merge: true }
-      );
-      processed++;
+          { merge: true }
+        );
+        processed++;
+      } catch (err: any) {
+        console.error(`Error processing center ${ref.id}:`, err);
+        // We continue with other centers if one fails, but we might want to know why
+        // If it's a 9 (FAILED_PRECONDITION), it's a missing index
+        if (err.code === 9) {
+          throw new functions.https.HttpsError("failed-precondition", `Falta índice para el centro ${ref.id}: ${err.message}`);
+        }
+      }
     }
 
     return { ok: true, processed };
@@ -1877,12 +1944,18 @@ export const scheduledRecalcStats = functions.pubsub
       const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
       const appointmentCount = apptSnap.size;
 
-      // Count Consultations
-      const consultSnap = await ref.collection("consultations").count().get();
+      // Count Consultations (Collection Group)
+      const consultSnap = await db.collectionGroup("consultations")
+        .where("centerId", "==", ref.id)
+        .count()
+        .get();
       const consultationCount = consultSnap.data().count;
 
-      // Count Patients
-      const patientsSnap = await ref.collection("patients").count().get();
+      // Count Patients (Root collection /patients)
+      const patientsSnap = await db.collection("patients")
+        .where("accessControl.centerIds", "array-contains", ref.id)
+        .count()
+        .get();
       const patientCount = patientsSnap.data().count;
 
       await ref.set(

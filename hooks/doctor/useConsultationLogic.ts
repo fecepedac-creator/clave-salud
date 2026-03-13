@@ -51,6 +51,7 @@ export const useConsultationLogic = ({
         nextControlDate: "",
         nextControlReason: "",
         reminderActive: false,
+        consultationType: "morbidity", // Default to morbidity
     });
 
     const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>(getEmptyConsultation());
@@ -146,6 +147,7 @@ export const useConsultationLogic = ({
     };
 
     const handleCreateConsultation = async () => {
+        console.log("💾 handleCreateConsultation called...");
         if (!selectedPatient) return;
 
         if (!hasActiveCenter) {
@@ -158,6 +160,7 @@ export const useConsultationLogic = ({
         const consultation: Consultation = {
             id: generateId(),
             date: new Date().toISOString(),
+            consultationType: newConsultation.consultationType || "morbidity",
             // Vitals & Anthropometry
             weight: newConsultation.weight || "",
             height: newConsultation.height || "",
@@ -205,6 +208,7 @@ export const useConsultationLogic = ({
                 createdByUid: currentUid,
                 createdAt: serverTimestamp(),
             }));
+            console.log("✅ Consultation saved to Firestore");
             showToast("Atención guardada correctamente en la nube", "success");
         } catch (error) {
             console.error(error);

@@ -67,12 +67,14 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
 
     // Opciones de gradientes
     const gradientOptions = [
-        { id: 'gradient1', name: 'Azul-Verde', value: 'linear-gradient(135deg, #0ea5e9 0%, #0f766e 100%)' },
-        { id: 'gradient2', name: 'Púrpura-Rosa', value: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)' },
-        { id: 'gradient3', name: 'Naranja-Rojo', value: 'linear-gradient(135deg, #f97316 0%, #dc2626 100%)' },
-        { id: 'gradient4', name: 'Azul-Índigo', value: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' },
-        { id: 'gradient5', name: 'Verde-Esmeralda', value: 'linear-gradient(135deg, #10b981 0%, #14b8a6 100%)' },
-        { id: 'gradient6', name: 'Pizarra-Oscuro', value: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)' },
+        { id: 'gradient1', name: 'Infinity Blue', value: 'linear-gradient(135deg, #0ea5e9 0%, #0f766e 100%)' },
+        { id: 'gradient2', name: 'Royal Velvet', value: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)' },
+        { id: 'gradient3', name: 'Sunrise Gold', value: 'linear-gradient(135deg, #f59e0b 0%, #dc2626 100%)' },
+        { id: 'gradient4', name: 'Modern Dark', value: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)' },
+        { id: 'gradient5', name: 'Emerald Forest', value: 'linear-gradient(135deg, #059669 0%, #064e3b 100%)' },
+        { id: 'gradient6', name: 'Oceanic', value: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)' },
+        { id: 'gradient7', name: 'Rose Gold', value: 'linear-gradient(135deg, #fb7185 0%, #be123c 100%)' },
+        { id: 'gradient8', name: 'Slate Gray', value: 'linear-gradient(135deg, #475569 0%, #1e293b 100%)' },
         { id: 'custom', name: 'Personalizado', value: center?.branding?.colors?.primary ? `linear-gradient(135deg, ${center.branding.colors.primary} 0%, #1e293b 100%)` : '' },
     ];
 
@@ -433,12 +435,12 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
                                         <button
                                             onClick={handleGenerateAICaption}
                                             disabled={isGeneratingAI || !ideaPrompt.trim()}
-                                            className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                            className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transform active:scale-[0.98]"
                                         >
                                             {isGeneratingAI ? (
-                                                <><Loader className="w-4 h-4 animate-spin" /> Creando magia...</>
+                                                <><Loader className="w-4 h-4 animate-spin" /> Destilando ideas...</>
                                             ) : (
-                                                <><Palette className="w-4 h-4" /> Generar Mensaje</>
+                                                <><Palette className="w-4 h-4" /> Generar Copy de Alto Impacto</>
                                             )}
                                         </button>
                                     </div>

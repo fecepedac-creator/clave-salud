@@ -1,7 +1,7 @@
 import React from "react";
 import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
-import { Printer } from "lucide-react";
+import { Printer, FileText, X } from "lucide-react";
 import QRCode from "qrcode";
 
 const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
@@ -55,6 +55,34 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
+  const downloadPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const html2canvas = (await import("html2canvas")).default;
+    const pdf = new jsPDF("p", "mm", "a5");
+
+    const elements = document.querySelectorAll(".print-document");
+
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i] as HTMLElement;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const imgData = canvas.toDataURL("image/png");
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    }
+
+    const filename = `Doc_${selectedPatient.fullName.replace(/\s+/g, "_")}_${new Date().getTime()}.pdf`;
+    pdf.save(filename);
+  };
+
   // Fallback values for missing info
   const doctorRut = propRut || "No registrado";
   const doctorSpecialty = propSpecialty || "MEDICINA GENERAL";
@@ -70,6 +98,13 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             Vista Previa ({docs.length} documento{docs.length > 1 ? "s" : ""})
           </h3>
           <div className="flex gap-2">
+            <button
+              onClick={downloadPDF}
+              className="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Descargar PDF
+            </button>
             <button
               onClick={() => window.print()}
               className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold transition-colors"

@@ -350,7 +350,7 @@ export function useCrudOperations(
             batches.push(writeBatch(db));
             currentBatchIdx++;
           }
-          batches[currentBatchIdx].update(ref, data);
+          batches[currentBatchIdx].set(ref, data, { merge: true });
           count++;
         };
 
@@ -391,6 +391,7 @@ export function useCrudOperations(
             active: false,
             updatedAt: serverTimestamp(),
             deletedAt: serverTimestamp(),
+            deletedBy: authUser?.uid ?? "unknown",
             deleteReason: "Sincronización de bloques (cierre masivo)",
           });
         }

@@ -238,10 +238,17 @@ const PatientForm: React.FC<PatientFormProps> = ({
       commune,
       occupation: finalOccupation,
       livingWith,
-      medicalHistory,
+      // Persist full SNOMED objects for semantic integrity
+      medicalHistory: medicalHistory.map(id => {
+        const opt = MEDICAL_HISTORY_OPTIONS.find(o => o.id === id);
+        return opt ? { id, snomedCode: opt.snomedCode as string, system: opt.system as string, label: opt.label } : id;
+      }),
       medicalHistoryDetails: finalMedicalDetails,
       cancerDetails: finalCancerDetails,
-      surgicalHistory,
+      surgicalHistory: surgicalHistory.map(id => {
+        const opt = SURGICAL_HISTORY_OPTIONS.find(o => o.id === id);
+        return opt ? { id, snomedCode: opt.snomedCode as string, system: opt.system as string, label: opt.label } : id;
+      }),
       surgicalHistoryDetails: finalSurgicalDetails,
       herniaDetails: finalHerniaDetails,
 
@@ -270,6 +277,13 @@ const PatientForm: React.FC<PatientFormProps> = ({
       genderIdentity,
       ethnicity,
       nationality,
+      // Metadata for FHIR Core-CL alignment
+      fhirMetadata: {
+        identifier: [
+          { use: "official", system: "http://registrocivil.cl/run", value: rut }
+        ],
+        lastUpdated: new Date().toISOString()
+      }
     };
     onSave(newPatient);
   };

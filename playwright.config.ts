@@ -46,7 +46,17 @@ export default defineConfig({
       testMatch: "**/auth.setup.ts",
     },
 
-    // 2. Tests de Admin (usa storageState del Admin)
+    // 2. Tests DEMO (No dependen de login)
+    {
+      name: "demo-tests",
+      testDir: "./tests/demo",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 3. Tests de Admin (usa storageState del Admin)
     {
       name: "admin-tests",
       testDir: "./tests/admin",

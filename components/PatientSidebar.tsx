@@ -65,6 +65,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
   const [customMedical, setCustomMedical] = useState("");
   const [customSurgical, setCustomSurgical] = useState("");
   const [customSocial, setCustomSocial] = useState("");
+  const [showMorbidosMenu, setShowMorbidosMenu] = useState(false);
+  const [showQXMenu, setShowQXMenu] = useState(false);
 
   // Safety accessors
   const livingWith = selectedPatient.livingWith || [];
@@ -84,14 +86,18 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
   const handleAddHistory = (type: "medical" | "surgical", value: string) => {
     if (!value) return;
-    if (type === "medical") {
-      if (!medicalHistory.includes(value)) {
-        handleEditPatientField("medicalHistory", [...medicalHistory, value]);
-      }
-    } else {
-      if (!surgicalHistory.includes(value)) {
-        handleEditPatientField("surgicalHistory", [...surgicalHistory, value]);
-      }
+    const list = type === "medical" ? medicalHistory : surgicalHistory;
+    const field = type === "medical" ? "medicalHistory" : "surgicalHistory";
+
+    // Evitar duplicados comparando normalizado
+    const normalValue = value.trim().toLowerCase();
+    const alreadyExists = list.some(item => {
+      const label = typeof item === "string" ? item : item.label;
+      return label.toLowerCase() === normalValue;
+    });
+
+    if (!alreadyExists) {
+      handleEditPatientField(field, [...list, value.trim()]);
     }
   };
 
@@ -271,21 +277,35 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
         {isEditingPatient && !readOnly ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {MEDICAL_HISTORY_OPTIONS.filter(opt => opt.id !== 'OTRO').map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => toggleHistoryItem("medical", opt.id)}
-                  className={`text-[10px] p-2 rounded-xl border font-bold transition-all text-left flex items-center justify-between ${medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
-                    ? "bg-red-500 text-white border-red-600 shadow-sm"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-red-200 hover:bg-red-50"
-                    }`}
-                >
-                  {opt.label}
-                  {medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id) && <CheckCircle className="w-3 h-3" />}
-                </button>
-              ))}
+            <div className="relative">
+              <button
+                data-testid="btn-add-medical-history"
+                onClick={() => setShowMorbidosMenu(!showMorbidosMenu)}
+                className="w-full py-3 px-4 bg-emerald-50 text-emerald-700 rounded-2xl border-2 border-emerald-100 font-bold text-xs flex items-center justify-between hover:bg-emerald-100 transition-all group"
+              >
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar Antecedente
+              </button>
+              {showMorbidosMenu && (
+                <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  {MEDICAL_HISTORY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      data-testid={`btn-history-item-${opt.id}`}
+                      type="button"
+                      onClick={() => {
+                        toggleHistoryItem("medical", opt.id);
+                        setShowMorbidosMenu(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
+                        ? "bg-red-50 text-red-700"
+                        : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -338,25 +358,32 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
         {/* Muestra los antecedentes actuales en modo edición también, pero con opción de borrar */}
         {isEditingPatient && medicalHistory.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
-            {medicalHistory.map((h) => (
-              <span
-                key={h}
-                className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
-              >
-                {MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
-                <button
-                  onClick={() =>
-                    handleEditPatientField(
-                      "medicalHistory",
-                      medicalHistory.filter((item) => item !== h)
-                    )
-                  }
-                  className="text-slate-400 hover:text-red-500"
+            {medicalHistory.map((h) => {
+              const itemId = typeof h === "string" ? h : h.id;
+              const itemLabel = typeof h === "string"
+                ? (MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h)
+                : h.label;
+
+              return (
+                <span
+                  key={itemId}
+                  className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
+                  {itemLabel}
+                  <button
+                    onClick={() =>
+                      handleEditPatientField(
+                        "medicalHistory",
+                        medicalHistory.filter((item) => (typeof item === "string" ? item : item.id) !== itemId)
+                      )
+                    }
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -456,21 +483,35 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
         {isEditingPatient && !readOnly ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {SURGICAL_HISTORY_OPTIONS.filter(opt => opt.id !== 'OTRO').map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => toggleHistoryItem("surgical", opt.id)}
-                  className={`text-[10px] p-2 rounded-xl border font-bold transition-all text-left flex items-center justify-between ${surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
-                    ? "bg-indigo-500 text-white border-indigo-600 shadow-sm"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50"
-                    }`}
-                >
-                  {opt.label}
-                  {surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id) && <CheckCircle className="w-3 h-3" />}
-                </button>
-              ))}
+            <div className="relative">
+              <button
+                data-testid="btn-add-surgical-history"
+                onClick={() => setShowQXMenu(!showQXMenu)}
+                className="w-full py-3 px-4 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 font-bold text-xs flex items-center justify-between hover:bg-blue-100 transition-all group"
+              >
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar Cirugía
+              </button>
+              {showQXMenu && (
+                <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  {SURGICAL_HISTORY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      data-testid={`btn-surgical-item-${opt.id}`}
+                      type="button"
+                      onClick={() => {
+                        toggleHistoryItem("surgical", opt.id);
+                        setShowQXMenu(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
+                        ? "bg-indigo-50 text-indigo-700"
+                        : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -527,25 +568,32 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
         {/* Muestra los antecedentes actuales en modo edición también */}
         {isEditingPatient && surgicalHistory.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
-            {surgicalHistory.map((h) => (
-              <span
-                key={h}
-                className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
-              >
-                {SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h}
-                <button
-                  onClick={() =>
-                    handleEditPatientField(
-                      "surgicalHistory",
-                      surgicalHistory.filter((item) => item !== h)
-                    )
-                  }
-                  className="text-slate-400 hover:text-red-500"
+            {surgicalHistory.map((h) => {
+              const itemId = typeof h === "string" ? h : h.id;
+              const itemLabel = typeof h === "string"
+                ? (SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h)
+                : h.label;
+
+              return (
+                <span
+                  key={itemId}
+                  className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
+                  {itemLabel}
+                  <button
+                    onClick={() =>
+                      handleEditPatientField(
+                        "surgicalHistory",
+                        surgicalHistory.filter((item) => (typeof item === "string" ? item : item.id) !== itemId)
+                      )
+                    }
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -900,10 +948,17 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               {isEditingPatient && !readOnly ? (
                 <div className="space-y-2">
                   <select
+                    data-testid="patient-insurance"
                     className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                    value={selectedPatient.insurance || "FONASA"}
-                    onChange={(e) => handleEditPatientField("insurance", e.target.value)}
+                    value={selectedPatient.insurance || ""}
+                    onChange={(e) => {
+                      handleEditPatientField("insurance", e.target.value);
+                      if (e.target.value !== "FONASA") {
+                        handleEditPatientField("insuranceLevel", "");
+                      }
+                    }}
                   >
+                    <option value="">-- Seleccione Previsión --</option>
                     {INSURANCE_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}

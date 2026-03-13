@@ -33,6 +33,7 @@ import PrintPreviewModal from "../../../components/PrintPreviewModal";
 import ConsultationDetailModal from "../../../components/ConsultationDetailModal";
 import ExamOrderModal from "../../../components/ExamOrderModal";
 import ClinicalReportModal from "../../../components/ClinicalReportModal";
+import PSCVForm from "../../../components/PSCVForm";
 
 import { useToast } from "../../../components/Toast";
 
@@ -273,7 +274,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 examDefinitions={currentUser?.customExams}
             />
 
-            <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-6 py-2 flex items-center justify-between sticky top-0 z-30">
+            <header className="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between sticky top-0 z-30 shadow-sm backdrop-blur-md bg-white/90 pt-16 lg:pt-5">
                 <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedPatient(null)} className="text-slate-400 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100/50 rounded-full">
                         <ChevronRight className="w-5 h-5 rotate-180" />
@@ -289,8 +290,8 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                         {isEditingPatient ? (
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-2">
-                                    <input className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors" value={selectedPatient.fullName} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, fullName: e.target.value } : null)} placeholder="Nombre Completo" />
-                                    <input className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors" value={selectedPatient.rut} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, rut: e.target.value } : null)} placeholder="RUT" />
+                                    <input data-testid="edit-patient-name" className="text-2xl font-bold text-slate-800 border-b-2 border-primary-300 outline-none bg-transparent w-full md:w-96 focus:border-primary-500 transition-colors" value={selectedPatient.fullName} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, fullName: e.target.value } : null)} placeholder="Nombre Completo" />
+                                    <input data-testid="edit-patient-rut" className="text-sm font-mono border-b-2 border-primary-300 outline-none bg-transparent w-32 focus:border-primary-500 transition-colors" value={selectedPatient.rut} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, rut: e.target.value } : null)} placeholder="RUT" />
                                 </div>
                                 <div className="flex items-center gap-2 text-sm">
                                     <input type="date" className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500" value={selectedPatient.birthDate ? selectedPatient.birthDate.split("T")[0] : ""} onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, birthDate: e.target.value } : null)} />
@@ -309,9 +310,10 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                     </select>
                                     <select
                                         className="bg-transparent border-b border-slate-300 outline-none text-slate-600 focus:border-primary-500 font-bold"
-                                        value={selectedPatient.insurance || "FONASA"}
-                                        onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, insurance: e.target.value as any } : null)}
+                                        value={selectedPatient.insurance || ""}
+                                        onChange={(e) => setSelectedPatient((prev) => prev ? { ...prev, insurance: e.target.value as any, insuranceLevel: e.target.value === 'FONASA' ? (prev.insuranceLevel || 'A') : prev.insuranceLevel } : null)}
                                     >
+                                        <option value="" disabled>Seleccione Previsión...</option>
                                         <option value="FONASA">FONASA</option>
                                         <option value="ISAPRE">ISAPRE</option>
                                         <option value="Particular">Particular</option>
@@ -362,7 +364,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 </div>
                 <div className="flex items-center gap-3">
                     {isEditingPatient ? (
-                        <button type="button" onClick={handleSavePatient} className="bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors" title="Guardar cambios">
+                        <button type="button" data-testid="btn-save-patient-header" onClick={handleSavePatient} className="bg-green-100 text-green-700 hover:bg-green-200 flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-colors" title="Guardar cambios">
                             <Save className="w-5 h-5" /> Guardar Cambios
                         </button>
                     ) : (
@@ -421,9 +423,34 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                     </p>
                                 </div>
                                 {!isReadOnly && role !== "KINESIOLOGO" && (
-                                    <button onClick={() => setIsCreatingConsultation(true)} disabled={!hasActiveCenter} title={hasActiveCenter ? "Crear atención" : "Selecciona un centro activo"} className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                                        <Plus className="w-6 h-6" /> Nueva Atención
-                                    </button>
+                                    <div className="flex gap-4">
+                                        <button
+                                            disabled={!hasActiveCenter}
+                                            title={hasActiveCenter ? "Crear atención" : "Selecciona un centro activo"}
+                                            className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                            data-testid="btn-new-morbidity-consultation"
+                                            onClick={() => {
+                                                setNewConsultation(prev => ({ ...prev, consultationType: 'morbidity' }));
+                                                setIsCreatingConsultation(true);
+                                            }}
+                                        >
+                                            <Plus className="w-6 h-6" /> Nueva Atención
+                                        </button>
+
+                                        {(["MEDICO", "ENFERMERA", "NUTRICIONISTA", "PODOLOGO", "ADMIN_CENTRO", "SUPER_ADMIN"].includes(role as string) || (role as string).includes("ADMIN")) && (
+                                            <button
+                                                disabled={!hasActiveCenter}
+                                                className="bg-emerald-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                data-testid="btn-new-pscv-consultation"
+                                                onClick={() => {
+                                                    setNewConsultation(prev => ({ ...prev, consultationType: 'pscv' }));
+                                                    setIsCreatingConsultation(true);
+                                                }}
+                                            >
+                                                <Activity className="w-6 h-6" /> ⚡ Control Cardiovascular
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                                 {!isReadOnly && role === "KINESIOLOGO" && (
                                     <div className="flex gap-4">
@@ -433,243 +460,274 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                     </div>
                                 )}
                             </div>
-                        )}
+                        )
+                        }
 
                         {/* KINESIOLOGY DASHBOARD */}
-                        {role === "KINESIOLOGO" && !isCreatingConsultation && (selectedPatient.kinePrograms?.length || 0) > 0 && (
-                            <div className="mb-8 space-y-4">
-                                <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">Programas Activos</h3>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {selectedPatient.kinePrograms?.map((prog) => (
-                                        <div key={prog.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
-                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
-                                                <div>
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}>{prog.type}</span>
-                                                        <span className="text-xs text-slate-400 font-medium">{new Date(prog.createdAt).toLocaleDateString()}</span>
+                        {
+                            role === "KINESIOLOGO" && !isCreatingConsultation && (selectedPatient.kinePrograms?.length || 0) > 0 && (
+                                <div className="mb-8 space-y-4">
+                                    <h3 className="font-bold text-slate-700 uppercase tracking-wider text-sm">Programas Activos</h3>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {selectedPatient.kinePrograms?.map((prog) => (
+                                            <div key={prog.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+                                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prog.type.includes("motora") ? "bg-indigo-100 text-indigo-700" : "bg-cyan-100 text-cyan-700"}`}>{prog.type}</span>
+                                                            <span className="text-xs text-slate-400 font-medium">{new Date(prog.createdAt).toLocaleDateString()}</span>
+                                                        </div>
+                                                        <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
+                                                        <p className="text-slate-500 text-sm">{prog.sessions?.length || 0} / {prog.totalSessions} Sesiones realizadas</p>
                                                     </div>
-                                                    <h4 className="font-bold text-slate-800 text-lg">{prog.diagnosis}</h4>
-                                                    <p className="text-slate-500 text-sm">{prog.sessions?.length || 0} / {prog.totalSessions} Sesiones realizadas</p>
+                                                    <div className="flex gap-3">
+                                                        <button onClick={() => setExpandedProgramId(expandedProgramId === prog.id ? null : prog.id)} className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id ? "bg-slate-100 text-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                                                            <History className="w-4 h-4" /> {expandedProgramId === prog.id ? "Ocultar Historial" : "Ver Historial"}
+                                                        </button>
+                                                        <button onClick={() => { setSelectedKineProgram(prog); setIsKineSessionModalOpen(true); }} className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2">
+                                                            <Activity className="w-4 h-4" /> Registrar Sesión
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex gap-3">
-                                                    <button onClick={() => setExpandedProgramId(expandedProgramId === prog.id ? null : prog.id)} className={`px-4 py-2.5 font-bold rounded-xl flex items-center gap-2 transition-colors ${expandedProgramId === prog.id ? "bg-slate-100 text-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
-                                                        <History className="w-4 h-4" /> {expandedProgramId === prog.id ? "Ocultar Historial" : "Ver Historial"}
-                                                    </button>
-                                                    <button onClick={() => { setSelectedKineProgram(prog); setIsKineSessionModalOpen(true); }} className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 flex items-center gap-2">
-                                                        <Activity className="w-4 h-4" /> Registrar Sesión
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            {expandedProgramId === prog.id && (
-                                                <div className="border-t border-slate-100 pt-4 animate-fadeIn">
-                                                    <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Historial de Sesiones</h5>
-                                                    {!prog.sessions || prog.sessions.length === 0 ? (
-                                                        <p className="text-sm text-slate-400 italic">No hay sesiones registradas aún.</p>
-                                                    ) : (
-                                                        <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-                                                            {prog.sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((session, idx) => (
-                                                                <div key={session.id || idx} className="relative pl-8">
-                                                                    <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
-                                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                                                        <div className="flex justify-between items-start mb-2">
-                                                                            <span className="font-bold text-slate-700 text-sm">Sesión #{session.sessionNumber}</span>
-                                                                            <span className="text-xs text-slate-400">{new Date(session.date).toLocaleDateString()}</span>
-                                                                        </div>
-                                                                        <div className="text-sm text-slate-600 space-y-1">
-                                                                            {session.observations && <p><strong className="text-slate-500">Obs:</strong> {session.observations}</p>}
-                                                                            {session.techniques && session.techniques.length > 0 && <p><strong className="text-slate-500">Técnicas:</strong> {session.techniques.join(", ")}</p>}
-                                                                            <div className="flex gap-4 mt-2">
-                                                                                {session.tolerance && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Tol: {session.tolerance}</span>}
-                                                                                {session.response && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Resp: {session.response}</span>}
+                                                {expandedProgramId === prog.id && (
+                                                    <div className="border-t border-slate-100 pt-4 animate-fadeIn">
+                                                        <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Historial de Sesiones</h5>
+                                                        {!prog.sessions || prog.sessions.length === 0 ? (
+                                                            <p className="text-sm text-slate-400 italic">No hay sesiones registradas aún.</p>
+                                                        ) : (
+                                                            <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                                                                {prog.sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((session, idx) => (
+                                                                    <div key={session.id || idx} className="relative pl-8">
+                                                                        <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>
+                                                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                                                            <div className="flex justify-between items-start mb-2">
+                                                                                <span className="font-bold text-slate-700 text-sm">Sesión #{session.sessionNumber}</span>
+                                                                                <span className="text-xs text-slate-400">{new Date(session.date).toLocaleDateString()}</span>
+                                                                            </div>
+                                                                            <div className="text-sm text-slate-600 space-y-1">
+                                                                                {session.observations && <p><strong className="text-slate-500">Obs:</strong> {session.observations}</p>}
+                                                                                {session.techniques && session.techniques.length > 0 && <p><strong className="text-slate-500">Técnicas:</strong> {session.techniques.join(", ")}</p>}
+                                                                                <div className="flex gap-4 mt-2">
+                                                                                    {session.tolerance && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Tol: {session.tolerance}</span>}
+                                                                                    {session.response && <span className="text-xs px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">Resp: {session.response}</span>}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {role === "KINESIOLOGO" && !isCreatingConsultation && (
-                            <div className="space-y-8 animate-fadeIn">
-                                <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
-                                    <PrescriptionManager prescriptions={newConsultation.prescriptions || []} onAddPrescription={(doc) => setNewConsultation((prev) => ({ ...prev, prescriptions: [...(prev.prescriptions || []), doc] }))} onRemovePrescription={(id) => setNewConsultation((prev) => ({ ...prev, prescriptions: prev.prescriptions?.filter((p) => p.id !== id) }))} onPrint={(docs) => { setDocsToPrint(docs); setIsPrintModalOpen(true); }} onOpenClinicalReport={() => setIsClinicalReportOpen(true)} templates={myTemplates} role={role} currentDiagnosis={selectedPatient.kinePrograms?.[0]?.diagnosis || ""} />
-                                </div>
-                                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h4 className="text-secondary-900 font-bold text-lg uppercase tracking-wider mb-6 flex items-center gap-2">
-                                        <Calendar className="w-5 h-5" /> Próximo Control
-                                    </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div>
-                                            <label className="block text-lg font-bold text-slate-700 mb-3">Fecha Estimada</label>
-                                            <input type="date" value={newConsultation.nextControlDate || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlDate: e.target.value }))} className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-lg font-bold text-slate-700 mb-3">Indicaciones / Requisitos</label>
-                                            <input placeholder="Ej: Traer radiografía..." value={newConsultation.nextControlReason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlReason: e.target.value }))} className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg" />
-                                        </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                                <div className="flex justify-end pt-4 pb-12">
-                                    <button onClick={async () => { const updatedPatient = await handleCreateConsultation(); if (updatedPatient) setSelectedPatient(updatedPatient); }} disabled={!hasActiveCenter || (!newConsultation.prescriptions?.length && !newConsultation.nextControlDate)} className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                                        <Save className="w-6 h-6" /> Guardar Gestión / Documentos
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                            )
+                        }
 
-                        {role === "KINESIOLOGO" && (
-                            <>
-                                <StartProgramModal isOpen={isKineProgramModalOpen} onClose={() => setIsKineProgramModalOpen(false)} onConfirm={(t, d) => handleCreateKineProgram(selectedPatient, t, d)} />
-                                {selectedKineProgram && (
-                                    <SessionModal isOpen={isKineSessionModalOpen} onClose={() => { setIsKineSessionModalOpen(false); setSelectedKineProgram(null); }} program={selectedKineProgram} sessionNumber={(selectedKineProgram.sessions?.length || 0) + 1} onSave={(s) => handleSaveKineSession(selectedPatient, selectedKineProgram.id, s)} />
-                                )}
-                            </>
-                        )}
+                        {
+                            role === "KINESIOLOGO" && !isCreatingConsultation && (
+                                <div className="space-y-8 animate-fadeIn">
+                                    <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
+                                        <PrescriptionManager prescriptions={newConsultation.prescriptions || []} onAddPrescription={(doc) => setNewConsultation((prev) => ({ ...prev, prescriptions: [...(prev.prescriptions || []), doc] }))} onRemovePrescription={(id) => setNewConsultation((prev) => ({ ...prev, prescriptions: prev.prescriptions?.filter((p) => p.id !== id) }))} onPrint={(docs) => { setDocsToPrint(docs); setIsPrintModalOpen(true); }} onOpenClinicalReport={() => setIsClinicalReportOpen(true)} templates={myTemplates} role={role} currentDiagnosis={selectedPatient.kinePrograms?.[0]?.diagnosis || ""} />
+                                    </div>
+                                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                                        <h4 className="text-secondary-900 font-bold text-lg uppercase tracking-wider mb-6 flex items-center gap-2">
+                                            <Calendar className="w-5 h-5" /> Próximo Control
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div>
+                                                <label className="block text-lg font-bold text-slate-700 mb-3">Fecha Estimada</label>
+                                                <input type="date" value={newConsultation.nextControlDate || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlDate: e.target.value }))} className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-lg font-bold text-slate-700 mb-3">Indicaciones / Requisitos</label>
+                                                <input placeholder="Ej: Traer radiografía..." value={newConsultation.nextControlReason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlReason: e.target.value }))} className="w-full p-4 border-2 border-slate-200 rounded-xl outline-none focus:border-secondary-500 bg-slate-50 text-lg" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end pt-4 pb-12">
+                                        <button onClick={async () => { const updatedPatient = await handleCreateConsultation(); if (updatedPatient) setSelectedPatient(updatedPatient); }} disabled={!hasActiveCenter || (!newConsultation.prescriptions?.length && !newConsultation.nextControlDate)} className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-3 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                            <Save className="w-6 h-6" /> Guardar Gestión / Documentos
+                                        </button>
+                                    </div>
+                                </div>
+                            )
+                        }
+
+                        {
+                            role === "KINESIOLOGO" && (
+                                <>
+                                    <StartProgramModal isOpen={isKineProgramModalOpen} onClose={() => setIsKineProgramModalOpen(false)} onConfirm={(t, d) => handleCreateKineProgram(selectedPatient, t, d)} />
+                                    {selectedKineProgram && (
+                                        <SessionModal isOpen={isKineSessionModalOpen} onClose={() => { setIsKineSessionModalOpen(false); setSelectedKineProgram(null); }} program={selectedKineProgram} sessionNumber={(selectedKineProgram.sessions?.length || 0) + 1} onSave={(s) => handleSaveKineSession(selectedPatient, selectedKineProgram.id, s)} />
+                                    )}
+                                </>
+                            )
+                        }
 
                         {isCreatingConsultation ? (
                             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 animate-slideUp">
                                 <div className="bg-slate-800 text-white px-8 py-5 flex justify-between items-center rounded-t-2xl">
-                                    <h3 className="font-bold text-xl flex items-center gap-2"><FileText className="w-6 h-6 text-primary-400" /> Nueva Atención ({role})</h3>
+                                    <h3 className="font-bold text-xl flex items-center gap-2">
+                                        {newConsultation.consultationType === 'pscv' ? (
+                                            <><Activity className="w-6 h-6 text-emerald-400" /> Control Cardiovascular (PSCV)</>
+                                        ) : (
+                                            <><FileText className="w-6 h-6 text-primary-400" /> Nueva Atención ({role})</>
+                                        )}
+                                    </h3>
                                     <button onClick={() => setIsCreatingConsultation(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
                                 </div>
 
-                                <div className="p-8 md:p-10 space-y-10">
-                                    {/* 1. Motivo y Anamnesis */}
-                                    <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
-                                        <button onClick={() => toggleSection('anamnesis')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
-                                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                                <FileText className="w-5 h-5 text-indigo-500" /> {labels.reason} y {labels.anamnesis.split(' ')[0]}
-                                            </h4>
-                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'anamnesis' ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {expandedSection === 'anamnesis' && (
-                                            <div className="p-5 md:p-8 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
-                                                <div className="col-span-full">
-                                                    <label className="block text-sm font-bold text-slate-700 mb-2">{labels.reason}</label>
-                                                    <input value={newConsultation.reason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, reason: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-medium text-lg text-slate-800" placeholder="¿Cuál es el motivo principal de la consulta?" />
-                                                </div>
-                                                <div className={isPsych ? "col-span-full" : ""}>
-                                                    <label className="block text-sm font-bold text-slate-700 mb-2">{labels.anamnesis}</label>
-                                                    <textarea value={newConsultation.anamnesis || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, anamnesis: e.target.value }))} spellCheck={true} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700" placeholder="Detalle clínico e historial de la enfermedad actual..." />
-                                                </div>
-                                                {labels.physical && (
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-slate-700 mb-2">{labels.physical}</label>
-                                                        <textarea value={newConsultation.physicalExam || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, physicalExam: e.target.value }))} spellCheck={true} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700" placeholder="Hallazgos físicos..." />
+                                <div className="p-0 overflow-hidden">
+                                    {newConsultation.consultationType === "pscv" ? (
+                                        <div className="p-8 md:p-10 space-y-10 border-b border-slate-100">
+                                            <PSCVForm
+                                                newConsultation={newConsultation}
+                                                onChange={handleVitalsChange}
+                                                onExamChange={handleExamChange}
+                                                consultationHistory={selectedPatientConsultations}
+                                                patientBirthDate={selectedPatient.birthDate}
+                                                patientGender={selectedPatient.gender}
+                                                examOptions={allExamOptions}
+                                                role={role}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="p-8 md:p-10 space-y-10 border-b border-slate-100">
+                                            {/* 1. Motivo y Anamnesis */}
+                                            <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
+                                                <button onClick={() => toggleSection('anamnesis')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                                    <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                        <FileText className="w-5 h-5 text-indigo-500" /> {labels.reason} y {labels.anamnesis.split(' ')[0]}
+                                                    </h4>
+                                                    <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'anamnesis' ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {expandedSection === 'anamnesis' && (
+                                                    <div className="p-5 md:p-8 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
+                                                        <div className="col-span-full">
+                                                            <label className="block text-sm font-bold text-slate-700 mb-2">{labels.reason}</label>
+                                                            <input value={newConsultation.reason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, reason: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-medium text-lg text-slate-800" placeholder="¿Cuál es el motivo principal de la consulta?" />
+                                                        </div>
+                                                        <div className={isPsych ? "col-span-full" : ""}>
+                                                            <label className="block text-sm font-bold text-slate-700 mb-2">{labels.anamnesis}</label>
+                                                            <textarea value={newConsultation.anamnesis || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, anamnesis: e.target.value }))} spellCheck={true} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700" placeholder="Detalle clínico e historial de la enfermedad actual..." />
+                                                        </div>
+                                                        {labels.physical && (
+                                                            <div>
+                                                                <label className="block text-sm font-bold text-slate-700 mb-2">{labels.physical}</label>
+                                                                <textarea value={newConsultation.physicalExam || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, physicalExam: e.target.value }))} spellCheck={true} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700" placeholder="Hallazgos físicos..." />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
 
-                                    {/* 2. Evaluación Médica (Vitals, Odontograma, Exams) */}
-                                    <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
-                                        <button onClick={() => toggleSection('medical')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
-                                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                                <Activity className="w-5 h-5 text-cyan-500" /> Evaluación Médica (Exámenes y Signos Vitales)
-                                            </h4>
-                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'medical' ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {expandedSection === 'medical' && (
-                                            <div className="p-5 md:p-8 border-t border-slate-100 space-y-8 bg-white">
-                                                {canSeeVitals && !moduleGuards.vitals && <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Signos Vitales deshabilitado.</div>}
-                                                {canSeeVitals && moduleGuards.vitals && (
-                                                    <VitalsForm newConsultation={newConsultation} onChange={handleVitalsChange} onExamChange={handleExamChange} consultationHistory={selectedPatientConsultations} activeExams={selectedPatient.activeExams || []} patientBirthDate={selectedPatient.birthDate} patientGender={selectedPatient.gender} examOptions={allExamOptions} role={role} anthropometryEnabled={moduleGuards.vitals} />
-                                                )}
-                                                {isDentist && !moduleGuards.dental && <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Odontograma deshabilitado.</div>}
-                                                {isDentist && moduleGuards.dental && (
-                                                    <Odontogram value={newConsultation.dentalMap || []} onChange={(val) => setNewConsultation((prev) => ({ ...prev, dentalMap: val }))} />
-                                                )}
-                                                {isPodo && (
-                                                    <Podogram value={newConsultation.podogram || []} onChange={(val) => setNewConsultation((prev) => ({ ...prev, podogram: val }))} />
-                                                )}
-                                                {moduleGuards.exams && (
-                                                    <div className="pt-4 border-t border-slate-200">
-                                                        <ExamSheetsSection
-                                                            examSheets={newConsultation.examSheets || []}
-                                                            onChange={(sheets) => setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))}
-                                                            examOptions={allExamOptions}
-                                                            availableProfiles={currentUser?.savedExamProfiles?.length ? currentUser.savedExamProfiles : myExamProfiles}
-                                                            consultationHistory={selectedPatientConsultations}
-                                                            legacyExams={newConsultation.exams}
-                                                        />
+                                            {/* 2. Evaluación Médica (Vitals, Odontograma, Exams) */}
+                                            <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
+                                                <button onClick={() => toggleSection('medical')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                                    <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                        <Activity className="w-5 h-5 text-cyan-500" /> Evaluación Médica (Exámenes y Signos Vitales)
+                                                    </h4>
+                                                    <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'medical' ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {expandedSection === 'medical' && (
+                                                    <div className="p-5 md:p-8 border-t border-slate-100 space-y-8 bg-white">
+                                                        {canSeeVitals && !moduleGuards.vitals && <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Signos Vitales deshabilitado.</div>}
+                                                        {canSeeVitals && moduleGuards.vitals && (
+                                                            <VitalsForm newConsultation={newConsultation} onChange={handleVitalsChange} onExamChange={handleExamChange} consultationHistory={selectedPatientConsultations} activeExams={selectedPatient.activeExams || []} patientBirthDate={selectedPatient.birthDate} patientGender={selectedPatient.gender} examOptions={allExamOptions} role={role} anthropometryEnabled={moduleGuards.vitals} />
+                                                        )}
+                                                        {isDentist && !moduleGuards.dental && <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Odontograma deshabilitado.</div>}
+                                                        {isDentist && moduleGuards.dental && (
+                                                            <Odontogram value={newConsultation.dentalMap || []} onChange={(val) => setNewConsultation((prev) => ({ ...prev, dentalMap: val }))} />
+                                                        )}
+                                                        {isPodo && (
+                                                            <Podogram value={newConsultation.podogram || []} onChange={(val) => setNewConsultation((prev) => ({ ...prev, podogram: val }))} />
+                                                        )}
+                                                        {moduleGuards.exams && (
+                                                            <div className="pt-4 border-t border-slate-200">
+                                                                <ExamSheetsSection
+                                                                    examSheets={newConsultation.examSheets || []}
+                                                                    onChange={(sheets) => setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))}
+                                                                    examOptions={allExamOptions}
+                                                                    availableProfiles={currentUser?.savedExamProfiles?.length ? currentUser.savedExamProfiles : myExamProfiles}
+                                                                    consultationHistory={selectedPatientConsultations}
+                                                                    legacyExams={newConsultation.exams}
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
 
-                                    {/* 3. Diagnóstico e Indicaciones */}
-                                    <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
-                                        <button onClick={() => toggleSection('diagnosis')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
-                                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                                <Edit className="w-5 h-5 text-emerald-500" /> Diagnóstico, Recetas e Indicaciones
-                                            </h4>
-                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'diagnosis' ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {expandedSection === 'diagnosis' && (
-                                            <div className="p-5 md:p-8 border-t border-slate-100 space-y-6 bg-white">
-                                                <div>
-                                                    <label className="block text-sm font-bold text-slate-700 mb-2">{labels.diagnosis}</label>
-                                                    <AutocompleteInput value={newConsultation.diagnosis || ""} onChange={(val) => setNewConsultation((prev) => ({ ...prev, diagnosis: val }))} options={COMMON_DIAGNOSES} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none font-bold text-lg text-slate-800" placeholder="Buscar CIE-10 o escribir texto libre (Ej: Faringitis Aguda...)" />
-                                                </div>
-                                                <div className={!canPrescribeDrugs ? "bg-slate-50 p-6 rounded-2xl border border-slate-200" : ""}>
-                                                    {!canPrescribeDrugs && <p className="text-sm font-bold text-slate-400 uppercase mb-4">Indicaciones y Certificados</p>}
-                                                    {moduleGuards.prescriptions ? (
-                                                        <>
-                                                            <PrescriptionManager
-                                                                prescriptions={newConsultation.prescriptions || []}
-                                                                onAddPrescription={(doc) => setNewConsultation((prev) => ({ ...prev, prescriptions: [...(prev.prescriptions || []), doc] }))}
-                                                                onRemovePrescription={(id) => setNewConsultation((prev) => ({ ...prev, prescriptions: prev.prescriptions?.filter((p) => p.id !== id) }))}
-                                                                onPrint={(docs) => { setDocsToPrint(docs); setIsPrintModalOpen(true); }}
-                                                                onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
-                                                                onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
-                                                                templates={myTemplates}
-                                                                role={role}
-                                                                currentDiagnosis={newConsultation.diagnosis}
-                                                            />
-                                                            {!canPrescribeDrugs && <p className="text-xs text-slate-400 mt-2 italic">* Su perfil no permite emitir recetas de medicamentos, solo indicaciones y certificados.</p>}
-                                                        </>
-                                                    ) : (
-                                                        <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Indicaciones/Recetas deshabilitado.</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* 4. Próximo Control */}
-                                    <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
-                                        <button onClick={() => toggleSection('control')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
-                                            <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                                <Calendar className="w-5 h-5 text-amber-500" /> Plan y Próximo Control
-                                            </h4>
-                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'control' ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {expandedSection === 'control' && (
-                                            <div className="p-5 md:p-8 border-t border-slate-100 bg-amber-50/20">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-slate-700 mb-2">Fecha Estimada</label>
-                                                        <input type="date" value={newConsultation.nextControlDate || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlDate: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-500 bg-white" />
+                                            {/* 3. Diagnóstico e Indicaciones */}
+                                            <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
+                                                <button onClick={() => toggleSection('diagnosis')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                                    <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                        <Edit className="w-5 h-5 text-emerald-500" /> Diagnóstico, Recetas e Indicaciones
+                                                    </h4>
+                                                    <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'diagnosis' ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {expandedSection === 'diagnosis' && (
+                                                    <div className="p-5 md:p-8 border-t border-slate-100 space-y-6 bg-white">
+                                                        <div>
+                                                            <label className="block text-sm font-bold text-slate-700 mb-2">{labels.diagnosis}</label>
+                                                            <AutocompleteInput value={newConsultation.diagnosis || ""} onChange={(val) => setNewConsultation((prev) => ({ ...prev, diagnosis: val }))} options={COMMON_DIAGNOSES} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none font-bold text-lg text-slate-800" placeholder="Buscar CIE-10 o escribir texto libre (Ej: Faringitis Aguda...)" />
+                                                        </div>
+                                                        <div className={!canPrescribeDrugs ? "bg-slate-50 p-6 rounded-2xl border border-slate-200" : ""}>
+                                                            {!canPrescribeDrugs && <p className="text-sm font-bold text-slate-400 uppercase mb-4">Indicaciones y Certificados</p>}
+                                                            {moduleGuards.prescriptions ? (
+                                                                <>
+                                                                    <PrescriptionManager
+                                                                        prescriptions={newConsultation.prescriptions || []}
+                                                                        onAddPrescription={(doc) => setNewConsultation((prev) => ({ ...prev, prescriptions: [...(prev.prescriptions || []), doc] }))}
+                                                                        onRemovePrescription={(id) => setNewConsultation((prev) => ({ ...prev, prescriptions: prev.prescriptions?.filter((p) => p.id !== id) }))}
+                                                                        onPrint={(docs) => { setDocsToPrint(docs); setIsPrintModalOpen(true); }}
+                                                                        onOpenClinicalReport={() => setIsClinicalReportOpen(true)}
+                                                                        onOpenExamOrders={() => setIsExamOrderModalOpen(true)}
+                                                                        templates={myTemplates}
+                                                                        role={role}
+                                                                        currentDiagnosis={newConsultation.diagnosis}
+                                                                    />
+                                                                    {!canPrescribeDrugs && <p className="text-xs text-slate-400 mt-2 italic">* Su perfil no permite emitir recetas de medicamentos, solo indicaciones y certificados.</p>}
+                                                                </>
+                                                            ) : (
+                                                                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm">Módulo de Indicaciones/Recetas deshabilitado.</div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-slate-700 mb-2">Indicaciones / Requisitos</label>
-                                                        <input placeholder="Ej: Traer radiografía..." value={newConsultation.nextControlReason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlReason: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-500 bg-white" />
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
 
-                                    <div className="flex justify-end items-center pt-8 border-t border-slate-100 gap-4 relative">
+                                            {/* 4. Próximo Control */}
+                                            <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
+                                                <button onClick={() => toggleSection('control')} className="w-full flex items-center justify-between p-5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                                    <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                        <Calendar className="w-5 h-5 text-amber-500" /> Plan y Próximo Control
+                                                    </h4>
+                                                    <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${expandedSection === 'control' ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {expandedSection === 'control' && (
+                                                    <div className="p-5 md:p-8 border-t border-slate-100 bg-amber-50/20">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                            <div>
+                                                                <label className="block text-sm font-bold text-slate-700 mb-2">Fecha Estimada</label>
+                                                                <input type="date" value={newConsultation.nextControlDate || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlDate: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-500 bg-white" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-bold text-slate-700 mb-2">Indicaciones / Requisitos</label>
+                                                                <input placeholder="Ej: Traer radiografía..." value={newConsultation.nextControlReason || ""} onChange={(e) => setNewConsultation((prev) => ({ ...prev, nextControlReason: e.target.value }))} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-500 bg-white" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Action Bar (Common for both PSCV and Morbidity) */}
+                                    <div className="p-8 md:p-10 bg-slate-50 flex justify-end items-center gap-4 relative">
                                         {canIssueLicense && (
                                             <div className="relative">
                                                 <button onClick={() => setShowLicenciaOptions(!showLicenciaOptions)} className="text-primary-600 font-bold text-lg hover:bg-primary-50 px-6 py-3 rounded-xl transition-colors border border-primary-200">Emitir Licencia Médica</button>
@@ -681,8 +739,19 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                                 )}
                                             </div>
                                         )}
-                                        <button onClick={async () => { const updatedPatient = await handleCreateConsultation(); if (updatedPatient) setSelectedPatient(updatedPatient); }} disabled={!hasActiveCenter} className="bg-primary-600 text-white px-10 py-5 rounded-2xl font-bold hover:bg-primary-700 shadow-xl shadow-primary-200 transition-all flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed">
-                                            <Save className="w-7 h-7" /> Guardar Atención
+                                        <button
+                                            data-testid="btn-finalizar-consulta"
+                                            onClick={async () => {
+                                                const updatedPatient = await handleCreateConsultation();
+                                                if (updatedPatient) setSelectedPatient(updatedPatient);
+                                            }}
+                                            disabled={!hasActiveCenter}
+                                            className={`px-10 py-5 rounded-2xl font-bold transition-all flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-xl ${newConsultation.consultationType === 'pscv'
+                                                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 text-white'
+                                                : 'bg-primary-600 hover:bg-primary-700 shadow-primary-200 text-white'
+                                                }`}
+                                        >
+                                            <Save className="w-7 h-7" /> {newConsultation.consultationType === 'pscv' ? 'Finalizar Control PSCV' : 'Guardar Atención'}
                                         </button>
                                     </div>
                                 </div>

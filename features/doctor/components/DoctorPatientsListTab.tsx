@@ -67,6 +67,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                     <input
                         type="text"
                         placeholder="Buscar por nombre o RUT..."
+                        data-testid="patient-search-input"
                         className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all font-medium text-slate-700 bg-white"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -110,6 +111,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                                         setIsEditingPatient(true);
                                     }}
                                     disabled={!hasActiveCenter}
+                                    data-testid="btn-new-patient"
                                     className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 active:scale-95"
                                 >
                                     <Plus className="w-5 h-5" /> Nuevo Paciente
@@ -147,7 +149,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                                 const isControlNear = nextCtrl && nextCtrl <= new Date(new Date().setDate(new Date().getDate() + 7));
 
                                 return (
-                                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => handleSelectPatient(p)}>
+                                    <tr key={p.id} data-testid={`patient-row-${p.rut}`} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => handleSelectPatient(p)}>
                                         <td className="p-5">
                                             <div className="font-bold text-slate-800 text-base">{formatPersonName(p.fullName)}</div>
                                         </td>

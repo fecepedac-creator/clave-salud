@@ -18,6 +18,10 @@ import LegalLinks from "./components/LegalLinks";
 import LandingPage from "./components/LandingPage";
 import SupportWidget from "./components/SupportWidget";
 import OnboardingTour, { OnboardingStep } from "./components/OnboardingTour";
+import BookingPortal from "./components/BookingPortal";
+import { PatientMenu, PatientCancel } from "./components/PatientPortal";
+import HomeDirectory from "./components/HomeDirectory";
+
 import {
   formatRUT,
   generateId,
@@ -83,11 +87,84 @@ const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth
 
 const App: React.FC = () => {
   const { showToast } = useToast();
-  const [demoMode, setDemoMode] = useState(false);
-  const [masterAccess] = useState(() => {
-    return new URLSearchParams(window.location.search).has("master_access") ||
-      new URLSearchParams(window.location.search).has("agent_test");
+  const {
+    authUser,
+    isSuperAdminClaim,
+    currentUser: localCurrentUser,
+    email,
+    setEmail,
+    password,
+    setPassword,
+    error,
+    setError,
+    setCurrentUser: setLocalCurrentUser,
+    handleSuperAdminLogin: hookHandleSuperAdminLogin,
+    handleSuperAdminGoogleLogin: hookHandleSuperAdminGoogleLogin,
+    handleGoogleLogin: hookHandleGoogleLogin,
+    handleLogout: hookHandleLogout,
+    bootstrapSuperAdmin,
+    handleSuperAdminUnauthorized,
+    handleRedirectResult,
+  } = useAuth();
+
+  const [demoMode, setDemoMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("demo") || params.has("agent_test");
   });
+
+  const [masterAccess] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("master_access") ||
+      params.has("agent_test") ||
+      params.has("demo");
+  });
+
+  const demoRole = useMemo(() => {
+    return new URLSearchParams(window.location.search).get("demo_role") || "admin";
+  }, []);
+
+  const mockDemoUser: UserProfile = useMemo(() => ({
+    uid: "demo_user_uid",
+    id: "demo_user_uid",
+    email: "demo@clavesalud.com",
+    fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
+    role: demoRole === "doctor" ? "MEDICO" : "ADMIN_CENTRO",
+    roles: demoRole === "superadmin" ? ["SUPER_ADMIN"] : (demoRole === "doctor" ? ["MEDICO"] : ["ADMIN_CENTRO"]),
+    centers: ["c_saludmass", "c_eji2qv61"],
+    centros: ["c_saludmass", "c_eji2qv61"],
+    isAdmin: demoRole !== "doctor",
+    activo: true,
+  }), [demoRole]);
+
+  const mockMasterUser: UserProfile = useMemo(() => ({
+    uid: "master_access_uid",
+    id: "master_access_uid",
+    email: "master@clavesalud.com",
+    fullName: "Administrador Maestro (Bypass)",
+    role: "ADMIN_CENTRO",
+    roles: ["ADMIN_CENTRO", "ADMINISTRATIVO", "SUPER_ADMIN"],
+    centers: ["c_eji2qv61"],
+    centros: ["c_eji2qv61"],
+    isAdmin: true,
+    activo: true,
+  }), []);
+
+  // Intercept Auth for Demo Mode
+  const effectiveAuthUser = useMemo(() => {
+    if (demoMode) return { uid: "demo_user_uid", email: "demo@clavesalud.com" } as any;
+    return authUser || (masterAccess ? { uid: "master_access_uid", email: "master@clavesalud.com" } as any : null);
+  }, [demoMode, authUser, masterAccess]);
+
+  const effectiveLocalCurrentUser = useMemo(() => {
+    if (demoMode) return mockDemoUser;
+    return localCurrentUser;
+  }, [demoMode, mockDemoUser, localCurrentUser]);
+
+  // Combined superadmin check
+  const effectiveIsSuperAdmin = useMemo(() => {
+    if (demoMode && demoRole === "superadmin") return true;
+    return isSuperAdminClaim;
+  }, [demoMode, demoRole, isSuperAdminClaim]);
 
   const [view, setView] = useState<ViewMode>(() => {
     const path = window.location.pathname;
@@ -114,7 +191,7 @@ const App: React.FC = () => {
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
     const params = new URLSearchParams(window.location.search);
-    if (params.has("master_access") || params.has("agent_test")) return "c_eji2qv61"; // Los Andes
+    if (params.has("master_access") || params.has("agent_test") || params.has("demo")) return "c_eji2qv61"; // Los Andes
     return "";
   });
   const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
@@ -128,42 +205,15 @@ const App: React.FC = () => {
   const [previewCenterId, setPreviewCenterId] = useState("");
   const [previewRole, setPreviewRole] = useState("");
 
-  const {
-    authUser,
-    isSuperAdminClaim,
-    currentUser: localCurrentUser,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    error,
-    setError,
-    setCurrentUser: setLocalCurrentUser,
-    handleSuperAdminLogin: hookHandleSuperAdminLogin,
-    handleSuperAdminGoogleLogin: hookHandleSuperAdminGoogleLogin,
-    handleGoogleLogin: hookHandleGoogleLogin,
-    handleLogout: hookHandleLogout,
-    bootstrapSuperAdmin,
-    handleSuperAdminUnauthorized,
-    handleRedirectResult,
-  } = useAuth();
-
-  useEffect(() => {
-    const p = window.location.pathname;
-    if (p.startsWith("/superadmin") && view !== "superadmin-dashboard") {
-      setView("superadmin-dashboard" as ViewMode);
-    }
-  }, [view]);
-
   const isAdmin = useMemo(() => {
-    if (isSuperAdminClaim) return true;
-    if (!localCurrentUser) return false;
+    if (effectiveIsSuperAdmin) return true;
+    if (!effectiveLocalCurrentUser) return false;
     return (
-      localCurrentUser.isAdmin === true ||
-      hasRole(localCurrentUser.roles, "admin") ||
-      hasRole(localCurrentUser.roles, "center_admin")
+      effectiveLocalCurrentUser.isAdmin === true ||
+      hasRole(effectiveLocalCurrentUser.roles, "admin") ||
+      hasRole(effectiveLocalCurrentUser.roles, "center_admin")
     );
-  }, [localCurrentUser, isSuperAdminClaim]);
+  }, [effectiveLocalCurrentUser, effectiveIsSuperAdmin]);
 
   const [portfolioMode, setPortfolioMode] = useState<"global" | "center">("global");
   const {
@@ -175,7 +225,7 @@ const App: React.FC = () => {
     loadMoreCenters,
     isLoadingMoreCenters,
     isLoading: isLoadingCenters,
-  } = useCenters(demoMode, isSuperAdminClaim, activeCenterId, setActiveCenterId);
+  } = useCenters(demoMode, effectiveIsSuperAdmin, activeCenterId, setActiveCenterId);
 
   // Sync URL with activeCenterId
   useEffect(() => {
@@ -190,8 +240,6 @@ const App: React.FC = () => {
       }
     }
   }, [activeCenterId, view]);
-  // Placeholder if masterAccess is true but authUser is null
-  const effectiveAuthUser = authUser || (masterAccess ? { uid: "master_access_uid", email: "master@clavesalud.com" } as any : null);
 
   const {
     patients,
@@ -207,24 +255,11 @@ const App: React.FC = () => {
     activeCenterId,
     effectiveAuthUser,
     demoMode,
-    isSuperAdminClaim,
+    effectiveIsSuperAdmin,
     setCenters,
-    localCurrentUser,
+    effectiveLocalCurrentUser,
     portfolioMode
   );
-
-  const mockMasterUser: UserProfile = useMemo(() => ({
-    uid: "master_access_uid",
-    id: "master_access_uid",
-    email: "master@clavesalud.com",
-    fullName: "Administrador Maestro (Bypass)",
-    role: "ADMIN_CENTRO",
-    roles: ["ADMIN_CENTRO", "ADMINISTRATIVO", "SUPER_ADMIN"],
-    centers: ["c_eji2qv61"],
-    centros: ["c_eji2qv61"],
-    isAdmin: true,
-    activo: true,
-  }), []);
   const {
     inviteToken,
     setInviteToken,
@@ -317,6 +352,22 @@ const App: React.FC = () => {
     showToast
   );
 
+  const booking = {
+    bookingStep, setBookingStep, bookingType, setBookingType,
+    selectedMedicalService, setSelectedMedicalService,
+    bookingData, setBookingData, prefillContact,
+    selectedRole, setSelectedRole,
+    selectedDoctorForBooking, setSelectedDoctorForBooking,
+    bookingDate, setBookingDate,
+    bookingMonth, setBookingMonth,
+    selectedSlot, setSelectedSlot,
+    cancelRut, setCancelRut,
+    cancelPhoneDigits, setCancelPhoneDigits,
+    cancelLoading, cancelError, setCancelError,
+    cancelResults, handleBookingConfirm, resetBooking,
+    handleLookupAppointments, cancelPatientAppointment, handleReschedule
+  };
+
   const syncAppointments = useCallback(
     (nextAppointments: Appointment[]) =>
       hookSyncAppointments(nextAppointments, setIsSyncingAppointments),
@@ -334,7 +385,7 @@ const App: React.FC = () => {
     if (loginViewPreference === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
 
     const userRoles = user?.roles || [];
-    const isSuperAdmin = isMaster || userRoles.some(r => String(r || "").toLowerCase().includes("super_admin") || String(r || "").toLowerCase().includes("superadmin"));
+    const isSuperAdmin = masterAccess || userRoles.some(r => String(r || "").toLowerCase().includes("super_admin") || String(r || "").toLowerCase().includes("superadmin"));
 
     if (isSuperAdmin && (targetView === "superadmin-dashboard" || loginViewPreference === "superadmin-dashboard")) {
       return "superadmin-dashboard" as ViewMode;
@@ -831,170 +882,25 @@ const App: React.FC = () => {
     );
   };
 
-  const renderPatientMenu = () =>
-    renderCenterBackdrop(
-      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div className="max-w-4xl w-full">
-          <div className="flex justify-center mb-8">
-            <LogoHeader size="lg" showText={true} />
-          </div>
+  const renderPatientMenu = () => (
+    <PatientMenu
+      view={view}
+      onNavigate={setView}
+      bookingState={booking}
+      doctors={doctors}
+      renderCenterBackdrop={renderCenterBackdrop}
+    />
+  );
 
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-slate-800">¿Qué deseas realizar?</h2>
-            <p className="text-slate-500 mt-2 text-xl">Selecciona una opción para continuar</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <button
-              onClick={() => {
-                setBookingStep(0);
-                setView("patient-booking" as ViewMode);
-              }}
-              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-indigo-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-            >
-              <div className="w-24 h-24 bg-indigo-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                <CalendarPlus className="w-12 h-12 text-indigo-600" />
-              </div>
-              <h3 className="font-bold text-3xl text-slate-800">Solicitar Hora</h3>
-              <p className="text-slate-500 mt-2 font-medium text-lg">
-                Agendar cita con especialistas
-              </p>
-            </button>
-
-            <button
-              onClick={() => setView("patient-form" as ViewMode)}
-              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-            >
-              <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                <AlertCircle className="w-12 h-12 text-blue-600" />
-              </div>
-              <h3 className="font-bold text-3xl text-slate-800">Completar Antecedentes</h3>
-              <p className="text-slate-500 mt-2 font-medium text-lg">Pre-ingreso y ficha clínica</p>
-            </button>
-
-            <button
-              onClick={() => setView("patient-cancel" as ViewMode)}
-              className="bg-white/90 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-rose-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-            >
-              <div className="w-24 h-24 bg-rose-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                <AlertCircle className="w-12 h-12 text-rose-500" />
-              </div>
-              <h3 className="font-bold text-3xl text-slate-800">Cancelar Hora</h3>
-              <p className="text-slate-500 mt-2 font-medium text-lg">Libera una cita agendada</p>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-
-  const renderPatientCancel = () =>
-    renderCenterBackdrop(
-      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div className="max-w-xl w-full">
-          <div className="flex justify-center mb-8">
-            <LogoHeader size="md" showText={true} />
-          </div>
-
-          <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] shadow-xl border border-white p-10">
-            <h2 className="text-3xl font-bold text-slate-800 mb-3 text-center">Cancelar Hora</h2>
-            <p className="text-slate-500 text-center mb-8">
-              Ingresa tu RUT y teléfono para ver tus horas agendadas.
-            </p>
-
-            <div className="space-y-6">
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                  RUT
-                </label>
-                <input
-                  className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
-                  value={cancelRut}
-                  onChange={(e) => setCancelRut(formatRUT(e.target.value))}
-                  placeholder="12.345.678-9"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                  Teléfono
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
-                    +56 9
-                  </span>
-                  <input
-                    className="w-full p-4 border-2 border-slate-200 rounded-2xl font-medium outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all"
-                    value={cancelPhoneDigits}
-                    onChange={(e) =>
-                      setCancelPhoneDigits(e.target.value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    placeholder="12345678"
-                  />
-                </div>
-              </div>
-
-              {cancelError && (
-                <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm">
-                  {cancelError}
-                </div>
-              )}
-
-              <button
-                onClick={handleLookupAppointments}
-                disabled={cancelLoading}
-                className="w-full bg-rose-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-rose-700 shadow-lg transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {cancelLoading ? "Buscando..." : "Buscar Horas"}
-              </button>
-
-              {cancelResults.length > 0 && (
-                <div className="pt-6 border-t border-slate-200 space-y-4">
-                  <h3 className="text-lg font-bold text-slate-700 text-center">
-                    Tus horas agendadas
-                  </h3>
-                  {cancelResults.map((appointment) => {
-                    const doctor = doctors.find(
-                      (doc) => doc.id === ((appointment as any).doctorUid ?? appointment.doctorId)
-                    );
-                    return (
-                      <div
-                        key={appointment.id}
-                        className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-3"
-                      >
-                        <div>
-                          <p className="text-sm text-slate-500">Profesional</p>
-                          <p className="text-base font-bold text-slate-700">
-                            {doctor?.fullName || "Profesional"}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between text-sm text-slate-600">
-                          <span>{appointment.date}</span>
-                          <span className="font-bold">{appointment.time}</span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <button
-                            onClick={() => cancelPatientAppointment(appointment)}
-                            className="flex-1 bg-rose-600 text-white py-2 rounded-xl font-bold hover:bg-rose-700"
-                          >
-                            Anular
-                          </button>
-                          <button
-                            onClick={() => handleReschedule(appointment)}
-                            className="flex-1 bg-slate-900 text-white py-2 rounded-xl font-bold hover:bg-slate-800"
-                          >
-                            Cambiar fecha
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  const renderPatientCancel = () => (
+    <PatientCancel
+      view={view}
+      onNavigate={setView}
+      bookingState={booking}
+      doctors={doctors}
+      renderCenterBackdrop={renderCenterBackdrop}
+    />
+  );
 
   const renderPatientForm = () =>
     renderCenterBackdrop(
@@ -1045,498 +951,17 @@ const App: React.FC = () => {
       </div>
     );
 
-  const renderBooking = () => {
-    if (!activeCenterId || !isValidCenter(activeCenter)) return renderHomeDirectory();
-
-    const getPublicCategory = (doctor: Doctor) =>
-      String(doctor.clinicalRole || doctor.specialty || "").trim() || "Otros";
-
-    // Exclude strictly internal management roles from public booking view
-    // Note: 'admin_centro' can be a doctor who is also an admin, so we rely more on visibleInBooking
-    const NON_BOOKABLE_ROLES = ["super_admin", "superadmin", "secretaria"];
-
-    // Filter bookable professionals: Active, Published, Non-management role
-    const bookableDoctors = doctors.filter((d) => {
-      // Robust check for visibility and active status
-      const isVisible = d.visibleInBooking === true;
-      const isActive = d.active !== false && (d as any).activo !== false;
-
-      const roleName = String(d.clinicalRole || d.role || "").toLowerCase();
-      const isInternalRole = NON_BOOKABLE_ROLES.includes(roleName);
-
-      const isMatch = isVisible && isActive && !isInternalRole;
-
-      return isMatch;
-    });
-
-
-    if (doctors.length > 0 && bookableDoctors.length === 0) {
-      console.warn("[Public Booking] NO bookable doctors found out of", doctors.length, "total records.");
-    }
-
-    // Deduplicate by email to avoid showing same person with different roles
-    const uniqueDoctorsMap = new Map<string, Doctor>();
-    bookableDoctors.forEach(d => {
-      const email = String(d.email || "").toLowerCase().trim();
-      if (!email) {
-        uniqueDoctorsMap.set(d.id, d);
-        return;
-      }
-      // If already exists, keep the one that is definitely a doctor (has clinicalRole)
-      const existing = uniqueDoctorsMap.get(email);
-      if (!existing || (d.clinicalRole && !existing.clinicalRole)) {
-        uniqueDoctorsMap.set(email, d);
-      }
-    });
-    const uniqueBookableDoctors = Array.from(uniqueDoctorsMap.values());
-
-    const uniqueRoles = Array.from(new Set(uniqueBookableDoctors.map((d) => getPublicCategory(d))));
-
-    const doctorsForRole = selectedRole
-      ? uniqueBookableDoctors.filter(
-        (d) => getPublicCategory(d) === selectedRole && d.centerId === activeCenterId
-      )
-      : [];
-
-    const dateStr = bookingDate.toISOString().split("T")[0];
-
-    const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-    const availableSlotsForDay = appointments
-      .filter(
-        (a) =>
-          appointmentDoctorUid(a) === selectedDoctorForBooking?.id &&
-          a.date === dateStr &&
-          a.status === "available"
-      )
-      .map((a) => ({
-        time: a.time,
-        appointmentId: a.id,
-      }))
-      .sort((a, b) => a.time.localeCompare(b.time));
-
-    return renderCenterBackdrop(
-      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div className="w-full max-w-4xl">
-          <div className="flex justify-center mb-8">
-            <LogoHeader size="md" showText={true} />
-          </div>
-
-          {/* Step 0: Tipo de Atención */}
-          {bookingStep === 0 && (
-            <div className="animate-fadeIn">
-              <h3 className="text-3xl font-bold text-slate-800 mb-8 text-center">
-                ¿Qué tipo de atención necesitas?
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-                <button
-                  onClick={() => {
-                    setBookingType("medical");
-                    setBookingStep(1);
-                  }}
-                  className="p-8 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-center bg-white shadow-sm hover:shadow-md flex flex-col items-center gap-4"
-                >
-                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                    <Stethoscope className="w-8 h-8" />
-                  </div>
-                  <span className="font-bold text-xl text-slate-700">Consulta Médica</span>
-                  <span className="text-sm text-slate-500">Agendar con un médico especialista</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setBookingType("service");
-                    setBookingStep(1);
-                  }}
-                  className="p-8 rounded-2xl border-2 border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all text-center bg-white shadow-sm hover:shadow-md flex flex-col items-center gap-4"
-                >
-                  <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center">
-                    <Activity className="w-8 h-8" />
-                  </div>
-                  <span className="font-bold text-xl text-slate-700">Exámenes o Pruebas</span>
-                  <span className="text-sm text-slate-500">Laboratorio, Cardiología, Imagenología, etc.</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 1: Especialidad */}
-          {bookingStep === 1 && bookingType === "medical" && (
-            <div className="animate-fadeIn">
-              <div className="flex items-center gap-4 mb-8">
-                <button onClick={() => setBookingStep(0)} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-xl border border-slate-100">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <h3 className="text-3xl font-bold text-slate-800 flex-1 text-center pr-12">
-                  Selecciona Especialidad
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {uniqueRoles.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => {
-                      setSelectedRole(r);
-                      setSelectedDoctorForBooking(null);
-                      setSelectedMedicalService(null);
-                      setSelectedSlot(null);
-                      setBookingStep(2);
-                    }}
-                    className="p-8 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left bg-white shadow-sm hover:shadow-md"
-                  >
-                    <span className="font-bold text-xl text-slate-700">{r}</span>
-                  </button>
-                ))}
-                {uniqueRoles.length === 0 && (
-                  <p className="text-center text-slate-400 col-span-2">
-                    No hay especialistas disponibles.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 1: Examen */}
-          {bookingStep === 1 && bookingType === "service" && (
-            <div className="animate-fadeIn">
-              <div className="flex items-center gap-4 mb-8">
-                <button onClick={() => setBookingStep(0)} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-xl border border-slate-100">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <h3 className="text-3xl font-bold text-slate-800 flex-1 text-center pr-12">
-                  Selecciona el Examen
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setSelectedMedicalService(s);
-                      setSelectedRole(s.category);
-                      setSelectedDoctorForBooking(null);
-                      setSelectedSlot(null);
-                      setBookingStep(2);
-                    }}
-                    className="p-6 rounded-2xl border-2 border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all text-left bg-white shadow-sm hover:shadow-md flex flex-col gap-2 relative"
-                  >
-                    <span className="font-bold text-lg text-slate-700 pr-12 line-clamp-2" title={s.name}>{s.name}</span>
-                    <div className="absolute top-6 right-6">
-                      <Plus className="w-5 h-5 text-slate-300" />
-                    </div>
-                    <div className="flex justify-between items-center mt-auto pt-4 text-sm text-slate-500 border-t border-slate-100 w-full">
-                      <span className="capitalize">{s.category.toLowerCase()}</span>
-                      {s.price > 0 && <span className="font-bold text-emerald-600">${s.price.toLocaleString("es-CL")}</span>}
-                    </div>
-                  </button>
-                ))}
-                {services.length === 0 && (
-                  <p className="text-center text-slate-400 col-span-3 py-12 bg-white/50 rounded-2xl border border-slate-100">
-                    No hay exámenes configurados en este centro por el momento.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Profesional / Recurso */}
-          {bookingStep === 2 && (
-            <div className="animate-fadeIn">
-              <div className="flex items-center gap-4 mb-8">
-                <button onClick={() => setBookingStep(1)} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-xl border border-slate-100">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <h3 className="text-3xl font-bold text-slate-800 flex-1 text-center pr-12">
-                  {bookingType === "service" ? "Seleccione Recurso o Funcionario" : "Seleccione Profesional"}
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {doctorsForRole.map((docu) => (
-                  <button
-                    key={docu.id}
-                    onClick={() => {
-                      setSelectedDoctorForBooking(docu);
-                      setSelectedSlot(null);
-                      setBookingStep(3);
-                    }}
-                    className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left flex items-center gap-6 bg-white shadow-sm hover:shadow-md"
-                  >
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-100 flex items-center justify-center bg-indigo-50 shrink-0">
-                      <span className="font-bold text-indigo-700 text-xl">
-                        {docu.fullName?.charAt(0) ?? "?"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-xl text-slate-700 block">
-                        {docu.fullName}
-                      </span>
-                      <span className="text-sm text-slate-500 font-medium">
-                        {docu.specialty || getPublicCategory(docu)}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-                {doctorsForRole.length === 0 && (
-                  <div className="col-span-2 text-center text-slate-400 py-12 bg-white/50 rounded-2xl border border-slate-100">
-                    No hay recursos disponibles para esta opción.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Fecha + Horario */}
-          {bookingStep === 3 && selectedDoctorForBooking && (
-            <div className="animate-fadeIn">
-              {!selectedDoctorForBooking.agendaConfig && (
-                <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800 text-sm font-semibold text-center">
-                  Profesional no disponible: no tiene agenda configurada.
-                </div>
-              )}
-              <div className="flex items-center justify-between mb-6">
-                <button
-                  onClick={() => {
-                    const d = new Date(bookingMonth);
-                    d.setMonth(d.getMonth() - 1);
-                    setBookingMonth(d);
-                  }}
-                  className="p-2 hover:bg-white rounded-xl shadow-sm transition-colors text-slate-600"
-                  aria-label="Mes anterior"
-                >
-                  <ChevronLeft className="w-6 h-6" />
-                </button>
-
-                <span className="font-bold text-2xl capitalize text-slate-800 tracking-tight">
-                  {bookingMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
-                </span>
-
-                <button
-                  onClick={() => {
-                    const d = new Date(bookingMonth);
-                    d.setMonth(d.getMonth() + 1);
-                    setBookingMonth(d);
-                  }}
-                  className="p-2 hover:bg-white rounded-xl shadow-sm transition-colors text-slate-600"
-                  aria-label="Mes siguiente"
-                >
-                  <ChevronRight className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl border border-white shadow-xl p-6">
-                <div className="grid grid-cols-7 gap-3 mb-3 text-center text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                  <div>Lun</div>
-                  <div>Mar</div>
-                  <div>Mie</div>
-                  <div>Jue</div>
-                  <div>Vie</div>
-                  <div>Sab</div>
-                  <div>Dom</div>
-                </div>
-
-                <div className="grid grid-cols-7 gap-3">
-                  {getDaysInMonth(bookingMonth).map((day: Date | null, idx: number) => {
-                    if (!day) return <div key={idx} />;
-                    const dStr = day.toISOString().split("T")[0];
-                    const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
-                    const availableCount = appointments.filter(
-                      (a) =>
-                        appointmentDoctorUid(a) === selectedDoctorForBooking.id &&
-                        a.date === dStr &&
-                        a.status === "available"
-                    ).length;
-                    const isSelected = dateStr === dStr;
-
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          if (availableCount > 0 && !isPast) {
-                            setBookingDate(day);
-                            setSelectedSlot(null);
-                          }
-                        }}
-                        disabled={isPast || availableCount === 0}
-                        className={[
-                          "h-14 rounded-2xl flex flex-col items-center justify-center transition-all relative border-2",
-                          isSelected
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-lg scale-110 z-10"
-                            : isPast
-                              ? "bg-slate-50 text-slate-300 border-transparent cursor-not-allowed opacity-50"
-                              : availableCount > 0
-                                ? "bg-white text-emerald-700 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 hover:scale-105 font-bold cursor-pointer shadow-sm"
-                                : "bg-white text-slate-300 border-slate-100 cursor-not-allowed",
-                        ].join(" ")}
-                      >
-                        <span className="text-base">{day.getDate()}</span>
-                        {availableCount > 0 && !isPast && !isSelected && (
-                          <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-8">
-                  <h4 className="text-xl font-extrabold text-slate-800 mb-4 text-center capitalize">
-                    {bookingDate.toLocaleDateString("es-CL", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    })}
-                  </h4>
-
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
-                    {availableSlotsForDay.map((slot: any) => (
-                      <button
-                        key={slot.time}
-                        onClick={() => {
-                          setSelectedSlot({
-                            date: dateStr,
-                            time: slot.time,
-                            appointmentId: slot.appointmentId,
-                          });
-                          setBookingStep(4);
-                        }}
-                        className="py-4 bg-white border-2 border-emerald-100 text-emerald-700 font-bold rounded-2xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm hover:shadow-lg text-lg"
-                      >
-                        {slot.time}
-                      </button>
-                    ))}
-                    {availableSlotsForDay.length === 0 && (
-                      <div className="col-span-5 text-center text-slate-400 py-6">
-                        No hay horarios disponibles para este día.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-center">
-                <button
-                  onClick={() => setBookingStep(2)}
-                  className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 font-bold bg-white/70 px-4 py-2 rounded-full w-fit"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Volver a profesionales
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Datos paciente */}
-          {bookingStep === 4 && selectedDoctorForBooking && selectedSlot && (
-            <div className="animate-fadeIn max-w-lg mx-auto">
-              <h3 className="text-3xl font-bold text-slate-800 mb-6 text-center">
-                Confirmar Reserva
-              </h3>
-
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl border border-white shadow-xl p-8 space-y-6">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                    RUT Paciente
-                  </label>
-                  <input
-                    className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold text-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
-                    value={bookingData.rut}
-                    onChange={(e) =>
-                      setBookingData({ ...bookingData, rut: formatRUT(e.target.value) })
-                    }
-                    placeholder="12.345.678-9"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                    Nombre Completo
-                  </label>
-                  <input
-                    className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
-                    value={bookingData.name}
-                    onChange={(e) => setBookingData({ ...bookingData, name: e.target.value })}
-                    placeholder="Juan Pérez"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                    Teléfono
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="px-4 py-4 text-base border-2 rounded-2xl border-slate-200 bg-slate-50 text-slate-500 font-bold">
-                      +56 9
-                    </span>
-                    <input
-                      className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
-                      value={bookingData.phoneDigits}
-                      onChange={(e) =>
-                        setBookingData({
-                          ...bookingData,
-                          phoneDigits: e.target.value.replace(/\D/g, "").slice(0, 8),
-                        })
-                      }
-                      placeholder="12345678"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-1 block">
-                    Email (opcional)
-                  </label>
-                  <input
-                    type="email"
-                    className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all"
-                    value={bookingData.email}
-                    onChange={(e) => setBookingData({ ...bookingData, email: e.target.value })}
-                    placeholder="correo@ejemplo.com"
-                  />
-                </div>
-
-                {error && (
-                  <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl p-3 text-sm">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleBookingConfirm}
-                  className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-bold text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-transform active:scale-95"
-                >
-                  Confirmar Reserva
-                </button>
-
-                <button
-                  onClick={() => setBookingStep(3)}
-                  className="w-full bg-white border-2 border-slate-200 text-slate-700 py-4 rounded-2xl font-bold hover:bg-slate-50 transition-colors"
-                >
-                  Volver a horarios
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 5: Éxito */}
-          {bookingStep === 5 && (
-            <div className="animate-fadeIn text-center py-12">
-              <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
-                <Check className="w-12 h-12 text-green-600" />
-              </div>
-              <h3 className="text-4xl font-bold text-slate-800 mb-3">¡Reserva Exitosa!</h3>
-              <p className="text-slate-500 text-xl">Su hora ha sido agendada correctamente.</p>
-              <p className="text-slate-400 mt-3 text-sm">
-                Si necesitas anular o cambiar la fecha, usa la opción “Cancelar Hora” en el menú de
-                pacientes.
-              </p>
-              <button
-                onClick={resetBooking}
-                className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-slate-800 text-lg shadow-lg"
-              >
-                Volver al Inicio
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
+  const renderBooking = () => (
+    <BookingPortal
+      activeCenterId={activeCenterId}
+      activeCenter={activeCenter}
+      doctors={doctors}
+      appointments={appointments}
+      services={services || []}
+      bookingState={booking}
+      renderCenterBackdrop={renderCenterBackdrop}
+    />
+  );
 
   const renderHomeBackdrop = (children: React.ReactNode) => (
     <div
@@ -2022,203 +1447,23 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderHomeDirectory = () => {
-    return (
-      <div
-        className="home-hero relative min-h-dvh w-full flex flex-col items-center justify-center px-4 py-10 pb-16 overflow-x-hidden"
-        style={
-          {
-            "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
-            backgroundAttachment: "fixed",
-          } as React.CSSProperties
-        }
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.04),_transparent_55%)]" />
-        {authUser && !isSuperAdminClaim && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <button
-              onClick={bootstrapSuperAdmin}
-              className="bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl font-bold hover:bg-red-700"
-            >
-              Convertirme en SuperAdmin
-            </button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setView("superadmin-login" as ViewMode)}
-          className="fixed top-4 right-4 z-50 p-3 rounded-full bg-white/80 backdrop-blur border border-white shadow-lg hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-          title="Acceso SuperAdmin"
-          aria-label="Acceso SuperAdmin"
-        >
-          <Lock className="w-5 h-5 text-slate-800" />
-        </button>
-
-        <div className="relative z-10 w-full max-w-6xl">
-          <div className="text-center mb-10 rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-6 py-10 md:px-12">
-            <div className="flex flex-col items-center justify-center gap-3">
-              <img
-                src={LOGO_SRC}
-                alt="ClaveSalud"
-                className="h-28 md:h-32 w-auto object-contain drop-shadow-[0_12px_24px_rgba(15,23,42,0.16)]"
-              />
-              <h1 className="text-4xl md:text-5xl font-extrabold">
-                <span className="text-sky-600">Clave</span>
-                <span className="text-teal-700">Salud</span>
-              </h1>
-            </div>
-            <p className="text-slate-500 mt-3 text-lg">
-              Ficha clínica digital para equipos de salud.
-            </p>
-            <div className="mt-8 flex flex-col items-center gap-6">
-              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-lg">
-                <button
-                  onClick={() => {
-                    setLoginViewPreference("doctor-dashboard" as ViewMode);
-                    handleGoogleLogin("doctor-dashboard" as ViewMode);
-                  }}
-                  className="flex-1 bg-slate-900 text-white p-4 rounded-2xl font-bold shadow-xl hover:bg-slate-800 hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center gap-2 group"
-                >
-                  <div className="bg-emerald-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                    <Stethoscope className="w-6 h-6 text-emerald-400" />
-                  </div>
-                  <span className="text-sm">Acceso Profesional</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setLoginViewPreference("admin-dashboard" as ViewMode);
-                    handleGoogleLogin("admin-dashboard" as ViewMode);
-                  }}
-                  className="flex-1 bg-white border-2 border-slate-200 text-slate-800 p-4 rounded-2xl font-bold shadow-md hover:border-slate-400 hover:scale-[1.02] active:scale-95 transition-all flex flex-col items-center gap-2 group"
-                >
-                  <div className="bg-slate-100 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                    <Building2 className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <span className="text-sm">Acceso Portal Admin</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-4 w-full max-w-xs">
-                <div className="h-[1px] bg-slate-200 flex-1"></div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">o también</span>
-                <div className="h-[1px] bg-slate-200 flex-1"></div>
-              </div>
-
-              <div className="flex flex-wrap justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setView("landing" as ViewMode)}
-                  className="px-6 py-3 rounded-xl bg-teal-50 text-teal-700 border border-teal-100 font-bold hover:bg-teal-100 transition-colors flex items-center gap-2"
-                >
-                  <Activity className="w-4 h-4" /> Conoce la plataforma
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView("center-portal" as ViewMode)}
-                  className="px-6 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:border-slate-400 transition-all flex items-center gap-2"
-                >
-                  <Building2 className="w-4 h-4" /> Ingresar a un portal público
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-3xl bg-white/5 backdrop-blur-md border border-white/15 shadow-[0_24px_50px_rgba(15,23,42,0.12)] px-5 py-8 md:px-10">
-            <div className="text-center mb-6">
-              <h2 className="text-xl font-bold text-slate-800">Directorio de centros médicos</h2>
-              <p className="text-slate-500 text-sm">
-                Selecciona un centro para ingresar a su portal.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {centers.map((c) => {
-                const isActive = (c as any).isActive !== false;
-                // Si NO es superadmin y el centro es inactivo, no debería estar aquí por el hook useCenters, 
-                // pero por seguridad adicional lo saltamos si llegara a pasar.
-                if (!isSuperAdminClaim && !isActive) return null;
-
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setActiveCenterId(c.id);
-                      setView("center-portal" as ViewMode);
-                    }}
-                    data-testid={`center-card-${c.slug}`}
-                    className={`group bg-white/90 backdrop-blur-sm p-6 rounded-3xl shadow-xl border border-white hover:border-teal-200 hover:shadow-2xl hover:-translate-y-0.5 transition-all text-left relative overflow-hidden flex flex-col h-full ${!isActive ? "opacity-60 grayscale-[0.5]" : ""
-                      }`}
-                  >
-                    <div className="absolute top-0 right-0 z-20">
-                      {!isActive ? (
-                        <div className="bg-slate-800 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider">
-                          Inactivo
-                        </div>
-                      ) : (
-                        <div className="bg-teal-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                          <Check className="w-2.5 h-2.5" /> Activo
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-4 mb-6">
-                      <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-inner group-hover:scale-110 transition-transform">
-                        {(c as any).logoUrl ? (
-                          <img
-                            src={(c as any).logoUrl}
-                            alt={`Logo de ${c.name}`}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <Building2 className="w-8 h-8 text-slate-400" />
-                        )}
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="font-black text-slate-900 text-lg leading-tight group-hover:text-teal-700 transition-colors">
-                          {c.name}
-                        </div>
-                        <div className="text-slate-400 text-[10px] font-bold uppercase mt-1 tracking-wider">
-                          {c.commune || c.region || "Centro de Salud"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 group-hover:text-teal-600 transition-colors uppercase tracking-widest flex items-center gap-1">
-                        Portal Público <ArrowRight className="w-3 h-3" />
-                      </span>
-                      <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-teal-300"></div>
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-teal-300"></div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-        <footer className="relative z-10 mt-10">
-          <div className="flex flex-col items-center gap-3">
-            <LegalLinks
-              onOpenTerms={() => openLegal("terms")}
-              onOpenPrivacy={() => openLegal("privacy")}
-            />
-            <button
-              type="button"
-              onClick={startOnboarding}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800"
-            >
-              Reiniciar tutorial
-            </button>
-          </div>
-        </footer>
-      </div>
-    );
-  };
+  const renderHomeDirectory = () => (
+    <HomeDirectory
+      centers={centers}
+      authUser={authUser}
+      isSuperAdminClaim={isSuperAdminClaim}
+      bootstrapSuperAdmin={bootstrapSuperAdmin}
+      onNavigate={setView}
+      onGoogleLogin={handleGoogleLogin}
+      setLoginViewPreference={setLoginViewPreference}
+      setActiveCenterId={setActiveCenterId}
+      openLegal={openLegal}
+      startOnboarding={startOnboarding}
+      LOGO_SRC={LOGO_SRC}
+      HOME_BG_SRC={HOME_BG_SRC}
+      HOME_BG_FALLBACK_SRC={HOME_BG_FALLBACK_SRC}
+    />
+  );
   const renderByView = () => {
     const activeCenterName =
       activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).name : undefined;
@@ -2260,245 +1505,281 @@ const App: React.FC = () => {
       </CenterContext.Provider>
     );
 
-    if (view === ("invite" as any)) return wrapView(renderInviteRegister(), false);
-    if (view === ("center-portal" as ViewMode)) return wrapView(renderCenterPortal(), true);
-    if (view === ("patient-menu" as ViewMode)) return wrapView(renderPatientMenu(), true);
-    if (view === ("patient-cancel" as ViewMode)) return wrapView(renderPatientCancel(), true);
-    if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
-    if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
-    if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
-    if (view === ("superadmin-login" as ViewMode)) return wrapView(renderSuperAdminLogin(), false);
+    const mainContent = (() => {
+      if (view === ("invite" as any)) return wrapView(renderInviteRegister(), false);
+      if (view === ("center-portal" as ViewMode)) return wrapView(renderCenterPortal(), true);
+      if (view === ("patient-menu" as ViewMode)) return wrapView(renderPatientMenu(), true);
+      if (view === ("patient-cancel" as ViewMode)) return wrapView(renderPatientCancel(), true);
+      if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
+      if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
+      if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
+      if (view === ("superadmin-login" as ViewMode)) return wrapView(renderSuperAdminLogin(), false);
 
-    if (view === ("superadmin-dashboard" as ViewMode)) {
-      return wrapView(
-        <SuperAdminDashboard
-          centers={centers}
-          doctors={doctors}
-          demoMode={demoMode}
-          onToggleDemo={() => setDemoMode((d) => !d)}
-          canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true || masterAccess}
-          previewCenterId={previewCenterId}
-          previewRole={previewRole}
-          onStartPreview={handleStartPreview}
-          onExitPreview={handleExitPreview}
-          onLogout={() => {
-            setLocalCurrentUser(null);
-            setActiveCenterId("");
-            setView("home" as ViewMode);
-          }}
-          onOpenLegal={openLegal}
-          onUpdateCenters={async (updates) => {
-            setCenters((prev) => {
-              const map = new Map(prev.map((c) => [c.id, c]));
-              updates.forEach((u) => {
-                const existing = (map.get(u.id) || {}) as object;
-                map.set(u.id, { ...existing, ...u } as any);
+      if (view === ("superadmin-dashboard" as ViewMode)) {
+        return wrapView(
+          <SuperAdminDashboard
+            centers={centers}
+            doctors={doctors}
+            demoMode={demoMode}
+            onToggleDemo={() => setDemoMode((d) => !d)}
+            canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true || masterAccess}
+            previewCenterId={previewCenterId}
+            previewRole={previewRole}
+            onStartPreview={handleStartPreview}
+            onExitPreview={handleExitPreview}
+            onLogout={() => {
+              setLocalCurrentUser(null);
+              setActiveCenterId("");
+              setView("home" as ViewMode);
+            }}
+            onOpenLegal={openLegal}
+            onUpdateCenters={async (updates) => {
+              setCenters((prev) => {
+                const map = new Map(prev.map((c) => [c.id, c]));
+                updates.forEach((u) => {
+                  const existing = (map.get(u.id) || {}) as object;
+                  map.set(u.id, { ...existing, ...u } as any);
+                });
+                return Array.from(map.values());
               });
-              return Array.from(map.values());
-            });
-            for (const c of updates) await updateCenter(c as any);
-          }}
-          onDeleteCenter={async (id, reason) => {
-            setCenters((prev) => prev.filter((c) => c.id !== id));
-            await deleteCenter(id, reason);
-          }}
-          onUpdateDoctors={async () => { }}
-          hasMoreCenters={hasMoreCenters}
-          onLoadMoreCenters={loadMoreCenters}
-          isLoadingMoreCenters={isLoadingMoreCenters}
-        />,
-        true
-      );
-    }
-
-    if (view === ("admin-login" as ViewMode)) return wrapView(renderLogin(false), false);
-    if (view === ("landing" as ViewMode))
-      return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
-    if (view === ("terms" as ViewMode)) return renderLegalPage("Términos y Condiciones", termsText);
-    if (view === ("privacy" as ViewMode)) return renderLegalPage("Política de Privacidad", privacyText);
-    if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
-    if (view === ("verify-document" as ViewMode))
-      return <VerifyDocument onClose={() => setView("home" as ViewMode)} />;
-    if (view === ("select-center" as ViewMode)) return wrapView(renderSelectCenter(), true);
-
-    const previewUser = isPreviewActive
-      ? {
-        id: authUser?.uid ?? "preview_user",
-        uid: authUser?.uid ?? "preview_user",
-        email: authUser?.email ?? "preview@demo.cl",
-        fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
-        role: previewRole || "MEDICO",
-        agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
-        savedTemplates: [],
+              for (const c of updates) await updateCenter(c as any);
+            }}
+            onDeleteCenter={async (id, reason) => {
+              setCenters((prev) => prev.filter((c) => c.id !== id));
+              await deleteCenter(id, reason);
+            }}
+            onUpdateDoctors={async () => { }}
+            hasMoreCenters={hasMoreCenters}
+            onLoadMoreCenters={loadMoreCenters}
+            isLoadingMoreCenters={isLoadingMoreCenters}
+          />,
+          true
+        );
       }
-      : null;
 
-    const userForView = localCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
+      if (view === ("admin-login" as ViewMode)) return wrapView(renderLogin(false), false);
+      if (view === ("landing" as ViewMode))
+        return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
+      if (view === ("terms" as ViewMode)) return renderLegalPage("Términos y Condiciones", termsText);
+      if (view === ("privacy" as ViewMode)) return renderLegalPage("Política de Privacidad", privacyText);
+      if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
+      if (view === ("verify-document" as ViewMode))
+        return <VerifyDocument onClose={() => setView("home" as ViewMode)} />;
+      if (view === ("select-center" as ViewMode)) return wrapView(renderSelectCenter(), true);
 
-    if (view === ("doctor-dashboard" as ViewMode) && userForView) {
-      const currentUid = userForView.uid ?? userForView.id;
-      const currentEmailLower = String(userForView.email ?? "")
-        .trim()
-        .toLowerCase();
-      const matchedDoctor =
-        doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
-        doctors.find(
-          (doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower
-        ) ||
-        doctors.find((doc) => doc.id === currentUid) ||
-        doctors.find((doc) => (doc as any).uid === currentUid) ||
-        (isPreviewActive
-          ? doctors.find((doc) => doc.role === previewRole && doc.centerId === activeCenterId)
-          : null) ||
-        null;
+      const previewUser = isPreviewActive
+        ? {
+          id: authUser?.uid ?? "preview_user",
+          uid: authUser?.uid ?? "preview_user",
+          email: authUser?.email ?? "preview@demo.cl",
+          fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
+          role: previewRole || "MEDICO",
+          agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
+          savedTemplates: [],
+        }
+        : null;
 
-      const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
-      const resolvedDoctorName =
-        matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
-      const demoOverride =
-        isPreviewActive && demoDoctorOverrides[resolvedDoctorId]
-          ? demoDoctorOverrides[resolvedDoctorId]
-          : {};
+      const userForView = localCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
 
-      const mergedCurrentUser = matchedDoctor
-        ? ({
-          ...userForView,
-          ...matchedDoctor,
-          ...demoOverride,
-          id: resolvedDoctorId,
-          uid: userForView.uid ?? matchedDoctor.uid,
-          email: userForView.email ?? matchedDoctor.email,
-          fullName: resolvedDoctorName,
-        } as any)
-        : ({ ...userForView, ...demoOverride } as any);
+      if (view === ("doctor-dashboard" as ViewMode) && userForView) {
+        const currentUid = userForView.uid ?? userForView.id;
+        const currentEmailLower = String(userForView.email ?? "")
+          .trim()
+          .toLowerCase();
+        const matchedDoctor =
+          doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
+          doctors.find(
+            (doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower
+          ) ||
+          doctors.find((doc) => doc.id === currentUid) ||
+          doctors.find((doc) => (doc as any).uid === currentUid) ||
+          (isPreviewActive
+            ? doctors.find((doc) => doc.role === previewRole && doc.centerId === activeCenterId)
+            : null) ||
+          null;
 
-      const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
-      return wrapView(
-        <ProfessionalDashboard
-          patients={patients}
-          doctorName={resolvedDoctorName}
-          doctorId={resolvedDoctorId}
-          role={effectiveRole}
-          agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
-          savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
-          currentUser={mergedCurrentUser}
-          doctors={doctors}
-          onUpdatePatient={(p: Patient) => {
-            if (isPreviewActive) {
-              setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
-            } else {
-              updatePatient(p);
-            }
-          }}
-          onUpdateDoctor={(d: Doctor) => {
-            if (isPreviewActive) {
-              const targetId = d.id;
-              setDemoDoctorOverrides((prev) => ({
-                ...prev,
-                [targetId]: { ...prev[targetId], ...d },
-              }));
-              showToast("Configuración guardada (Modo Demo - Temporal)", "success");
-            } else {
-              updateStaff(d);
-            }
-          }}
-          onLogout={handleLogout}
-          appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => {
-            setAppointments(newAppts);
-            syncAppointments(newAppts);
-          }}
-          onUpdateAppointment={updateAppointment}
-          onDeleteAppointment={deleteAppointment}
-          isSyncingAppointments={isSyncingAppointments}
-          portfolioMode={portfolioMode}
-          onSetPortfolioMode={setPortfolioMode}
-          onLogActivity={(event: any) => {
-            if (isPreviewActive) return;
-            const log: AuditLogEntry = {
-              id: generateId(),
-              centerId: activeCenterId,
-              timestamp: new Date().toISOString(),
-              actorUid: auth.currentUser?.uid ?? userForView.id,
-              actorName: userForView.fullName ?? "Usuario",
-              actorRole: userForView.role ?? "Profesional",
-              action: event.action,
-              entityType: event.entityType,
-              entityId: event.entityId,
-              patientId: event.patientId,
-              metadata: event.metadata,
-              details: event.details,
-            } as any;
-            updateAuditLog(log);
-          }}
-          onClosePanel={handleClosePanel}
-          isReadOnly={isPreviewActive}
-          onOpenLegal={openLegal}
-        />,
-        true
-      );
-    }
+        const resolvedDoctorId = matchedDoctor?.id ?? userForView.id;
+        const resolvedDoctorName =
+          matchedDoctor?.fullName ?? userForView.fullName ?? userForView.email ?? "Profesional";
+        const demoOverride =
+          isPreviewActive && demoDoctorOverrides[resolvedDoctorId]
+            ? demoDoctorOverrides[resolvedDoctorId]
+            : {};
 
-    if (view === ("admin-dashboard" as ViewMode) && userForView) {
-      return wrapView(
-        <AdminDashboard
-          centerId={activeCenterId}
-          doctors={doctors}
-          onUpdateDoctors={(newDocs: Doctor[]) => {
-            if (isPreviewActive) return;
-            setDoctors(newDocs);
-            const existingIds = new Set(newDocs.map((d) => d.id));
-            doctors.forEach((d) => {
-              if (!existingIds.has(d.id)) deleteStaff(d.id);
-            });
-            newDocs.forEach((d) => updateStaff(d));
-          }}
-          appointments={appointments}
-          onUpdateAppointments={(newAppts: Appointment[]) => {
-            if (isPreviewActive) return;
-            setAppointments(newAppts);
-            syncAppointments(newAppts);
-          }}
-          isSyncingAppointments={isSyncingAppointments}
-          patients={patients}
-          onUpdatePatients={(newPatients: Patient[]) => {
-            if (isPreviewActive) return;
-            newPatients.forEach((p) => updatePatient(p));
-          }}
-          preadmissions={preadmissions}
-          onApprovePreadmission={(p) => {
-            if (isPreviewActive) return;
-            approvePreadmission(p);
-          }}
-          onLogout={handleLogout}
-          onClosePanel={handleClosePanel}
-          onOpenLegal={openLegal}
-          logs={auditLogs}
-          onLogActivity={(event) => {
-            if (isPreviewActive) return;
-            const log: AuditLogEntry = {
-              id: generateId(),
-              centerId: activeCenterId,
-              timestamp: new Date().toISOString(),
-              actorUid: auth.currentUser?.uid ?? userForView.id,
-              actorName: userForView.fullName ?? "Usuario",
-              actorRole: userForView.role ?? "Admin",
-              action: event.action,
-              entityType: event.entityType,
-              entityId: event.entityId,
-              patientId: event.patientId,
-              metadata: event.metadata,
-              details: event.details,
-            } as any;
-            updateAuditLog(log);
-          }}
-          currentUser={userForView}
-        />,
-        true
-      );
-    }
+        const mergedCurrentUser = matchedDoctor
+          ? ({
+            ...userForView,
+            ...matchedDoctor,
+            ...demoOverride,
+            id: resolvedDoctorId,
+            uid: userForView.uid ?? matchedDoctor.uid,
+            email: userForView.email ?? matchedDoctor.email,
+            fullName: resolvedDoctorName,
+          } as any)
+          : ({ ...userForView, ...demoOverride } as any);
 
-    return wrapView(<div className="p-6 text-slate-600">Vista no encontrada</div>, false);
+        const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
+        return wrapView(
+          <ProfessionalDashboard
+            patients={patients}
+            doctorName={resolvedDoctorName}
+            doctorId={resolvedDoctorId}
+            role={effectiveRole}
+            agendaConfig={matchedDoctor?.agendaConfig ?? mergedCurrentUser.agendaConfig}
+            savedTemplates={matchedDoctor?.savedTemplates ?? mergedCurrentUser.savedTemplates}
+            currentUser={mergedCurrentUser}
+            doctors={doctors}
+            onUpdatePatient={(p: Patient) => {
+              if (isPreviewActive) {
+                setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
+              } else {
+                updatePatient(p);
+              }
+            }}
+            onUpdateDoctor={(d: Doctor) => {
+              if (isPreviewActive) {
+                const targetId = d.id;
+                setDemoDoctorOverrides((prev) => ({
+                  ...prev,
+                  [targetId]: { ...prev[targetId], ...d },
+                }));
+                showToast("Configuración guardada (Modo Demo - Temporal)", "success");
+              } else {
+                updateStaff(d);
+              }
+            }}
+            onLogout={handleLogout}
+            appointments={appointments}
+            onUpdateAppointments={(newAppts: Appointment[]) => {
+              setAppointments(newAppts);
+              syncAppointments(newAppts);
+            }}
+            onUpdateAppointment={updateAppointment}
+            onDeleteAppointment={deleteAppointment}
+            isSyncingAppointments={isSyncingAppointments}
+            portfolioMode={portfolioMode}
+            onSetPortfolioMode={setPortfolioMode}
+            onLogActivity={(event: any) => {
+              if (isPreviewActive) return;
+              const log: AuditLogEntry = {
+                id: generateId(),
+                centerId: activeCenterId,
+                timestamp: new Date().toISOString(),
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Profesional",
+                action: event.action,
+                entityType: event.entityType,
+                entityId: event.entityId,
+                patientId: event.patientId,
+                metadata: event.metadata,
+                details: event.details,
+              } as any;
+              updateAuditLog(log);
+            }}
+            onClosePanel={handleClosePanel}
+            isReadOnly={isPreviewActive}
+            onOpenLegal={openLegal}
+          />,
+          true
+        );
+      }
+
+      if (view === ("admin-dashboard" as ViewMode) && userForView) {
+        return wrapView(
+          <AdminDashboard
+            centerId={activeCenterId}
+            doctors={doctors}
+            onUpdateDoctors={(newDocs: Doctor[]) => {
+              if (isPreviewActive) return;
+              setDoctors(newDocs);
+              const existingIds = new Set(newDocs.map((d) => d.id));
+              doctors.forEach((d) => {
+                if (!existingIds.has(d.id)) deleteStaff(d.id);
+              });
+              newDocs.forEach((d) => updateStaff(d));
+            }}
+            appointments={appointments}
+            onUpdateAppointments={(newAppts: Appointment[]) => {
+              if (isPreviewActive) return;
+              setAppointments(newAppts);
+              syncAppointments(newAppts);
+            }}
+            isSyncingAppointments={isSyncingAppointments}
+            patients={patients}
+            onUpdatePatients={(newPatients: Patient[]) => {
+              if (isPreviewActive) return;
+              newPatients.forEach((p) => updatePatient(p));
+            }}
+            preadmissions={preadmissions}
+            onApprovePreadmission={(p) => {
+              if (isPreviewActive) return;
+              approvePreadmission(p);
+            }}
+            onLogout={handleLogout}
+            onClosePanel={handleClosePanel}
+            onOpenLegal={openLegal}
+            logs={auditLogs}
+            onLogActivity={(event) => {
+              if (isPreviewActive) return;
+              const log: AuditLogEntry = {
+                id: generateId(),
+                centerId: activeCenterId,
+                timestamp: new Date().toISOString(),
+                actorUid: auth.currentUser?.uid ?? userForView.id,
+                actorName: userForView.fullName ?? "Usuario",
+                actorRole: userForView.role ?? "Admin",
+                action: event.action,
+                entityType: event.entityType,
+                entityId: event.entityId,
+                patientId: event.patientId,
+                metadata: event.metadata,
+                details: event.details,
+              } as any;
+              updateAuditLog(log);
+            }}
+            currentUser={userForView}
+          />,
+          true
+        );
+      }
+
+      return wrapView(<div className="p-6 text-slate-600">Vista no encontrada</div>, false);
+    })();
+
+    return (
+      <>
+        {mainContent}
+
+        {/* Audit Justification Notice (LEGAL_EAGLE) */}
+        {isPreviewActive && (
+          <div className="fixed bottom-6 right-6 z-[9999] max-w-sm animate-fadeIn">
+            <div className="bg-amber-50/95 backdrop-blur border-2 border-amber-500 p-5 rounded-[2rem] shadow-2xl flex flex-col gap-3">
+              <div className="flex items-center gap-3 text-amber-800">
+                <div className="bg-amber-500 p-2 rounded-xl text-white">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <span className="font-black uppercase tracking-wider text-sm">Modo Auditoría Activo</span>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-amber-700 leading-relaxed font-medium">
+                  Usted está operando con <span className="font-bold underline">Justificación de Acceso Multi-tenant</span>.
+                </p>
+                <p className="text-[10px] text-amber-600/80 leading-tight">
+                  Todas sus acciones están siendo registradas con fines de auditoría y cumplimiento legal. Asegúrese de tener una base legítima para este acceso.
+                </p>
+              </div>
+              <button
+                onClick={handleExitPreview}
+                className="mt-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-3 px-4 rounded-2xl transition-all shadow-lg shadow-amber-200 active:scale-95"
+              >
+                Finalizar y Cerrar Sesión
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
   };
 
   return (

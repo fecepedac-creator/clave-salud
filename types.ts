@@ -279,6 +279,7 @@ export interface Consultation extends SoftDeletable {
   patientId?: string;
   centerId?: string;
   createdBy?: string;
+  consultationType?: "morbidity" | "pscv"; // New field to distinguish visit types
 
   weight?: string;
   height?: string;
