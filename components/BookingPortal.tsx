@@ -55,8 +55,6 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
     error,
   } = bookingState;
 
-  if (!activeCenterId || !activeCenter) return null;
-
   const getPublicCategory = (doctor: Doctor) =>
     String(doctor.clinicalRole || doctor.specialty || "").trim() || "Otros";
 
@@ -106,6 +104,8 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
         : [],
     [selectedRole, uniqueBookableDoctors, activeCenterId]
   );
+
+  if (!activeCenterId || !activeCenter) return null;
 
   const dateStr = bookingDate.toISOString().split("T")[0];
   const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
