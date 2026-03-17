@@ -300,6 +300,7 @@ export interface Consultation extends SoftDeletable {
   anamnesis: string;
   physicalExam: string;
   diagnosis: string;
+  diagnoses?: string[]; // Multiple diagnoses support
 
   dentalMap?: ToothState[];
   podogram?: NailState[];

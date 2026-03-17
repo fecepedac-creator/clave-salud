@@ -44,6 +44,7 @@ export const useConsultationLogic = ({
         anamnesis: "",
         physicalExam: "",
         diagnosis: "",
+        diagnoses: [],
         prescriptions: [],
         dentalMap: [],
         exams: {},
@@ -84,7 +85,7 @@ export const useConsultationLogic = ({
         if (!DRAFT_KEY) return;
         const handler = setTimeout(() => {
             // Guardar solo si hay algo escrito que valga la pena (motivo, anamnesis, diagnostico)
-            if (newConsultation.reason || newConsultation.anamnesis || newConsultation.diagnosis) {
+            if (newConsultation.reason || newConsultation.anamnesis || newConsultation.diagnosis || (newConsultation.diagnoses?.length || 0) > 0) {
                 localStorage.setItem(DRAFT_KEY, JSON.stringify(newConsultation));
             }
         }, 1500); // 1.5s de inactividad para guardar
@@ -146,6 +147,57 @@ export const useConsultationLogic = ({
         }));
     };
 
+    const addDiagnosis = (diag: string) => {
+        if (!diag) return;
+        setNewConsultation((prev) => {
+            const currentDiagnoses = prev.diagnoses || [];
+            if (currentDiagnoses.includes(diag)) return prev;
+            const updated = [...currentDiagnoses, diag];
+            return {
+                ...prev,
+                diagnoses: updated,
+                diagnosis: updated.join(" • ") // Sync with legacy string
+            };
+        });
+    };
+
+    const removeDiagnosis = (diag: string) => {
+        setNewConsultation((prev) => {
+            const updated = (prev.diagnoses || []).filter(d => d !== diag);
+            return {
+                ...prev,
+                diagnoses: updated,
+                diagnosis: updated.join(" • ") // Sync with legacy string
+            };
+        });
+    };
+
+    const pinDiagnosis = (diag: string) => {
+        if (!selectedPatient || !diag) return;
+        
+        const currentHistory = selectedPatient.medicalHistory || [];
+        // Check if already exists (string match or label match if object)
+        const exists = currentHistory.some(item => {
+            if (typeof item === 'string') return item.toLowerCase() === diag.toLowerCase();
+            return item.label.toLowerCase() === diag.toLowerCase();
+        });
+
+        if (exists) {
+            showToast("Este diagnóstico ya está en los antecedentes", "info");
+            return;
+        }
+
+        const updatedPatient: Patient = {
+            ...selectedPatient,
+            medicalHistory: [...currentHistory, diag],
+            lastUpdated: new Date().toISOString(),
+        };
+
+        onUpdatePatient(updatedPatient);
+        showToast("Agregado a antecedentes morbidos", "success");
+        onLogActivity("update", `Agregó ${diag} a antecedentes de ${selectedPatient.fullName}`, selectedPatient.id);
+    };
+
     const handleCreateConsultation = async () => {
         console.log("💾 handleCreateConsultation called...");
         if (!selectedPatient) return;
@@ -176,6 +228,7 @@ export const useConsultationLogic = ({
             anamnesis: newConsultation.anamnesis || "",
             physicalExam: newConsultation.physicalExam || "",
             diagnosis: newConsultation.diagnosis || "",
+            diagnoses: newConsultation.diagnoses || [],
 
             // Special Modules
             prescriptions: (newConsultation.prescriptions || []) as any,
@@ -264,6 +317,9 @@ export const useConsultationLogic = ({
         handleExamChange,
         addPrescription,
         removePrescription,
+        addDiagnosis,
+        removeDiagnosis,
+        pinDiagnosis,
         handleCreateConsultation,
         getEmptyConsultation,
         clearDraft,

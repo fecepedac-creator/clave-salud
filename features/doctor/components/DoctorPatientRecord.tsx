@@ -11,6 +11,7 @@ import {
     FileText,
     X,
     ExternalLink,
+    Pin,
 } from "lucide-react";
 import { Patient, Consultation, Attachment, ExamProfile, ClinicalTemplate, Doctor, ProfessionalRole, KinesiologyProgram, KinesiologySession } from "../../../types";
 import { generateId, formatPersonName, normalizePhone, getProfessionalPrefix } from "../../../utils";
@@ -62,6 +63,10 @@ export interface DoctorPatientRecordProps {
     setNewConsultation: React.Dispatch<React.SetStateAction<Partial<Consultation>>>;
     isCreatingConsultation: boolean;
     setIsCreatingConsultation: React.Dispatch<React.SetStateAction<boolean>>;
+    diagnoses?: string[];
+    addDiagnosis?: (d: string) => void;
+    removeDiagnosis?: (index: number) => void;
+    pinDiagnosis?: (d: string) => void;
     handleVitalsChange: (f: any, v: any) => void;
     handleExamChange: (f: any, v: any) => void;
     handleCreateConsultation: () => Promise<Patient>;
@@ -98,7 +103,9 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
     selectedPatient, setSelectedPatient, isEditingPatient, setIsEditingPatient, handleSavePatient, onUpdatePatient, onLogActivity,
     activeCenterId, activeCenter, hasActiveCenter, moduleGuards,
     doctorName, doctorId, role, currentUser, isReadOnly,
-    newConsultation, setNewConsultation, isCreatingConsultation, setIsCreatingConsultation, handleVitalsChange, handleExamChange, handleCreateConsultation, selectedPatientConsultations, isUsingLegacyConsultations,
+    newConsultation, setNewConsultation, isCreatingConsultation, setIsCreatingConsultation,
+    diagnoses = [], addDiagnosis, removeDiagnosis, pinDiagnosis,
+    handleVitalsChange, handleExamChange, handleCreateConsultation, selectedPatientConsultations, isUsingLegacyConsultations,
     docsToPrint, setDocsToPrint, isPrintModalOpen, setIsPrintModalOpen, isClinicalReportOpen, setIsClinicalReportOpen,
     selectedConsultationForModal, setSelectedConsultationForModal,
     isExamOrderModalOpen, setIsExamOrderModalOpen, examOrderCatalog,
@@ -671,9 +678,56 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                                 </button>
                                                 {expandedSection === 'diagnosis' && (
                                                     <div className="p-5 md:p-8 border-t border-slate-100 space-y-6 bg-white">
-                                                        <div>
+                                                        <div className="space-y-4">
                                                             <label className="block text-sm font-bold text-slate-700 mb-2">{labels.diagnosis}</label>
-                                                            <AutocompleteInput value={newConsultation.diagnosis || ""} onChange={(val) => setNewConsultation((prev) => ({ ...prev, diagnosis: val }))} options={COMMON_DIAGNOSES} className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none font-bold text-lg text-slate-800" placeholder="Buscar CIE-10 o escribir texto libre (Ej: Faringitis Aguda...)" />
+                                                            <div className="flex gap-2">
+                                                                <AutocompleteInput 
+                                                                    value={newConsultation.diagnosis || ""} 
+                                                                    onChange={(val) => setNewConsultation((prev) => ({ ...prev, diagnosis: val }))} 
+                                                                    options={COMMON_DIAGNOSES} 
+                                                                    className="flex-1 p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none font-bold text-lg text-slate-800" 
+                                                                    placeholder="Buscar CIE-10 o escribir texto libre..." 
+                                                                />
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        if (newConsultation.diagnosis && addDiagnosis) {
+                                                                            addDiagnosis(newConsultation.diagnosis);
+                                                                            setNewConsultation(prev => ({ ...prev, diagnosis: "" }));
+                                                                        }
+                                                                    }}
+                                                                    className="px-6 bg-primary-600 text-white font-bold rounded-xl hover:bg-primary-700 transition-colors flex items-center gap-2"
+                                                                    title="Agregar a la lista"
+                                                                >
+                                                                    <Plus className="w-5 h-5" /> Agregar
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Compact List of Diagnoses */}
+                                                            {diagnoses.length > 0 && (
+                                                                <div className="mt-4 flex flex-wrap gap-2">
+                                                                    {diagnoses.map((d, idx) => (
+                                                                        <div key={idx} className="flex items-center gap-2 bg-slate-100 pl-4 pr-2 py-2 rounded-full border border-slate-200 group hover:border-emerald-200 hover:bg-emerald-50 transition-all">
+                                                                            <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-700">{d}</span>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button 
+                                                                                    onClick={() => pinDiagnosis?.(d)}
+                                                                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors"
+                                                                                    title="Fijar en Antecedentes Morbidos"
+                                                                                >
+                                                                                    <Pin className="w-4 h-4" />
+                                                                                </button>
+                                                                                <button 
+                                                                                    onClick={() => removeDiagnosis?.(idx)}
+                                                                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                                                                    title="Eliminar"
+                                                                                >
+                                                                                    <X className="w-4 h-4" />
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div className={!canPrescribeDrugs ? "bg-slate-50 p-6 rounded-2xl border border-slate-200" : ""}>
                                                             {!canPrescribeDrugs && <p className="text-sm font-bold text-slate-400 uppercase mb-4">Indicaciones y Certificados</p>}

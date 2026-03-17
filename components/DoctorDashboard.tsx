@@ -255,7 +255,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     examOrderCatalog,
   } = useDashboardData({ activeCenterId });
 
-  const {
+    const {
     newConsultation,
     setNewConsultation,
     isCreatingConsultation,
@@ -264,6 +264,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     handleExamChange,
     addPrescription,
     removePrescription,
+    addDiagnosis,
+    removeDiagnosis,
+    pinDiagnosis,
     handleCreateConsultation,
     getEmptyConsultation,
   } = useConsultationLogic({
@@ -989,6 +992,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         setIsCreatingConsultation={setIsCreatingConsultation}
         handleVitalsChange={handleVitalsChange}
         handleExamChange={handleExamChange}
+        addDiagnosis={addDiagnosis}
+        removeDiagnosis={removeDiagnosis}
+        pinDiagnosis={pinDiagnosis}
         handleCreateConsultation={handleCreateConsultation}
         selectedPatientConsultations={selectedPatientConsultations}
         isUsingLegacyConsultations={isUsingLegacyConsultations}
