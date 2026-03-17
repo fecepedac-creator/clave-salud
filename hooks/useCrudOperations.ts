@@ -152,7 +152,9 @@ export function useCrudOperations(
       }
 
       // Retention check
-      const fallbackConsultations = Array.isArray(patientData?.consultations) ? patientData.consultations : [];
+      const fallbackConsultations = Array.isArray(patientData?.consultations)
+        ? patientData.consultations
+        : [];
       const oldestConsultation = fallbackConsultations
         .map((c: any) => new Date(c?.date || ""))
         .filter((d: Date) => !Number.isNaN(d.getTime()))
@@ -381,9 +383,7 @@ export function useCrudOperations(
 
         // 2. Identify what to Deactivate (instead of deletion for safety)
         const nextIds = new Set(nextAppointments.map((a) => a.id));
-        const toDeactivate = appointments.filter(
-          (a) => !nextIds.has(a.id) && a.active !== false
-        );
+        const toDeactivate = appointments.filter((a) => !nextIds.has(a.id) && a.active !== false);
 
         for (const appt of toDeactivate) {
           const ref = doc(db, "centers", activeCenterId, "appointments", appt.id);
@@ -410,134 +410,147 @@ export function useCrudOperations(
     [activeCenterId, appointments, requireCenter, showToast]
   );
 
-  const updateCenter = useCallback(async (payload: MedicalCenter & { auditReason?: string }) => {
-    const id = payload?.id ?? generateId();
-    const fn = httpsCallable(getFunctions(), "upsertCenter");
-    const sanitizeObj = (obj: any): any => {
-      if (!obj || typeof obj !== "object") return obj;
-      if (Array.isArray(obj)) return obj.map(sanitizeObj);
-      const res: any = {};
-      for (const key in obj) {
-        const val = obj[key];
-        if (val === undefined) continue;
-        if (typeof val === "function") continue;
-        if (val && typeof val === "object" && val.constructor?.name === "File") continue;
-        res[key] = sanitizeObj(val);
-      }
-      return res;
-    };
-
-    try {
-      await fn({ ...payload, id });
-      return;
-    } catch (err: any) {
-      console.warn("[updateCenter Catch] Error detected:", {
-        code: err?.code,
-        message: err?.message,
-        authUser: !!authUser,
-        isSuperAdminFlag: isSuperAdmin
-      });
-
-      const code = String(err?.code || "").toLowerCase();
-      const message = String(err?.message || "").toLowerCase();
-
-      const isCallableNetworkIssue =
-        code.includes("unavailable") ||
-        code.includes("internal") ||
-        code.includes("deadline-exceeded") ||
-        message.includes("cors") ||
-        message.includes("failed to fetch") ||
-        message.includes("network error");
-
-      if (!isCallableNetworkIssue) {
-        console.error("updateCenter definitive error:", err);
-        throw err;
-      }
-
-      console.warn("updateCenter callable failed (CORS/Network), trying direct Firestore fallback...");
-
-      // Determinar si es SuperAdmin de forma segura
-      let isFinalSuper = isSuperAdmin === true;
-      if (!isFinalSuper && authUser && typeof authUser.getIdTokenResult === "function") {
-        try {
-          const tokenResult = await authUser.getIdTokenResult();
-          const claims = tokenResult?.claims || {};
-          isFinalSuper = (claims.super_admin === true || claims.superadmin === true || claims.superAdmin === true);
-          // Auth Diagnosis SuperAdmin
-        } catch (authDiagErr) {
-          console.error("[Auth Diagnosis] Failed to get claims:", authDiagErr);
+  const updateCenter = useCallback(
+    async (payload: MedicalCenter & { auditReason?: string }) => {
+      const id = payload?.id ?? generateId();
+      const fn = httpsCallable(getFunctions(), "upsertCenter");
+      const sanitizeObj = (obj: any): any => {
+        if (!obj || typeof obj !== "object") return obj;
+        if (Array.isArray(obj)) return obj.map(sanitizeObj);
+        const res: any = {};
+        for (const key in obj) {
+          const val = obj[key];
+          if (val === undefined) continue;
+          if (typeof val === "function") continue;
+          if (val && typeof val === "object" && val.constructor?.name === "File") continue;
+          res[key] = sanitizeObj(val);
         }
-      }
-
-      // Auth Diagnosis
-
-      if (!isFinalSuper) {
-        console.error("User is NOT SuperAdmin. Rejecting fallback flow.");
-        throw err;
-      }
+        return res;
+      };
 
       try {
-        const centerRef = doc(db, "centers", id);
-        const existingSnap = await getDoc(centerRef);
+        await fn({ ...payload, id });
+        return;
+      } catch (err: any) {
+        console.warn("[updateCenter Catch] Error detected:", {
+          code: err?.code,
+          message: err?.message,
+          authUser: !!authUser,
+          isSuperAdminFlag: isSuperAdmin,
+        });
 
-        // Sanitizar payload para evitar errores Internal de Firestore por datos no serializables
-        const cleanPayload = sanitizeObj(payload);
+        const code = String(err?.code || "").toLowerCase();
+        const message = String(err?.message || "").toLowerCase();
 
-        const updateData: any = {
-          ...cleanPayload,
-          id,
-          name: String(cleanPayload?.name || "").trim(),
-          slug: String(cleanPayload?.slug || "").trim(),
-          updatedAt: serverTimestamp(),
-        };
+        const isCallableNetworkIssue =
+          code.includes("unavailable") ||
+          code.includes("internal") ||
+          code.includes("deadline-exceeded") ||
+          message.includes("cors") ||
+          message.includes("failed to fetch") ||
+          message.includes("network error");
 
-        if (existingSnap.exists()) {
-          const oldData = existingSnap.data();
-          updateData.createdAt = cleanPayload?.createdAt ?? oldData?.createdAt ?? serverTimestamp();
-        } else {
-          updateData.createdAt = cleanPayload?.createdAt ?? serverTimestamp();
+        if (!isCallableNetworkIssue) {
+          console.error("updateCenter definitive error:", err);
+          throw err;
         }
 
-        // Fallback update
-        await setDoc(centerRef, updateData, { merge: true });
-        showToast("Centro actualizado vía fallback", "success");
-      } catch (fallbackErr: any) {
-        console.error("CRITICAL FALLBACK ERROR:", fallbackErr);
-        throw fallbackErr;
+        console.warn(
+          "updateCenter callable failed (CORS/Network), trying direct Firestore fallback..."
+        );
+
+        // Determinar si es SuperAdmin de forma segura
+        let isFinalSuper = isSuperAdmin === true;
+        if (!isFinalSuper && authUser && typeof authUser.getIdTokenResult === "function") {
+          try {
+            const tokenResult = await authUser.getIdTokenResult();
+            const claims = tokenResult?.claims || {};
+            isFinalSuper =
+              claims.super_admin === true ||
+              claims.superadmin === true ||
+              claims.superAdmin === true;
+            // Auth Diagnosis SuperAdmin
+          } catch (authDiagErr) {
+            console.error("[Auth Diagnosis] Failed to get claims:", authDiagErr);
+          }
+        }
+
+        // Auth Diagnosis
+
+        if (!isFinalSuper) {
+          console.error("User is NOT SuperAdmin. Rejecting fallback flow.");
+          throw err;
+        }
+
+        try {
+          const centerRef = doc(db, "centers", id);
+          const existingSnap = await getDoc(centerRef);
+
+          // Sanitizar payload para evitar errores Internal de Firestore por datos no serializables
+          const cleanPayload = sanitizeObj(payload);
+
+          const updateData: any = {
+            ...cleanPayload,
+            id,
+            name: String(cleanPayload?.name || "").trim(),
+            slug: String(cleanPayload?.slug || "").trim(),
+            updatedAt: serverTimestamp(),
+          };
+
+          if (existingSnap.exists()) {
+            const oldData = existingSnap.data();
+            updateData.createdAt =
+              cleanPayload?.createdAt ?? oldData?.createdAt ?? serverTimestamp();
+          } else {
+            updateData.createdAt = cleanPayload?.createdAt ?? serverTimestamp();
+          }
+
+          // Fallback update
+          await setDoc(centerRef, updateData, { merge: true });
+          showToast("Centro actualizado vía fallback", "success");
+        } catch (fallbackErr: any) {
+          console.error("CRITICAL FALLBACK ERROR:", fallbackErr);
+          throw fallbackErr;
+        }
       }
-    }
-  }, [authUser, db, updateAuditLog, showToast, isSuperAdmin]);
+    },
+    [authUser, db, updateAuditLog, showToast, isSuperAdmin]
+  );
 
-  const deleteCenter = useCallback(async (id: string, reason?: string) => {
-    try {
-      const fn = httpsCallable(getFunctions(), "deleteCenter");
-      await fn({ centerId: id, reason });
-    } catch (err: any) {
-      console.warn("deleteCenter callable failed, trying direct fallback...", err);
+  const deleteCenter = useCallback(
+    async (id: string, reason?: string) => {
+      try {
+        const fn = httpsCallable(getFunctions(), "deleteCenter");
+        await fn({ centerId: id, reason });
+      } catch (err: any) {
+        console.warn("deleteCenter callable failed, trying direct fallback...", err);
 
-      const tokenResult = await authUser?.getIdTokenResult();
-      const claims = tokenResult?.claims || {};
-      const isSuper = claims.super_admin === true || claims.superadmin === true || claims.superAdmin === true;
+        const tokenResult = await authUser?.getIdTokenResult();
+        const claims = tokenResult?.claims || {};
+        const isSuper =
+          claims.super_admin === true || claims.superadmin === true || claims.superAdmin === true;
 
-      if (!isSuper) throw err;
+        if (!isSuper) throw err;
 
-      // Fallback defensivo: eliminación directa de Firestore si la función falla (CORS/Red)
-      await deleteDoc(doc(db, "centers", id));
+        // Fallback defensivo: eliminación directa de Firestore si la función falla (CORS/Red)
+        await deleteDoc(doc(db, "centers", id));
 
-      // Registrar auditoría manual si el callable falló (ya que el servidor no lo hizo)
-      await updateAuditLog({
-        id: generateId(),
-        centerId: id, // Aunque el centro se borre, lo logueamos
-        actorUid: authUser?.uid ?? "unknown",
-        actorName: authUser?.displayName ?? "Usuario",
-        actorRole: "super_admin",
-        action: "CENTER_DELETE_FALLBACK",
-        entityType: "centerSettings",
-        entityId: id,
-        details: `Eliminación manual por falla en backend. Motivo: ${reason || "N/A"}`,
-      }).catch(() => { });
-    }
-  }, [authUser, updateAuditLog]);
+        // Registrar auditoría manual si el callable falló (ya que el servidor no lo hizo)
+        await updateAuditLog({
+          id: generateId(),
+          centerId: id, // Aunque el centro se borre, lo logueamos
+          actorUid: authUser?.uid ?? "unknown",
+          actorName: authUser?.displayName ?? "Usuario",
+          actorRole: "super_admin",
+          action: "CENTER_DELETE_FALLBACK",
+          entityType: "centerSettings",
+          entityId: id,
+          details: `Eliminación manual por falla en backend. Motivo: ${reason || "N/A"}`,
+        }).catch(() => {});
+      }
+    },
+    [authUser, updateAuditLog]
+  );
 
   const createPreadmission = useCallback(
     async (payload: Omit<Preadmission, "id" | "createdAt" | "centerId" | "status">) => {

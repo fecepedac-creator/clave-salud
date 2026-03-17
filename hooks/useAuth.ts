@@ -66,8 +66,8 @@ export function useAuth() {
               claims?.superadmin === true ||
               claims?.superAdmin === true;
 
-            const isCenterAdmin =
-              rolesNorm.some(r =>
+            const isCenterAdmin = rolesNorm.some(
+              (r) =>
                 r.includes("centeradmin") ||
                 r.includes("center_admin") ||
                 r.includes("center-admin") ||
@@ -76,7 +76,7 @@ export function useAuth() {
                 r === "administrativa" ||
                 r === "admin" ||
                 r === "secretaria"
-              );
+            );
 
             const userProfile: UserProfile = {
               uid: user.uid,
@@ -163,11 +163,15 @@ export function useAuth() {
           profile = snap.data();
         }
 
-        if (profile.activo === false) throw new Error("Su cuenta ha sido desactivada por el administrador.");
-        if (profile.billing?.status === "suspended") throw new Error("Su acceso ha sido suspendido por falta de pago.");
+        if (profile.activo === false)
+          throw new Error("Su cuenta ha sido desactivada por el administrador.");
+        if (profile.billing?.status === "suspended")
+          throw new Error("Su acceso ha sido suspendido por falta de pago.");
 
         const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
-        const roles: AnyRole[] = rolesRaw.map((r: any) => String(r ?? "").trim()).filter(Boolean) as AnyRole[];
+        const roles: AnyRole[] = rolesRaw
+          .map((r: any) => String(r ?? "").trim())
+          .filter(Boolean) as AnyRole[];
         const rolesNorm = roles.map((r) => r.toLowerCase());
 
         const centros: string[] = Array.isArray(profile.centros) ? profile.centros : [];
@@ -293,7 +297,9 @@ export function useAuth() {
           if (isPopupError) {
             // No longer falling back to redirect automatically to avoid loop in Chrome
             console.warn("Popup blocked/closed by user.");
-            throw new Error("El popup fue bloqueado o cerrado. Por favor, habilita los popups o intenta nuevamente.");
+            throw new Error(
+              "El popup fue bloqueado o cerrado. Por favor, habilita los popups o intenta nuevamente."
+            );
           }
           throw e;
         }
@@ -312,7 +318,12 @@ export function useAuth() {
 
           const rolesRaw: string[] = Array.isArray(profile.roles) ? profile.roles : [];
           const roles: AnyRole[] = rolesRaw
-            .map((r: any) => String(r ?? "").trim().toLowerCase() as AnyRole)
+            .map(
+              (r: any) =>
+                String(r ?? "")
+                  .trim()
+                  .toLowerCase() as AnyRole
+            )
             .filter(Boolean);
 
           let centers: string[] = Array.isArray(profile.centros)
@@ -330,7 +341,10 @@ export function useAuth() {
           const pendingInvSnap = await getDocs(qPendingInv);
 
           if (!pendingInvSnap.empty) {
-            const pendingInvites = pendingInvSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+            const pendingInvites = pendingInvSnap.docs.map((d) => ({
+              id: d.id,
+              ...(d.data() as any),
+            }));
             const newCenters = pendingInvites
               .map((i) => String(i.centerId || "").trim())
               .filter((cId) => cId && !centers.includes(cId));
@@ -361,7 +375,7 @@ export function useAuth() {
                   status: "accepted",
                   acceptedAt: serverTimestamp(),
                   acceptedByUid: uid,
-                }).catch(() => { });
+                }).catch(() => {});
                 const cId = String(inv.centerId || "").trim();
                 const rId = String(inv.role || "").trim() || "staff";
                 const profileData = inv.profileData || {};
@@ -403,9 +417,14 @@ export function useAuth() {
             claims?.superAdmin === true;
 
           const isAdmin = !!(
-            roles.some(r => {
+            roles.some((r) => {
               const low = String(r || "").toLowerCase();
-              return low.includes("admin") || low === "administrativo" || low === "administrativa" || low === "secretaria";
+              return (
+                low.includes("admin") ||
+                low === "administrativo" ||
+                low === "administrativa" ||
+                low === "secretaria"
+              );
             }) ||
             isSuperAdmin ||
             profile.isAdmin
@@ -448,7 +467,9 @@ export function useAuth() {
           SUPERADMIN_ALLOWED_EMAILS.has(emailUser)
         );
 
-        const inviteDocs = invSnap.empty ? [] : invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const inviteDocs = invSnap.empty
+          ? []
+          : invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 
         if (inviteDocs.length === 0 && !isSuperAdminByClaim) {
           throw new Error(
@@ -456,13 +477,17 @@ export function useAuth() {
           );
         }
 
-        const rolesFromInvites: AnyRole[] = Array.from(new Set(inviteDocs.map((i) => i.role).filter(Boolean))) as AnyRole[];
+        const rolesFromInvites: AnyRole[] = Array.from(
+          new Set(inviteDocs.map((i) => i.role).filter(Boolean))
+        ) as AnyRole[];
         const centersFromInvites = Array.from(
           new Set(inviteDocs.map((i) => i.centerId).filter(Boolean))
         );
 
-        const finalRoles: AnyRole[] = isSuperAdminByClaim ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole])) : rolesFromInvites;
-        const inviteName = inviteDocs.find(i => i.profileData?.fullName)?.profileData?.fullName;
+        const finalRoles: AnyRole[] = isSuperAdminByClaim
+          ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole]))
+          : rolesFromInvites;
+        const inviteName = inviteDocs.find((i) => i.profileData?.fullName)?.profileData?.fullName;
 
         await setDoc(
           doc(db, "users", uid),
@@ -488,7 +513,7 @@ export function useAuth() {
               status: "accepted",
               acceptedAt: serverTimestamp(),
               acceptedByUid: uid,
-            }).catch(() => { });
+            }).catch(() => {});
 
             const cId = String((inv as any).centerId || "").trim();
             const rId = String((inv as any).role || "").trim() || "staff";
@@ -552,7 +577,7 @@ export function useAuth() {
   const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
-    } catch { }
+    } catch {}
     setCurrentUser(null);
     setEmail("");
     setPassword("");
@@ -579,7 +604,7 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setError("No autorizado");
     try {
       await signOut(auth);
-    } catch { }
+    } catch {}
     setCurrentUser(null);
   }, []);
 

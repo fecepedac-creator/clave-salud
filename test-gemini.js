@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import mammoth from 'mammoth';
-import fs from 'fs/promises';
-import path from 'path';
+import mammoth from "mammoth";
+import fs from "fs/promises";
+import path from "path";
 
 const API_KEY = "AIzaSyD7y8hKM8khe_PVwjCtmGjd1drfUuDfeEo";
 const genAI = new GoogleGenerativeAI(API_KEY);
@@ -11,7 +11,7 @@ const FICHAS_DIR = "c:\\Users\\fecep\\clave-salud\\fichas-piloto";
 const OUTPUT_FILE = "c:\\Users\\fecep\\clave-salud\\extracted_data.json";
 
 // Throttle requests to stay within free tier limits (15 RPM -> 1 request every 4 seconds to be safe)
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function extractTextFromDocx(filePath) {
   try {
@@ -78,7 +78,10 @@ Responder SOLO con el JSON válido, sin markdown ni explicaciones adicionales.`;
     let jsonText = response.text();
 
     // Limpiamos markdown si Gemini lo incluye
-    jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
+    jsonText = jsonText
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
 
     return JSON.parse(jsonText);
   } catch (error) {
@@ -93,7 +96,7 @@ async function runBatchMigration() {
 
   try {
     const files = await fs.readdir(FICHAS_DIR);
-    const docxFiles = files.filter(file => file.endsWith('.docx'));
+    const docxFiles = files.filter((file) => file.endsWith(".docx"));
 
     console.log(`📄 Encontrados ${docxFiles.length} archivos .docx`);
 
@@ -130,7 +133,6 @@ async function runBatchMigration() {
     console.log(`\n💾 Guardando resultados en ${OUTPUT_FILE}...`);
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2));
     console.log("✨ Proceso completado exitosamente.");
-
   } catch (error) {
     console.error("❌ Error fatal:", error);
   }

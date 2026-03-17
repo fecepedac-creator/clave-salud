@@ -32,10 +32,14 @@ test("T5 — Admin: Export CSV es BOM UTF-8, separador ';', header 'Profesional'
 
   // 2. Ir al Tab Rendimiento
   await tabPerformance.click();
-  
+
   // Anti-flake: esperar hidratación dinámica
-  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({ timeout: 45000 });
-  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({
+    timeout: 45000,
+  });
+  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({
+    timeout: 15000,
+  });
 
   // 3. Asegurar que el mes correcto está seleccionado
   await expect(page.locator('[data-testid="month-selector"]')).toBeVisible({
@@ -77,8 +81,7 @@ test("T5 — Admin: Export CSV es BOM UTF-8, separador ';', header 'Profesional'
 
   // ── Verificar BOM UTF-8 ──────────────────────────────────────────────────
   // BOM = bytes 0xEF 0xBB 0xBF al inicio
-  const hasBOM =
-    rawBytes[0] === 0xef && rawBytes[1] === 0xbb && rawBytes[2] === 0xbf;
+  const hasBOM = rawBytes[0] === 0xef && rawBytes[1] === 0xbb && rawBytes[2] === 0xbf;
   expect(hasBOM).toBe(true); // CSV debe tener BOM para que Excel lo abra bien
 
   // Leer como UTF-8 removiendo el BOM si existe
@@ -117,9 +120,7 @@ test("T5 — Admin: Export CSV es BOM UTF-8, separador ';', header 'Profesional'
   const expectedAmount = SEED.DOCTOR_STATS.totalAmountBillable.toLocaleString("es-CL");
   // El monto puede estar escapado con comillas: "350.000" o 350000
   const contentNormalized = content.replace(/"/g, "").replace(/\./g, "");
-  expect(contentNormalized).toContain(
-    SEED.DOCTOR_STATS.totalAmountBillable.toString()
-  );
+  expect(contentNormalized).toContain(SEED.DOCTOR_STATS.totalAmountBillable.toString());
 
   // ── Verificar que valores están escapados con comillas dobles ─────────────
   // Los campos con posibles comas especiales deben venir con ""

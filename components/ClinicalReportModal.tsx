@@ -39,20 +39,20 @@ const buildClinicalEncountersJSON = (
   kinesiologyPrograms?: any[] // Added optional kine programs
 ) => {
   // 1. Process standard Consultations
-  const allEvents = consultations.map(c => ({
+  const allEvents = consultations.map((c) => ({
     date: c.date,
     type: "CONSULTATION",
-    data: c
+    data: c,
   }));
 
   // 2. Process Kine Sessions
   if (kinesiologyPrograms) {
-    kinesiologyPrograms.forEach(prog => {
+    kinesiologyPrograms.forEach((prog) => {
       prog.sessions?.forEach((sess: any) => {
         allEvents.push({
           date: sess.date,
           type: "KINE_SESSION",
-          data: { ...sess, programType: prog.type, diagnosis: prog.diagnosis }
+          data: { ...sess, programType: prog.type, diagnosis: prog.diagnosis },
         });
       });
     });
@@ -107,7 +107,10 @@ const buildClinicalEncountersJSON = (
         if (s.observations) findings.push(`Observaciones: ${s.observations}`);
         if (s.response) findings.push(`Respuesta: ${s.response}`);
         if (s.tolerance) findings.push(`Tolerancia: ${s.tolerance}`);
-        if (s.vitals) findings.push(`Vitals Pre: ${s.vitals.pre.pa}/${s.vitals.pre.fc} - Post: ${s.vitals.post.pa}/${s.vitals.post.fc}`);
+        if (s.vitals)
+          findings.push(
+            `Vitals Pre: ${s.vitals.pre.pa}/${s.vitals.pre.fc} - Post: ${s.vitals.post.pa}/${s.vitals.post.fc}`
+          );
 
         return {
           fecha: toDateOnly(s.date),
@@ -115,7 +118,7 @@ const buildClinicalEncountersJSON = (
           hallazgosRelevantes: findings.length > 0 ? findings : [MISSING_RECORD],
           diagnostico: ensureValue(s.diagnosis),
           procedimientos: Array.isArray(s.techniques) ? s.techniques.join(", ") : MISSING_RECORD,
-          indicacionesPlan: [MISSING_RECORD]
+          indicacionesPlan: [MISSING_RECORD],
         };
       }
     });
@@ -187,14 +190,26 @@ const buildKinesiologyReport = (params: {
   const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
 
   // Try to find the active program or the most recent one
-  // In a real scenario, we might want to let the user select the program, 
+  // In a real scenario, we might want to let the user select the program,
   // but for now we take the one that overlaps with the report dates.
   const program = params.kinePrograms?.[0]; // Simplification: take the first relevant program found
 
-  const diagnosis = program?.diagnosis || params.encounters.find(e => e.diagnostico !== MISSING_RECORD)?.diagnostico || MISSING_RECORD;
-  const sessionsCount = program?.sessions?.length || params.encounters.filter(e => e.motivo.includes("Sesión")).length || 0;
+  const diagnosis =
+    program?.diagnosis ||
+    params.encounters.find((e) => e.diagnostico !== MISSING_RECORD)?.diagnostico ||
+    MISSING_RECORD;
+  const sessionsCount =
+    program?.sessions?.length ||
+    params.encounters.filter((e) => e.motivo.includes("Sesión")).length ||
+    0;
   const frequency = "Por determinar"; // This data is not currently structured in the program
-  const startDate = program?.createdAt ? toDateOnly(program.createdAt.toDate ? program.createdAt.toDate().toISOString() : new Date(program.createdAt.seconds * 1000).toISOString()) : params.startDate;
+  const startDate = program?.createdAt
+    ? toDateOnly(
+        program.createdAt.toDate
+          ? program.createdAt.toDate().toISOString()
+          : new Date(program.createdAt.seconds * 1000).toISOString()
+      )
+    : params.startDate;
 
   const lines: string[] = [];
 
@@ -217,9 +232,9 @@ const buildKinesiologyReport = (params: {
   const initialCondition = program?.initialCondition || MISSING_RECORD;
   lines.push(`• Condición inicial: ${initialCondition}`);
   // Extract findings from first session if available
-  const firstSession = params.encounters.find(e => e.motivo.includes("Sesión"));
+  const firstSession = params.encounters.find((e) => e.motivo.includes("Sesión"));
   if (firstSession && firstSession.hallazgosRelevantes.length > 0) {
-    firstSession.hallazgosRelevantes.forEach(h => lines.push(`• ${h}`));
+    firstSession.hallazgosRelevantes.forEach((h) => lines.push(`• ${h}`));
   }
   lines.push("");
 
@@ -244,21 +259,32 @@ const buildKinesiologyReport = (params: {
   lines.push("Fisioterapia");
   // Summarize techniques from all sessions
   const allTechniques = new Set<string>();
-  params.encounters.forEach(e => {
+  params.encounters.forEach((e) => {
     if (e.procedimientos !== MISSING_RECORD) {
-      e.procedimientos.split(", ").forEach(t => allTechniques.add(t));
+      e.procedimientos.split(", ").forEach((t) => allTechniques.add(t));
     }
   });
 
   // Naive classification (in a real app, techniques would have categories)
   const physioKeywords = ["TENS", "CHC", "Ultra", "Laser", "Masoterapia", "Crioterapia", "Calor"];
-  const exerciseKeywords = ["Ejercicios", "Fortalecimiento", "Elongación", "Propiocepción", "Coordinación", "Motor"];
+  const exerciseKeywords = [
+    "Ejercicios",
+    "Fortalecimiento",
+    "Elongación",
+    "Propiocepción",
+    "Coordinación",
+    "Motor",
+  ];
 
-  const physioTechs = Array.from(allTechniques).filter(t => physioKeywords.some(k => t.includes(k)));
-  const exerciseTechs = Array.from(allTechniques).filter(t => !physioKeywords.some(k => t.includes(k))); // Fallback: everything else looks like exercise/manual
+  const physioTechs = Array.from(allTechniques).filter((t) =>
+    physioKeywords.some((k) => t.includes(k))
+  );
+  const exerciseTechs = Array.from(allTechniques).filter(
+    (t) => !physioKeywords.some((k) => t.includes(k))
+  ); // Fallback: everything else looks like exercise/manual
 
   if (physioTechs.length > 0) {
-    physioTechs.forEach(t => lines.push(`• ${t}`));
+    physioTechs.forEach((t) => lines.push(`• ${t}`));
   } else {
     lines.push("• No se registran procedimientos de fisioterapia específicos.");
   }
@@ -267,7 +293,7 @@ const buildKinesiologyReport = (params: {
   lines.push("Ejercicios Terapéuticos");
   lines.push("");
   if (exerciseTechs.length > 0) {
-    exerciseTechs.forEach(t => lines.push(`• ${t}`));
+    exerciseTechs.forEach((t) => lines.push(`• ${t}`));
   } else {
     lines.push("• Se realizan ejercicios según tolerancia y evolución (ver detalle sesiones).");
   }
@@ -279,19 +305,25 @@ const buildKinesiologyReport = (params: {
   lines.push(`Paciente ha completado ${sessionsCount} sesiones.`);
   lines.push("Evolución general: Se observa evolución favorable en los parámetros evaluados.");
   // Add last session notes as "Current State"
-  const lastSession = [...params.encounters].reverse().find(e => e.motivo.includes("Sesión"));
+  const lastSession = [...params.encounters].reverse().find((e) => e.motivo.includes("Sesión"));
   if (lastSession) {
     lines.push(`En la última sesión (${lastSession.fecha}):`);
-    lastSession.hallazgosRelevantes.forEach(h => lines.push(`- ${h}`));
+    lastSession.hallazgosRelevantes.forEach((h) => lines.push(`- ${h}`));
   }
   lines.push("Sugerencias: Control y evaluación con médico tratante.");
   lines.push("");
   lines.push("");
 
   // SIGNATURE
-  lines.push("                                                                                   Kinesióloga.");
-  lines.push(`                                                                                   ${params.professionalName}.`);
-  lines.push(`                                                                                   ${params.centerName}.`);
+  lines.push(
+    "                                                                                   Kinesióloga."
+  );
+  lines.push(
+    `                                                                                   ${params.professionalName}.`
+  );
+  lines.push(
+    `                                                                                   ${params.centerName}.`
+  );
 
   return lines.join("\n");
 };
@@ -329,17 +361,23 @@ const buildDeterministicReport = (params: {
   lines.push("");
 
   // Determine if this is primarily a Kinesiology report (has kine sessions)
-  const hasKineSessions = params.encounters.some(e => e.motivo.startsWith("Sesión Kinesiológica"));
+  const hasKineSessions = params.encounters.some((e) =>
+    e.motivo.startsWith("Sesión Kinesiológica")
+  );
 
   if (hasKineSessions) {
     lines.push("2. Diagnóstico y Antecedentes");
     // Use the diagnosis from the first kine session or program
-    const mainDiagnosis = params.encounters.find(e => e.diagnostico !== MISSING_RECORD)?.diagnostico || MISSING_RECORD;
+    const mainDiagnosis =
+      params.encounters.find((e) => e.diagnostico !== MISSING_RECORD)?.diagnostico ||
+      MISSING_RECORD;
     lines.push(`Diagnóstico de ingreso: ${mainDiagnosis}`);
 
     const antecedents: string[] = [];
-    if (params.patient.medicalHistory?.length) antecedents.push(`Mórbidos: ${params.patient.medicalHistory.join(", ")}`);
-    if (params.patient.surgicalHistory?.length) antecedents.push(`Quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
+    if (params.patient.medicalHistory?.length)
+      antecedents.push(`Mórbidos: ${params.patient.medicalHistory.join(", ")}`);
+    if (params.patient.surgicalHistory?.length)
+      antecedents.push(`Quirúrgicos: ${params.patient.surgicalHistory.join(", ")}`);
     if (antecedents.length > 0) {
       lines.push(`Antecedentes relevantes: ${antecedents.join(". ")}.`);
     } else {
@@ -354,29 +392,45 @@ const buildDeterministicReport = (params: {
       params.encounters.forEach((encounter, idx) => {
         if (encounter.motivo.startsWith("Sesión Kinesiológica")) {
           // Narrative construction
-          const fecha = new Date(encounter.fecha).toLocaleDateString("es-CL", { weekday: 'long', day: 'numeric', month: 'long' });
+          const fecha = new Date(encounter.fecha).toLocaleDateString("es-CL", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          });
 
           // Extract clean arrays from hallazgos (which are strings like "Observaciones: xyz")
           const observaciones = encounter.hallazgosRelevantes
-            .filter(h => h.startsWith("Observaciones:"))
-            .map(h => h.replace("Observaciones:", "").trim())
+            .filter((h) => h.startsWith("Observaciones:"))
+            .map((h) => h.replace("Observaciones:", "").trim())
             .join(". ");
 
           const tolerancia = encounter.hallazgosRelevantes
-            .find(h => h.startsWith("Tolerancia:"))?.replace("Tolerancia:", "").trim().toLowerCase();
+            .find((h) => h.startsWith("Tolerancia:"))
+            ?.replace("Tolerancia:", "")
+            .trim()
+            .toLowerCase();
 
           const respuesta = encounter.hallazgosRelevantes
-            .find(h => h.startsWith("Respuesta:"))?.replace("Respuesta:", "").trim().toLowerCase();
+            .find((h) => h.startsWith("Respuesta:"))
+            ?.replace("Respuesta:", "")
+            .trim()
+            .toLowerCase();
 
           const vitals = encounter.hallazgosRelevantes
-            .find(h => h.startsWith("Vitals"))?.replace("Vitals", "Signos vitales").trim();
+            .find((h) => h.startsWith("Vitals"))
+            ?.replace("Vitals", "Signos vitales")
+            .trim();
 
-          const tecnicas = encounter.procedimientos !== MISSING_RECORD ? encounter.procedimientos : "procedimientos de rutina";
+          const tecnicas =
+            encounter.procedimientos !== MISSING_RECORD
+              ? encounter.procedimientos
+              : "procedimientos de rutina";
 
           let paragraph = `El día ${fecha}, se realizó la sesión. `;
           if (observaciones) paragraph += `Se observó que ${observaciones}. `;
           paragraph += `Se trabajaron ${tecnicas}. `;
-          if (tolerancia) paragraph += `El paciente presentó una tolerancia ${tolerancia} al esfuerzo. `;
+          if (tolerancia)
+            paragraph += `El paciente presentó una tolerancia ${tolerancia} al esfuerzo. `;
           if (respuesta) paragraph += `La respuesta inmediata al tratamiento fue de ${respuesta}. `;
           if (vitals) paragraph += `(${vitals}).`;
 
@@ -384,11 +438,12 @@ const buildDeterministicReport = (params: {
           lines.push("");
         } else {
           // Fallback for medical mixed encounters
-          lines.push(`Atención Médica (${encounter.fecha}): ${encounter.motivo}. ${encounter.diagnostico}.`);
+          lines.push(
+            `Atención Médica (${encounter.fecha}): ${encounter.motivo}. ${encounter.diagnostico}.`
+          );
         }
       });
     }
-
   } else {
     // STANDARD MEDICAL REPORT STRUCTURE
     lines.push("2. Antecedentes clínicos relevantes");
@@ -436,7 +491,11 @@ const buildDeterministicReport = (params: {
   }
 
   lines.push("");
-  lines.push(hasKineSessions ? "4. Conclusión Kinesiológica y Sugerencias" : "6. Conclusión clínica y recomendaciones");
+  lines.push(
+    hasKineSessions
+      ? "4. Conclusión Kinesiológica y Sugerencias"
+      : "6. Conclusión clínica y recomendaciones"
+  );
   lines.push(MISSING_RECORD);
   lines.push("");
   lines.push("Borrador asistido por IA. Requiere revisión clínica.");
@@ -458,10 +517,7 @@ const ClinicalReportModal: React.FC<Props> = ({
 }) => {
   const consultations = (patient?.consultations || []).filter((c) => c.active !== false);
 
-  const examLabelMap = useMemo(
-    () => buildExamLabelMap(examDefinitions),
-    [examDefinitions]
-  );
+  const examLabelMap = useMemo(() => buildExamLabelMap(examDefinitions), [examDefinitions]);
 
   const minDate = useMemo(() => {
     if (consultations.length === 0) return "";
@@ -517,7 +573,11 @@ const ClinicalReportModal: React.FC<Props> = ({
     const f = from || minDate || MISSING_RECORD;
     const t = to || maxDate || MISSING_RECORD;
     // Pass kine programs to the builder
-    const encounters = buildClinicalEncountersJSON(filtered, examLabelMap, patient.kinesiologyPrograms);
+    const encounters = buildClinicalEncountersJSON(
+      filtered,
+      examLabelMap,
+      patient.kinesiologyPrograms
+    );
     const clinicalEncountersJSON = JSON.stringify(encounters, null, 2);
     const prompt = buildPrompt({
       patient,
@@ -636,7 +696,9 @@ const ClinicalReportModal: React.FC<Props> = ({
           </div>
 
           <div className="mt-4">
-            <label className="text-xs font-bold text-slate-500 uppercase">Contenido (editable)</label>
+            <label className="text-xs font-bold text-slate-500 uppercase">
+              Contenido (editable)
+            </label>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -645,8 +707,8 @@ const ClinicalReportModal: React.FC<Props> = ({
               className="mt-1 w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-medium text-slate-700"
             />
             <p className="mt-2 text-xs text-slate-400">
-              Nota: el borrador se genera usando los datos registrados y el prompt institucional.
-              La integración con IA puede habilitarse sin afectar este flujo.
+              Nota: el borrador se genera usando los datos registrados y el prompt institucional. La
+              integración con IA puede habilitarse sin afectar este flujo.
             </p>
             {draftPrompt && (
               <p className="mt-1 text-xs text-slate-400">
@@ -732,12 +794,18 @@ const ClinicalReportModal: React.FC<Props> = ({
               <div className="text-center min-w-[280px]">
                 <div className="w-full border-t-2 border-slate-800 mb-2"></div>
                 <p className="font-bold text-slate-900 text-sm leading-tight">{professionalName}</p>
-                <p className="text-xs text-slate-500 uppercase tracking-tighter">{professionalRole}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-tighter">
+                  {professionalRole}
+                </p>
                 {professionalRut && (
-                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">RUT: {professionalRut}</p>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    RUT: {professionalRut}
+                  </p>
                 )}
                 {professionalRegistry && (
-                  <p className="text-[9px] text-slate-400 mt-0.5">Reg. Prof: {professionalRegistry}</p>
+                  <p className="text-[9px] text-slate-400 mt-0.5">
+                    Reg. Prof: {professionalRegistry}
+                  </p>
                 )}
                 <p className="text-[10px] text-slate-300 mt-1 italic">Firma y timbre</p>
               </div>

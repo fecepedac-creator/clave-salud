@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef, Suspense } from "react";
-import { Patient, ViewMode, Appointment, Doctor, MedicalCenter, AuditLogEntry, UserProfile } from "./types";
+import {
+  Patient,
+  ViewMode,
+  Appointment,
+  Doctor,
+  MedicalCenter,
+  AuditLogEntry,
+  UserProfile,
+} from "./types";
 // Lazy Loading for Code Splitting
 const PatientForm = React.lazy(() => import("./components/PatientForm"));
 const ProfessionalDashboard = React.lazy(() => import("./components/DoctorDashboard"));
@@ -22,13 +30,7 @@ import BookingPortal from "./components/BookingPortal";
 import { PatientMenu, PatientCancel } from "./components/PatientPortal";
 import HomeDirectory from "./components/HomeDirectory";
 
-import {
-  formatRUT,
-  generateId,
-  getDaysInMonth,
-  generateSlotId,
-  validateRUT,
-} from "./utils";
+import { formatRUT, generateId, getDaysInMonth, generateSlotId, validateRUT } from "./utils";
 import VerifyDocument from "./components/VerifyDocument";
 import TestBanner from "./components/TestBanner";
 import Breadcrumbs from "./components/Breadcrumbs";
@@ -114,45 +116,57 @@ const App: React.FC = () => {
 
   const [masterAccess] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.has("master_access") ||
-      params.has("agent_test") ||
-      params.has("demo");
+    return params.has("master_access") || params.has("agent_test") || params.has("demo");
   });
 
   const demoRole = useMemo(() => {
     return new URLSearchParams(window.location.search).get("demo_role") || "admin";
   }, []);
 
-  const mockDemoUser: UserProfile = useMemo(() => ({
-    uid: "demo_user_uid",
-    id: "demo_user_uid",
-    email: "demo@clavesalud.com",
-    fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
-    role: demoRole === "doctor" ? "MEDICO" : "ADMIN_CENTRO",
-    roles: demoRole === "superadmin" ? ["SUPER_ADMIN"] : (demoRole === "doctor" ? ["MEDICO"] : ["ADMIN_CENTRO"]),
-    centers: ["c_saludmass", "c_eji2qv61"],
-    centros: ["c_saludmass", "c_eji2qv61"],
-    isAdmin: demoRole !== "doctor",
-    activo: true,
-  }), [demoRole]);
+  const mockDemoUser: UserProfile = useMemo(
+    () => ({
+      uid: "demo_user_uid",
+      id: "demo_user_uid",
+      email: "demo@clavesalud.com",
+      fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
+      role: demoRole === "doctor" ? "MEDICO" : "ADMIN_CENTRO",
+      roles:
+        demoRole === "superadmin"
+          ? ["SUPER_ADMIN"]
+          : demoRole === "doctor"
+            ? ["MEDICO"]
+            : ["ADMIN_CENTRO"],
+      centers: ["c_saludmass", "c_eji2qv61"],
+      centros: ["c_saludmass", "c_eji2qv61"],
+      isAdmin: demoRole !== "doctor",
+      activo: true,
+    }),
+    [demoRole]
+  );
 
-  const mockMasterUser: UserProfile = useMemo(() => ({
-    uid: "master_access_uid",
-    id: "master_access_uid",
-    email: "master@clavesalud.com",
-    fullName: "Administrador Maestro (Bypass)",
-    role: "ADMIN_CENTRO",
-    roles: ["ADMIN_CENTRO", "ADMINISTRATIVO", "SUPER_ADMIN"],
-    centers: ["c_eji2qv61"],
-    centros: ["c_eji2qv61"],
-    isAdmin: true,
-    activo: true,
-  }), []);
+  const mockMasterUser: UserProfile = useMemo(
+    () => ({
+      uid: "master_access_uid",
+      id: "master_access_uid",
+      email: "master@clavesalud.com",
+      fullName: "Administrador Maestro (Bypass)",
+      role: "ADMIN_CENTRO",
+      roles: ["ADMIN_CENTRO", "ADMINISTRATIVO", "SUPER_ADMIN"],
+      centers: ["c_eji2qv61"],
+      centros: ["c_eji2qv61"],
+      isAdmin: true,
+      activo: true,
+    }),
+    []
+  );
 
   // Intercept Auth for Demo Mode
   const effectiveAuthUser = useMemo(() => {
     if (demoMode) return { uid: "demo_user_uid", email: "demo@clavesalud.com" } as any;
-    return authUser || (masterAccess ? { uid: "master_access_uid", email: "master@clavesalud.com" } as any : null);
+    return (
+      authUser ||
+      (masterAccess ? ({ uid: "master_access_uid", email: "master@clavesalud.com" } as any) : null)
+    );
   }, [demoMode, authUser, masterAccess]);
 
   const effectiveLocalCurrentUser = useMemo(() => {
@@ -197,7 +211,8 @@ const App: React.FC = () => {
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
     const params = new URLSearchParams(window.location.search);
-    if (params.has("master_access") || params.has("agent_test") || params.has("demo")) return "c_eji2qv61"; // Los Andes
+    if (params.has("master_access") || params.has("agent_test") || params.has("demo"))
+      return "c_eji2qv61"; // Los Andes
     return "";
   });
   const [postCenterSelectView, setPostCenterSelectView] = useState<ViewMode>(
@@ -367,19 +382,38 @@ const App: React.FC = () => {
   );
 
   const booking = {
-    bookingStep, setBookingStep, bookingType, setBookingType,
-    selectedMedicalService, setSelectedMedicalService,
-    bookingData, setBookingData, prefillContact,
-    selectedRole, setSelectedRole,
-    selectedDoctorForBooking, setSelectedDoctorForBooking,
-    bookingDate, setBookingDate,
-    bookingMonth, setBookingMonth,
-    selectedSlot, setSelectedSlot,
-    cancelRut, setCancelRut,
-    cancelPhoneDigits, setCancelPhoneDigits,
-    cancelLoading, cancelError, setCancelError,
-    cancelResults, handleBookingConfirm, resetBooking,
-    handleLookupAppointments, cancelPatientAppointment, handleReschedule
+    bookingStep,
+    setBookingStep,
+    bookingType,
+    setBookingType,
+    selectedMedicalService,
+    setSelectedMedicalService,
+    bookingData,
+    setBookingData,
+    prefillContact,
+    selectedRole,
+    setSelectedRole,
+    selectedDoctorForBooking,
+    setSelectedDoctorForBooking,
+    bookingDate,
+    setBookingDate,
+    bookingMonth,
+    setBookingMonth,
+    selectedSlot,
+    setSelectedSlot,
+    cancelRut,
+    setCancelRut,
+    cancelPhoneDigits,
+    setCancelPhoneDigits,
+    cancelLoading,
+    cancelError,
+    setCancelError,
+    cancelResults,
+    handleBookingConfirm,
+    resetBooking,
+    handleLookupAppointments,
+    cancelPatientAppointment,
+    handleReschedule,
   };
 
   const syncAppointments = useCallback(
@@ -387,43 +421,61 @@ const App: React.FC = () => {
       hookSyncAppointments(nextAppointments, setIsSyncingAppointments),
     [hookSyncAppointments]
   );
-  const resolveDashboardView = useCallback((user: UserProfile | null, targetView?: ViewMode): ViewMode => {
-    // 0. SuperAdmin Path Priority
-    if (window.location.pathname.startsWith("/superadmin")) {
-      return "superadmin-dashboard" as ViewMode;
-    }
+  const resolveDashboardView = useCallback(
+    (user: UserProfile | null, targetView?: ViewMode): ViewMode => {
+      // 0. SuperAdmin Path Priority
+      if (window.location.pathname.startsWith("/superadmin")) {
+        return "superadmin-dashboard" as ViewMode;
+      }
 
-    // 1. Explicit preference from URL/Path
-    if (loginViewPreference === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
-    if (loginViewPreference === "admin-dashboard") return "admin-dashboard" as ViewMode;
-    if (loginViewPreference === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
+      // 1. Explicit preference from URL/Path
+      if (loginViewPreference === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
+      if (loginViewPreference === "admin-dashboard") return "admin-dashboard" as ViewMode;
+      if (loginViewPreference === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
 
-    const userRoles = user?.roles || [];
-    const isSuperAdmin = masterAccess || userRoles.some(r => String(r || "").toLowerCase().includes("super_admin") || String(r || "").toLowerCase().includes("superadmin"));
+      const userRoles = user?.roles || [];
+      const isSuperAdmin =
+        masterAccess ||
+        userRoles.some(
+          (r) =>
+            String(r || "")
+              .toLowerCase()
+              .includes("super_admin") ||
+            String(r || "")
+              .toLowerCase()
+              .includes("superadmin")
+        );
 
-    if (isSuperAdmin && (targetView === "superadmin-dashboard" || loginViewPreference === "superadmin-dashboard")) {
-      return "superadmin-dashboard" as ViewMode;
-    }
+      if (
+        isSuperAdmin &&
+        (targetView === "superadmin-dashboard" || loginViewPreference === "superadmin-dashboard")
+      ) {
+        return "superadmin-dashboard" as ViewMode;
+      }
 
-    // 2. Explicit target requested by caller
-    if (targetView === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
-    if (targetView === "admin-dashboard") return "admin-dashboard" as ViewMode;
-    if (targetView === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
+      // 2. Explicit target requested by caller
+      if (targetView === "doctor-dashboard") return "doctor-dashboard" as ViewMode;
+      if (targetView === "admin-dashboard") return "admin-dashboard" as ViewMode;
+      if (targetView === "superadmin-dashboard") return "superadmin-dashboard" as ViewMode;
 
-    // 3. Fallback to Role detection
-    const isAdminUser = !!(
-      user?.isAdmin ||
-      userRoles.some(r => {
-        const low = String(r || "").toLowerCase();
-        return low.includes("admin") || low.includes("administrativ") || low.includes("secretaria");
-      }) ||
-      (typeof (user as any)?.role === "string" &&
-        ((user as any).role.toLowerCase().includes("admin") ||
-          (user as any).role.toLowerCase().includes("administrativ")))
-    );
+      // 3. Fallback to Role detection
+      const isAdminUser = !!(
+        user?.isAdmin ||
+        userRoles.some((r) => {
+          const low = String(r || "").toLowerCase();
+          return (
+            low.includes("admin") || low.includes("administrativ") || low.includes("secretaria")
+          );
+        }) ||
+        (typeof (user as any)?.role === "string" &&
+          ((user as any).role.toLowerCase().includes("admin") ||
+            (user as any).role.toLowerCase().includes("administrativ")))
+      );
 
-    return isAdminUser ? ("admin-dashboard" as ViewMode) : ("doctor-dashboard" as ViewMode);
-  }, [loginViewPreference, masterAccess]);
+      return isAdminUser ? ("admin-dashboard" as ViewMode) : ("doctor-dashboard" as ViewMode);
+    },
+    [loginViewPreference, masterAccess]
+  );
 
   const handleSuperAdminLogin = useCallback(
     (targetView: ViewMode) =>
@@ -468,7 +520,12 @@ const App: React.FC = () => {
 
   const isPreviewRoleAdmin = useCallback((role: string) => {
     const low = String(role || "").toLowerCase();
-    return low === "admin_centro" || low === "administrativo" || low === "super_admin" || low === "superadmin";
+    return (
+      low === "admin_centro" ||
+      low === "administrativo" ||
+      low === "super_admin" ||
+      low === "superadmin"
+    );
   }, []);
 
   const resolvePreviewView = useCallback(
@@ -620,7 +677,8 @@ const App: React.FC = () => {
 
   const getCenterIdFromPath = (pathname: string) => {
     // Check both standard and professional center paths
-    const match = pathname.match(/^\/center\/([^/]+)\/?/) || pathname.match(/^\/pro\/center\/([^/]+)\/?/);
+    const match =
+      pathname.match(/^\/center\/([^/]+)\/?/) || pathname.match(/^\/pro\/center\/([^/]+)\/?/);
     return match?.[1] ?? "";
   };
 
@@ -635,7 +693,10 @@ const App: React.FC = () => {
     const applyPath = (pathname: string) => {
       const nextCenterId = getCenterIdFromPath(pathname);
       const isProEntry = pathname.startsWith("/pro") || pathname.startsWith("/accesoprofesionales");
-      const isProPortal = pathname.startsWith("/pro/center/") || pathname === "/pro" || pathname === "/accesoprofesionales";
+      const isProPortal =
+        pathname.startsWith("/pro/center/") ||
+        pathname === "/pro" ||
+        pathname === "/accesoprofesionales";
 
       isApplyingPopStateRef.current = true;
 
@@ -713,7 +774,9 @@ const App: React.FC = () => {
       else if (view === "patient-menu") pathSuffix = "/paciente";
 
       nextPath =
-        (view === ("home" as ViewMode) || !activeCenterId) ? "/" : `/center/${activeCenterId}${pathSuffix}`;
+        view === ("home" as ViewMode) || !activeCenterId
+          ? "/"
+          : `/center/${activeCenterId}${pathSuffix}`;
     }
 
     if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
@@ -726,9 +789,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // 1. Case: Fully authenticated with center and data ready
     if (localCurrentUser && activeCenterId && centers.length > 0) {
-      const isPublicView =
-        view === ("home" as ViewMode) ||
-        view === ("center-portal" as ViewMode);
+      const isPublicView = view === ("home" as ViewMode) || view === ("center-portal" as ViewMode);
 
       const isExplicitLoginView =
         view === ("doctor-login" as ViewMode) ||
@@ -739,7 +800,10 @@ const App: React.FC = () => {
       const isAgentTest = window.location.search.includes("agent_test=true");
 
       // Skip redirect if already on SuperAdmin dashboard and it's the intended view
-      if (view === "superadmin-dashboard" && (window.location.pathname.startsWith("/superadmin") || isAgentTest)) {
+      if (
+        view === "superadmin-dashboard" &&
+        (window.location.pathname.startsWith("/superadmin") || isAgentTest)
+      ) {
         return;
       }
 
@@ -752,7 +816,8 @@ const App: React.FC = () => {
         }
       }
 
-      const shouldAutoRedirect = isExplicitLoginView ||
+      const shouldAutoRedirect =
+        isExplicitLoginView ||
         (isPublicView && (loginViewPreference || (view === "home" && isAgentTest)));
 
       if (shouldAutoRedirect) {
@@ -780,10 +845,9 @@ const App: React.FC = () => {
         view === ("center-portal" as ViewMode);
 
       if (isLoginView) {
-        const centersAllowed = Array.from(new Set([
-          ...(localCurrentUser.centros || []),
-          ...(localCurrentUser.centers || [])
-        ]));
+        const centersAllowed = Array.from(
+          new Set([...(localCurrentUser.centros || []), ...(localCurrentUser.centers || [])])
+        );
 
         if (centersAllowed.length === 1) {
           // Auto-select if only one center
@@ -802,7 +866,9 @@ const App: React.FC = () => {
       return (
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50">
           <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600 mb-4"></div>
-          <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-xs">Sincronizando Centro Médico...</p>
+          <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-xs">
+            Sincronizando Centro Médico...
+          </p>
         </div>
       );
     }
@@ -814,7 +880,10 @@ const App: React.FC = () => {
             <div className="bg-red-50 p-6 rounded-[2.5rem] border border-red-100 shadow-xl max-w-md">
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
               <h2 className="text-2xl font-black text-slate-800 mb-2">Centro No Encontrado</h2>
-              <p className="text-slate-500 mb-8 font-medium">No hemos podido localizar el centro médico solicitado o no posees los permisos necesarios para visualizarlo.</p>
+              <p className="text-slate-500 mb-8 font-medium">
+                No hemos podido localizar el centro médico solicitado o no posees los permisos
+                necesarios para visualizarlo.
+              </p>
               <button
                 onClick={() => {
                   setActiveCenterId("");
@@ -1155,7 +1224,6 @@ const App: React.FC = () => {
     return renderHomeBackdrop(content);
   };
 
-
   const renderSelectCenter = () => {
     const allowed: string[] = Array.isArray(localCurrentUser?.centros)
       ? localCurrentUser.centros
@@ -1174,7 +1242,9 @@ const App: React.FC = () => {
         <div className="w-full max-w-3xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.08)] border border-white p-8 sm:p-12 relative z-10">
           <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-4">
             <div>
-              <h2 className="text-3xl font-black text-slate-800 tracking-tight">Selecciona un centro</h2>
+              <h2 className="text-3xl font-black text-slate-800 tracking-tight">
+                Selecciona un centro
+              </h2>
               <p className="text-slate-500 font-medium">Elige el lugar de trabajo para comenzar</p>
             </div>
             <button
@@ -1226,7 +1296,7 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-      </div >
+      </div>
     );
   };
 
@@ -1539,7 +1609,8 @@ const App: React.FC = () => {
       if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
       if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
       if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
-      if (view === ("superadmin-login" as ViewMode)) return wrapView(renderSuperAdminLogin(), false);
+      if (view === ("superadmin-login" as ViewMode))
+        return wrapView(renderSuperAdminLogin(), false);
 
       if (view === ("superadmin-dashboard" as ViewMode)) {
         return wrapView(
@@ -1548,7 +1619,9 @@ const App: React.FC = () => {
             doctors={doctors}
             demoMode={demoMode}
             onToggleDemo={() => setDemoMode((d) => !d)}
-            canUsePreview={isSuperAdminClaim || (import.meta as any)?.env?.DEV === true || masterAccess}
+            canUsePreview={
+              isSuperAdminClaim || (import.meta as any)?.env?.DEV === true || masterAccess
+            }
             previewCenterId={previewCenterId}
             previewRole={previewRole}
             onStartPreview={handleStartPreview}
@@ -1574,7 +1647,7 @@ const App: React.FC = () => {
               setCenters((prev) => prev.filter((c) => c.id !== id));
               await deleteCenter(id, reason);
             }}
-            onUpdateDoctors={async () => { }}
+            onUpdateDoctors={async () => {}}
             hasMoreCenters={hasMoreCenters}
             onLoadMoreCenters={loadMoreCenters}
             isLoadingMoreCenters={isLoadingMoreCenters}
@@ -1586,8 +1659,10 @@ const App: React.FC = () => {
       if (view === ("admin-login" as ViewMode)) return wrapView(renderLogin(false), false);
       if (view === ("landing" as ViewMode))
         return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
-      if (view === ("terms" as ViewMode)) return renderLegalPage("Términos y Condiciones", termsText);
-      if (view === ("privacy" as ViewMode)) return renderLegalPage("Política de Privacidad", privacyText);
+      if (view === ("terms" as ViewMode))
+        return renderLegalPage("Términos y Condiciones", termsText);
+      if (view === ("privacy" as ViewMode))
+        return renderLegalPage("Política de Privacidad", privacyText);
       if (view === ("home" as ViewMode)) return <>{renderHomeDirectory()}</>;
       if (view === ("verify-document" as ViewMode))
         return <VerifyDocument onClose={() => setView("home" as ViewMode)} />;
@@ -1595,14 +1670,14 @@ const App: React.FC = () => {
 
       const previewUser = isPreviewActive
         ? {
-          id: authUser?.uid ?? "preview_user",
-          uid: authUser?.uid ?? "preview_user",
-          email: authUser?.email ?? "preview@demo.cl",
-          fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
-          role: previewRole || "MEDICO",
-          agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
-          savedTemplates: [],
-        }
+            id: authUser?.uid ?? "preview_user",
+            uid: authUser?.uid ?? "preview_user",
+            email: authUser?.email ?? "preview@demo.cl",
+            fullName: authUser?.displayName ?? authUser?.email ?? "Usuario Preview",
+            role: previewRole || "MEDICO",
+            agendaConfig: { slotDuration: 20, startTime: "09:00", endTime: "18:00" },
+            savedTemplates: [],
+          }
         : null;
 
       const userForView = localCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
@@ -1613,9 +1688,17 @@ const App: React.FC = () => {
           .trim()
           .toLowerCase();
         const matchedDoctor =
-          doctors.find((doc) => String(doc.email ?? "").trim().toLowerCase() === currentEmailLower) ||
           doctors.find(
-            (doc) => String((doc as any).emailLower ?? "").trim().toLowerCase() === currentEmailLower
+            (doc) =>
+              String(doc.email ?? "")
+                .trim()
+                .toLowerCase() === currentEmailLower
+          ) ||
+          doctors.find(
+            (doc) =>
+              String((doc as any).emailLower ?? "")
+                .trim()
+                .toLowerCase() === currentEmailLower
           ) ||
           doctors.find((doc) => doc.id === currentUid) ||
           doctors.find((doc) => (doc as any).uid === currentUid) ||
@@ -1634,14 +1717,14 @@ const App: React.FC = () => {
 
         const mergedCurrentUser = matchedDoctor
           ? ({
-            ...userForView,
-            ...matchedDoctor,
-            ...demoOverride,
-            id: resolvedDoctorId,
-            uid: userForView.uid ?? matchedDoctor.uid,
-            email: userForView.email ?? matchedDoctor.email,
-            fullName: resolvedDoctorName,
-          } as any)
+              ...userForView,
+              ...matchedDoctor,
+              ...demoOverride,
+              id: resolvedDoctorId,
+              uid: userForView.uid ?? matchedDoctor.uid,
+              email: userForView.email ?? matchedDoctor.email,
+              fullName: resolvedDoctorName,
+            } as any)
           : ({ ...userForView, ...demoOverride } as any);
 
         const effectiveRole = isPreviewActive ? previewRole : mergedCurrentUser.role;
@@ -1785,14 +1868,18 @@ const App: React.FC = () => {
                 <div className="bg-amber-500 p-2 rounded-xl text-white">
                   <AlertCircle className="w-5 h-5" />
                 </div>
-                <span className="font-black uppercase tracking-wider text-sm">Modo Auditoría Activo</span>
+                <span className="font-black uppercase tracking-wider text-sm">
+                  Modo Auditoría Activo
+                </span>
               </div>
               <div className="space-y-2">
                 <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                  Usted está operando con <span className="font-bold underline">Justificación de Acceso Multi-tenant</span>.
+                  Usted está operando con{" "}
+                  <span className="font-bold underline">Justificación de Acceso Multi-tenant</span>.
                 </p>
                 <p className="text-[10px] text-amber-600/80 leading-tight">
-                  Todas sus acciones están siendo registradas con fines de auditoría y cumplimiento legal. Asegúrese de tener una base legítima para este acceso.
+                  Todas sus acciones están siendo registradas con fines de auditoría y cumplimiento
+                  legal. Asegúrese de tener una base legítima para este acceso.
                 </p>
               </div>
               <button

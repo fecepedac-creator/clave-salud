@@ -11,7 +11,10 @@ const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
     QRCode.toDataURL(value, { margin: 1, width: size }).then(setQrSrc);
   }, [value, size]);
 
-  if (!qrSrc) return <div style={{ width: size, height: size }} className="bg-slate-100 animate-pulse rounded" />;
+  if (!qrSrc)
+    return (
+      <div style={{ width: size, height: size }} className="bg-slate-100 animate-pulse rounded" />
+    );
   return <img src={qrSrc} alt="QR de Verificación" width={size} height={size} />;
 };
 
@@ -188,16 +191,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <span className="text-base font-bold">{selectedPatient.fullName}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
-                      RUT:
-                    </span>{" "}
+                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">RUT:</span>{" "}
                     <span className="font-mono text-sm">{selectedPatient.rut}</span>
                   </div>
                   <div>
                     <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
                       Edad:
                     </span>{" "}
-                    {(calculateAge(selectedPatient.birthDate) ?? "-")} años
+                    {calculateAge(selectedPatient.birthDate) ?? "-"} años
                   </div>
                   <div className="col-span-full">
                     <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
@@ -211,9 +212,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
               {/* 3. Prescription Body */}
               <div className="flex-1 relative font-serif">
-                <span className="text-2xl font-bold font-serif text-slate-900 block mb-3">
-                  Rp.
-                </span>
+                <span className="text-2xl font-bold font-serif text-slate-900 block mb-3">Rp.</span>
                 <div className="text-[12px] leading-snug text-slate-900 whitespace-pre-wrap pl-4 border-l-2 border-slate-100 min-h-[200px] print:border-l-slate-300">
                   {doc.content}
                 </div>
@@ -238,7 +237,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                         ID: <span className="font-mono">{doc.id}</span>
                       </p>
                       <p className="mt-1 text-[9px] text-slate-500 leading-tight">
-                        Escanee el QR para validar la<br />autenticidad de este documento.
+                        Escanee el QR para validar la
+                        <br />
+                        autenticidad de este documento.
                       </p>
                     </div>
                   </div>
@@ -247,8 +248,12 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                 <div className="text-center relative min-w-[200px]">
                   {/* Signature Line */}
                   <div className="w-full border-t-2 border-slate-800 mb-2"></div>
-                  <p className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">{doctorName}</p>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter">{doctorSpecialty || "Médico Cirujano"}</p>
+                  <p className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">
+                    {doctorName}
+                  </p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter">
+                    {doctorSpecialty || "Médico Cirujano"}
+                  </p>
                   {doctorRut && (
                     <p className="text-[9px] text-slate-400 font-mono mt-0.5">RUT: {doctorRut}</p>
                   )}

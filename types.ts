@@ -169,13 +169,13 @@ export interface Attachment {
 export interface Prescription {
   id: string;
   type:
-  | "Receta Médica"
-  | "Receta Retenida"
-  | "Interconsulta"
-  | "Certificado"
-  | "Indicaciones"
-  | "Solicitud de Examen"
-  | "OrdenExamenes";
+    | "Receta Médica"
+    | "Receta Retenida"
+    | "Interconsulta"
+    | "Certificado"
+    | "Indicaciones"
+    | "Solicitud de Examen"
+    | "OrdenExamenes";
   content: string;
   createdAt: string;
   category?: "lab_general" | "inmuno" | "cardio" | "pulmonar" | "imagenes";
@@ -256,13 +256,13 @@ export interface ToothState {
 export interface NailState {
   id: string; // e.g. "L1" (Left 1, Big toe), "R5" (Right 5, Little toe)
   status:
-  | "Sana"
-  | "Onicomicosis"
-  | "Onicocriptosis"
-  | "Onicogrifosis"
-  | "Ausente"
-  | "Atrofica"
-  | "Traumatica";
+    | "Sana"
+    | "Onicomicosis"
+    | "Onicocriptosis"
+    | "Onicogrifosis"
+    | "Ausente"
+    | "Atrofica"
+    | "Traumatica";
   notes?: string;
 }
 
@@ -317,7 +317,14 @@ export interface Consultation extends SoftDeletable {
 
   // --- FHIR R4 / Encounter Alignment ---
   encounterMetadata?: {
-    status: "planned" | "arrived" | "triaged" | "in-progress" | "onleave" | "finished" | "cancelled";
+    status:
+      | "planned"
+      | "arrived"
+      | "triaged"
+      | "in-progress"
+      | "onleave"
+      | "finished"
+      | "cancelled";
     class: "AMB" | "EMER" | "FLD" | "HOME"; // Ambulatory, Emergency, etc.
     type?: string[]; // Codes
     serviceType?: string;
@@ -368,11 +375,13 @@ export interface Patient extends SoftDeletable {
   // --- Bio-Markers Subscription ---
   activeExams?: string[]; // List of exam IDs (e.g., ['hba1c', 'tsh'])
 
-  medicalHistory: Array<string | { id: string, snomedCode: string, system: string, label: string }>;
+  medicalHistory: Array<string | { id: string; snomedCode: string; system: string; label: string }>;
   medicalHistoryDetails?: string;
   cancerDetails?: string;
 
-  surgicalHistory: Array<string | { id: string, snomedCode: string, system: string, label: string }>;
+  surgicalHistory: Array<
+    string | { id: string; snomedCode: string; system: string; label: string }
+  >;
   surgicalHistoryDetails?: string;
   herniaDetails?: string;
 
@@ -566,7 +575,13 @@ export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor" 
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
  * Útil mientras migramos componentes gradualmente.
  */
-export type AnyRole = RoleId | CanonicalRole | "superadmin" | "SUPERADMIN" | "Administrador" | "Admin";
+export type AnyRole =
+  | RoleId
+  | CanonicalRole
+  | "superadmin"
+  | "SUPERADMIN"
+  | "Administrador"
+  | "Admin";
 
 /**
  * @deprecated Mantener por compatibilidad. Usar RoleId.

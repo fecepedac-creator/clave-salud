@@ -91,7 +91,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
     // Evitar duplicados comparando normalizado
     const normalValue = value.trim().toLowerCase();
-    const alreadyExists = list.some(item => {
+    const alreadyExists = list.some((item) => {
       const label = typeof item === "string" ? item : item.label;
       return label.toLowerCase() === normalValue;
     });
@@ -107,25 +107,29 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     const options = type === "medical" ? MEDICAL_HISTORY_OPTIONS : SURGICAL_HISTORY_OPTIONS;
 
     // Normalizar para admitir tanto 'string' (legacy) como 'objeto' (FHIR)
-    const isItemSelected = list.some(item =>
+    const isItemSelected = list.some((item) =>
       typeof item === "string" ? item === itemId : item.id === itemId
     );
 
     if (isItemSelected) {
-      handleEditPatientField(field, list.filter(item =>
-        typeof item === "string" ? item !== itemId : item.id !== itemId
-      ));
+      handleEditPatientField(
+        field,
+        list.filter((item) => (typeof item === "string" ? item !== itemId : item.id !== itemId))
+      );
     } else {
       // Buscar información de codificación en constantes
-      const option = options.find(o => o.id === itemId);
+      const option = options.find((o) => o.id === itemId);
       if (option && option.snomedCode) {
         // Guardar como objeto codificado (FHIR Ready)
-        handleEditPatientField(field, [...list, {
-          id: option.id,
-          snomedCode: option.snomedCode,
-          system: option.system || "http://snomed.info/sct",
-          label: option.label
-        }]);
+        handleEditPatientField(field, [
+          ...list,
+          {
+            id: option.id,
+            snomedCode: option.snomedCode,
+            system: option.system || "http://snomed.info/sct",
+            label: option.label,
+          },
+        ]);
       } else {
         // Legacy fallback o texto libre
         handleEditPatientField(field, [...list, itemId]);
@@ -283,7 +287,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 onClick={() => setShowMorbidosMenu(!showMorbidosMenu)}
                 className="w-full py-3 px-4 bg-emerald-50 text-emerald-700 rounded-2xl border-2 border-emerald-100 font-bold text-xs flex items-center justify-between hover:bg-emerald-100 transition-all group"
               >
-                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar Antecedente
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar
+                Antecedente
               </button>
               {showMorbidosMenu && (
                 <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
@@ -296,10 +301,13 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                         toggleHistoryItem("medical", opt.id);
                         setShowMorbidosMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${medicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
-                        ? "bg-red-50 text-red-700"
-                        : "text-slate-700 hover:bg-slate-50"
-                        }`}
+                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${
+                        medicalHistory.some((h) =>
+                          typeof h === "string" ? h === opt.id : h.id === opt.id
+                        )
+                          ? "bg-red-50 text-red-700"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
                     >
                       {opt.label}
                     </button>
@@ -315,7 +323,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 value={customMedical}
                 onChange={(e) => setCustomMedical(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     handleAddHistory("medical", customMedical);
                     setCustomMedical("");
                   }
@@ -360,9 +368,10 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
             {medicalHistory.map((h) => {
               const itemId = typeof h === "string" ? h : h.id;
-              const itemLabel = typeof h === "string"
-                ? (MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h)
-                : h.label;
+              const itemLabel =
+                typeof h === "string"
+                  ? MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h
+                  : h.label;
 
               return (
                 <span
@@ -374,7 +383,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     onClick={() =>
                       handleEditPatientField(
                         "medicalHistory",
-                        medicalHistory.filter((item) => (typeof item === "string" ? item : item.id) !== itemId)
+                        medicalHistory.filter(
+                          (item) => (typeof item === "string" ? item : item.id) !== itemId
+                        )
                       )
                     }
                     className="text-slate-400 hover:text-red-500"
@@ -399,15 +410,16 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             <div>
               <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Tabaco</p>
               <div className="flex flex-wrap gap-1.5">
-                {SMOKING_STATUS_OPTIONS.map(opt => (
+                {SMOKING_STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => handleEditPatientField("smokingStatus", opt)}
-                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.smokingStatus === opt
-                      ? "bg-slate-700 text-white border-slate-800 shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                      }`}
+                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${
+                      selectedPatient.smokingStatus === opt
+                        ? "bg-slate-700 text-white border-slate-800 shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    }`}
                   >
                     {opt}
                   </button>
@@ -418,15 +430,16 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             <div>
               <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Alcohol</p>
               <div className="flex flex-wrap gap-1.5">
-                {ALCOHOL_STATUS_OPTIONS.map(opt => (
+                {ALCOHOL_STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => handleEditPatientField("alcoholStatus", opt)}
-                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.alcoholStatus === opt
-                      ? "bg-slate-700 text-white border-slate-800 shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                      }`}
+                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${
+                      selectedPatient.alcoholStatus === opt
+                        ? "bg-slate-700 text-white border-slate-800 shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    }`}
                   >
                     {opt}
                   </button>
@@ -435,11 +448,18 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </div>
 
             <div>
-              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Otras Sustancias</p>
+              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">
+                Otras Sustancias
+              </p>
               <div className="flex gap-2 mb-2">
                 <button
                   type="button"
-                  onClick={() => handleEditPatientField("drugUse", selectedPatient.drugUse === "Si" ? "No" : "Si")}
+                  onClick={() =>
+                    handleEditPatientField(
+                      "drugUse",
+                      selectedPatient.drugUse === "Si" ? "No" : "Si"
+                    )
+                  }
                   className={`flex-1 text-[10px] py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.drugUse === "Si" ? "bg-purple-600 text-white border-purple-700" : "bg-white text-slate-600 border-slate-200"}`}
                 >
                   {selectedPatient.drugUse === "Si" ? "Consumo declarado" : "Sin consumo declaredo"}
@@ -457,13 +477,25 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2">
-            <div className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.smokingStatus === 'Fumador actual' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+            <div
+              className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.smokingStatus === "Fumador actual" ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100"}`}
+            >
               <span className="text-[10px] font-bold text-slate-500">TABACO</span>
-              <span className={`text-[10px] font-black ${selectedPatient.smokingStatus === 'Fumador actual' ? 'text-amber-700' : 'text-slate-700'}`}>{selectedPatient.smokingStatus || "No registrado"}</span>
+              <span
+                className={`text-[10px] font-black ${selectedPatient.smokingStatus === "Fumador actual" ? "text-amber-700" : "text-slate-700"}`}
+              >
+                {selectedPatient.smokingStatus || "No registrado"}
+              </span>
             </div>
-            <div className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.alcoholStatus === 'Frecuente' ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
+            <div
+              className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.alcoholStatus === "Frecuente" ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-100"}`}
+            >
               <span className="text-[10px] font-bold text-slate-500">ALCOHOL</span>
-              <span className={`text-[10px] font-black ${selectedPatient.alcoholStatus === 'Frecuente' ? 'text-red-700' : 'text-slate-700'}`}>{selectedPatient.alcoholStatus || "No registrado"}</span>
+              <span
+                className={`text-[10px] font-black ${selectedPatient.alcoholStatus === "Frecuente" ? "text-red-700" : "text-slate-700"}`}
+              >
+                {selectedPatient.alcoholStatus || "No registrado"}
+              </span>
             </div>
             {selectedPatient.drugUse === "Si" && (
               <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
@@ -489,7 +521,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 onClick={() => setShowQXMenu(!showQXMenu)}
                 className="w-full py-3 px-4 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 font-bold text-xs flex items-center justify-between hover:bg-blue-100 transition-all group"
               >
-                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar Cirugía
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar
+                Cirugía
               </button>
               {showQXMenu && (
                 <div className="absolute z-10 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
@@ -502,10 +535,13 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                         toggleHistoryItem("surgical", opt.id);
                         setShowQXMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${surgicalHistory.some(h => typeof h === "string" ? h === opt.id : h.id === opt.id)
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "text-slate-700 hover:bg-slate-50"
-                        }`}
+                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${
+                        surgicalHistory.some((h) =>
+                          typeof h === "string" ? h === opt.id : h.id === opt.id
+                        )
+                          ? "bg-indigo-50 text-indigo-700"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
                     >
                       {opt.label}
                     </button>
@@ -521,7 +557,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 value={customSurgical}
                 onChange={(e) => setCustomSurgical(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     handleAddHistory("surgical", customSurgical);
                     setCustomSurgical("");
                   }
@@ -547,11 +583,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               const code = typeof h === "string" ? "" : h.snomedCode;
 
               return (
-                <div
-                  key={id}
-                  className="group relative"
-                  title={code ? `SNOMED: ${code}` : ""}
-                >
+                <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
                   <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100 flex items-center gap-2">
                     {code && <Activity className="w-3 h-3 text-indigo-400" />}
                     {label}
@@ -570,9 +602,10 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
             {surgicalHistory.map((h) => {
               const itemId = typeof h === "string" ? h : h.id;
-              const itemLabel = typeof h === "string"
-                ? (SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h)
-                : h.label;
+              const itemLabel =
+                typeof h === "string"
+                  ? SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h
+                  : h.label;
 
               return (
                 <span
@@ -584,7 +617,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     onClick={() =>
                       handleEditPatientField(
                         "surgicalHistory",
-                        surgicalHistory.filter((item) => (typeof item === "string" ? item : item.id) !== itemId)
+                        surgicalHistory.filter(
+                          (item) => (typeof item === "string" ? item : item.id) !== itemId
+                        )
                       )
                     }
                     className="text-slate-400 hover:text-red-500"
@@ -820,7 +855,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {isEditingPatient && !readOnly ? (
               <div className="space-y-3 mt-2">
                 <div className="flex flex-wrap gap-1.5">
-                  {LIVING_WITH_OPTIONS.filter(o => o !== 'Otro').map(opt => (
+                  {LIVING_WITH_OPTIONS.filter((o) => o !== "Otro").map((opt) => (
                     <button
                       key={opt}
                       type="button"
@@ -838,7 +873,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     value={customSocial}
                     onChange={(e) => setCustomSocial(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === "Enter") {
                         handleAddSocial(customSocial);
                         setCustomSocial("");
                       }
@@ -875,10 +910,20 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {isEditingPatient && livingWith.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2 p-2 bg-white rounded-lg border border-slate-100">
                 {livingWith.map((person, idx) => (
-                  <span key={idx} className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                  <span
+                    key={idx}
+                    className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 flex items-center gap-1"
+                  >
                     {person}
-                    <button onClick={() => handleEditPatientField("livingWith", livingWith.filter((_, i) => i !== idx))}
-                      className="text-slate-400 hover:text-red-500">
+                    <button
+                      onClick={() =>
+                        handleEditPatientField(
+                          "livingWith",
+                          livingWith.filter((_, i) => i !== idx)
+                        )
+                      }
+                      className="text-slate-400 hover:text-red-500"
+                    >
                       <X className="w-2.5 h-2.5" />
                     </button>
                   </span>
@@ -888,10 +933,14 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="pt-4 border-t border-slate-100 space-y-3">
-            <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Información Regulatoria</h5>
+            <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+              Información Regulatoria
+            </h5>
 
             <div className="text-base text-slate-700">
-              <span className="font-bold block text-xs text-slate-400 uppercase">Identidad de Género</span>
+              <span className="font-bold block text-xs text-slate-400 uppercase">
+                Identidad de Género
+              </span>
               {isEditingPatient && !readOnly ? (
                 <select
                   className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -899,7 +948,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   onChange={(e) => handleEditPatientField("genderIdentity", e.target.value)}
                 >
                   {GENDER_IDENTITY_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
                   ))}
                 </select>
               ) : (
@@ -909,7 +960,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="text-base text-slate-700">
-                <span className="font-bold block text-xs text-slate-400 uppercase">Nacionalidad</span>
+                <span className="font-bold block text-xs text-slate-400 uppercase">
+                  Nacionalidad
+                </span>
                 {isEditingPatient && !readOnly ? (
                   <select
                     className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -917,7 +970,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     onChange={(e) => handleEditPatientField("nationality", e.target.value)}
                   >
                     {NACIONALIDADES.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -926,7 +981,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               </div>
 
               <div className="text-base text-slate-700">
-                <span className="font-bold block text-xs text-slate-400 uppercase">Pueblo Originario</span>
+                <span className="font-bold block text-xs text-slate-400 uppercase">
+                  Pueblo Originario
+                </span>
                 {isEditingPatient && !readOnly ? (
                   <select
                     className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -934,7 +991,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     onChange={(e) => handleEditPatientField("ethnicity", e.target.value)}
                   >
                     {PUEBLOS_ORIGINARIOS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -944,7 +1003,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </div>
 
             <div className="text-base text-slate-700">
-              <span className="font-bold block text-xs text-slate-400 uppercase">Previsión de Salud</span>
+              <span className="font-bold block text-xs text-slate-400 uppercase">
+                Previsión de Salud
+              </span>
               {isEditingPatient && !readOnly ? (
                 <div className="space-y-2">
                   <select
@@ -960,7 +1021,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   >
                     <option value="">-- Seleccione Previsión --</option>
                     {INSURANCE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
                     ))}
                   </select>
                   {selectedPatient.insurance === "FONASA" && (
@@ -981,7 +1044,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               ) : (
                 <span>
                   {selectedPatient.insurance || "No registrada"}
-                  {selectedPatient.insurance === "FONASA" && selectedPatient.insuranceLevel && ` (${selectedPatient.insuranceLevel})`}
+                  {selectedPatient.insurance === "FONASA" &&
+                    selectedPatient.insuranceLevel &&
+                    ` (${selectedPatient.insuranceLevel})`}
                 </span>
               )}
             </div>

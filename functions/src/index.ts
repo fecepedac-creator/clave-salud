@@ -23,10 +23,7 @@ const METADATA_FLAVOR_HEADER = "Metadata-Flavor";
 
 function getProjectId(): string {
   return (
-    process.env.GCLOUD_PROJECT ||
-    process.env.GCP_PROJECT ||
-    admin.app().options.projectId ||
-    ""
+    process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId || ""
   );
 }
 
@@ -41,10 +38,7 @@ function getBackupPrefix() {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
   const month = date.slice(0, 7);
-  const time = now
-    .toISOString()
-    .replace(/[:]/g, "-")
-    .replace(/\..+/, "");
+  const time = now.toISOString().replace(/[:]/g, "-").replace(/\..+/, "");
   return `${BACKUP_PREFIX}/${month}/${date}_${time}`;
 }
 
@@ -193,7 +187,6 @@ async function isCenterAdminForCenter(uid: string, centerId: string): Promise<bo
   return role === "center_admin";
 }
 
-
 function randToken(bytes = 24): string {
   return crypto.randomBytes(bytes).toString("hex");
 }
@@ -215,7 +208,9 @@ function formatChileanPhone(raw: string): string {
 
 function lowerEmailFromContext(context: CallableContext): string {
   const raw = (context.auth?.token as any)?.email ?? "";
-  return String(raw || "").trim().toLowerCase();
+  return String(raw || "")
+    .trim()
+    .toLowerCase();
 }
 
 type PosterFormat = "feed" | "story" | "whatsapp" | "internal";
@@ -274,8 +269,8 @@ function buildPosterSvg(params: {
 
   const logoImage = centerLogoUrl
     ? `<image href="${escapeXml(centerLogoUrl)}" x="60" y="40" width="${Math.round(
-      width * 0.35
-    )}" height="${Math.round(headerHeight * 0.6)}" preserveAspectRatio="xMidYMid meet" />`
+        width * 0.35
+      )}" height="${Math.round(headerHeight * 0.6)}" preserveAspectRatio="xMidYMid meet" />`
     : "";
 
   const messageText = messageLines
@@ -332,11 +327,15 @@ export const createCenterAdminInvite = (functions.https.onCall as any)(
     }
 
     const centerId = String(data?.centerId || "").trim();
-    const emailLower = String(data?.adminEmail || data?.email || "").trim().toLowerCase();
+    const emailLower = String(data?.adminEmail || data?.email || "")
+      .trim()
+      .toLowerCase();
     const centerName = String(data?.centerName || "").trim();
 
-    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!emailLower) throw new functions.https.HttpsError("invalid-argument", "adminEmail/email es requerido.");
+    if (!centerId)
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!emailLower)
+      throw new functions.https.HttpsError("invalid-argument", "adminEmail/email es requerido.");
 
     const token = randToken(24);
     const createdAt = admin.firestore.Timestamp.now();
@@ -393,17 +392,20 @@ export const resendCenterAdminInvite = (functions.https.onCall as any)(
     const createdAt = admin.firestore.Timestamp.now();
     const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await db.collection("invites").doc(newToken).set({
-      token: newToken,
-      centerId: inv.centerId,
-      centerName: inv.centerName || "",
-      emailLower: inv.emailLower,
-      role: inv.role || "center_admin",
-      status: "pending",
-      createdAt,
-      expiresAt,
-      invitedByUid: context.auth?.uid,
-    });
+    await db
+      .collection("invites")
+      .doc(newToken)
+      .set({
+        token: newToken,
+        centerId: inv.centerId,
+        centerName: inv.centerName || "",
+        emailLower: inv.emailLower,
+        role: inv.role || "center_admin",
+        status: "pending",
+        createdAt,
+        expiresAt,
+        invitedByUid: context.auth?.uid,
+      });
 
     const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
     return { token: newToken, inviteUrl };
@@ -459,11 +461,7 @@ export const createCenterNotification = (functions.https.onCall as any)(
       );
     }
 
-    const notifRef = db
-      .collection("centers")
-      .doc(centerId)
-      .collection("adminNotifications")
-      .doc();
+    const notifRef = db.collection("centers").doc(centerId).collection("adminNotifications").doc();
 
     await notifRef.set({
       centerId,
@@ -476,20 +474,24 @@ export const createCenterNotification = (functions.https.onCall as any)(
       createdByUid: context.auth?.uid ?? null,
     });
 
-    await db.collection("centers").doc(centerId).collection("auditLogs").add({
-      type: "ACTION",
-      action: "SUPERADMIN_NOTIFICATION",
-      entityType: "centerSettings",
-      entityId: centerId,
-      actorUid: context.auth?.uid ?? "unknown",
-      actorEmail: lowerEmailFromContext(context) || "unknown",
-      actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
-      actorRole: "super_admin",
-      resourceType: "patient",
-      resourcePath: `/centers/${centerId}`,
-      timestamp: serverTimestamp(),
-      details: title,
-    });
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action: "SUPERADMIN_NOTIFICATION",
+        entityType: "centerSettings",
+        entityId: centerId,
+        actorUid: context.auth?.uid ?? "unknown",
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
+        actorRole: "super_admin",
+        resourceType: "patient",
+        resourcePath: `/centers/${centerId}`,
+        timestamp: serverTimestamp(),
+        details: title,
+      });
 
     return { ok: true };
   }
@@ -513,7 +515,7 @@ export const sendTestTransactionalEmail = (functions.https.onCall as any)(
     const subject = String(data?.subject || "Prueba email ClaveSalud").trim();
     const text = String(
       data?.text ||
-      "Este es un envío de prueba de la capa transaccional de email desde Cloud Functions."
+        "Este es un envío de prueba de la capa transaccional de email desde Cloud Functions."
     ).trim();
 
     if (!to) {
@@ -668,10 +670,7 @@ export const setSuperAdmin = (functions.https.onCall as any)(
 
     const targetUidRaw = String(data?.uid || "").trim();
     if (!targetUidRaw) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "El UID del objetivo es requerido."
-      );
+      throw new functions.https.HttpsError("invalid-argument", "El UID del objetivo es requerido.");
     }
     const targetUid = targetUidRaw;
 
@@ -703,15 +702,23 @@ export const acceptInvite = (functions.https.onCall as any)(
 
     const uid = context.auth?.uid as string;
     const emailLower = lowerEmailFromContext(context);
-    if (!emailLower) throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email disponible.");
+    if (!emailLower)
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Tu cuenta no tiene email disponible."
+      );
 
     const invRef = db.collection("invites").doc(token);
     const invSnap = await invRef.get();
-    if (!invSnap.exists) throw new functions.https.HttpsError("not-found", "Invitación no encontrada o inválida.");
+    if (!invSnap.exists)
+      throw new functions.https.HttpsError("not-found", "Invitación no encontrada o inválida.");
 
     const inv: any = invSnap.data() || {};
     if (String(inv.status || "") !== "pending") {
-      throw new functions.https.HttpsError("failed-precondition", "Esta invitación ya fue utilizada o no está activa.");
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Esta invitación ya fue utilizada o no está activa."
+      );
     }
 
     const expiresAt = inv.expiresAt;
@@ -722,11 +729,15 @@ export const acceptInvite = (functions.https.onCall as any)(
     }
 
     if (String(inv.emailLower || "").toLowerCase() !== emailLower) {
-      throw new functions.https.HttpsError("permission-denied", "Este correo no coincide con el invitado.");
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Este correo no coincide con el invitado."
+      );
     }
 
     const centerId = String(inv.centerId || "").trim();
-    if (!centerId) throw new functions.https.HttpsError("failed-precondition", "Invitación sin centerId.");
+    if (!centerId)
+      throw new functions.https.HttpsError("failed-precondition", "Invitación sin centerId.");
 
     const role = String(inv.role || "center_admin").trim() || "center_admin";
     const profileData = inv.profileData || {};
@@ -770,7 +781,8 @@ export const acceptInvite = (functions.https.onCall as any)(
           specialty: profileData.specialty ?? "",
           photoUrl: profileData.photoUrl ?? "",
           agendaConfig: profileData.agendaConfig ?? null,
-          professionalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+          professionalRole:
+            profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
           isAdmin: profileData.isAdmin ?? false,
         },
         { merge: true }
@@ -793,7 +805,8 @@ export const listPatientAppointments = (functions.https.onCall as any)(
     const patientRut = String(data?.rut || "").trim();
     const phone = formatChileanPhone(String(data?.phone || ""));
 
-    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!centerId)
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
     if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
     if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
 
@@ -807,7 +820,10 @@ export const listPatientAppointments = (functions.https.onCall as any)(
       .limit(25)
       .get();
 
-    const appointments = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
+    const appointments = snap.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...(docSnap.data() as any),
+    }));
     return { appointments };
   }
 );
@@ -819,12 +835,18 @@ export const cancelPatientAppointment = (functions.https.onCall as any)(
     const patientRut = String(data?.rut || "").trim();
     const phone = formatChileanPhone(String(data?.phone || ""));
 
-    if (!centerId) throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!appointmentId) throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
+    if (!centerId)
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    if (!appointmentId)
+      throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
     if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
     if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
 
-    const ref = db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId);
+    const ref = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .doc(appointmentId);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) {
@@ -834,7 +856,10 @@ export const cancelPatientAppointment = (functions.https.onCall as any)(
       if (data.status !== "booked") {
         throw new functions.https.HttpsError("failed-precondition", "La cita no está reservada.");
       }
-      if (String(data.patientRut || "") !== patientRut || String(data.patientPhone || "") !== phone) {
+      if (
+        String(data.patientRut || "") !== patientRut ||
+        String(data.patientPhone || "") !== phone
+      ) {
         throw new functions.https.HttpsError("permission-denied", "Los datos no coinciden.");
       }
 
@@ -944,30 +969,42 @@ export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
             staffPatch.visibleInBooking = false;
           }
 
-          const currentClinicalRole = normalizeString(currentStaff.clinicalRole ?? currentStaff.professionalRole ?? "").trim();
+          const currentClinicalRole = normalizeString(
+            currentStaff.clinicalRole ?? currentStaff.professionalRole ?? ""
+          ).trim();
           if (!currentClinicalRole) {
             const legacyRole = normalizeString(currentStaff.role ?? "").trim();
-            if (legacyRole && legacyRole.toLowerCase() !== "center_admin" && !["doctor", "admin"].includes(legacyRole.toLowerCase())) {
+            if (
+              legacyRole &&
+              legacyRole.toLowerCase() !== "center_admin" &&
+              !["doctor", "admin"].includes(legacyRole.toLowerCase())
+            ) {
               staffPatch.clinicalRole = legacyRole;
             }
           }
 
           const fullName = normalizeString(currentStaff.fullName ?? "").trim();
           if (!fullName) {
-            const fallbackName = normalizeString(currentStaff.displayName ?? currentStaff.name ?? "").trim();
+            const fallbackName = normalizeString(
+              currentStaff.displayName ?? currentStaff.name ?? ""
+            ).trim();
             if (fallbackName) {
               staffPatch.fullName = fallbackName;
             }
           }
 
           if (Object.keys(staffPatch).length > 0) {
-            await centersRef.doc(centerId).collection("staff").doc(staffUid).set(
-              {
-                ...staffPatch,
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
+            await centersRef
+              .doc(centerId)
+              .collection("staff")
+              .doc(staffUid)
+              .set(
+                {
+                  ...staffPatch,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
             staffUpdated += 1;
           } else {
             staffSkipped += 1;
@@ -976,7 +1013,12 @@ export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
           const publicSnap = await publicRef.get();
           const existingCreatedAt = publicSnap.exists ? (publicSnap.get("createdAt") as any) : null;
           const mergedStaffData = { ...currentStaff, ...staffPatch };
-          const publicData = buildPublicStaffData(staffUid, centerId, mergedStaffData, existingCreatedAt);
+          const publicData = buildPublicStaffData(
+            staffUid,
+            centerId,
+            mergedStaffData,
+            existingCreatedAt
+          );
           await publicRef.set(publicData, { merge: true });
           staffProcessed += 1;
         } catch (error) {
@@ -1074,7 +1116,7 @@ export const backfillPatientConsultationsToSubcollection = (functions.https.onCa
 
 /**
  * logAccess - Cloud Function para registrar accesos a datos clínicos
- * 
+ *
  * Implementa trazabilidad de accesos conforme al DS 41 MINSAL con:
  * - Deduplicación: un acceso por recurso/usuario cada 60 segundos
  * - Solo accesible por staff o superadmins autenticados
@@ -1114,10 +1156,8 @@ export const logAccess = (functions.https.onCall as any)(
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
     const staffSnap = await staffRef.get();
 
-    const isStaffMember = staffSnap.exists && (
-      staffSnap.get("active") === true ||
-      staffSnap.get("activo") === true
-    );
+    const isStaffMember =
+      staffSnap.exists && (staffSnap.get("active") === true || staffSnap.get("activo") === true);
 
     if (!isSuperAdmin(context) && !isStaffMember) {
       throw new functions.https.HttpsError(
@@ -1154,7 +1194,8 @@ export const logAccess = (functions.https.onCall as any)(
           const lastTimestamp = dedupeSnap.get("timestamp");
           if (lastTimestamp?.toMillis) {
             const timeSinceLastLog = Date.now() - lastTimestamp.toMillis();
-            if (timeSinceLastLog < 60000) { // 60 segundos
+            if (timeSinceLastLog < 60000) {
+              // 60 segundos
               functions.logger.info("logAccess deduplicated", {
                 centerId,
                 uid,
@@ -1197,11 +1238,15 @@ export const logAccess = (functions.https.onCall as any)(
 
         // Escribir el log y actualizar el documento de deduplicación
         transaction.set(auditLogRef, auditLogData);
-        transaction.set(dedupeDocRef, {
-          timestamp: serverTimestamp(),
-          resourcePath,
-          actorUid: uid,
-        }, { merge: true });
+        transaction.set(
+          dedupeDocRef,
+          {
+            timestamp: serverTimestamp(),
+            resourcePath,
+            actorUid: uid,
+          },
+          { merge: true }
+        );
 
         functions.logger.info("logAccess created", {
           centerId,
@@ -1226,10 +1271,7 @@ export const logAccess = (functions.https.onCall as any)(
         resourcePath,
         error: String(error),
       });
-      throw new functions.https.HttpsError(
-        "internal",
-        "Error al registrar el acceso."
-      );
+      throw new functions.https.HttpsError("internal", "Error al registrar el acceso.");
     }
   }
 );
@@ -1252,7 +1294,13 @@ export const logAuditEvent = (functions.https.onCall as any)(
       );
     }
 
-    const validEntityTypes = ["patient", "consultation", "appointment", "document", "centerSettings"];
+    const validEntityTypes = [
+      "patient",
+      "consultation",
+      "appointment",
+      "document",
+      "centerSettings",
+    ];
     if (!validEntityTypes.includes(entityType)) {
       throw new functions.https.HttpsError(
         "invalid-argument",
@@ -1266,8 +1314,7 @@ export const logAuditEvent = (functions.https.onCall as any)(
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
     const staffSnap = await staffRef.get();
     const isStaffMember =
-      staffSnap.exists &&
-      (staffSnap.get("active") === true || staffSnap.get("activo") === true);
+      staffSnap.exists && (staffSnap.get("active") === true || staffSnap.get("activo") === true);
 
     if (!isSuperAdmin(context) && !isStaffMember) {
       throw new functions.https.HttpsError(
@@ -1374,10 +1421,12 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
   };
 
   if (dryRun) {
-    await storage.bucket(BACKUP_BUCKET).file(`${prefix}/manifest.json`).save(
-      JSON.stringify({ ...manifest, dryRun: true }, null, 2),
-      { contentType: "application/json" }
-    );
+    await storage
+      .bucket(BACKUP_BUCKET)
+      .file(`${prefix}/manifest.json`)
+      .save(JSON.stringify({ ...manifest, dryRun: true }, null, 2), {
+        contentType: "application/json",
+      });
     res.status(200).json({ ok: true, dryRun: true, outputUriPrefix });
     return;
   }
@@ -1409,10 +1458,12 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
     }
 
     const exportBody = await exportRes.json();
-    await storage.bucket(BACKUP_BUCKET).file(`${prefix}/manifest.json`).save(
-      JSON.stringify({ ...manifest, export: exportBody }, null, 2),
-      { contentType: "application/json" }
-    );
+    await storage
+      .bucket(BACKUP_BUCKET)
+      .file(`${prefix}/manifest.json`)
+      .save(JSON.stringify({ ...manifest, export: exportBody }, null, 2), {
+        contentType: "application/json",
+      });
 
     functions.logger.info("runMonthlyBackup export started", {
       projectId,
@@ -1425,7 +1476,6 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ ok: false, error: "Backup failed" });
   }
 });
-
 
 export const generateMarketingPoster = functions.https.onCall(
   async (data: any, context: CallableContext) => {
@@ -1525,34 +1575,32 @@ export const generateMarketingPoster = functions.https.onCall(
   }
 );
 
-export const cleanupExpiredPosters = functions.pubsub
-  .schedule("every 24 hours")
-  .onRun(async () => {
-    const now = admin.firestore.Timestamp.now();
-    const expired = await db.collectionGroup("posters").where("expiresAt", "<=", now).limit(50).get();
-    if (expired.empty) return null;
+export const cleanupExpiredPosters = functions.pubsub.schedule("every 24 hours").onRun(async () => {
+  const now = admin.firestore.Timestamp.now();
+  const expired = await db.collectionGroup("posters").where("expiresAt", "<=", now).limit(50).get();
+  if (expired.empty) return null;
 
-    const bucket = storage.bucket();
-    const batch = db.batch();
+  const bucket = storage.bucket();
+  const batch = db.batch();
 
-    await Promise.all(
-      expired.docs.map(async (docSnap) => {
-        const data = docSnap.data() as any;
-        const storagePath = String(data.storagePath || "");
-        if (storagePath) {
-          try {
-            await bucket.file(storagePath).delete();
-          } catch (e) {
-            functions.logger.warn("poster cleanup delete storage", { storagePath, error: e });
-          }
+  await Promise.all(
+    expired.docs.map(async (docSnap) => {
+      const data = docSnap.data() as any;
+      const storagePath = String(data.storagePath || "");
+      if (storagePath) {
+        try {
+          await bucket.file(storagePath).delete();
+        } catch (e) {
+          functions.logger.warn("poster cleanup delete storage", { storagePath, error: e });
         }
-        batch.delete(docSnap.ref);
-      })
-    );
+      }
+      batch.delete(docSnap.ref);
+    })
+  );
 
-    await batch.commit();
-    return null;
-  });
+  await batch.commit();
+  return null;
+});
 
 // migratePatients - One-time migration from centers/[centerId]/patients to root /patients
 // Callable function restricted to SuperAdmins.
@@ -1567,7 +1615,10 @@ export const migratePatients = functions
   .https.onCall(async (data, context) => {
     requireAuth(context);
     if (!isSuperAdmin(context)) {
-      throw new functions.https.HttpsError("permission-denied", "Solo SuperAdmins pueden ejecutar la migración.");
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo SuperAdmins pueden ejecutar la migración."
+      );
     }
 
     const dryRun = data?.dryRun !== false; // Default to dryRun=true for safety
@@ -1591,7 +1642,11 @@ export const migratePatients = functions
       addLog(`\n📋 Processing center: ${centerId}`);
 
       // Get patients
-      const patientsSnap = await db.collection("centers").doc(centerId).collection("patients").get();
+      const patientsSnap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("patients")
+        .get();
       if (patientsSnap.empty) {
         addLog(`  ⚠️  No patients in ${centerId}`);
         continue;
@@ -1601,18 +1656,26 @@ export const migratePatients = functions
       // Get staff for default owner
       const staffSnap = await db.collection("centers").doc(centerId).collection("staff").get();
       const staffList: any[] = [];
-      staffSnap.forEach(d => staffList.push({ uid: d.id, ...d.data() }));
+      staffSnap.forEach((d) => staffList.push({ uid: d.id, ...d.data() }));
 
-      const defaultOwner = staffList.find((s: any) =>
-        s.roles?.includes("doctor") || s.roles?.includes("MEDICO") || s.roles?.includes("professional")
-      ) || staffList[0];
+      const defaultOwner =
+        staffList.find(
+          (s: any) =>
+            s.roles?.includes("doctor") ||
+            s.roles?.includes("MEDICO") ||
+            s.roles?.includes("professional")
+        ) || staffList[0];
       const defaultOwnerUid = defaultOwner?.uid || "migration-orphan";
       addLog(`  Default owner: ${defaultOwnerUid}`);
 
       // Get consultations indexed by patientId
-      const consultSnap = await db.collection("centers").doc(centerId).collection("consultations").get();
+      const consultSnap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("consultations")
+        .get();
       const consultsByPatient: Record<string, any[]> = {};
-      consultSnap.forEach(d => {
+      consultSnap.forEach((d) => {
         const cd = d.data();
         if (cd.patientId) {
           if (!consultsByPatient[cd.patientId]) consultsByPatient[cd.patientId] = [];
@@ -1654,17 +1717,24 @@ export const migratePatients = functions
         if (!dryRun) {
           await db.collection("patients").doc(patientId).set(migratedPatient);
         }
-        addLog(`  ${dryRun ? "[DRY]" : "✅"} ${patientId} (${pd.fullName || "?"}) → owner: ${ownerUid}`);
+        addLog(
+          `  ${dryRun ? "[DRY]" : "✅"} ${patientId} (${pd.fullName || "?"}) → owner: ${ownerUid}`
+        );
         totalPatients++;
 
         // Migrate consultations
         for (const c of patConsults) {
           if (!dryRun) {
-            await db.collection("patients").doc(patientId).collection("consultations").doc(c.id).set({
-              ...c,
-              migratedFrom: `centers/${centerId}/consultations/${c.id}`,
-              migratedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+            await db
+              .collection("patients")
+              .doc(patientId)
+              .collection("consultations")
+              .doc(c.id)
+              .set({
+                ...c,
+                migratedFrom: `centers/${centerId}/consultations/${c.id}`,
+                migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
           }
           totalConsultations++;
         }
@@ -1704,8 +1774,8 @@ export const aggregateStaff = functions.firestore
     const before = change.before.data();
     const after = change.after.data();
 
-    const wasActive = before ? (before.active !== false && before.activo !== false) : false;
-    const isActive = after ? (after.active !== false && after.activo !== false) : false;
+    const wasActive = before ? before.active !== false && before.activo !== false : false;
+    const isActive = after ? after.active !== false && after.activo !== false : false;
 
     if (!before && isActive) {
       increment = 1; // Created and active
@@ -1819,30 +1889,36 @@ export const aggregatePatients = functions.firestore
     // Incrementar en centros nuevos
     for (const cId of afterCenters) {
       if (!beforeCenters.has(cId)) {
-        await db.collection("centers").doc(cId).set(
-          {
-            stats: {
-              patientCount: admin.firestore.FieldValue.increment(1),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        await db
+          .collection("centers")
+          .doc(cId)
+          .set(
+            {
+              stats: {
+                patientCount: admin.firestore.FieldValue.increment(1),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
             },
-          },
-          { merge: true }
-        );
+            { merge: true }
+          );
       }
     }
 
     // Decrementar en centros de los que salió
     for (const cId of beforeCenters) {
       if (!afterCenters.has(cId)) {
-        await db.collection("centers").doc(cId).set(
-          {
-            stats: {
-              patientCount: admin.firestore.FieldValue.increment(-1),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        await db
+          .collection("centers")
+          .doc(cId)
+          .set(
+            {
+              stats: {
+                patientCount: admin.firestore.FieldValue.increment(-1),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
             },
-          },
-          { merge: true }
-        );
+            { merge: true }
+          );
       }
     }
   });
@@ -1882,14 +1958,16 @@ export const recalcCenterStats = functions
         const appointmentCount = apptSnap.size;
 
         // 3. Count Consultations (Collection Group query since they are under patients)
-        const consultSnap = await db.collectionGroup("consultations")
+        const consultSnap = await db
+          .collectionGroup("consultations")
           .where("centerId", "==", ref.id)
           .count()
           .get();
         const consultationCount = consultSnap.data().count;
 
         // 4. Count Patients (Root collection /patients, filtering by accessControl.centerIds)
-        const patientsSnap = await db.collection("patients")
+        const patientsSnap = await db
+          .collection("patients")
           .where("accessControl.centerIds", "array-contains", ref.id)
           .count()
           .get();
@@ -1913,7 +1991,10 @@ export const recalcCenterStats = functions
         // We continue with other centers if one fails, but we might want to know why
         // If it's a 9 (FAILED_PRECONDITION), it's a missing index
         if (err.code === 9) {
-          throw new functions.https.HttpsError("failed-precondition", `Falta índice para el centro ${ref.id}: ${err.message}`);
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Falta índice para el centro ${ref.id}: ${err.message}`
+          );
         }
       }
     }
@@ -1924,57 +2005,57 @@ export const recalcCenterStats = functions
 /**
  * Tarea programada para recalcular estadísticas de todos los centros cada 24 horas.
  */
-export const scheduledRecalcStats = functions.pubsub
-  .schedule("every 24 hours")
-  .onRun(async () => {
-    const centersRef = db.collection("centers");
-    const snapshot = await centersRef.get();
+export const scheduledRecalcStats = functions.pubsub.schedule("every 24 hours").onRun(async () => {
+  const centersRef = db.collection("centers");
+  const snapshot = await centersRef.get();
 
-    for (const doc of snapshot.docs) {
-      const ref = doc.ref;
+  for (const doc of snapshot.docs) {
+    const ref = doc.ref;
 
-      // Count Staff
-      const staffSnap = await ref.collection("staff").get();
-      const staffCount = staffSnap.docs.filter((d: any) => {
-        const data = d.data();
-        return data.active !== false && data.activo !== false;
-      }).length;
+    // Count Staff
+    const staffSnap = await ref.collection("staff").get();
+    const staffCount = staffSnap.docs.filter((d: any) => {
+      const data = d.data();
+      return data.active !== false && data.activo !== false;
+    }).length;
 
-      // Count Appointments
-      const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
-      const appointmentCount = apptSnap.size;
+    // Count Appointments
+    const apptSnap = await ref.collection("appointments").where("status", "==", "booked").get();
+    const appointmentCount = apptSnap.size;
 
-      // Count Consultations (Collection Group)
-      const consultSnap = await db.collectionGroup("consultations")
-        .where("centerId", "==", ref.id)
-        .count()
-        .get();
-      const consultationCount = consultSnap.data().count;
+    // Count Consultations (Collection Group)
+    const consultSnap = await db
+      .collectionGroup("consultations")
+      .where("centerId", "==", ref.id)
+      .count()
+      .get();
+    const consultationCount = consultSnap.data().count;
 
-      // Count Patients (Root collection /patients)
-      const patientsSnap = await db.collection("patients")
-        .where("accessControl.centerIds", "array-contains", ref.id)
-        .count()
-        .get();
-      const patientCount = patientsSnap.data().count;
+    // Count Patients (Root collection /patients)
+    const patientsSnap = await db
+      .collection("patients")
+      .where("accessControl.centerIds", "array-contains", ref.id)
+      .count()
+      .get();
+    const patientCount = patientsSnap.data().count;
 
-      await ref.set(
-        {
-          stats: {
-            staffCount,
-            patientCount,
-            appointmentCount,
-            consultationCount,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
+    await ref.set(
+      {
+        stats: {
+          staffCount,
+          patientCount,
+          appointmentCount,
+          consultationCount,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
-      );
-    }
+      },
+      { merge: true }
+    );
+  }
 
-    console.log(`[scheduledRecalcStats] Procesados ${snapshot.size} centros.`);
-    return null;
-  });
+  console.log(`[scheduledRecalcStats] Procesados ${snapshot.size} centros.`);
+  return null;
+});
 
 /**
  * Permite a un profesional vincular un paciente a su lista de acceso si tiene una cita agendada.
@@ -1997,7 +2078,12 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
     }
 
     // 1. Verificar que el profesional sea staff del centro y esté ACTIVO
-    const staffDoc = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    const staffDoc = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("staff")
+      .doc(uid)
+      .get();
     const isStaffMember = staffDoc.exists;
     const isActive = resolveActive(staffDoc.data());
 
@@ -2038,7 +2124,10 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
     const patientSnap = await patientRef.get();
 
     if (!patientSnap.exists) {
-      throw new functions.https.HttpsError("not-found", "El paciente no existe en la colección global.");
+      throw new functions.https.HttpsError(
+        "not-found",
+        "El paciente no existe en la colección global."
+      );
     }
 
     try {
@@ -2068,7 +2157,7 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
         if (changed) {
           tx.update(patientRef, {
             ...update,
-            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           });
         }
       });

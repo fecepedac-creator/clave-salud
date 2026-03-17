@@ -15,33 +15,37 @@ import { TEST, SEED } from "../fixtures/test-data";
 async function goToPerformanceTab(page: any) {
   // Ir directamente al dashboard del centro con flag
   await page.goto(`${TEST.BASE_URL}/center/${TEST.CENTER_ID}?agent_test=true`);
-  
+
   // Esperar a que el dashboard sea interactivo
   const tabPerformance = page.locator('[data-testid="admin-tab-performance"]');
   await expect(tabPerformance).toBeVisible({ timeout: 45000 });
 
   // Click en Rendimiento
   await tabPerformance.click();
-  
+
   // Anti-flake: esperar hidratación dinámica (data-ready waits)
   // 1. Esperar que el componente salga del estado de carga (skeleton hidden)
-  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({ timeout: 45000 });
+  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({
+    timeout: 45000,
+  });
 
   // 2. Esperar que el KPI de citas totales sea visible
   const kpiTotal = page.locator('[data-testid="kpi-total-appointments"] p');
   await expect(kpiTotal).toBeVisible({ timeout: 15000 });
-  
+
   // 3. Esperar que el dato esté hidratado (buscamos al profesional del seed en la tabla)
   // Esto es más robusto que un regex de dígitos.
-  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({
+    timeout: 15000,
+  });
 }
 
 // ── TEST 2 ───────────────────────────────────────────────────────────────────
 
 test.beforeEach(async ({ page }) => {
-    // Usamos el flag agent_test=true para evitar redirects a home por guards de routing
-    await page.goto("/?agent_test=true");
-  });
+  // Usamos el flag agent_test=true para evitar redirects a home por guards de routing
+  await page.goto("/?agent_test=true");
+});
 
 test("T2 — Admin: Tab Rendimiento carga KPIs del centro", async ({ page }) => {
   await goToPerformanceTab(page);
@@ -80,23 +84,19 @@ test("T2 — Admin: Tab Rendimiento carga KPIs del centro", async ({ page }) => 
   await expect(exportBtn).toBeVisible();
 
   // ── Botón de cierre visible (mes abierto) o reapertura (mes cerrado) ─────
-  const closeBtnVisible = await page
-    .locator('[data-testid="btn-close-month"]')
-    .isVisible();
-  const reopenBtnVisible = await page
-    .locator('[data-testid="btn-reopen-month"]')
-    .isVisible();
+  const closeBtnVisible = await page.locator('[data-testid="btn-close-month"]').isVisible();
+  const reopenBtnVisible = await page.locator('[data-testid="btn-reopen-month"]').isVisible();
   // Solo uno de los dos puede estar visible a la vez
   expect(closeBtnVisible !== reopenBtnVisible).toBeTruthy();
 
-  console.log(`✅ T2 — Tab Rendimiento cargado. Badge: "${badgeText.trim()}", Total citas: ${parsedTotal}`);
+  console.log(
+    `✅ T2 — Tab Rendimiento cargado. Badge: "${badgeText.trim()}", Total citas: ${parsedTotal}`
+  );
 });
 
 // ── TEST 3 ───────────────────────────────────────────────────────────────────
 
-test("T3 — Admin: Cierre contable de mes y cambio de badge a 'Mes Cerrado'", async ({
-  page,
-}) => {
+test("T3 — Admin: Cierre contable de mes y cambio de badge a 'Mes Cerrado'", async ({ page }) => {
   await goToPerformanceTab(page);
 
   // Precondición: el mes debe estar ABIERTO

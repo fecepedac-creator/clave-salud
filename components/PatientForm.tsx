@@ -152,7 +152,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
   // Load consent if exists
   useEffect(() => {
     if (existingPatients) {
-      const found = existingPatients.find(p => p.rut === rut);
+      const found = existingPatients.find((p) => p.rut === rut);
       if (found && found.consent) {
         setConsent(true);
       }
@@ -239,15 +239,29 @@ const PatientForm: React.FC<PatientFormProps> = ({
       occupation: finalOccupation,
       livingWith,
       // Persist full SNOMED objects for semantic integrity
-      medicalHistory: medicalHistory.map(id => {
-        const opt = MEDICAL_HISTORY_OPTIONS.find(o => o.id === id);
-        return opt ? { id, snomedCode: opt.snomedCode as string, system: opt.system as string, label: opt.label } : id;
+      medicalHistory: medicalHistory.map((id) => {
+        const opt = MEDICAL_HISTORY_OPTIONS.find((o) => o.id === id);
+        return opt
+          ? {
+              id,
+              snomedCode: opt.snomedCode as string,
+              system: opt.system as string,
+              label: opt.label,
+            }
+          : id;
       }),
       medicalHistoryDetails: finalMedicalDetails,
       cancerDetails: finalCancerDetails,
-      surgicalHistory: surgicalHistory.map(id => {
-        const opt = SURGICAL_HISTORY_OPTIONS.find(o => o.id === id);
-        return opt ? { id, snomedCode: opt.snomedCode as string, system: opt.system as string, label: opt.label } : id;
+      surgicalHistory: surgicalHistory.map((id) => {
+        const opt = SURGICAL_HISTORY_OPTIONS.find((o) => o.id === id);
+        return opt
+          ? {
+              id,
+              snomedCode: opt.snomedCode as string,
+              system: opt.system as string,
+              label: opt.label,
+            }
+          : id;
       }),
       surgicalHistoryDetails: finalSurgicalDetails,
       herniaDetails: finalHerniaDetails,
@@ -279,11 +293,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
       nationality,
       // Metadata for FHIR Core-CL alignment
       fhirMetadata: {
-        identifier: [
-          { use: "official", system: "http://registrocivil.cl/run", value: rut }
-        ],
-        lastUpdated: new Date().toISOString()
-      }
+        identifier: [{ use: "official", system: "http://registrocivil.cl/run", value: rut }],
+        lastUpdated: new Date().toISOString(),
+      },
     };
     onSave(newPatient);
   };
@@ -424,7 +436,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
                 <div className="md:col-span-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-xl font-bold text-slate-700 mb-2">Nacionalidad</label>
+                      <label className="block text-xl font-bold text-slate-700 mb-2">
+                        Nacionalidad
+                      </label>
                       <select
                         value={nationality}
                         onChange={(e) => setNationality(e.target.value)}
@@ -438,7 +452,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xl font-bold text-slate-700 mb-2">Pueblo Originario</label>
+                      <label className="block text-xl font-bold text-slate-700 mb-2">
+                        Pueblo Originario
+                      </label>
                       <select
                         value={ethnicity}
                         onChange={(e) => setEthnicity(e.target.value)}
@@ -462,7 +478,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-xl font-bold text-slate-700 mb-4">Sexo (Registral)</label>
+                <label className="block text-xl font-bold text-slate-700 mb-4">
+                  Sexo (Registral)
+                </label>
                 <div className="grid grid-cols-3 gap-4">
                   {["Masculino", "Femenino", "Otro"].map((g) => (
                     <button
@@ -477,11 +495,12 @@ const PatientForm: React.FC<PatientFormProps> = ({
                 </div>
               </div>
 
-
               <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xl font-bold text-slate-700 mb-2">Previsión de Salud</label>
+                    <label className="block text-xl font-bold text-slate-700 mb-2">
+                      Previsión de Salud
+                    </label>
                     <select
                       value={insurance}
                       onChange={(e) => setInsurance(e.target.value)}
@@ -526,9 +545,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
               <div className="md:col-span-2">
                 <label className="block text-xl font-bold text-slate-700 mb-4 flex items-center gap-2">
                   <Users className="w-5 h-5" /> ¿Con quién vive?{" "}
-                  <span className="text-sm font-normal text-slate-400">
-                    (Puede marcar varios)
-                  </span>
+                  <span className="text-sm font-normal text-slate-400">(Puede marcar varios)</span>
                 </label>
                 {errors.livingWith && (
                   <p className="text-red-600 font-bold mb-2 text-sm">{errors.livingWith}</p>
@@ -833,20 +850,24 @@ const PatientForm: React.FC<PatientFormProps> = ({
               </div>
 
               {/* CONSENT checkbox */}
-              <div className="mt-8 bg-slate-50 p-6 rounded-2xl border-2 border-slate-200 flex items-start gap-4 cursor-pointer hover:bg-slate-100 transition-colors"
+              <div
+                className="mt-8 bg-slate-50 p-6 rounded-2xl border-2 border-slate-200 flex items-start gap-4 cursor-pointer hover:bg-slate-100 transition-colors"
                 onClick={() => setConsent(!consent)}
               >
-                <div className={`mt-1 w-6 h-6 min-w-[24px] rounded-md border-2 flex items-center justify-center transition-all ${consent ? 'bg-blue-600 border-blue-600' : 'border-slate-400 bg-white'}`}>
+                <div
+                  className={`mt-1 w-6 h-6 min-w-[24px] rounded-md border-2 flex items-center justify-center transition-all ${consent ? "bg-blue-600 border-blue-600" : "border-slate-400 bg-white"}`}
+                >
                   {consent && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800 text-lg">Consentimiento Informado</h4>
                   <p className="text-slate-600">
-                    Declaro que la información entregada es fidedigna y autorizo el almacenamiento de mis datos clínicos en conformidad con la Ley 20.584 de Derechos y Deberes del Paciente.
+                    Declaro que la información entregada es fidedigna y autorizo el almacenamiento
+                    de mis datos clínicos en conformidad con la Ley 20.584 de Derechos y Deberes del
+                    Paciente.
                   </p>
                 </div>
               </div>
-
             </div>
           )}
         </div>
@@ -883,7 +904,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
             <button
               onClick={handleSave}
               disabled={!consent}
-              className={`w-full md:w-auto px-12 py-4 font-bold text-xl rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 ${consent ? 'bg-green-600 text-white hover:bg-green-700 shadow-green-200' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+              className={`w-full md:w-auto px-12 py-4 font-bold text-xl rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 ${consent ? "bg-green-600 text-white hover:bg-green-700 shadow-green-200" : "bg-slate-300 text-slate-500 cursor-not-allowed"}`}
             >
               <Save className="w-6 h-6" /> Finalizar y Guardar
             </button>

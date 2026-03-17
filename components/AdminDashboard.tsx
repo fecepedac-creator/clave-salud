@@ -102,7 +102,7 @@ interface AdminDashboardProps {
   appointments: Appointment[];
   onUpdateAppointments: (appointments: Appointment[]) => void;
   onUpdateAppointment?: (appointment: Appointment) => Promise<void>; // Individual upsert
-  onDeleteAppointment?: (id: string) => Promise<void>;              // Individual delete
+  onDeleteAppointment?: (id: string) => Promise<void>; // Individual delete
   isSyncingAppointments?: boolean;
   onLogout: () => void;
   onOpenLegal: (target: "terms" | "privacy") => void;
@@ -138,7 +138,9 @@ export const TodayActivity: React.FC<TodayActivityProps> = ({
 }) => {
   const todayStr = new Date().toISOString().split("T")[0];
   const activeDoctors = doctors.filter((doc) =>
-    appointments.some((a) => (a.doctorId === doc.id || (a as any).doctorUid === doc.id) && a.date === todayStr)
+    appointments.some(
+      (a) => (a.doctorId === doc.id || (a as any).doctorUid === doc.id) && a.date === todayStr
+    )
   );
 
   if (activeDoctors.length === 0) {
@@ -155,7 +157,10 @@ export const TodayActivity: React.FC<TodayActivityProps> = ({
       <div className="space-y-6">
         {activeDoctors.map((doc) => {
           const docAppts = appointments
-            .filter((a) => (a.doctorId === doc.id || (a as any).doctorUid === doc.id) && a.date === todayStr)
+            .filter(
+              (a) =>
+                (a.doctorId === doc.id || (a as any).doctorUid === doc.id) && a.date === todayStr
+            )
             .sort((a, b) => a.time.localeCompare(b.time));
 
           return (
@@ -168,14 +173,18 @@ export const TodayActivity: React.FC<TodayActivityProps> = ({
                 {docAppts.map((appt) => (
                   <div
                     key={appt.id}
-                    className={`p-4 rounded-xl border flex items-center justify-between transition-all ${appt.status === "booked"
-                      ? "bg-slate-700/50 border-slate-600 hover:border-slate-500"
-                      : "bg-slate-900/30 border-slate-800 opacity-60"
-                      }`}
+                    className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
+                      appt.status === "booked"
+                        ? "bg-slate-700/50 border-slate-600 hover:border-slate-500"
+                        : "bg-slate-900/30 border-slate-800 opacity-60"
+                    }`}
                   >
                     <div className="flex items-center gap-4">
                       <span className="font-mono font-bold text-indigo-300">{appt.time}</span>
-                      <div onClick={() => appt.status === "booked" && onOpenPatient(appt)} className={appt.status === "booked" ? "cursor-pointer hover:underline" : ""}>
+                      <div
+                        onClick={() => appt.status === "booked" && onOpenPatient(appt)}
+                        className={appt.status === "booked" ? "cursor-pointer hover:underline" : ""}
+                      >
                         {appt.status === "booked" ? (
                           <>
                             <div className="flex items-center gap-2">
@@ -251,10 +260,18 @@ export const PreadmissionList: React.FC<PreadmissionListProps> = ({
         {preadmissions.map((item) => {
           const doc = doctors.find((d) => d.id === item.doctorId);
           return (
-            <div key={item.id} className="p-5 rounded-2xl bg-slate-900/50 border border-slate-700 flex items-center justify-between hover:border-indigo-500/50 transition-all">
+            <div
+              key={item.id}
+              className="p-5 rounded-2xl bg-slate-900/50 border border-slate-700 flex items-center justify-between hover:border-indigo-500/50 transition-all"
+            >
               <div>
-                <p className="font-bold text-white text-lg">{item.contact?.name || item.patientDraft?.fullName || "Paciente"}</p>
-                <p className="text-sm text-slate-400">RUT: {item.contact?.rut || item.patientDraft?.rut || "N/A"} • Tel: {item.contact?.phone || item.patientDraft?.phone || "N/A"}</p>
+                <p className="font-bold text-white text-lg">
+                  {item.contact?.name || item.patientDraft?.fullName || "Paciente"}
+                </p>
+                <p className="text-sm text-slate-400">
+                  RUT: {item.contact?.rut || item.patientDraft?.rut || "N/A"} • Tel:{" "}
+                  {item.contact?.phone || item.patientDraft?.phone || "N/A"}
+                </p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                     {doc?.fullName || "Médico no asignado"}
@@ -307,7 +324,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     | "performance";
 
   const userRoles = currentUser?.roles || [];
-  const isSecretary = userRoles.some(r => {
+  const isSecretary = userRoles.some((r) => {
     const low = String(r || "").toLowerCase();
     return low === "administrativo" || low === "administrativa" || low === "secretaria";
   });
@@ -336,7 +353,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Marketing Flyer
   const [showMarketingModal, setShowMarketingModal] = useState(false);
-  const [marketingFlyerType, setMarketingFlyerType] = useState<'center' | 'professional'>('center');
+  const [marketingFlyerType, setMarketingFlyerType] = useState<"center" | "professional">("center");
   const [showMigrationModal, setShowMigrationModal] = useState(false);
 
   const handleAnthropometryToggle = async (nextValue: boolean) => {
@@ -366,7 +383,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // --- Attendance Toggle ---
-  const handleToggleAttendance = async (apt: Appointment, status: "completed" | "no-show" | "cancelled") => {
+  const handleToggleAttendance = async (
+    apt: Appointment,
+    status: "completed" | "no-show" | "cancelled"
+  ) => {
     if (!resolvedCenterId) return;
 
     // Verificar Guard del Mes Cerrado
@@ -376,7 +396,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const closureRef = doc(db, "centers", resolvedCenterId, "closures_month", aptYearMonth);
         const closureSnap = await getDoc(closureRef);
         if (closureSnap.exists() && closureSnap.data().status === "closed") {
-          showToast(`El mes contable ${aptYearMonth} está cerrado. No se permite modificar asistencia.`, "error");
+          showToast(
+            `El mes contable ${aptYearMonth} está cerrado. No se permite modificar asistencia.`,
+            "error"
+          );
           return;
         }
       }
@@ -394,10 +417,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         },
       };
 
-      const updateAttendanceFn = httpsCallable(functions, 'updateAppointmentAttendance');
+      const updateAttendanceFn = httpsCallable(functions, "updateAppointmentAttendance");
       await updateAttendanceFn(callArgs);
 
-      showToast(`Estado de asistencia de ${apt.patientName || "Paciente"} actualizado a: ${status}`, "success");
+      showToast(
+        `Estado de asistencia de ${apt.patientName || "Paciente"} actualizado a: ${status}`,
+        "success"
+      );
     } catch (err: any) {
       console.error(err);
       showToast(err.message || "Error al actualizar estado de asistencia", "error");
@@ -410,11 +436,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAccessMode(nextMode);
     setAccessModeSaving(true);
     try {
-      await setDoc(
-        doc(db, "centers", resolvedCenterId),
-        { accessMode: nextMode },
-        { merge: true }
-      );
+      await setDoc(doc(db, "centers", resolvedCenterId), { accessMode: nextMode }, { merge: true });
       onLogActivity({
         action: "CENTER_ACCESSMODE_UPDATE",
         entityType: "centerSettings",
@@ -465,14 +487,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [botConfigSaving, setBotConfigSaving] = useState(false);
   const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [medicalServices, setMedicalServices] = useState<MedicalService[]>([]);
-  const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">("CONSULTATION");
+  const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">(
+    "CONSULTATION"
+  );
   const [manualBookingServiceId, setManualBookingServiceId] = useState<string>("");
 
   useEffect(() => {
     if (!db || !resolvedCenterId) return;
-    const q = query(collection(db, "centers", resolvedCenterId, "services"), where("isActive", "==", true));
+    const q = query(
+      collection(db, "centers", resolvedCenterId, "services"),
+      where("isActive", "==", true)
+    );
     return onSnapshot(q, (snap) => {
-      const raw = snap.docs.map(d => ({ id: d.id, ...d.data() } as MedicalService));
+      const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MedicalService);
       setMedicalServices(raw.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     });
   }, [resolvedCenterId]);
@@ -576,10 +603,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setBotConfigSaving(true);
     try {
       // IMPORTANTE: usar dot-notation para no sobreescribir whatsappConfig.phoneNumberId
-      await updateDoc(
-        doc(db, "centers", resolvedCenterId),
-        { "whatsappConfig.secretaryPhone": botSecretaryPhone.trim() }
-      );
+      await updateDoc(doc(db, "centers", resolvedCenterId), {
+        "whatsappConfig.secretaryPhone": botSecretaryPhone.trim(),
+      });
       showToast("Configuración del bot guardada correctamente.", "success");
     } catch (e) {
       console.error("save bot config", e);
@@ -616,7 +642,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (activeTab === "agenda" && selectedDate && slotsSectionRef.current) {
       const isMobile = window.innerWidth < 1024;
       if (isMobile) {
-        slotsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        slotsSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }
   }, [activeTab, selectedDate]);
@@ -629,7 +655,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Generate availability panel state
   const todayStr = new Date().toISOString().split("T")[0];
-  const defaultGenEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split("T")[0]; })();
+  const defaultGenEnd = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  })();
   const [showGenPanel, setShowGenPanel] = useState(false);
   const [genFrom, setGenFrom] = useState(todayStr);
   const [genTo, setGenTo] = useState(defaultGenEnd);
@@ -746,12 +776,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           count++;
         }
       }
-      showToast(`¡Éxito! se sincronizaron ${count} especialistas con el portal de reserva.`, "success");
+      showToast(
+        `¡Éxito! se sincronizaron ${count} especialistas con el portal de reserva.`,
+        "success"
+      );
       onLogActivity({
         type: "STAFF_UPDATE",
         description: `Sincronización manual de catálogo público (${count} profesionales)`,
         patientId: "SISTEMA",
-        patientName: "Admin"
+        patientName: "Admin",
       });
     } catch (err) {
       console.error("Sync error:", err);
@@ -794,11 +827,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           photoUrl: doctor.photoUrl ?? "",
           visibleInBooking,
           active: doctor.active ?? true,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
-      showToast(visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.", "success");
+      showToast(
+        visibleInBooking ? "Profesional publicado en agenda." : "Profesional oculto de agenda.",
+        "success"
+      );
     } catch (error) {
       console.error("toggleVisibleInBooking", error);
       showToast("No se pudo actualizar visibilidad del profesional.", "error");
@@ -854,7 +890,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           status: "accepted",
           acceptedAt: serverTimestamp(),
           acceptedByUid: uid,
-        }).catch(() => { });
+        }).catch(() => {});
       }
     };
 
@@ -899,7 +935,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       for (const invDoc of snap.docs) {
         await updateDoc(doc(db, "invites", invDoc.id), {
           tempStaffId,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         });
       }
       return;
@@ -1050,7 +1086,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           action: "STAFF_CREATE",
           entityType: "staff",
           entityId: newDoc.id,
-          details: `Agregó profesional ${newDoc.fullName} (${newDoc.email})`
+          details: `Agregó profesional ${newDoc.fullName} (${newDoc.email})`,
         });
       } catch (e: any) {
         console.error("persistDoctorToFirestore", e);
@@ -1059,7 +1095,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     }
     setIsEditingDoctor(false);
-    setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: true, active: true });
+    setCurrentDoctor({
+      role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+      clinicalRole: Object.keys(ROLE_LABELS)[0],
+      visibleInBooking: true,
+      active: true,
+    });
   };
 
   const handleDeleteDoctor = async (id: string) => {
@@ -1071,7 +1112,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const doctor = doctors.find((d) => d.id === id);
     if (!doctor) return;
 
-    if (!window.confirm(`¿Está seguro de eliminar a ${doctor.fullName}? Se desactivará su acceso y se ocultará de la agenda.`)) {
+    if (
+      !window.confirm(
+        `¿Está seguro de eliminar a ${doctor.fullName}? Se desactivará su acceso y se ocultará de la agenda.`
+      )
+    ) {
       return;
     }
 
@@ -1120,10 +1165,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const invSnap = await getDocs(qInv);
         // Eliminando invits pendientes
         for (const invDoc of invSnap.docs) {
-          await setDoc(doc(db, "invites", invDoc.id), {
-            status: "revoked",
-            revokedAt: serverTimestamp(),
-          }, { merge: true });
+          await setDoc(
+            doc(db, "invites", invDoc.id),
+            {
+              status: "revoked",
+              revokedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
         }
       }
 
@@ -1136,9 +1185,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         action: "STAFF_DELETE",
         entityType: "staff",
         entityId: id,
-        details: `Eliminó profesional ${doctor.fullName} (${doctor.email})`
+        details: `Eliminó profesional ${doctor.fullName} (${doctor.email})`,
       });
-
     } catch (error) {
       console.error("[handleDeleteDoctor] Error during deletion:", error);
       showToast("No se pudo completar la eliminación en el servidor.", "error");
@@ -1260,7 +1308,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
     const realSlot = appointments.find(
-      (a) => appointmentDoctorUid(a) === selectedDoctorId && a.date === selectedDate && a.time === time
+      (a) =>
+        appointmentDoctorUid(a) === selectedDoctorId && a.date === selectedDate && a.time === time
     );
 
     if (realSlot?.status === "booked") {
@@ -1271,14 +1320,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (realSlot) {
       // Slot exists — toggle pending delete
       if (pendingDeletes.has(realSlot.id)) {
-        setPendingDeletes((prev) => { const s = new Set(prev); s.delete(realSlot.id); return s; });
+        setPendingDeletes((prev) => {
+          const s = new Set(prev);
+          s.delete(realSlot.id);
+          return s;
+        });
       } else {
         setPendingDeletes((prev) => new Set([...prev, realSlot.id]));
       }
     } else {
       // Slot doesn't exist — toggle pending add
       if (pendingAdds.has(time)) {
-        setPendingAdds((prev) => { const s = new Set(prev); s.delete(time); return s; });
+        setPendingAdds((prev) => {
+          const s = new Set(prev);
+          s.delete(time);
+          return s;
+        });
       } else {
         setPendingAdds((prev) => new Set([...prev, time]));
       }
@@ -1341,10 +1398,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const skip = (dow === 6 && !genIncludeSat) || (dow === 0 && !genIncludeSun);
         if (!skip) {
           const dateStr = cursor.toISOString().split("T")[0];
-          const templateSlots = getStandardSlots(dateStr, selectedDoctorId, resolvedCenterId, savedConfig ?? tempConfig);
+          const templateSlots = getStandardSlots(
+            dateStr,
+            selectedDoctorId,
+            resolvedCenterId,
+            savedConfig ?? tempConfig
+          );
           const existing = new Set(
             appointments
-              .filter((a) => ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === dateStr)
+              .filter(
+                (a) =>
+                  ((a as any).doctorUid ?? a.doctorId) === selectedDoctorId && a.date === dateStr
+              )
               .map((a) => a.time)
           );
           templateSlots
@@ -1430,9 +1495,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    const selectedService = manualBookingType === "SERVICE"
-      ? medicalServices.find(s => s.id === manualBookingServiceId)
-      : null;
+    const selectedService =
+      manualBookingType === "SERVICE"
+        ? medicalServices.find((s) => s.id === manualBookingServiceId)
+        : null;
 
     const updated = appointments.map((a) => {
       if (a.id === bookingSlotId) {
@@ -1456,31 +1522,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const existingPatient = patients.find((p) => normalizeRut(p.rut) === normalizedRut);
     const patientPayload: Patient = existingPatient
       ? {
-        ...existingPatient,
-        rut: bookingRut,
-        fullName: bookingName || existingPatient.fullName,
-        phone: bookingPhone || existingPatient.phone,
-        lastUpdated: new Date().toISOString(),
-      }
+          ...existingPatient,
+          rut: bookingRut,
+          fullName: bookingName || existingPatient.fullName,
+          phone: bookingPhone || existingPatient.phone,
+          lastUpdated: new Date().toISOString(),
+        }
       : {
-        id: patientId,
-        centerId,
-        rut: bookingRut,
-        fullName: bookingName,
-        birthDate: "",
-        gender: "Otro",
-        phone: bookingPhone,
-        medicalHistory: [],
-        surgicalHistory: [],
-        smokingStatus: "No fumador",
-        alcoholStatus: "No consumo",
-        medications: [],
-        allergies: [],
-        consultations: [],
-        attachments: [],
-        lastUpdated: new Date().toISOString(),
-        active: true,
-      };
+          id: patientId,
+          centerId,
+          rut: bookingRut,
+          fullName: bookingName,
+          birthDate: "",
+          gender: "Otro",
+          phone: bookingPhone,
+          medicalHistory: [],
+          surgicalHistory: [],
+          smokingStatus: "No fumador",
+          alcoholStatus: "No consumo",
+          medications: [],
+          allergies: [],
+          consultations: [],
+          attachments: [],
+          lastUpdated: new Date().toISOString(),
+          active: true,
+        };
     onUpdatePatients([patientPayload]);
 
     // LOG MANUAL BOOKING
@@ -1616,7 +1682,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {!isSecretary && (
               <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
                 <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
-                <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleRestoreBackup}
+                />
               </label>
             )}
             {!isSecretary && (
@@ -1644,7 +1715,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
               title="Cerrar Sesión"
             >
-              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline text-[x-small] uppercase tracking-widest font-black opacity-60">Salir</span>
+              <LogOut className="w-4 h-4" />{" "}
+              <span className="hidden sm:inline text-[x-small] uppercase tracking-widest font-black opacity-60">
+                Salir
+              </span>
             </button>
           </div>
           <LegalLinks
@@ -1658,7 +1732,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto p-8">
         {/* Tabs */}
-        <div data-testid="admin-tab-bar" className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto">
+        <div
+          data-testid="admin-tab-bar"
+          className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto"
+        >
           <button
             onClick={() => setActiveTab("command_center")}
             disabled={!hasActiveCenter}
@@ -1737,14 +1814,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <TrendingUp className="w-4 h-4" /> Rendimiento
           </button>
-        </div >
-      </div >
+        </div>
+      </div>
 
       {/* COMMAND CENTER */}
       {activeTab === "command_center" && (
         <div className="space-y-8 animate-fadeIn">
           {/* Métricas del Centro */}
-          <div data-testid="admin-dashboard-metrics-section" className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            data-testid="admin-dashboard-metrics-section"
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
             <MetricCard
               title="Pacientes Totales"
               value={activeCenter?.stats?.patientCount?.toLocaleString("es-CL") || "0"}
@@ -1767,11 +1847,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {activeCenter?.stats?.updatedAt && (
             <div className="text-[10px] text-slate-500 italic mt-0">
-              Último recalculo de estadísticas: {
-                activeCenter.stats.updatedAt?.seconds
-                  ? new Date(activeCenter.stats.updatedAt.seconds * 1000).toLocaleString("es-CL")
-                  : new Date(activeCenter.stats.updatedAt).toLocaleString("es-CL")
-              }
+              Último recalculo de estadísticas:{" "}
+              {activeCenter.stats.updatedAt?.seconds
+                ? new Date(activeCenter.stats.updatedAt.seconds * 1000).toLocaleString("es-CL")
+                : new Date(activeCenter.stats.updatedAt).toLocaleString("es-CL")}
             </div>
           )}
 
@@ -1841,7 +1920,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <button
                 onClick={() => {
-                  setMarketingFlyerType('center');
+                  setMarketingFlyerType("center");
                   setShowMarketingModal(true);
                 }}
                 disabled={!hasActiveCenter}
@@ -1917,10 +1996,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </h3>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="bg-slate-900 text-indigo-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600">
-                          {ROLE_LABELS[(doc.clinicalRole as ProfessionalRole) || (doc.role as ProfessionalRole)] || doc.clinicalRole || doc.role}
+                          {ROLE_LABELS[
+                            (doc.clinicalRole as ProfessionalRole) || (doc.role as ProfessionalRole)
+                          ] ||
+                            doc.clinicalRole ||
+                            doc.role}
                         </span>
-                        <span className="text-slate-500 text-xs font-bold uppercase">• {doc.specialty}</span>
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getPublicationStatus(doc) === "Publicado" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : getPublicationStatus(doc) === "Oculto" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-slate-300 border-slate-500/40 bg-slate-500/10"}`}>
+                        <span className="text-slate-500 text-xs font-bold uppercase">
+                          • {doc.specialty}
+                        </span>
+                        <span
+                          className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getPublicationStatus(doc) === "Publicado" ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10" : getPublicationStatus(doc) === "Oculto" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-slate-300 border-slate-500/40 bg-slate-500/10"}`}
+                        >
                           {getPublicationStatus(doc)}
                         </span>
                       </div>
@@ -1931,7 +2018,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity items-center">
                     <button
-                      onClick={() => handleToggleVisibleInBooking(doc, !(doc.visibleInBooking === true))}
+                      onClick={() =>
+                        handleToggleVisibleInBooking(doc, !(doc.visibleInBooking === true))
+                      }
                       className={`px-3 py-2 rounded-lg text-xs font-bold ${doc.visibleInBooking ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"} text-white`}
                     >
                       {doc.visibleInBooking ? "Ocultar" : "Publicar"}
@@ -2136,8 +2225,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
                   />
                   <div>
-                    <span className="block font-bold text-white text-sm">Visible para pacientes</span>
-                    <span className="block text-xs text-slate-400">Controla si aparece en la agenda pública.</span>
+                    <span className="block font-bold text-white text-sm">
+                      Visible para pacientes
+                    </span>
+                    <span className="block text-xs text-slate-400">
+                      Controla si aparece en la agenda pública.
+                    </span>
                   </div>
                 </label>
 
@@ -2146,7 +2239,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <button
                       onClick={() => {
                         setIsEditingDoctor(false);
-                        setCurrentDoctor({ role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole, clinicalRole: Object.keys(ROLE_LABELS)[0], visibleInBooking: true, active: true });
+                        setCurrentDoctor({
+                          role: Object.keys(ROLE_LABELS)[0] as ProfessionalRole,
+                          clinicalRole: Object.keys(ROLE_LABELS)[0],
+                          visibleInBooking: true,
+                          active: true,
+                        });
                       }}
                       className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-600 transition-colors"
                     >
@@ -2166,290 +2264,329 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
-      )
-      }
+      )}
 
       {/* AGENDA MANAGEMENT */}
-      {
-        activeTab === "agenda" && (isModuleEnabled ? isModuleEnabled("agenda") : true) && (
-          <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ... (Existing Agenda Content) ... */}
-            {/* Sidebar Config */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
-                <select
-                  data-testid="select-agenda-prof"
-                  className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
-                  value={selectedDoctorId}
-                  onChange={(e) => setSelectedDoctorId(e.target.value)}
-                >
-                  <optgroup label="Médicos / Profesionales">
-                    {doctors.filter(d => d.role !== "SERVICIO").map((d) => (
+      {activeTab === "agenda" && (isModuleEnabled ? isModuleEnabled("agenda") : true) && (
+        <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* ... (Existing Agenda Content) ... */}
+          {/* Sidebar Config */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
+              <select
+                data-testid="select-agenda-prof"
+                className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
+                value={selectedDoctorId}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+              >
+                <optgroup label="Médicos / Profesionales">
+                  {doctors
+                    .filter((d) => d.role !== "SERVICIO")
+                    .map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.fullName} ({ROLE_LABELS[d.role] || d.role})
                       </option>
                     ))}
-                  </optgroup>
-                  <optgroup label="Agendas de Servicio">
-                    {doctors.filter(d => d.role === "SERVICIO").map((d) => (
+                </optgroup>
+                <optgroup label="Agendas de Servicio">
+                  {doctors
+                    .filter((d) => d.role === "SERVICIO")
+                    .map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.fullName}
                       </option>
                     ))}
-                  </optgroup>
-                </select>
-              </div>
+                </optgroup>
+              </select>
+            </div>
 
-              {/* DYNAMIC SLOT CONFIG */}
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                  <Settings className="w-5 h-5" /> Configurar Bloques
-                </h3>
-                <div className="space-y-4">
-                  <div>
+            {/* DYNAMIC SLOT CONFIG */}
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                <Settings className="w-5 h-5" /> Configurar Bloques
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                    Duración (minutos)
+                  </label>
+                  <select
+                    className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                    value={tempConfig.slotDuration}
+                    onChange={(e) =>
+                      setTempConfig({ ...tempConfig, slotDuration: parseInt(e.target.value) })
+                    }
+                  >
+                    <option value={15}>15 minutos</option>
+                    <option value={20}>20 minutos</option>
+                    <option value={25}>25 minutos</option>
+                    <option value={30}>30 minutos</option>
+                    <option value={45}>45 minutos</option>
+                    <option value={60}>60 minutos</option>
+                  </select>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
                     <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                      Duración (minutos)
+                      Inicio
                     </label>
-                    <select
+                    <input
+                      type="time"
                       className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                      value={tempConfig.slotDuration}
-                      onChange={(e) =>
-                        setTempConfig({ ...tempConfig, slotDuration: parseInt(e.target.value) })
-                      }
-                    >
-                      <option value={15}>15 minutos</option>
-                      <option value={20}>20 minutos</option>
-                      <option value={25}>25 minutos</option>
-                      <option value={30}>30 minutos</option>
-                      <option value={45}>45 minutos</option>
-                      <option value={60}>60 minutos</option>
-                    </select>
+                      value={tempConfig.startTime}
+                      onChange={(e) => setTempConfig({ ...tempConfig, startTime: e.target.value })}
+                    />
                   </div>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                        Inicio
-                      </label>
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                        value={tempConfig.startTime}
-                        onChange={(e) =>
-                          setTempConfig({ ...tempConfig, startTime: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                        Fin
-                      </label>
-                      <input
-                        type="time"
-                        className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
-                        value={tempConfig.endTime}
-                        onChange={(e) => setTempConfig({ ...tempConfig, endTime: e.target.value })}
-                      />
-                    </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                      Fin
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                      value={tempConfig.endTime}
+                      onChange={(e) => setTempConfig({ ...tempConfig, endTime: e.target.value })}
+                    />
                   </div>
-                  <button
-                    onClick={handleSaveConfig}
-                    className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-lg mt-2"
-                  >
-                    Guardar Configuración
-                  </button>
-                  {hasUnsavedConfig && (
-                    <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
-                      Cambios sin guardar. La grilla usa la configuración actualmente guardada.
-                    </p>
-                  )}
                 </div>
-              </div>
-
-              <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-                <div className="flex justify-between items-center mb-6">
-                  <button
-                    onClick={() => handleMonthChange(-1)}
-                    className="p-2 hover:bg-slate-700 rounded-lg"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <span data-testid="agenda-calendar-month" className="font-bold text-lg uppercase tracking-wide">
-                    {currentMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
-                  </span>
-                  <button
-                    onClick={() => handleMonthChange(1)}
-                    className="p-2 hover:bg-slate-700 rounded-lg"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-7 gap-2">
-                  {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
-                    <div key={`dow-${i}`} className="text-center text-xs font-bold text-slate-500 mb-2">
-                      {d}
-                    </div>
-                  ))}
-                  {getDaysInMonth(currentMonth).map((day, idx) => {
-                    if (!day) return <div key={`empty-${idx}`}></div>;
-                    // Use local date parts to avoid UTC-offset shifting in negative-offset timezones
-                    const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-                    const isSelected = dateStr === selectedDate;
-                    // Count slots
-                    const slotsCount = appointments.filter(
-                      (a) =>
-                        ((a as any).doctorUid == selectedDoctorId || a.doctorId === selectedDoctorId) &&
-                        a.date === dateStr
-                    ).length;
-
-                    // Past Day Check
-                    const now = new Date();
-                    now.setHours(0, 0, 0, 0);
-                    const isPast = day < now;
-
-                    return (
-                      <button
-                        key={dateStr}
-                        onClick={() => handleDateClick(day)}
-                        className={`
-                                                    h-10 rounded-lg text-sm font-bold relative transition-all
-                                                    ${isSelected
-                            ? "bg-indigo-600 text-white shadow-lg scale-110 z-10"
-                            : isPast
-                              ? "bg-slate-900/50 text-slate-600 cursor-not-allowed border border-slate-800"
-                              : "bg-slate-900 text-slate-400 hover:bg-slate-700"
-                          }
-                                                `}
-                      >
-                        {day.getDate()}
-                        {slotsCount > 0 && !isPast && (
-                          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-emerald-400 rounded-full"></div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                <button
+                  onClick={handleSaveConfig}
+                  className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-lg mt-2"
+                >
+                  Guardar Configuración
+                </button>
+                {hasUnsavedConfig && (
+                  <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
+                    Cambios sin guardar. La grilla usa la configuración actualmente guardada.
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Generate Availability Panel */}
-            {selectedDoctorId && (
-              <div className="lg:col-span-12 bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden mb-2">
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+              <div className="flex justify-between items-center mb-6">
                 <button
-                  onClick={() => setShowGenPanel((v) => !v)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-slate-700/50 transition-colors"
+                  onClick={() => handleMonthChange(-1)}
+                  className="p-2 hover:bg-slate-700 rounded-lg"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div className="bg-amber-500/20 p-1.5 rounded-lg">
-                      <Zap className="w-4 h-4 text-amber-400" />
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <span
+                  data-testid="agenda-calendar-month"
+                  className="font-bold text-lg uppercase tracking-wide"
+                >
+                  {currentMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+                </span>
+                <button
+                  onClick={() => handleMonthChange(1)}
+                  className="p-2 hover:bg-slate-700 rounded-lg"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
+                  <div
+                    key={`dow-${i}`}
+                    className="text-center text-xs font-bold text-slate-500 mb-2"
+                  >
+                    {d}
+                  </div>
+                ))}
+                {getDaysInMonth(currentMonth).map((day, idx) => {
+                  if (!day) return <div key={`empty-${idx}`}></div>;
+                  // Use local date parts to avoid UTC-offset shifting in negative-offset timezones
+                  const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+                  const isSelected = dateStr === selectedDate;
+                  // Count slots
+                  const slotsCount = appointments.filter(
+                    (a) =>
+                      ((a as any).doctorUid == selectedDoctorId ||
+                        a.doctorId === selectedDoctorId) &&
+                      a.date === dateStr
+                  ).length;
+
+                  // Past Day Check
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0);
+                  const isPast = day < now;
+
+                  return (
+                    <button
+                      key={dateStr}
+                      onClick={() => handleDateClick(day)}
+                      className={`
+                                                    h-10 rounded-lg text-sm font-bold relative transition-all
+                                                    ${
+                                                      isSelected
+                                                        ? "bg-indigo-600 text-white shadow-lg scale-110 z-10"
+                                                        : isPast
+                                                          ? "bg-slate-900/50 text-slate-600 cursor-not-allowed border border-slate-800"
+                                                          : "bg-slate-900 text-slate-400 hover:bg-slate-700"
+                                                    }
+                                                `}
+                    >
+                      {day.getDate()}
+                      {slotsCount > 0 && !isPast && (
+                        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-emerald-400 rounded-full"></div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Generate Availability Panel */}
+          {selectedDoctorId && (
+            <div className="lg:col-span-12 bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden mb-2">
+              <button
+                onClick={() => setShowGenPanel((v) => !v)}
+                className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-slate-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="bg-amber-500/20 p-1.5 rounded-lg">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-white text-sm">
+                      Generar disponibilidad automática
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Abre todos los bloques según la configuración de horario del profesional
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight
+                  className={`w-4 h-4 text-slate-400 transition-transform ${showGenPanel ? "rotate-90" : ""}`}
+                />
+              </button>
+
+              {showGenPanel && (
+                <div className="border-t border-slate-700 p-5 bg-slate-900/40">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-1">Desde</label>
+                      <input
+                        type="date"
+                        value={genFrom}
+                        min={todayStr}
+                        onChange={(e) => setGenFrom(e.target.value)}
+                        className="w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
                     </div>
                     <div>
-                      <p className="font-bold text-white text-sm">Generar disponibilidad automática</p>
-                      <p className="text-xs text-slate-400">Abre todos los bloques según la configuración de horario del profesional</p>
+                      <label className="block text-xs font-bold text-slate-400 mb-1">Hasta</label>
+                      <input
+                        type="date"
+                        value={genTo}
+                        min={genFrom || todayStr}
+                        onChange={(e) => setGenTo(e.target.value)}
+                        className="w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
                     </div>
                   </div>
-                  <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${showGenPanel ? "rotate-90" : ""}`} />
-                </button>
-
-                {showGenPanel && (
-                  <div className="border-t border-slate-700 p-5 bg-slate-900/40">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-1">Desde</label>
-                        <input type="date" value={genFrom} min={todayStr}
-                          onChange={(e) => setGenFrom(e.target.value)}
-                          className="w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-1">Hasta</label>
-                        <input type="date" value={genTo} min={genFrom || todayStr}
-                          onChange={(e) => setGenTo(e.target.value)}
-                          className="w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-white bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-4 mb-4">
-                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                        <input type="checkbox" checked={genIncludeSat} onChange={(e) => setGenIncludeSat(e.target.checked)} className="rounded accent-amber-500" />
-                        Incluir sábados
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                        <input type="checkbox" checked={genIncludeSun} onChange={(e) => setGenIncludeSun(e.target.checked)} className="rounded accent-amber-500" />
-                        Incluir domingos
-                      </label>
-                    </div>
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => setShowGenPanel(false)}
-                        className="px-3 py-2 text-sm text-slate-400 hover:text-white rounded-xl border border-slate-600 bg-slate-800 transition-all">
-                        Cancelar
-                      </button>
-                      <button onClick={handleGenerateSlots} disabled={isGenerating || !genFrom || !genTo}
-                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-400 rounded-xl shadow-sm transition-all disabled:opacity-40">
-                        <Zap className="w-3.5 h-3.5" />
-                        {isGenerating ? "Generando..." : "Generar disponibilidad"}
-                      </button>
-                    </div>
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={genIncludeSat}
+                        onChange={(e) => setGenIncludeSat(e.target.checked)}
+                        className="rounded accent-amber-500"
+                      />
+                      Incluir sábados
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={genIncludeSun}
+                        onChange={(e) => setGenIncludeSun(e.target.checked)}
+                        className="rounded accent-amber-500"
+                      />
+                      Incluir domingos
+                    </label>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Main Agenda Grid */}
-            <div
-              ref={slotsSectionRef}
-              className="lg:col-span-8 bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col"
-            >
-              {selectedDate ? (
-                <>
-                  <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-                    <h3 className="text-2xl font-bold text-white capitalize">
-                      {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-CL", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })}
-                    </h3>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {(isSyncingAppointments || isSavingSlots) && (
-                        <span className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/40 px-2 py-1 rounded-full">
-                          Guardando...
-                        </span>
-                      )}
-                      {hasPendingSlotChanges ? (
-                        <>
-                          <button
-                            onClick={() => { setPendingAdds(new Set()); setPendingDeletes(new Set()); }}
-                            disabled={isSavingSlots}
-                            className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white font-semibold px-3 py-1.5 rounded-xl border border-slate-600 hover:border-slate-400 bg-slate-700 transition-all disabled:opacity-40"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Descartar
-                          </button>
-                          <button
-                            onClick={handleSaveSlots}
-                            disabled={isSavingSlots}
-                            className="flex items-center gap-1.5 text-sm text-white font-bold px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 shadow-sm transition-all disabled:opacity-40"
-                          >
-                            <Save className="w-3.5 h-3.5" />
-                            Guardar agenda ({pendingAdds.size + pendingDeletes.size} cambio{pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""})
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                          Clic para abrir/cerrar bloques
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setShowGenPanel(false)}
+                      className="px-3 py-2 text-sm text-slate-400 hover:text-white rounded-xl border border-slate-600 bg-slate-800 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleGenerateSlots}
+                      disabled={isGenerating || !genFrom || !genTo}
+                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-400 rounded-xl shadow-sm transition-all disabled:opacity-40"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      {isGenerating ? "Generando..." : "Generar disponibilidad"}
+                    </button>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
 
-                  <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-4">
-                    {getStandardSlots(
-                      selectedDate,
-                      selectedDoctorId,
-                      savedConfig ?? tempConfig
-                    ).map((slot) => {
+          {/* Main Agenda Grid */}
+          <div
+            ref={slotsSectionRef}
+            className="lg:col-span-8 bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-700 min-h-[500px] flex flex-col"
+          >
+            {selectedDate ? (
+              <>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+                  <h3 className="text-2xl font-bold text-white capitalize">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-CL", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(isSyncingAppointments || isSavingSlots) && (
+                      <span className="text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-500/40 px-2 py-1 rounded-full">
+                        Guardando...
+                      </span>
+                    )}
+                    {hasPendingSlotChanges ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setPendingAdds(new Set());
+                            setPendingDeletes(new Set());
+                          }}
+                          disabled={isSavingSlots}
+                          className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white font-semibold px-3 py-1.5 rounded-xl border border-slate-600 hover:border-slate-400 bg-slate-700 transition-all disabled:opacity-40"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Descartar
+                        </button>
+                        <button
+                          onClick={handleSaveSlots}
+                          disabled={isSavingSlots}
+                          className="flex items-center gap-1.5 text-sm text-white font-bold px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 shadow-sm transition-all disabled:opacity-40"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          Guardar agenda ({pendingAdds.size + pendingDeletes.size} cambio
+                          {pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""})
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                        Clic para abrir/cerrar bloques
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-4">
+                  {getStandardSlots(selectedDate, selectedDoctorId, savedConfig ?? tempConfig).map(
+                    (slot) => {
                       const realSlot = appointments.find(
                         (a) =>
-                          ((a as any).doctorUid == selectedDoctorId || a.doctorId === selectedDoctorId) &&
+                          ((a as any).doctorUid == selectedDoctorId ||
+                            a.doctorId === selectedDoctorId) &&
                           a.date === selectedDate &&
                           a.time === slot.time
                       );
@@ -2466,29 +2603,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       let bgClass = "";
                       let label = "";
                       if (isPast) {
-                        bgClass = "bg-slate-900/50 border-slate-800 text-slate-700 cursor-not-allowed";
+                        bgClass =
+                          "bg-slate-900/50 border-slate-800 text-slate-700 cursor-not-allowed";
                         label = "Pasado";
                       } else if (isBooked) {
-                        bgClass = "bg-indigo-900/50 border-indigo-500 text-indigo-300 cursor-not-allowed";
-                        label = realSlot.type === "SERVICE" ? (realSlot.serviceName || "Servicio") : "Paciente";
+                        bgClass =
+                          "bg-indigo-900/50 border-indigo-500 text-indigo-300 cursor-not-allowed";
+                        label =
+                          realSlot.type === "SERVICE"
+                            ? realSlot.serviceName || "Servicio"
+                            : "Paciente";
                       } else if (isPendingDelete) {
-                        bgClass = "bg-orange-900/30 border-orange-500 border-dashed text-orange-300 hover:bg-orange-900/50";
+                        bgClass =
+                          "bg-orange-900/30 border-orange-500 border-dashed text-orange-300 hover:bg-orange-900/50";
                         label = "Cerrando...";
                       } else if (isPendingAdd) {
-                        bgClass = "bg-emerald-900/30 border-emerald-400 border-dashed text-emerald-300 hover:bg-emerald-900/50";
+                        bgClass =
+                          "bg-emerald-900/30 border-emerald-400 border-dashed text-emerald-300 hover:bg-emerald-900/50";
                         label = "Abriendo...";
                       } else if (isOpen) {
-                        bgClass = "bg-emerald-500 border-emerald-400 text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-400";
+                        bgClass =
+                          "bg-emerald-500 border-emerald-400 text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-400";
                         label = "Disponible";
                       } else {
-                        bgClass = "bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500";
+                        bgClass =
+                          "bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500";
                         label = "Cerrado";
                       }
 
                       return (
                         <div
                           key={slot.time}
-                          data-testid={isBooked ? `slot-booked-${slot.time.replace(":", "")}` : undefined}
+                          data-testid={
+                            isBooked ? `slot-booked-${slot.time.replace(":", "")}` : undefined
+                          }
                           className="relative group"
                         >
                           <button
@@ -2527,7 +2675,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   data-testid={`btn-attendance-completed-${slot.time.replace(":", "")}`}
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "completed"); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleAttendance(realSlot, "completed");
+                                  }}
                                   className={`flex-1 py-1.5 text-center font-bold transition-colors ${realSlot.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400"}`}
                                   title="Marcar como Atendido"
                                 >
@@ -2536,7 +2687,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   data-testid={`btn-attendance-noshow-${slot.time.replace(":", "")}`}
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "no-show"); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleAttendance(realSlot, "no-show");
+                                  }}
                                   className={`flex-1 py-1.5 text-center font-bold transition-colors border-x border-slate-700 ${realSlot.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-500/20 text-slate-400 hover:text-rose-400"}`}
                                   title="Marcar como No Show (Ausente)"
                                 >
@@ -2544,7 +2698,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleToggleAttendance(realSlot, "cancelled"); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleAttendance(realSlot, "cancelled");
+                                  }}
                                   className={`flex-1 py-1.5 text-center font-bold transition-colors ${realSlot.attendanceStatus === "cancelled" ? "bg-slate-500 text-white" : "hover:bg-slate-700 text-slate-400"}`}
                                   title="Anular"
                                 >
@@ -2555,38 +2712,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </div>
                       );
-                    })}
-                  </div>
-
-                  {/* Pending changes banner */}
-                  {hasPendingSlotChanges && (
-                    <div className="mt-6 flex items-center justify-between bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-3">
-                      <div className="text-sm text-amber-200 font-medium">
-                        <span className="font-bold">{pendingAdds.size + pendingDeletes.size} cambio{pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""} pendiente{pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""}</span>
-                        {pendingAdds.size > 0 && <span className="ml-2 text-emerald-400">+{pendingAdds.size} por abrir</span>}
-                        {pendingDeletes.size > 0 && <span className="ml-2 text-orange-400">−{pendingDeletes.size} por cerrar</span>}
-                      </div>
-                      <button
-                        onClick={handleSaveSlots}
-                        disabled={isSavingSlots}
-                        className="flex items-center gap-1.5 text-sm text-white font-bold px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 shadow-sm transition-all disabled:opacity-40"
-                      >
-                        <Save className="w-4 h-4" />
-                        {isSavingSlots ? "Guardando..." : "Guardar agenda"}
-                      </button>
-                    </div>
+                    }
                   )}
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                  <Calendar className="w-16 h-16 mb-4 opacity-20" />
-                  <p>Seleccione un día en el calendario.</p>
                 </div>
-              )}
-            </div>
+
+                {/* Pending changes banner */}
+                {hasPendingSlotChanges && (
+                  <div className="mt-6 flex items-center justify-between bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-3">
+                    <div className="text-sm text-amber-200 font-medium">
+                      <span className="font-bold">
+                        {pendingAdds.size + pendingDeletes.size} cambio
+                        {pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""} pendiente
+                        {pendingAdds.size + pendingDeletes.size !== 1 ? "s" : ""}
+                      </span>
+                      {pendingAdds.size > 0 && (
+                        <span className="ml-2 text-emerald-400">+{pendingAdds.size} por abrir</span>
+                      )}
+                      {pendingDeletes.size > 0 && (
+                        <span className="ml-2 text-orange-400">
+                          −{pendingDeletes.size} por cerrar
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleSaveSlots}
+                      disabled={isSavingSlots}
+                      className="flex items-center gap-1.5 text-sm text-white font-bold px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 shadow-sm transition-all disabled:opacity-40"
+                    >
+                      <Save className="w-4 h-4" />
+                      {isSavingSlots ? "Guardando..." : "Guardar agenda"}
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                <Calendar className="w-16 h-16 mb-4 opacity-20" />
+                <p>Seleccione un día en el calendario.</p>
+              </div>
+            )}
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* WHATSAPP TEMPLATES */}
       {activeTab === "whatsapp" && (
@@ -2597,7 +2764,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h3 className="font-bold text-white text-2xl flex items-center gap-3">
                   <MessageCircle className="w-8 h-8 text-emerald-400" /> Plantillas de WhatsApp
                 </h3>
-                <p className="text-slate-400 mt-2">Personaliza los mensajes que se envían desde la ficha clínica.</p>
+                <p className="text-slate-400 mt-2">
+                  Personaliza los mensajes que se envían desde la ficha clínica.
+                </p>
               </div>
               <button
                 onClick={addWaTemplate}
@@ -2634,7 +2803,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-white text-xl">Configuración del Bot</h3>
-                <p className="text-slate-400 text-sm mt-0.5">Número que recibirá notificaciones cuando un paciente solicite hablar con la secretaria.</p>
+                <p className="text-slate-400 text-sm mt-0.5">
+                  Número que recibirá notificaciones cuando un paciente solicite hablar con la
+                  secretaria.
+                </p>
               </div>
             </div>
 
@@ -2648,11 +2820,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </label>
                   <div className="flex gap-3 items-center">
                     <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">+</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">
+                        +
+                      </span>
                       <input
                         type="tel"
                         value={botSecretaryPhone}
-                        onChange={(e) => setBotSecretaryPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                        onChange={(e) =>
+                          setBotSecretaryPhone(e.target.value.replace(/[^0-9]/g, ""))
+                        }
                         placeholder="56912345678"
                         className="w-full bg-slate-900 border border-slate-600 rounded-xl pl-7 pr-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                       />
@@ -2667,7 +2843,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
-                    Ingresa el número completo con código de país, sin el símbolo +. Ejemplo: <span className="font-mono text-slate-400">56912345678</span>
+                    Ingresa el número completo con código de país, sin el símbolo +. Ejemplo:{" "}
+                    <span className="font-mono text-slate-400">56912345678</span>
                   </p>
                 </div>
 
@@ -2675,7 +2852,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="text-sm text-emerald-300">
-                      Las notificaciones de handoff se enviarán a <span className="font-mono font-bold">+{botSecretaryPhone}</span>
+                      Las notificaciones de handoff se enviarán a{" "}
+                      <span className="font-mono font-bold">+{botSecretaryPhone}</span>
                     </span>
                   </div>
                 )}
@@ -2686,273 +2864,326 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* MARKETING */}
-      {
-        activeTab === "marketing" && (activeCenter || centerId) && (
-          <div className="animate-fadeIn space-y-6">
-            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
-                    <ImageIcon className="w-8 h-8 text-purple-400" /> Generador de Afiches
-                  </h3>
-                  <p className="text-slate-400 text-sm max-w-xl">
-                    Crea piezas gráficas profesionales para tus redes sociales con QR de agendamiento automático y descargas en alta calidad.
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setMarketingFlyerType('center');
-                      setShowMarketingModal(true);
-                    }}
-                    disabled={!hasActiveCenter}
-                    className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <Plus className="w-5 h-5" /> Crear Flyer Centro
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMarketingFlyerType('professional');
-                      setShowMarketingModal(true);
-                    }}
-                    disabled={!hasActiveCenter || doctors.length === 0}
-                    className="flex items-center gap-2 px-8 py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition-all border border-slate-600 shadow-lg disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <Users className="w-5 h-5" /> Por Especialista
-                  </button>
-                </div>
+      {activeTab === "marketing" && (activeCenter || centerId) && (
+        <div className="animate-fadeIn space-y-6">
+          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex-1">
+                <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                  <ImageIcon className="w-8 h-8 text-purple-400" /> Generador de Afiches
+                </h3>
+                <p className="text-slate-400 text-sm max-w-xl">
+                  Crea piezas gráficas profesionales para tus redes sociales con QR de agendamiento
+                  automático y descargas en alta calidad.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setMarketingFlyerType("center");
+                    setShowMarketingModal(true);
+                  }}
+                  disabled={!hasActiveCenter}
+                  className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Plus className="w-5 h-5" /> Crear Flyer Centro
+                </button>
+                <button
+                  onClick={() => {
+                    setMarketingFlyerType("professional");
+                    setShowMarketingModal(true);
+                  }}
+                  disabled={!hasActiveCenter || doctors.length === 0}
+                  className="flex items-center gap-2 px-8 py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition-all border border-slate-600 shadow-lg disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Users className="w-5 h-5" /> Por Especialista
+                </button>
               </div>
             </div>
-
-            <MarketingPosterModule centerId={resolvedCenterId} centerName={activeCenter?.name || ""} />
           </div>
-        )
-      }
+
+          <MarketingPosterModule
+            centerId={resolvedCenterId}
+            centerName={activeCenter?.name || ""}
+          />
+        </div>
+      )}
 
       {/* AUDIT LOGS */}
-      {
-        activeTab === "audit" && (
-          <div className="animate-fadeIn">
-            <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
-          </div>
-        )
-      }
+      {activeTab === "audit" && (
+        <div className="animate-fadeIn">
+          <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
+        </div>
+      )}
 
       {/* SERVICES MANAGEMENT */}
-      {
-        activeTab === "services" && (
-          <div className="space-y-8 animate-fadeIn">
-            <ServicesManager centerId={resolvedCenterId} />
-            <ServiceAgendasManager
-              centerId={resolvedCenterId}
-              doctors={doctors}
-              onUpdateDoctors={onUpdateDoctors}
-            />
-          </div>
-        )
-      }
+      {activeTab === "services" && (
+        <div className="space-y-8 animate-fadeIn">
+          <ServicesManager centerId={resolvedCenterId} />
+          <ServiceAgendasManager
+            centerId={resolvedCenterId}
+            doctors={doctors}
+            onUpdateDoctors={onUpdateDoctors}
+          />
+        </div>
+      )}
 
       {/* PREADMISSIONS */}
-      {
-        activeTab === "preadmissions" && (
-          <div className="animate-fadeIn">
-            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-white text-2xl flex items-center gap-2">
-                    <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
-                  </h3>
-                  <p className="text-slate-400 text-sm mt-2">
-                    Solicitudes enviadas sin autenticación o por el equipo.
-                  </p>
-                </div>
-                <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
-                  Total: {sortedPreadmissions.length}
-                </span>
+      {activeTab === "preadmissions" && (
+        <div className="animate-fadeIn">
+          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-bold text-white text-2xl flex items-center gap-2">
+                  <User className="w-6 h-6 text-indigo-400" /> Preingresos pendientes
+                </h3>
+                <p className="text-slate-400 text-sm mt-2">
+                  Solicitudes enviadas sin autenticación o por el equipo.
+                </p>
               </div>
+              <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
+                Total: {sortedPreadmissions.length}
+              </span>
+            </div>
 
-              <div className="space-y-4">
-                {sortedPreadmissions.map((item) => {
-                  const date = resolvePreadmissionDate(item);
-                  const contactName = item.contact?.name || item.patientDraft?.fullName || "Paciente";
-                  const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
-                  const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
-                  const contactEmail = item.contact?.email || item.patientDraft?.email || "";
-                  const apptDate = item.appointmentDraft?.date;
-                  const apptTime = item.appointmentDraft?.time;
-                  const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
+            <div className="space-y-4">
+              {sortedPreadmissions.map((item) => {
+                const date = resolvePreadmissionDate(item);
+                const contactName = item.contact?.name || item.patientDraft?.fullName || "Paciente";
+                const contactRut = item.contact?.rut || item.patientDraft?.rut || "";
+                const contactPhone = item.contact?.phone || item.patientDraft?.phone || "";
+                const contactEmail = item.contact?.email || item.patientDraft?.email || "";
+                const apptDate = item.appointmentDraft?.date;
+                const apptTime = item.appointmentDraft?.time;
+                const sourceLabel = item.source === "staff" ? "Equipo" : "Público";
 
-                  return (
-                    <div key={item.id} className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                          <h4 className="text-lg font-bold text-white">{contactName}</h4>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
-                            {contactRut && <span className="font-mono">{contactRut}</span>}
-                            {date && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
-                            {sourceLabel}
-                          </span>
-                          <button
-                            onClick={() => onApprovePreadmission(item)}
-                            className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
-                          >
-                            <Check className="w-4 h-4" /> Aprobar
-                          </button>
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-slate-900/70 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-lg font-bold text-white">{contactName}</h4>
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
+                          {contactRut && <span className="font-mono">{contactRut}</span>}
+                          {date && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div className="flex items-center gap-2 text-slate-300"><Phone className="w-4 h-4 text-emerald-400" />{contactPhone || "Sin teléfono"}</div>
-                        <div className="flex items-center gap-2 text-slate-300"><Mail className="w-4 h-4 text-indigo-400" />{contactEmail || "Sin email"}</div>
-                        <div className="flex items-center gap-2 text-slate-300"><Calendar className="w-4 h-4 text-blue-400" />{apptDate ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}` : "Sin hora solicitada"}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase px-3 py-1 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700">
+                          {sourceLabel}
+                        </span>
+                        <button
+                          onClick={() => onApprovePreadmission(item)}
+                          className="px-4 py-2 rounded-lg bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                        >
+                          <Check className="w-4 h-4" /> Aprobar
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Phone className="w-4 h-4 text-emerald-400" />
+                        {contactPhone || "Sin teléfono"}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Mail className="w-4 h-4 text-indigo-400" />
+                        {contactEmail || "Sin email"}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <Calendar className="w-4 h-4 text-blue-400" />
+                        {apptDate
+                          ? `${apptDate}${apptTime ? ` · ${apptTime}` : ""}`
+                          : "Sin hora solicitada"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* PERFORMANCE / RENDIMIENTO */}
-      {
-        activeTab === "performance" && (
-          <div className="animate-fadeIn">
-            <AdminPerformanceTab
-              centerId={resolvedCenterId}
-              currentUserUid={auth.currentUser?.uid ?? ""}
-              doctors={doctors}
-              showToast={showToast}
-            />
-          </div>
-        )
-      }
+      {activeTab === "performance" && (
+        <div className="animate-fadeIn">
+          <AdminPerformanceTab
+            centerId={resolvedCenterId}
+            currentUserUid={auth.currentUser?.uid ?? ""}
+            doctors={doctors}
+            showToast={showToast}
+          />
+        </div>
+      )}
 
       {/* GLOBAL MODALS */}
 
       {/* MANUAL BOOKING */}
-      {
-        bookingSlotId && (
-          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-            <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn shadow-2xl">
-              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Plus className="w-5 h-5 text-indigo-600" /> Agendar Manualmente
-              </h3>
+      {bookingSlotId && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full animate-fadeIn shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-indigo-600" /> Agendar Manualmente
+            </h3>
 
-              <div className="space-y-4">
-                {/* Appointment Type Selector */}
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                  <button
-                    onClick={() => setManualBookingType("CONSULTATION")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "CONSULTATION" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+            <div className="space-y-4">
+              {/* Appointment Type Selector */}
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button
+                  onClick={() => setManualBookingType("CONSULTATION")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "CONSULTATION" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  Consulta Médica
+                </button>
+                <button
+                  onClick={() => setManualBookingType("SERVICE")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "SERVICE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  Servicio / Examen
+                </button>
+              </div>
+
+              {manualBookingType === "SERVICE" && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">
+                    Seleccionar Prestación
+                  </label>
+                  <select
+                    className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200 text-sm"
+                    value={manualBookingServiceId}
+                    onChange={(e) => setManualBookingServiceId(e.target.value)}
                   >
-                    Consulta Médica
-                  </button>
-                  <button
-                    onClick={() => setManualBookingType("SERVICE")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${manualBookingType === "SERVICE" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
-                  >
-                    Servicio / Examen
-                  </button>
+                    <option value="">-- Eliga una prestación --</option>
+                    {medicalServices.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              )}
 
-                {manualBookingType === "SERVICE" && (
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seleccionar Prestación</label>
-                    <select
-                      className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200 text-sm"
-                      value={manualBookingServiceId}
-                      onChange={(e) => setManualBookingServiceId(e.target.value)}
-                    >
-                      <option value="">-- Eliga una prestación --</option>
-                      {medicalServices.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+              <input
+                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
+                placeholder="RUT Paciente"
+                value={bookingRut}
+                onChange={(e) => setBookingRut(formatRUT(e.target.value))}
+              />
+              <input
+                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
+                placeholder="Nombre Completo"
+                value={bookingName}
+                onChange={(e) => setBookingName(e.target.value)}
+              />
+              <input
+                className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200"
+                placeholder="Teléfono"
+                value={bookingPhone}
+                onChange={(e) => setBookingPhone(e.target.value)}
+              />
 
-                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="RUT Paciente" value={bookingRut} onChange={(e) => setBookingRut(formatRUT(e.target.value))} />
-                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Nombre Completo" value={bookingName} onChange={(e) => setBookingName(e.target.value)} />
-                <input className="w-full bg-slate-100 p-3 rounded-lg outline-none border border-slate-200" placeholder="Teléfono" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} />
-
-                <div className="flex gap-2 mt-4 pt-2">
-                  <button onClick={() => {
+              <div className="flex gap-2 mt-4 pt-2">
+                <button
+                  onClick={() => {
                     setBookingSlotId(null);
                     setManualBookingType("CONSULTATION");
                     setManualBookingServiceId("");
-                  }} className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300">Cancelar</button>
-                  <button
-                    onClick={handleManualBooking}
-                    disabled={manualBookingType === "SERVICE" && !manualBookingServiceId}
-                    className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg disabled:opacity-50"
-                  >
-                    Confirmar
-                  </button>
-                </div>
+                  }}
+                  className="flex-1 bg-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleManualBooking}
+                  disabled={manualBookingType === "SERVICE" && !manualBookingServiceId}
+                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg disabled:opacity-50"
+                >
+                  Confirmar
+                </button>
               </div>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* CANCEL MODAL */}
-      {
-        cancelModal.isOpen && cancelModal.appointment && (
-          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-            <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-md w-full animate-fadeIn">
-              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6"><AlertTriangle className="w-8 h-8 text-amber-600" /></div>
-              <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
-                <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
-                <p className="text-slate-500">{cancelModal.appointment.date} - {cancelModal.appointment.time}</p>
-              </div>
-              <div className="space-y-3">
-                <button onClick={() => handleConfirmCancellation(true)} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200"><MessageCircle className="w-5 h-5" /> Cancelar y Notificar WhatsApp</button>
-                <button onClick={() => handleConfirmCancellation(false)} className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300">Solo Cancelar</button>
-                <button onClick={() => setCancelModal({ isOpen: false, appointment: null })} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600">Volver Atrás</button>
-              </div>
+      {cancelModal.isOpen && cancelModal.appointment && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-md w-full animate-fadeIn">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-8 h-8 text-amber-600" />
+            </div>
+            <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
+              <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
+              <p className="text-slate-500">
+                {cancelModal.appointment.date} - {cancelModal.appointment.time}
+              </p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleConfirmCancellation(true)}
+                className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+              >
+                <MessageCircle className="w-5 h-5" /> Cancelar y Notificar WhatsApp
+              </button>
+              <button
+                onClick={() => handleConfirmCancellation(false)}
+                className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300"
+              >
+                Solo Cancelar
+              </button>
+              <button
+                onClick={() => setCancelModal({ isOpen: false, appointment: null })}
+                className="w-full text-slate-400 font-bold py-2 hover:text-slate-600"
+              >
+                Volver Atrás
+              </button>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* MARKETING FLYER */}
-      {
-        showMarketingModal && activeCenter && (
-          <MarketingFlyerModal
-            type={marketingFlyerType}
-            center={activeCenter}
-            doctors={doctors}
-            appointments={appointments}
-            onClose={() => setShowMarketingModal(false)}
-            onStatsUpdate={async (type) => {
-              if (!db || !resolvedCenterId) return;
-              try {
-                const statsRef = doc(db, "centers", resolvedCenterId, "statistics", "marketing");
-                const statsDoc = await getDoc(statsRef);
-                const currentStats = statsDoc.exists() ? statsDoc.data() : {};
-                await setDoc(statsRef, { ...currentStats, [`flyers_${type}`]: (currentStats[`flyers_${type}`] || 0) + 1, lastUpdated: serverTimestamp() }, { merge: true });
-              } catch (error) { console.error("Error updating marketing stats:", error); }
-            }}
-          />
-        )
-      }
+      {showMarketingModal && activeCenter && (
+        <MarketingFlyerModal
+          type={marketingFlyerType}
+          center={activeCenter}
+          doctors={doctors}
+          appointments={appointments}
+          onClose={() => setShowMarketingModal(false)}
+          onStatsUpdate={async (type) => {
+            if (!db || !resolvedCenterId) return;
+            try {
+              const statsRef = doc(db, "centers", resolvedCenterId, "statistics", "marketing");
+              const statsDoc = await getDoc(statsRef);
+              const currentStats = statsDoc.exists() ? statsDoc.data() : {};
+              await setDoc(
+                statsRef,
+                {
+                  ...currentStats,
+                  [`flyers_${type}`]: (currentStats[`flyers_${type}`] || 0) + 1,
+                  lastUpdated: serverTimestamp(),
+                },
+                { merge: true }
+              );
+            } catch (error) {
+              console.error("Error updating marketing stats:", error);
+            }
+          }}
+        />
+      )}
 
       {/* MIGRATION */}
-      {
-        showMigrationModal && activeCenter && (
-          <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
-        )
-      }
+      {showMigrationModal && activeCenter && (
+        <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
+      )}
 
       {/* FEEDBACK BUTTON */}
       <a
@@ -2964,7 +3195,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
         Reportar Problema
       </a>
-    </div >
+    </div>
   );
 };
 

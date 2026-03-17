@@ -34,13 +34,21 @@ async function goToPerformanceAndClose(page: Page) {
   await tabPerformance.click();
 
   // Anti-flake: esperar hidratación dinámica
-  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({ timeout: 45000 });
-  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({
+    timeout: 45000,
+  });
+  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({
+    timeout: 15000,
+  });
 
   // Esperar a que la tabla tenga datos
-  await expect(page.locator('[data-testid="prof-stats-table"]')).not.toContainText('Sin datos', { timeout: 15000 });
+  await expect(page.locator('[data-testid="prof-stats-table"]')).not.toContainText("Sin datos", {
+    timeout: 15000,
+  });
 
-  const syncReady = page.locator('[data-testid="btn-close-month"], [data-testid="btn-reopen-month"]');
+  const syncReady = page.locator(
+    '[data-testid="btn-close-month"], [data-testid="btn-reopen-month"]'
+  );
   await expect(syncReady.first()).toBeEnabled({ timeout: 15000 });
 
   const badge = page.locator('[data-testid="month-status-badge"]');
@@ -64,10 +72,16 @@ async function reopenMonth(page: Page) {
   await tabPerformance.click();
 
   // Anti-flake: esperar hidratación dinámica
-  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({ timeout: 45000 });
-  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid="performance-loading-skeleton"]')).toBeHidden({
+    timeout: 45000,
+  });
+  await expect(page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)).toBeVisible({
+    timeout: 15000,
+  });
 
-  const syncReady = page.locator('[data-testid="btn-close-month"], [data-testid="btn-reopen-month"]');
+  const syncReady = page.locator(
+    '[data-testid="btn-close-month"], [data-testid="btn-reopen-month"]'
+  );
   await expect(syncReady.first()).toBeEnabled({ timeout: 15000 });
 
   const badge = page.locator('[data-testid="month-status-badge"]');
@@ -92,9 +106,7 @@ test.beforeEach(async ({ page }) => {
 
 // ─── TEST 4 ──────────────────────────────────────────────────────────────────
 
-test("T4 — Admin: closed month guard bloquea modificación de asistencia", async ({
-  page,
-}) => {
+test("T4 — Admin: closed month guard bloquea modificación de asistencia", async ({ page }) => {
   // 1. Cerrar el mes primero (requisito previo del guard)
   await goToPerformanceAndClose(page);
 
@@ -104,13 +116,12 @@ test("T4 — Admin: closed month guard bloquea modificación de asistencia", asy
   // Wait for the admin dashboard to appear
   await expect(page.locator('[data-testid="admin-tab-bar"]')).toBeVisible({ timeout: 15000 });
 
-  page.on('pageerror', err => console.log('PAGE ERROR: ', err));
-  page.on('console', msg => {
+  page.on("pageerror", (err) => console.log("PAGE ERROR: ", err));
+  page.on("console", (msg) => {
     const text = msg.text();
-    if (msg.type() === 'error') console.log('PAGE CONSOLE ERROR: ', text);
-    if (text.includes('[E2E_DEBUG]')) console.log(text);
+    if (msg.type() === "error") console.log("PAGE CONSOLE ERROR: ", text);
+    if (text.includes("[E2E_DEBUG]")) console.log(text);
   });
-
 
   // 2. Navegar a tab "Agenda"
   await page.locator('[data-testid="admin-tab-agenda"]').click();
@@ -124,31 +135,49 @@ test("T4 — Admin: closed month guard bloquea modificación de asistencia", asy
   const targetYear = parseInt(TEST.YEAR_MONTH.split("-")[0]);
   const targetMonthIndex = parseInt(TEST.YEAR_MONTH.split("-")[1]) - 1; // 0-indexed
   const monthNames: Record<string, number> = {
-    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
-    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+    enero: 0,
+    febrero: 1,
+    marzo: 2,
+    abril: 3,
+    mayo: 4,
+    junio: 5,
+    julio: 6,
+    agosto: 7,
+    septiembre: 8,
+    octubre: 9,
+    noviembre: 10,
+    diciembre: 11,
   };
 
   for (let attempts = 0; attempts < 12; attempts++) {
     // Use the specific data-testid to avoid matching other text on the page
-    await expect(page.locator('[data-testid="agenda-calendar-month"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="agenda-calendar-month"]')).toBeVisible({
+      timeout: 5000,
+    });
     const headerText = await page.locator('[data-testid="agenda-calendar-month"]').innerText();
     const match = headerText.match(/(\w+)\s+(?:de\s+)?(\d{4})/i);
-    if (!match) { await page.waitForTimeout(200); continue; }
+    if (!match) {
+      await page.waitForTimeout(200);
+      continue;
+    }
     const navMonthIdx = monthNames[match[1].toLowerCase()] ?? -1;
     const navYear = parseInt(match[2]);
-    console.log(`[T4 NAV] calendar shows: "${headerText}" (idx=${navMonthIdx}) target=${targetYear}-${targetMonthIndex}`);
+    console.log(
+      `[T4 NAV] calendar shows: "${headerText}" (idx=${navMonthIdx}) target=${targetYear}-${targetMonthIndex}`
+    );
     if (navYear === targetYear && navMonthIdx === targetMonthIndex) break;
-    const isBefore = navYear < targetYear || (navYear === targetYear && navMonthIdx < targetMonthIndex);
-    const calContainer = page.locator('[data-testid="agenda-calendar-month"]').locator('..');
+    const isBefore =
+      navYear < targetYear || (navYear === targetYear && navMonthIdx < targetMonthIndex);
+    const calContainer = page.locator('[data-testid="agenda-calendar-month"]').locator("..");
     if (isBefore) {
-      await calContainer.locator('button').last().click();
+      await calContainer.locator("button").last().click();
     } else {
-      await calContainer.locator('button').first().click();
+      await calContainer.locator("button").first().click();
     }
     // Espera determinística: el header del mes debe cambiar
-    await expect(page.locator('[data-testid="agenda-calendar-month"]')).not.toHaveText(
-      headerText, { timeout: 3000 }
-    ).catch(() => { }); // Si no cambia (mismo mes objetivo), continuar
+    await expect(page.locator('[data-testid="agenda-calendar-month"]'))
+      .not.toHaveText(headerText, { timeout: 3000 })
+      .catch(() => {}); // Si no cambia (mismo mes objetivo), continuar
   }
 
   // 5. Hacer click en el día que tiene la cita seeded
@@ -161,7 +190,6 @@ test("T4 — Admin: closed month guard bloquea modificación de asistencia", asy
     .first();
   await dayBtn.click();
   // Señal determinística: el slot booked debe aparecer
-
 
   // 6. Esperar que aparezca el slot reservado
   const slotTestId = `slot-booked-${SEED.BOOKED_SLOT.time.replace(":", "")}`;
@@ -177,7 +205,7 @@ test("T4 — Admin: closed month guard bloquea modificación de asistencia", asy
     `[data-testid="btn-attendance-completed-${SEED.BOOKED_SLOT.time.replace(":", "")}"]`
   );
   // dispatchEvent bypasses pointer-events restrictions en el contenedor padre
-  await completedBtn.dispatchEvent('click');
+  await completedBtn.dispatchEvent("click");
 
   // ── Aserciones ──────────────────────────────────────────────────────────
 
@@ -189,10 +217,9 @@ test("T4 — Admin: closed month guard bloquea modificación de asistencia", asy
   // 11. El KPI total no cambia (verificar que los datos no mutaron)
   // Navegar a performance tab para confirmar
   await page.click('[data-testid="admin-tab-performance"]');
-  await expect(page.locator('[data-testid="month-status-badge"]')).toContainText(
-    "Mes Cerrado",
-    { timeout: 8000 }
-  );
+  await expect(page.locator('[data-testid="month-status-badge"]')).toContainText("Mes Cerrado", {
+    timeout: 8000,
+  });
 
   console.log("✅ T4 — Closed Month Guard funcionó. Toast de error visible, mes cerrado intacto.");
 });

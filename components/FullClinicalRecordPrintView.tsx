@@ -128,7 +128,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
               <h2 className="text-lg font-bold text-slate-800 mb-3">Datos del Paciente</h2>
               <div className="grid grid-cols-2 gap-3 text-sm text-slate-700">
                 <div>
-                  <span className="font-semibold">Nombre:</span> {patient.fullName || "No registrado"}
+                  <span className="font-semibold">Nombre:</span>{" "}
+                  {patient.fullName || "No registrado"}
                 </div>
                 <div>
                   <span className="font-semibold">RUT:</span> {patient.rut || "No registrado"}
@@ -145,22 +146,28 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   <span className="font-semibold">Sexo:</span> {patient.gender || "No registrado"}
                 </div>
                 <div>
-                  <span className="font-semibold">Teléfono:</span> {patient.phone || "No registrado"}
+                  <span className="font-semibold">Teléfono:</span>{" "}
+                  {patient.phone || "No registrado"}
                 </div>
                 <div>
                   <span className="font-semibold">Email:</span> {patient.email || "No registrado"}
                 </div>
                 <div>
                   <span className="font-semibold">Dirección:</span>{" "}
-                  {patient.address ? `${patient.address}${patient.commune ? `, ${patient.commune}` : ""}` : "No registrado"}
+                  {patient.address
+                    ? `${patient.address}${patient.commune ? `, ${patient.commune}` : ""}`
+                    : "No registrado"}
                 </div>
                 <div>
-                  <span className="font-semibold">Identidad de Género:</span> {patient.genderIdentity || "No declarada"}
+                  <span className="font-semibold">Identidad de Género:</span>{" "}
+                  {patient.genderIdentity || "No declarada"}
                 </div>
                 <div>
                   <span className="font-semibold">Previsión:</span>{" "}
                   {patient.insurance || "No registrada"}
-                  {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
+                  {patient.insurance === "FONASA" &&
+                    patient.insuranceLevel &&
+                    ` (${patient.insuranceLevel})`}
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-700">
@@ -182,8 +189,11 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   <span className="font-semibold">Fármacos en uso:</span>{" "}
                   {patient.medications?.length
                     ? patient.medications
-                      .map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`)
-                      .join(", ")
+                        .map(
+                          (m) =>
+                            `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`
+                        )
+                        .join(", ")
                     : "No registrado"}
                 </div>
               </div>
@@ -196,7 +206,10 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
               ) : (
                 <div className="space-y-6">
                   {sortedConsultations.map((c) => (
-                    <div key={c.id} className="border border-slate-200 rounded-lg p-4 print:break-inside-avoid">
+                    <div
+                      key={c.id}
+                      className="border border-slate-200 rounded-lg p-4 print:break-inside-avoid"
+                    >
                       <div className="flex flex-wrap justify-between gap-2 text-sm text-slate-600 mb-2">
                         <span className="font-semibold text-slate-800">
                           {formatDateTime(c.date)}
@@ -222,8 +235,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                             {c.bloodPressure || "No registrado"}
                           </div>
                           <div>
-                            <span className="font-semibold">HGT:</span>{" "}
-                            {c.hgt || "No registrado"}
+                            <span className="font-semibold">HGT:</span> {c.hgt || "No registrado"}
                           </div>
                           <div>
                             <span className="font-semibold">Peso:</span>{" "}
@@ -234,8 +246,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                             {c.height || "No registrado"}
                           </div>
                           <div>
-                            <span className="font-semibold">IMC:</span>{" "}
-                            {c.bmi || "No registrado"}
+                            <span className="font-semibold">IMC:</span> {c.bmi || "No registrado"}
                           </div>
                           <div>
                             <span className="font-semibold">Cintura/Cadera:</span>{" "}

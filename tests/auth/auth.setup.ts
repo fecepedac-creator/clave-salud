@@ -25,8 +25,8 @@ const DOCTOR_STATE = path.join(__dirname, ".auth/doctor.json");
  */
 async function bridgeFirebaseSession(page: Page) {
   await page.evaluate(async () => {
-    const dbName = 'firebaseLocalStorageDb';
-    const storeName = 'firebaseLocalStorage';
+    const dbName = "firebaseLocalStorageDb";
+    const storeName = "firebaseLocalStorage";
     return new Promise((resolve) => {
       const request = indexedDB.open(dbName);
       request.onsuccess = (event: any) => {
@@ -35,7 +35,7 @@ async function bridgeFirebaseSession(page: Page) {
           console.warn("DEBUG: IndexedDB store not found:", storeName);
           return resolve(false);
         }
-        const transaction = db.transaction(storeName, 'readonly');
+        const transaction = db.transaction(storeName, "readonly");
         const store = transaction.objectStore(storeName);
         const getAllRequest = store.getAll();
         getAllRequest.onsuccess = () => {
@@ -65,7 +65,7 @@ setup("Admin: generar sesión", async ({ page }) => {
   await page.goto(`${TEST.BASE_URL}/acceso-admin?agent_test=true`);
 
   // DIAGNÓSTICO: Loguear URL y captura antes de fallar
-  console.log('DEBUG: Current URL before login check:', page.url());
+  console.log("DEBUG: Current URL before login check:", page.url());
 
   // Esperar formulario de login visible
   await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });

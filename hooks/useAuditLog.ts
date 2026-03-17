@@ -3,10 +3,10 @@ import { useState } from "react";
 
 /**
  * Hook para registrar accesos a datos clínicos (DS 41 MINSAL)
- * 
+ *
  * Uso:
  * const { logAccess, loading, error } = useAuditLog();
- * 
+ *
  * await logAccess({
  *   centerId: "centro123",
  *   resourceType: "patient",
@@ -60,9 +60,9 @@ export function useAuditLog() {
     try {
       const functions = getFunctions();
       const logAccessFn = httpsCallable<LogAccessRequest, LogAccessResult>(functions, "logAccess");
-      
+
       const result = await logAccessFn(request);
-      
+
       setLoading(false);
       return result.data;
     } catch (err: any) {

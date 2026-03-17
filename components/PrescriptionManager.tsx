@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
 import { generateId } from "../utils";
-import { FilePlus, Copy, Plus, Printer, Trash, Zap, Sparkles, FileText, CheckSquare } from "lucide-react";
+import {
+  FilePlus,
+  Copy,
+  Plus,
+  Printer,
+  Trash,
+  Zap,
+  Sparkles,
+  FileText,
+  CheckSquare,
+} from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import AutocompleteInput from "./AutocompleteInput";
@@ -29,7 +39,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   role: roleRaw,
   currentDiagnosis,
 }) => {
-  const role: ProfessionalRole = (String(roleRaw || "").toUpperCase() as any);
+  const role: ProfessionalRole = String(roleRaw || "").toUpperCase() as any;
 
   // Authorization Logic
   // Authorization Logic
@@ -70,12 +80,10 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   const allTemplates = useMemo(() => {
     // 1. Filter System Templates by Role (if specified)
     const roleFilteredSystem = (DEFAULT_CLINICAL_TEMPLATES || []).filter(
-      (t) => !t.roles || t.roles.includes(role) || (role === "MEDICO") // Medico sees all for now or specific ones
+      (t) => !t.roles || t.roles.includes(role) || role === "MEDICO" // Medico sees all for now or specific ones
     );
 
-    const systemCertificates = roleFilteredSystem.filter(
-      (t) => t.category === "certificate"
-    );
+    const systemCertificates = roleFilteredSystem.filter((t) => t.category === "certificate");
     // User templates include their own created ones AND imported system indications
     const combined = [...systemCertificates, ...(templates || [])];
 
@@ -86,7 +94,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       // For Indications, Recetas, etc., show indications or uncategorized
       const filtered = combined.filter((t) => t.category === "indication" || !t.category);
       // Final safety: filter by role AGAIN for the combined list
-      return filtered.filter(t => !t.roles || t.roles.includes(role));
+      return filtered.filter((t) => !t.roles || t.roles.includes(role));
     }
   }, [templates, currentPrescriptionType, role]);
 
@@ -104,7 +112,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
     const normalizedSearch = templateSearchTerm.toLowerCase();
 
     return [...allTemplates]
-      .map(t => {
+      .map((t) => {
         let score = 0;
         const normalizedTitle = t.title.toLowerCase();
         const normalizedContent = t.content.toLowerCase();
@@ -118,8 +126,8 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
         // 2. Coincidencia con diagnóstico actual (Inteligencia Clínica)
         if (currentDiagnosis) {
           // Dividir diagnóstico en palabras clave para búsqueda parcial
-          const diagKeywords = normalizedDiag.split(" ").filter(k => k.length > 3);
-          diagKeywords.forEach(kw => {
+          const diagKeywords = normalizedDiag.split(" ").filter((k) => k.length > 3);
+          diagKeywords.forEach((kw) => {
             if (normalizedTitle.includes(kw)) score += 50;
             if (normalizedContent.includes(kw)) score += 15;
           });
@@ -130,7 +138,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
         return { ...t, score };
       })
-      .filter(t => !templateSearchTerm.trim() || t.score > 0)
+      .filter((t) => !templateSearchTerm.trim() || t.score > 0)
       .sort((a, b) => b.score - a.score);
   }, [allTemplates, templateSearchTerm, currentDiagnosis]);
 
@@ -154,7 +162,8 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       type: currentPrescriptionType,
       content: currentPrescriptionText,
       createdAt: new Date().toISOString(),
-      metadata: pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined
+      metadata:
+        pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined,
     };
 
     onAddPrescription(newDoc);
@@ -186,7 +195,6 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           <FilePlus className="w-5 h-5" /> Documentos Clínicos
         </h4>
         <div className="flex items-center gap-2">
-
           {onOpenClinicalReport && (
             <button
               type="button"
@@ -196,7 +204,6 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
               <FileText className="w-4 h-4" /> Informe Clínico
             </button>
           )}
-
         </div>
       </div>
 
@@ -234,7 +241,11 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
             <div className="flex-1 w-full flex items-center">
               <button
                 type="button"
-                onClick={() => handleQuickInsert("Nota: Seguir indicaciones farmacológicas indicadas por su médico tratante.")}
+                onClick={() =>
+                  handleQuickInsert(
+                    "Nota: Seguir indicaciones farmacológicas indicadas por su médico tratante."
+                  )
+                }
                 className="h-[50px] w-full px-4 bg-slate-100 text-slate-500 font-bold rounded-lg border border-slate-200 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
                 title="Insertar recordatorio farmacológico estándar"
               >
@@ -269,7 +280,9 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
               <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-slate-200 shadow-2xl rounded-2xl z-20 overflow-hidden animate-fadeIn backdrop-blur-sm bg-white/95">
                 <div className="p-3 bg-slate-50 border-b border-slate-200">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-tight">Buscar Plantilla</span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-tight">
+                      Buscar Plantilla
+                    </span>
                     <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
                   </div>
                   <input
@@ -295,12 +308,18 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
                       className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 text-slate-700 border-b border-slate-50 last:border-0 group transition-colors"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold group-hover:text-indigo-600 truncate">{t.title}</span>
+                        <span className="font-semibold group-hover:text-indigo-600 truncate">
+                          {t.title}
+                        </span>
                         {(t as any).score > 50 && !templateSearchTerm && (
-                          <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-bold">RECOMENDADO</span>
+                          <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-bold">
+                            RECOMENDADO
+                          </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{t.content.substring(0, 40)}...</p>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {t.content.substring(0, 40)}...
+                      </p>
                     </button>
                   ))}
                   {filteredTemplates.length === 0 && (

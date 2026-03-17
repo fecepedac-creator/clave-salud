@@ -42,8 +42,8 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
   const [otherText, setOtherText] = useState("");
   const [notes, setNotes] = useState("");
 
-  const active = useMemo(() =>
-    categories.find((c) => c.id === activeCategory) || categories[0],
+  const active = useMemo(
+    () => categories.find((c) => c.id === activeCategory) || categories[0],
     [categories, activeCategory]
   );
 
@@ -68,17 +68,16 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
   const isChecked = (item: ExamOrderItem, group?: string) =>
     selected.some(
       (s) =>
-        s.category === activeCategory &&
-        s.label === item.label &&
-        (s.group || "") === (group || "")
+        s.category === activeCategory && s.label === item.label && (s.group || "") === (group || "")
     );
 
-  const toggleItem = (item: ExamOrderItem, category: ExamOrderCategory = activeCategory, group?: string) => {
+  const toggleItem = (
+    item: ExamOrderItem,
+    category: ExamOrderCategory = activeCategory,
+    group?: string
+  ) => {
     const exists = selected.some(
-      (s) =>
-        s.category === category &&
-        s.label === item.label &&
-        (s.group || "") === (group || "")
+      (s) => s.category === category && s.label === item.label && (s.group || "") === (group || "")
     );
 
     if (exists) {
@@ -100,12 +99,12 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
   const applyProfile = (profileExams: string[]) => {
     const newItems: SelectedItem[] = [];
 
-    profileExams.forEach(examLabel => {
+    profileExams.forEach((examLabel) => {
       // Find the exam in catalog to get its category/group
       let found = false;
       for (const cat of categories) {
-        for (const grp of (cat.groups || [])) {
-          const item = grp.items.find(i => i.label === examLabel);
+        for (const grp of cat.groups || []) {
+          const item = grp.items.find((i) => i.label === examLabel);
           if (item) {
             newItems.push({ ...item, category: cat.id as ExamOrderCategory, group: grp.id });
             found = true;
@@ -129,10 +128,10 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
       }
     });
 
-    setSelected(prev => {
+    setSelected((prev) => {
       const merged = [...prev];
-      newItems.forEach(ni => {
-        const alreadyIn = merged.some(m => m.label === ni.label && m.category === ni.category);
+      newItems.forEach((ni) => {
+        const alreadyIn = merged.some((m) => m.label === ni.label && m.category === ni.category);
         if (!alreadyIn) merged.push(ni);
       });
       return merged;
@@ -143,7 +142,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
     if (!newProfileName.trim() || selected.length === 0) return;
     onSaveProfile?.({
       label: newProfileName.trim(),
-      exams: selected.map(s => s.label)
+      exams: selected.map((s) => s.label),
     });
     setIsNamingProfile(false);
     setNewProfileName("");
@@ -157,36 +156,41 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
   };
 
   const handleSave = () => {
-    const docs: Prescription[] = Array.from(selectedByCategory.entries()).map(([category, items]) => {
-      const content = [
-        `Orden de Exámenes - ${getCategoryLabel(category)}`,
-        "",
-        ...items.map((item) => {
-          const contrast = item.modality === "TC" || item.modality === "RM" ? ` (${item.contrast === "con" ? "con contraste" : "sin contraste"})` : "";
-          return `• ${item.label}${item.modality ? ` [${item.modality}]` : ""}${contrast}`;
-        }),
-        notes ? `\nIndicaciones clínicas: ${notes}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+    const docs: Prescription[] = Array.from(selectedByCategory.entries()).map(
+      ([category, items]) => {
+        const content = [
+          `Orden de Exámenes - ${getCategoryLabel(category)}`,
+          "",
+          ...items.map((item) => {
+            const contrast =
+              item.modality === "TC" || item.modality === "RM"
+                ? ` (${item.contrast === "con" ? "con contraste" : "sin contraste"})`
+                : "";
+            return `• ${item.label}${item.modality ? ` [${item.modality}]` : ""}${contrast}`;
+          }),
+          notes ? `\nIndicaciones clínicas: ${notes}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
 
-      return {
-        id: generateId(),
-        type: "OrdenExamenes",
-        content,
-        createdAt: new Date().toISOString(),
-        category,
-        items: items.map((i) => ({
-          label: i.label,
-          code: i.code,
-          modality: i.modality ?? null,
-          contrast: i.contrast ?? null,
-        })),
-        notes,
-        createdBy,
-        status: "final",
-      };
-    });
+        return {
+          id: generateId(),
+          type: "OrdenExamenes",
+          content,
+          createdAt: new Date().toISOString(),
+          category,
+          items: items.map((i) => ({
+            label: i.label,
+            code: i.code,
+            modality: i.modality ?? null,
+            contrast: i.contrast ?? null,
+          })),
+          notes,
+          createdBy,
+          status: "final",
+        };
+      }
+    );
 
     if (docs.length === 0) return;
     onSave(docs);
@@ -204,7 +208,10 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
         {/* Header */}
         <div className="p-5 border-b border-slate-200 bg-white flex items-center justify-between flex-shrink-0 shadow-sm z-10">
           <h3 className="text-xl font-bold text-slate-900">Solicitud de exámenes</h3>
-          <button onClick={onClose} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg font-bold transition-colors">
+          <button
+            onClick={onClose}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg font-bold transition-colors"
+          >
             Cerrar
           </button>
         </div>
@@ -218,23 +225,25 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
               <div className="p-4 border-b border-slate-100 bg-indigo-50/40">
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
-                  <p className="text-xs font-black text-indigo-900 uppercase tracking-widest">Perfiles Rápidos (Packs)</p>
+                  <p className="text-xs font-black text-indigo-900 uppercase tracking-widest">
+                    Perfiles Rápidos (Packs)
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {combinedProfiles.map((profile) => {
-                    const isCustom = customProfiles.some(cp => cp.id === profile.id);
+                    const isCustom = customProfiles.some((cp) => cp.id === profile.id);
                     return (
                       <div key={profile.id} className="group relative flex items-center">
                         <button
                           onClick={() => applyProfile(profile.exams)}
                           title={(profile as any).description}
-                          className={`pl-4 pr-10 py-2 border-2 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2 ${isCustom
-                            ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                            : "bg-white border-indigo-100 text-indigo-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-600"
-                            }`}
+                          className={`pl-4 pr-10 py-2 border-2 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2 ${
+                            isCustom
+                              ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                              : "bg-white border-indigo-100 text-indigo-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-600"
+                          }`}
                         >
-                          {isCustom && <Sparkles className="w-3 h-3" />}
-                          + {profile.label}
+                          {isCustom && <Sparkles className="w-3 h-3" />}+ {profile.label}
                         </button>
                         {isCustom && onDeleteProfile && (
                           <button
@@ -264,10 +273,11 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                   <button
                     key={category.id}
                     onClick={() => setActiveCategory(category.id)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeCategory === category.id
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105"
-                      : "bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                      }`}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
+                      activeCategory === category.id
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105"
+                        : "bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    }`}
                   >
                     {getCategoryLabel(category.id)}
                   </button>
@@ -278,7 +288,10 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
             {/* Exam List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
               {(active?.groups || []).map((group: any) => (
-                <div key={group.id} className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                <div
+                  key={group.id}
+                  className="rounded-xl border border-slate-200 overflow-hidden bg-white"
+                >
                   <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
                     <p className="text-sm font-bold text-slate-700">{group.label}</p>
                   </div>
@@ -286,7 +299,10 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                     {group.items.map((item) => {
                       const checked = isChecked(item, group.id);
                       return (
-                        <label key={`${group.id}-${item.label}`} className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl p-3 text-sm transition-colors cursor-pointer border ${checked ? "bg-indigo-50/50 border-indigo-200" : "bg-slate-50 border-transparent hover:border-indigo-100"}`}>
+                        <label
+                          key={`${group.id}-${item.label}`}
+                          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl p-3 text-sm transition-colors cursor-pointer border ${checked ? "bg-indigo-50/50 border-indigo-200" : "bg-slate-50 border-transparent hover:border-indigo-100"}`}
+                        >
                           <span className="flex items-start sm:items-center gap-3 font-medium text-slate-700">
                             <input
                               type="checkbox"
@@ -313,8 +329,8 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                                   setSelected((prev) =>
                                     prev.map((s) =>
                                       s.category === activeCategory &&
-                                        s.label === item.label &&
-                                        (s.group || "") === group.id
+                                      s.label === item.label &&
+                                      (s.group || "") === group.id
                                         ? { ...s, contrast: value }
                                         : s
                                     )
@@ -342,7 +358,10 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                     {(active as any).exams.map((item: any) => {
                       const checked = isChecked(item);
                       return (
-                        <label key={item.id || item.label} className={`flex items-center justify-between gap-2 rounded-xl p-3 text-sm transition-colors cursor-pointer border ${checked ? "bg-indigo-50/50 border-indigo-200" : "bg-slate-50 border-transparent hover:border-indigo-100"}`}>
+                        <label
+                          key={item.id || item.label}
+                          className={`flex items-center justify-between gap-2 rounded-xl p-3 text-sm transition-colors cursor-pointer border ${checked ? "bg-indigo-50/50 border-indigo-200" : "bg-slate-50 border-transparent hover:border-indigo-100"}`}
+                        >
                           <span className="flex items-center gap-3 font-medium text-slate-700">
                             <input
                               type="checkbox"
@@ -361,7 +380,9 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
 
               <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                 <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                  <p className="text-sm font-bold text-slate-700">Otros ({getCategoryLabel(activeCategory)})</p>
+                  <p className="text-sm font-bold text-slate-700">
+                    Otros ({getCategoryLabel(activeCategory)})
+                  </p>
                 </div>
                 <div className="p-3 flex gap-2">
                   <input
@@ -369,9 +390,15 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                     onChange={(e) => setOtherText(e.target.value)}
                     className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
                     placeholder="Agregar examen no listado (Ej: Perfil bioquímico...)"
-                    onKeyDown={(e) => { if (e.key === 'Enter') addOther(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addOther();
+                    }}
                   />
-                  <button onClick={addOther} disabled={!otherText.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95 shadow-sm">
+                  <button
+                    onClick={addOther}
+                    disabled={!otherText.trim()}
+                    className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95 shadow-sm"
+                  >
                     Agregar
                   </button>
                 </div>
@@ -385,24 +412,37 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
               {/* Added items list */}
               <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-shrink-0">
                 <p className="font-bold text-slate-800 text-lg">Seleccionados</p>
-                <span className="text-sm font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-full shadow-inner">{selected.length}</span>
+                <span className="text-sm font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-full shadow-inner">
+                  {selected.length}
+                </span>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar relative">
                 {selected.length === 0 && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center opacity-50">
                     <p className="text-sm font-bold text-slate-600 mb-1">Lista vacía</p>
-                    <p className="text-xs text-slate-500">Selecciona exámenes a la izquierda para agregarlos a la orden.</p>
+                    <p className="text-xs text-slate-500">
+                      Selecciona exámenes a la izquierda para agregarlos a la orden.
+                    </p>
                   </div>
                 )}
                 {selected.map((item) => (
-                  <div key={`${item.category}-${item.group}-${item.label}`} className="flex justify-between items-start gap-3 text-sm bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm animate-fadeIn">
+                  <div
+                    key={`${item.category}-${item.group}-${item.label}`}
+                    className="flex justify-between items-start gap-3 text-sm bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm animate-fadeIn"
+                  >
                     <div className="flex-1">
                       <p className="font-bold text-slate-800 leading-tight">
                         {item.label}
-                        {item.contrast && (item.modality === "TC" || item.modality === "RM") ? <span className="text-indigo-600 ml-1">({item.contrast})</span> : ""}
+                        {item.contrast && (item.modality === "TC" || item.modality === "RM") ? (
+                          <span className="text-indigo-600 ml-1">({item.contrast})</span>
+                        ) : (
+                          ""
+                        )}
                       </p>
-                      <p className="text-xs font-bold text-indigo-500 mt-1.5 uppercase tracking-wide">{getCategoryLabel(item.category)}</p>
+                      <p className="text-xs font-bold text-indigo-500 mt-1.5 uppercase tracking-wide">
+                        {getCategoryLabel(item.category)}
+                      </p>
                     </div>
                     <button
                       onClick={() =>
@@ -430,7 +470,9 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                 <div className="mt-2 pt-2 border-t border-slate-100">
                   {isNamingProfile ? (
                     <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl animate-scaleIn">
-                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-tighter">Nombre del nuevo Pack</p>
+                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-tighter">
+                        Nombre del nuevo Pack
+                      </p>
                       <input
                         autoFocus
                         value={newProfileName}

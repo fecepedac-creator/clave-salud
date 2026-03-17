@@ -58,7 +58,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       if (!centerId) return;
       try {
         const snap = await getDocs(collection(db, "centers", centerId, "staff"));
-        const list = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Doctor));
+        const list = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as Doctor);
         const activeList = list.filter(
           (member) => (member as any).active !== false && (member as any).activo !== false
         );
@@ -165,14 +165,24 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       {/* Basic Info Cards - More compact */}
       <div className="hidden xl:flex items-center gap-2">
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Identidad</p>
-          <p className="text-[11px] font-bold text-slate-700 leading-none">{patient.genderIdentity && patient.genderIdentity !== 'Identidad de género no declarada' ? patient.genderIdentity : "Identidad no declarada"}</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">
+            Identidad
+          </p>
+          <p className="text-[11px] font-bold text-slate-700 leading-none">
+            {patient.genderIdentity && patient.genderIdentity !== "Identidad de género no declarada"
+              ? patient.genderIdentity
+              : "Identidad no declarada"}
+          </p>
         </div>
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">Previsión</p>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">
+            Previsión
+          </p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
             {patient.insurance || "Sin previsión"}
-            {patient.insurance === "FONASA" && patient.insuranceLevel && ` (${patient.insuranceLevel})`}
+            {patient.insurance === "FONASA" &&
+              patient.insuranceLevel &&
+              ` (${patient.insuranceLevel})`}
           </p>
         </div>
       </div>
@@ -191,35 +201,47 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsCareTeamExpanded(!isCareTeamExpanded)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all font-bold text-xs ${isCareTeamExpanded
-              ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-inner"
-              : "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:text-indigo-600 shadow-sm"
-              }`}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all font-bold text-xs ${
+              isCareTeamExpanded
+                ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-inner"
+                : "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:text-indigo-600 shadow-sm"
+            }`}
           >
             <Users className="w-4 h-4" />
-            <span className="hidden lg:inline">Modo: {accessMode === "CARE_TEAM" ? "Equipo" : "Centro"}</span>
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isCareTeamExpanded ? "rotate-180" : ""}`} />
+            <span className="hidden lg:inline">
+              Modo: {accessMode === "CARE_TEAM" ? "Equipo" : "Centro"}
+            </span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-300 ${isCareTeamExpanded ? "rotate-180" : ""}`}
+            />
           </button>
 
           {isCareTeamExpanded && (
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 z-50 animate-scaleIn origin-top-right">
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-                <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Configurar Acceso</p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${accessMode === "CARE_TEAM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                <p className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  Configurar Acceso
+                </p>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${accessMode === "CARE_TEAM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
+                >
                   {accessMode === "CARE_TEAM" ? "Restringido" : "Abierto"}
                 </span>
               </div>
 
               <div className="space-y-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Equipo tratante asignado:</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                  Equipo tratante asignado:
+                </p>
                 <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                   {staffMembers.map((member) => (
                     <label
                       key={member.id}
-                      className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border transition-colors cursor-pointer ${careTeamUids.includes(member.id)
-                        ? "bg-indigo-50 border-indigo-100 text-indigo-700"
-                        : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-white"
-                        }`}
+                      className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border transition-colors cursor-pointer ${
+                        careTeamUids.includes(member.id)
+                          ? "bg-indigo-50 border-indigo-100 text-indigo-700"
+                          : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-white"
+                      }`}
                     >
                       <input
                         type="checkbox"
@@ -228,9 +250,13 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
                         className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <div className="flex flex-col">
-                        <span className="font-bold leading-tight">{member.fullName || member.email}</span>
+                        <span className="font-bold leading-tight">
+                          {member.fullName || member.email}
+                        </span>
                         {member.role && (
-                          <span className="text-[9px] opacity-70 uppercase font-bold">{member.role}</span>
+                          <span className="text-[9px] opacity-70 uppercase font-bold">
+                            {member.role}
+                          </span>
                         )}
                       </div>
                     </label>

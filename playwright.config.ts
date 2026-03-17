@@ -14,13 +14,13 @@ const IS_CI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: false, // Firebase listeners necesitan estabilidad secuencial
-  workers: 1,           // Forzar ejecución secuencial para evitar colisiones en Firestore
+  workers: 1, // Forzar ejecución secuencial para evitar colisiones en Firestore
   retries: IS_CI ? 1 : 0, // 1 retry en CI, 0 en local para diagnóstico rápido
 
   // Timeouts globales
-  timeout: 60000,         // Tiempo máximo por test
+  timeout: 60000, // Tiempo máximo por test
   expect: {
-    timeout: 10000,       // Tiempo máximo por aserción
+    timeout: 10000, // Tiempo máximo por aserción
   },
 
   reporter: IS_CI
@@ -29,12 +29,12 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5175",
-    trace: "on-first-retry",       // Genera trace solo en el primer reintento
+    trace: "on-first-retry", // Genera trace solo en el primer reintento
     screenshot: "only-on-failure", // Captura solo en fallo
-    video: "retain-on-failure",    // Video solo en fallo
-    actionTimeout: 15000,           // Timeout por acción (click, fill, etc.)
-    navigationTimeout: 30000,       // Timeout por navegación
-    locale: "es-CL",               // Evitar diferencias de formato de fecha
+    video: "retain-on-failure", // Video solo en fallo
+    actionTimeout: 15000, // Timeout por acción (click, fill, etc.)
+    navigationTimeout: 30000, // Timeout por navegación
+    locale: "es-CL", // Evitar diferencias de formato de fecha
     // Desactivar notificaciones y geolocalización para evitar popups
     permissions: ["clipboard-read", "clipboard-write"],
   },

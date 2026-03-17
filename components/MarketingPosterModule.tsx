@@ -339,9 +339,7 @@ export default function MarketingPosterModule({ centerId, centerName }: Props) {
             onChange={(e) => handleRetentionToggle(e.target.checked)}
           />
           <label htmlFor="poster-retention" className="text-sm text-slate-700">
-            <span className="font-semibold">
-              Guardar afiches por 7 días para re-descarga
-            </span>
+            <span className="font-semibold">Guardar afiches por 7 días para re-descarga</span>
             <span className="block text-xs text-slate-500 mt-1">
               Si activas esta opción, podrás volver a descargar los afiches generados durante los
               próximos 7 días. Si no la activas, el afiche se descargará una sola vez.

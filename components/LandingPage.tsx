@@ -41,8 +41,7 @@ const TESTIMONIALS = [
 const FAQS = [
   {
     question: "¿Se puede usar desde celular?",
-    answer:
-      "Sí. ClaveSalud es responsive y está optimizada para uso móvil durante la consulta.",
+    answer: "Sí. ClaveSalud es responsive y está optimizada para uso móvil durante la consulta.",
   },
   {
     question: "¿Qué necesito para comenzar?",
@@ -289,12 +288,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onBack, onOpenLegal }) => {
         <section className="bg-slate-100">
           <div className="max-w-6xl mx-auto px-6 py-16 grid gap-10 md:grid-cols-[1.1fr_0.9fr]">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-emerald-600 font-bold">
-                FAQ
-              </p>
-              <h2 className="text-3xl font-bold text-slate-900 mt-3">
-                Preguntas frecuentes
-              </h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-emerald-600 font-bold">FAQ</p>
+              <h2 className="text-3xl font-bold text-slate-900 mt-3">Preguntas frecuentes</h2>
               <div className="mt-8 space-y-4">
                 {FAQS.map((faq) => (
                   <div key={faq.question} className="bg-white rounded-2xl p-5 border">
@@ -313,9 +308,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onBack, onOpenLegal }) => {
               </h2>
               <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    Nombre
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Nombre</label>
                   <input
                     value={formValues.name}
                     onChange={(event) =>
@@ -383,7 +376,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onBack, onOpenLegal }) => {
 
       <footer className="bg-white border-t border-slate-200">
         <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <p className="text-sm text-slate-500">© 2024 ClaveSalud. Todos los derechos reservados.</p>
+          <p className="text-sm text-slate-500">
+            © 2024 ClaveSalud. Todos los derechos reservados.
+          </p>
           <LegalLinks
             onOpenTerms={() => onOpenLegal("terms")}
             onOpenPrivacy={() => onOpenLegal("privacy")}

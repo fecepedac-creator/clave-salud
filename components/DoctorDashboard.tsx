@@ -223,9 +223,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // const { logAccess } = useAuditLog(); // Moved to hooks
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
-  const [activeTab, setActiveTab] = useState<"patients" | "agenda" | "reminders" | "settings" | "performance">(
-    "patients"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "patients" | "agenda" | "reminders" | "settings" | "performance"
+  >("patients");
 
   // Custom Hooks
   const {
@@ -249,13 +249,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     filterNextControl,
   });
 
-  const {
-    whatsappTemplates,
-    whatsappTemplatesError,
-    examOrderCatalog,
-  } = useDashboardData({ activeCenterId });
+  const { whatsappTemplates, whatsappTemplatesError, examOrderCatalog } = useDashboardData({
+    activeCenterId,
+  });
 
-    const {
+  const {
     newConsultation,
     setNewConsultation,
     isCreatingConsultation,
@@ -415,8 +413,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      )[0]
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        )[0]
       : null;
     const raw = lastConsult?.nextControlDate || "";
     if (!raw) return null;
@@ -428,8 +426,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      )[0]
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        )[0]
       : null;
     return lastConsult?.nextControlReason || "";
   };
@@ -484,7 +482,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const handleDeleteExamOrderProfile = async (id: string) => {
     if (!currentUser || !currentUser.id) return;
     try {
-      const updatedProfiles = (currentUser.savedExamOrderProfiles || []).filter(p => p.id !== id);
+      const updatedProfiles = (currentUser.savedExamOrderProfiles || []).filter((p) => p.id !== id);
       const updatedDoctor = { ...currentUser, savedExamOrderProfiles: updatedProfiles };
 
       onUpdateDoctor(updatedDoctor);
@@ -589,10 +587,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const slotDateLabel = slotModal.appointment?.date
     ? new Date(`${slotModal.appointment.date}T00:00:00`).toLocaleDateString("es-CL", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
     : "";
   const centerName = activeCenter?.name || "Centro Médico";
   const normalizeRut = (value?: string | null) =>
@@ -629,7 +627,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   );
 
   // --- ATTENDANCE HANDLER ---
-  const handleToggleAttendance = async (apt: Appointment, status: "completed" | "no-show" | "cancelled") => {
+  const handleToggleAttendance = async (
+    apt: Appointment,
+    status: "completed" | "no-show" | "cancelled"
+  ) => {
     if (isReadOnly || !activeCenterId) return;
     try {
       const callArgs = {
@@ -641,7 +642,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         billable: status === "completed" ? true : false,
       };
 
-      const updateAttendanceFn = httpsCallable(functions, 'updateAppointmentAttendance');
+      const updateAttendanceFn = httpsCallable(functions, "updateAppointmentAttendance");
       await updateAttendanceFn(callArgs);
 
       showToast(`Estado actualizado: ${status}`, "success");
@@ -974,18 +975,15 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         handleSavePatient={handleSavePatient}
         onUpdatePatient={onUpdatePatient}
         onLogActivity={onLogActivity}
-
         activeCenterId={activeCenterId ?? ""}
         activeCenter={activeCenter}
         hasActiveCenter={hasActiveCenter}
         moduleGuards={moduleGuards}
-
         doctorName={doctorName}
         doctorId={doctorId}
         role={role}
         currentUser={currentUser}
         isReadOnly={isReadOnly}
-
         newConsultation={newConsultation}
         setNewConsultation={setNewConsultation}
         isCreatingConsultation={isCreatingConsultation}
@@ -998,25 +996,20 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         handleCreateConsultation={handleCreateConsultation}
         selectedPatientConsultations={selectedPatientConsultations}
         isUsingLegacyConsultations={isUsingLegacyConsultations}
-
         docsToPrint={docsToPrint}
         setDocsToPrint={setDocsToPrint}
         isPrintModalOpen={isPrintModalOpen}
         setIsPrintModalOpen={setIsPrintModalOpen}
         isClinicalReportOpen={isClinicalReportOpen}
         setIsClinicalReportOpen={setIsClinicalReportOpen}
-
         selectedConsultationForModal={selectedConsultationForModal}
         setSelectedConsultationForModal={setSelectedConsultationForModal}
-
         isExamOrderModalOpen={isExamOrderModalOpen}
         setIsExamOrderModalOpen={setIsExamOrderModalOpen}
         examOrderCatalog={examOrderCatalog}
-
         myExamProfiles={myExamProfiles}
         allExamOptions={allExamOptions}
         myTemplates={myTemplates}
-
         sendConsultationByEmail={sendConsultationByEmail}
         safeAgeLabel={safeAgeLabel}
         onSaveExamOrderProfile={handleSaveExamOrderProfile}
@@ -1035,7 +1028,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             <ShieldCheck className="w-8 h-8 text-blue-600" />
             ClaveSalud
           </h2>
-          <p className="text-[10px] text-blue-600 font-bold uppercase tracking-[0.2em] mt-1">Professional Portal</p>
+          <p className="text-[10px] text-blue-600 font-bold uppercase tracking-[0.2em] mt-1">
+            Professional Portal
+          </p>
         </div>
         <div className="p-8">
           <nav className="space-y-2">
@@ -1108,7 +1103,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto justify-center">
             {activeCenter?.logoUrl && (
               <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
-                <span className="text-slate-500 text-xs font-medium uppercase tracking-tighter">Centro</span>
+                <span className="text-slate-500 text-xs font-medium uppercase tracking-tighter">
+                  Centro
+                </span>
                 {!centerLogoError ? (
                   <img
                     src={activeCenter.logoUrl}
@@ -1189,7 +1186,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             <div
               className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
             >
-
               {/* CONTENT: PATIENTS LIST */}
               {activeTab === "patients" && (
                 <DoctorPatientsListTab
@@ -1278,10 +1274,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
               {/* CONTENT: PERFORMANCE */}
               {activeTab === "performance" && activeCenterId && (
-                <DoctorPerformanceTab
-                  centerId={activeCenterId}
-                  doctorId={doctorId}
-                />
+                <DoctorPerformanceTab centerId={activeCenterId} doctorId={doctorId} />
               )}
               {/* Slot Modal (For Agenda) */}
               {slotModal.isOpen && slotModal.appointment && (
@@ -1330,7 +1323,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
                         )}
                         {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
-                          <div className="text-xs text-slate-400">No hay plantillas habilitadas.</div>
+                          <div className="text-xs text-slate-400">
+                            No hay plantillas habilitadas.
+                          </div>
                         )}
                         <div className="flex flex-col gap-2">
                           {enabledWhatsappTemplates.map((template) => {

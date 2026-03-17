@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Consultation, Prescription } from "../types";
-import { Calendar, User, Mail, Copy, Printer, FileText, Search, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Calendar,
+  User,
+  Mail,
+  Copy,
+  Printer,
+  FileText,
+  Search,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { getCategoryLabel } from "../utils/examOrderCatalog";
@@ -39,7 +49,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   );
 
   const toggleExpand = (id: string) => {
-    setExpandedIds(prev => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -48,7 +58,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   };
 
   const expandAll = () => {
-    const allIds = new Set(activeConsultations.map(c => c.id).filter(id => id !== undefined));
+    const allIds = new Set(activeConsultations.map((c) => c.id).filter((id) => id !== undefined));
     setExpandedIds(allIds as Set<string>);
   };
 
@@ -73,7 +83,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   const filteredConsultations = useMemo(() => {
     if (!searchTerm.trim()) return activeConsultations;
     const lowerTerm = searchTerm.toLowerCase();
-    return activeConsultations.filter(c => {
+    return activeConsultations.filter((c) => {
       return (
         (c.reason || "").toLowerCase().includes(lowerTerm) ||
         (c.diagnosis || "").toLowerCase().includes(lowerTerm) ||
@@ -126,7 +136,9 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
         <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-slate-200">
           <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <p className="text-slate-500 text-lg">
-            {searchTerm ? "No se encontraron atenciones que coincidan con la búsqueda." : "No hay consultas registradas para este paciente."}
+            {searchTerm
+              ? "No se encontraron atenciones que coincidan con la búsqueda."
+              : "No hay consultas registradas para este paciente."}
           </p>
         </div>
       ) : (
@@ -145,11 +157,16 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
           return (
             <div
               key={c.id}
-              className={`bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group overflow-hidden ${isExpanded ? 'p-8' : 'p-5'}`}
+              className={`bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group overflow-hidden ${isExpanded ? "p-8" : "p-5"}`}
             >
               {/* Header / Resumen */}
-              <div className={`flex flex-col md:flex-row md:justify-between md:items-start gap-4 ${isExpanded ? 'mb-6 border-b border-slate-100 pb-4' : ''}`}>
-                <div className="flex-1 flex flex-col gap-2 cursor-pointer" onClick={() => toggleExpand(c.id)}>
+              <div
+                className={`flex flex-col md:flex-row md:justify-between md:items-start gap-4 ${isExpanded ? "mb-6 border-b border-slate-100 pb-4" : ""}`}
+              >
+                <div
+                  className="flex-1 flex flex-col gap-2 cursor-pointer"
+                  onClick={() => toggleExpand(c.id)}
+                >
                   <div className="flex items-center gap-3">
                     <div className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-bold text-sm flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
@@ -166,8 +183,14 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                   </div>
                   {!isExpanded && (
                     <div>
-                      <h4 className="text-base font-bold text-slate-800 line-clamp-1">{c.reason}</h4>
-                      {c.diagnosis && <p className="text-sm font-semibold text-blue-600 line-clamp-1">{c.diagnosis}</p>}
+                      <h4 className="text-base font-bold text-slate-800 line-clamp-1">
+                        {c.reason}
+                      </h4>
+                      {c.diagnosis && (
+                        <p className="text-sm font-semibold text-blue-600 line-clamp-1">
+                          {c.diagnosis}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -211,7 +234,11 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                       className="p-2 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200 ml-1"
                       title={isExpanded ? "Contraer" : "Expandir"}
                     >
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                      {isExpanded ? (
+                        <ChevronUp className="w-5 h-5" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -280,7 +307,12 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                     {c.nextControlDate && (
                       <div className="flex items-center gap-2 text-base text-emerald-700 bg-emerald-50 px-4 py-3 rounded-xl w-fit">
                         <Calendar className="w-5 h-5" /> Próximo Control:{" "}
-                        {new Date((c.nextControlDate?.includes("T") ? c.nextControlDate : c.nextControlDate + "T12:00:00")).toLocaleDateString()} ({c.nextControlReason})
+                        {new Date(
+                          c.nextControlDate?.includes("T")
+                            ? c.nextControlDate
+                            : c.nextControlDate + "T12:00:00"
+                        ).toLocaleDateString()}{" "}
+                        ({c.nextControlReason})
                       </div>
                     )}
                   </div>

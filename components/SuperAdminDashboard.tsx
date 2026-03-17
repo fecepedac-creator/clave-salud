@@ -163,24 +163,24 @@ function buildCopyEmailText(to: string, subject: string, body: string) {
 const MESSAGE_TEMPLATES = {
   cobranza: {
     title: "Recordatorio de Pago Pendiente",
-    body: "Estimado/a administrador/a,\n\nLe recordamos que tiene un pago pendiente correspondiente al servicio de ClaveSalud. Le solicitamos regularizar su situación a la brevedad para mantener la continuidad del servicio.\n\nPara más información o coordinación de pago, puede contactarnos respondiendo este mensaje.\n\nAtentamente,\nEquipo ClaveSalud"
+    body: "Estimado/a administrador/a,\n\nLe recordamos que tiene un pago pendiente correspondiente al servicio de ClaveSalud. Le solicitamos regularizar su situación a la brevedad para mantener la continuidad del servicio.\n\nPara más información o coordinación de pago, puede contactarnos respondiendo este mensaje.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   info: {
     title: "Comunicado Informativo",
-    body: "Estimado/a administrador/a,\n\nLe informamos que [descripción de la información importante].\n\n[Detalles adicionales si es necesario]\n\nPara cualquier consulta, estamos disponibles.\n\nAtentamente,\nEquipo ClaveSalud"
+    body: "Estimado/a administrador/a,\n\nLe informamos que [descripción de la información importante].\n\n[Detalles adicionales si es necesario]\n\nPara cualquier consulta, estamos disponibles.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   fiesta: {
     title: "¡Felices Fiestas!",
-    body: "Estimado/a administrador/a,\n\nEn estas fechas especiales, queremos extenderles nuestros mejores deseos. ¡Felices fiestas para usted y todo su equipo!\n\nAgradecemos su confianza en ClaveSalud.\n\nCon los mejores deseos,\nEquipo ClaveSalud"
+    body: "Estimado/a administrador/a,\n\nEn estas fechas especiales, queremos extenderles nuestros mejores deseos. ¡Felices fiestas para usted y todo su equipo!\n\nAgradecemos su confianza en ClaveSalud.\n\nCon los mejores deseos,\nEquipo ClaveSalud",
   },
   bienvenida: {
     title: "¡Bienvenido a ClaveSalud!",
-    body: "Estimado/a administrador/a,\n\n¡Bienvenido/a a ClaveSalud! Estamos muy contentos de que su centro forme parte de nuestra plataforma.\n\nEn los próximos días, nuestro equipo estará disponible para ayudarle con cualquier consulta o necesidad durante la configuración inicial.\n\nAtentamente,\nEquipo ClaveSalud"
+    body: "Estimado/a administrador/a,\n\n¡Bienvenido/a a ClaveSalud! Estamos muy contentos de que su centro forme parte de nuestra plataforma.\n\nEn los próximos días, nuestro equipo estará disponible para ayudarle con cualquier consulta o necesidad durante la configuración inicial.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   mantenimiento: {
     title: "Aviso de Mantenimiento Programado",
-    body: "Estimado/a administrador/a,\n\nLe informamos que realizaremos un mantenimiento programado en la plataforma ClaveSalud el día [fecha] entre las [hora inicio] y [hora fin].\n\nDurante este período, el sistema podría presentar interrupciones temporales. Agradecemos su comprensión.\n\nAtentamente,\nEquipo ClaveSalud"
-  }
+    body: "Estimado/a administrador/a,\n\nLe informamos que realizaremos un mantenimiento programado en la plataforma ClaveSalud el día [fecha] entre las [hora inicio] y [hora fin].\n\nDurante este período, el sistema podría presentar interrupciones temporales. Agradecemos su comprensión.\n\nAtentamente,\nEquipo ClaveSalud",
+  },
 } as const;
 
 import { Menu, X } from "lucide-react";
@@ -308,7 +308,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [commBody, setCommBody] = useState("");
   const [commSendEmail, setCommSendEmail] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
-  const [examOrderCatalogDraft, setExamOrderCatalogDraft] = useState<string>(JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2));
+  const [examOrderCatalogDraft, setExamOrderCatalogDraft] = useState<string>(
+    JSON.stringify(DEFAULT_EXAM_ORDER_CATALOG, null, 2)
+  );
   const [savingExamCatalog, setSavingExamCatalog] = useState(false);
   const [globalUsers, setGlobalUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -373,9 +375,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [commHistory, setCommHistory] = useState<StoredNotification[]>([]);
   const [commHistoryLoading, setCommHistoryLoading] = useState(false);
 
-  const [centerContextId, setCenterContextId] = useState<string>(
-    centers?.[0]?.id || ""
-  );
+  const [centerContextId, setCenterContextId] = useState<string>(centers?.[0]?.id || "");
 
   const [centerInvites, setCenterInvites] = useState<any[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
@@ -519,14 +519,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       // After recalculating on backend, refresh the global counters too
       await loadMetrics();
-
     } catch (error: any) {
       console.error("handleRecalcStats error", error);
       const msg = error?.message || "Error al recalcular estadísticas.";
 
       // Si el error contiene una URL de Firebase (índice faltante), intentamos mostrarla mejor
       if (msg.includes("https://console.firebase.google.com")) {
-        showToast("Falta un índice de base de datos. Revisa la consola para el link de creación.", "error");
+        showToast(
+          "Falta un índice de base de datos. Revisa la consola para el link de creación.",
+          "error"
+        );
       } else {
         showToast(msg, "error");
       }
@@ -539,7 +541,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (logoPreview) {
       try {
         URL.revokeObjectURL(logoPreview);
-      } catch { }
+      } catch {}
     }
     setLogoFile(null);
     setLogoPreview("");
@@ -663,9 +665,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const nextDueDate = (center as any).billing?.nextDueDate as string | undefined;
     const isOverdue = billingStatus === "overdue";
     const isRisk =
-      !isActive ||
-      isOverdue ||
-      (nextDueDate ? new Date(nextDueDate) < new Date() : false);
+      !isActive || isOverdue || (nextDueDate ? new Date(nextDueDate) < new Date() : false);
     const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "Atención" : "OK";
     const cls = !isActive
       ? "bg-slate-200 text-slate-700"
@@ -675,9 +675,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           ? "bg-amber-100 text-amber-800"
           : "bg-emerald-100 text-emerald-700";
     return (
-      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${cls}`}>
-        {label}
-      </span>
+      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${cls}`}>{label}</span>
     );
   };
 
@@ -777,13 +775,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           ? newCenterAdminEmail.trim()
           : (editingCenter as any).adminEmail || "",
         // Mapping internal 'billing' to 'subscription' for backend compatibility
-        subscription: (editingCenter as any).billing ? {
-          planName: (editingCenter as any).billing?.plan || "trial",
-          price: (editingCenter as any).billing?.monthlyUF || 0,
-          currency: "UF",
-          status: (editingCenter as any).billing?.billingStatus === "paid" ? "active" : "late",
-          lastPaymentDate: (editingCenter as any).billing?.lastPaidAt || "",
-        } : (editingCenter as any).subscription,
+        subscription: (editingCenter as any).billing
+          ? {
+              planName: (editingCenter as any).billing?.plan || "trial",
+              price: (editingCenter as any).billing?.monthlyUF || 0,
+              currency: "UF",
+              status: (editingCenter as any).billing?.billingStatus === "paid" ? "active" : "late",
+              lastPaymentDate: (editingCenter as any).billing?.lastPaidAt || "",
+            }
+          : (editingCenter as any).subscription,
       };
 
       if (!isCreating) {
@@ -823,7 +823,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           code: e.code,
           message: e.message,
           details: e.details,
-          payload: editingCenter
+          payload: editingCenter,
         });
       }
       showToast(e?.message || "Error guardando centro", "error");
@@ -957,8 +957,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const renderSidebarButton = (tab: Tab, label: string, icon?: React.ReactNode) => (
     <button
       onClick={() => setActiveTab(tab)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
-        }`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+        activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"
+      }`}
     >
       <span className="flex items-center gap-2">
         {icon}
@@ -1051,7 +1052,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       const prev = await getDocs(prevQ);
       for (const d of prev.docs) {
-        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => { });
+        await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
       }
 
       // 2) Crear invitación nueva
@@ -1113,13 +1114,21 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
           <div className="flex flex-col">
-            <span className="text-[10px] font-black text-health-400 uppercase tracking-widest">SuperAdmin</span>
+            <span className="text-[10px] font-black text-health-400 uppercase tracking-widest">
+              SuperAdmin
+            </span>
             <span className="text-sm font-bold truncate" data-testid="superadmin-active-tab-label">
-              {activeTab === 'general' ? 'Visión General' :
-                activeTab === 'centers' ? 'Gestión de Centros' :
-                  activeTab === 'finanzas' ? 'Finanzas' :
-                    activeTab === 'comunicacion' ? 'Comunicación' :
-                      activeTab === 'metrics' ? 'Uso Plataforma' : 'Usuarios'}
+              {activeTab === "general"
+                ? "Visión General"
+                : activeTab === "centers"
+                  ? "Gestión de Centros"
+                  : activeTab === "finanzas"
+                    ? "Finanzas"
+                    : activeTab === "comunicacion"
+                      ? "Comunicación"
+                      : activeTab === "metrics"
+                        ? "Uso Plataforma"
+                        : "Usuarios"}
             </span>
           </div>
         </div>
@@ -1158,14 +1167,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <Shield className="w-3 h-3" /> Super Admin
             </div>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="text-slate-500 hover:text-white transition-colors"
+          >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         <div className="lg:hidden p-6 border-b border-white/5 flex items-center justify-between">
           <div className="font-bold text-white tracking-wider">MENÚ PRINCIPAL</div>
-          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500"><X className="w-5 h-5" /></button>
+          <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto mt-2">
@@ -1173,7 +1187,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             const btn = (tab: Tab, label: string, icon: any) => (
               <button
                 key={tab}
-                onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setIsSidebarOpen(false);
+                }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "hover:bg-slate-800"}`}
                 data-testid={`superadmin-tab-${tab}`}
               >
@@ -1204,10 +1221,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           />
           <button
             onClick={onToggleDemo}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${demoMode
-              ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
-              : "bg-slate-800 border-slate-700 text-slate-500"
-              }`}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+              demoMode
+                ? "bg-indigo-900/50 border-indigo-500 text-indigo-100"
+                : "bg-slate-800 border-slate-700 text-slate-500"
+            }`}
           >
             <div className="flex items-center gap-2">
               {demoMode ? (
@@ -1239,9 +1257,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
-          <div className="text-xs font-bold text-slate-400 uppercase mb-2">
-            Centro en contexto
-          </div>
+          <div className="text-xs font-bold text-slate-400 uppercase mb-2">Centro en contexto</div>
           <select
             className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-700"
             value={centerContextId}
@@ -1319,7 +1335,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </div>
                 <h3 className="text-slate-400 text-sm font-medium mb-1">En Riesgo (Bajo Uso)</h3>
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold text-white tracking-tight">{totals.atRisk}</span>
+                  <span className="text-3xl font-bold text-white tracking-tight">
+                    {totals.atRisk}
+                  </span>
                   <div className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
                     Analizar →
                   </div>
@@ -1329,7 +1347,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
             {metricsUpdatedAt && (
               <div className="text-[10px] text-slate-400 mt-0 italic">
-                Última sincronización de métricas globales: {new Date(metricsUpdatedAt).toLocaleString("es-CL")}
+                Última sincronización de métricas globales:{" "}
+                {new Date(metricsUpdatedAt).toLocaleString("es-CL")}
               </div>
             )}
             {metricsError && (
@@ -1435,12 +1454,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               <div className="flex flex-col gap-1 mb-4">
                 <h2 className="text-xl font-bold text-slate-800">📢 Marketing Digital</h2>
                 <p className="text-sm text-slate-500">
-                  Genera flyers publicitarios de alta calidad para promocionar ClaveSalud en redes sociales.
+                  Genera flyers publicitarios de alta calidad para promocionar ClaveSalud en redes
+                  sociales.
                 </p>
               </div>
               <button
                 onClick={() => setShowMarketingModal(true)}
-                className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md hover:shadow-lg">
+                className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md hover:shadow-lg"
+              >
                 Crear Flyer de ClaveSalud
               </button>
             </div>
@@ -1491,10 +1512,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         <div className="flex items-center gap-3 flex-wrap">
                           <h3 className="text-lg font-bold text-slate-800">{center.name}</h3>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${(center as any).isActive
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                              }`}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              (center as any).isActive
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
                           >
                             {(center as any).isActive ? "Activo" : "Suspendido"}
                           </span>
@@ -1672,7 +1694,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       <div className="text-sm text-slate-600">
                         Sube un logo (SVG, PNG, JPG, WEBP, máx. 2MB).
                         <p className="mt-1 text-[11px] text-slate-500 italic">
-                          💡 Tip: Se recomienda usar <b>SVG</b> o <b>PNG con transparencia</b>. Los logos vectoriales (SVG) mantienen la nitidez en cualquier tamaño.
+                          💡 Tip: Se recomienda usar <b>SVG</b> o <b>PNG con transparencia</b>. Los
+                          logos vectoriales (SVG) mantienen la nitidez en cualquier tamaño.
                         </p>
                       </div>
                       <div className="mt-3 flex flex-col gap-2">
@@ -1688,7 +1711,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             if (logoPreview) {
                               try {
                                 URL.revokeObjectURL(logoPreview);
-                              } catch { }
+                              } catch {}
                             }
 
                             if (!f) {
@@ -1726,7 +1749,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                                 if (logoPreview) {
                                   try {
                                     URL.revokeObjectURL(logoPreview);
-                                  } catch { }
+                                  } catch {}
                                 }
                                 setLogoPreview("");
 
@@ -2527,7 +2550,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   </div>
 
                   <label className="block">
-                    <span className="text-xs font-bold text-slate-400 uppercase">Plantilla Predefinida</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase">
+                      Plantilla Predefinida
+                    </span>
                     <select
                       className="w-full p-3 border rounded-xl bg-white"
                       value={selectedTemplate}
@@ -2541,7 +2566,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       <option value="mantenimiento">Mantenimiento programado</option>
                     </select>
                     <div className="text-xs text-slate-400 mt-1">
-                      Seleccione una plantilla para autocompletar título y mensaje. Puede editarlos después.
+                      Seleccione una plantilla para autocompletar título y mensaje. Puede editarlos
+                      después.
                     </div>
                   </label>
 
@@ -2687,7 +2713,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
-                <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+                <p className="text-slate-500">
+                  Monitoreo de actividad clínica y adopción por centro.
+                </p>
               </div>
               <button
                 onClick={() => handleRecalcStats()}
@@ -2705,7 +2733,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <Activity className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Total)</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">
+                    Atenciones (Total)
+                  </div>
                   <div className="text-2xl font-bold text-slate-800">
                     {centers.reduce((acc, c) => acc + (c.stats?.consultationCount || 0), 0)}
                   </div>
@@ -2716,7 +2746,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <Users className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Profesionales (Total)</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">
+                    Profesionales (Total)
+                  </div>
                   <div className="text-2xl font-bold text-slate-800">
                     {centers.reduce((acc, c) => acc + (c.stats?.staffCount || 0), 0)}
                   </div>
@@ -2727,7 +2759,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   <TrendingUp className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Registrados</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase">
+                    Pacientes Registrados
+                  </div>
                   <div className="text-2xl font-bold text-slate-800">
                     {centers.reduce((acc, c) => acc + (c.stats?.patientCount || 0), 0)}
                   </div>
@@ -2751,7 +2785,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {centers.map((c) => {
-                      const centerDoctors = doctors.filter(d => d.centerId === c.id);
+                      const centerDoctors = doctors.filter((d) => d.centerId === c.id);
                       const staffCount = c.stats?.staffCount || 0;
                       const consultationCount = c.stats?.consultationCount || 0;
 
@@ -2809,7 +2843,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <h1 className="text-3xl font-bold text-slate-800">Gestión de Usuarios</h1>
-                <p className="text-slate-500">Control global de perfiles, roles y suscripciones profesionales.</p>
+                <p className="text-slate-500">
+                  Control global de perfiles, roles y suscripciones profesionales.
+                </p>
               </div>
               <div className="flex gap-2">
                 <div className="relative">
@@ -2835,14 +2871,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             {editingUser ? (
               <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-slate-800">Editar Usuario: {editingUser.email}</h3>
-                  <button onClick={() => setEditingUser(null)} className="text-slate-400 font-bold">Cerrar</button>
+                  <h3 className="text-xl font-bold text-slate-800">
+                    Editar Usuario: {editingUser.email}
+                  </h3>
+                  <button onClick={() => setEditingUser(null)} className="text-slate-400 font-bold">
+                    Cerrar
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Nombre Completo</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Nombre Completo
+                      </span>
                       <input
                         className="w-full p-3 border rounded-xl bg-slate-50"
                         value={editingUser.fullName || ""}
@@ -2850,12 +2892,16 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Estado Cuenta</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Estado Cuenta
+                      </span>
                       <div className="flex items-center gap-3 mt-2 px-3 py-2 bg-slate-50 rounded-xl border">
                         <input
                           type="checkbox"
                           checked={editingUser.activo !== false}
-                          onChange={(e) => setEditingUser({ ...editingUser, activo: e.target.checked })}
+                          onChange={(e) =>
+                            setEditingUser({ ...editingUser, activo: e.target.checked })
+                          }
                           className="w-5 h-5 accent-health-600"
                         />
                         <span className="font-bold text-slate-700">Usuario Activo</span>
@@ -2869,14 +2915,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     </h4>
 
                     <label className="block">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Estado de Pago</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">
+                        Estado de Pago
+                      </span>
                       <select
                         className="w-full p-3 border rounded-xl bg-white mt-1"
                         value={editingUser.billing?.status || "trial"}
-                        onChange={(e) => setEditingUser({
-                          ...editingUser,
-                          billing: { ...(editingUser.billing || {}), status: e.target.value }
-                        })}
+                        onChange={(e) =>
+                          setEditingUser({
+                            ...editingUser,
+                            billing: { ...(editingUser.billing || {}), status: e.target.value },
+                          })
+                        }
                       >
                         <option value="active">Activo / Al día</option>
                         <option value="trial">Periodo de Prueba</option>
@@ -2891,10 +2941,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         <select
                           className="w-full p-3 border rounded-xl bg-white mt-1"
                           value={editingUser.billing?.plan || "free"}
-                          onChange={(e) => setEditingUser({
-                            ...editingUser,
-                            billing: { ...(editingUser.billing || {}), plan: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingUser({
+                              ...editingUser,
+                              billing: { ...(editingUser.billing || {}), plan: e.target.value },
+                            })
+                          }
                         >
                           <option value="free">Gratuito</option>
                           <option value="basic">Básico</option>
@@ -2902,15 +2954,22 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         </select>
                       </label>
                       <label className="block">
-                        <span className="text-xs font-bold text-slate-400 uppercase">Vencimiento</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase">
+                          Vencimiento
+                        </span>
                         <input
                           type="date"
                           className="w-full p-3 border rounded-xl bg-white mt-1"
                           value={editingUser.billing?.nextDueDate || ""}
-                          onChange={(e) => setEditingUser({
-                            ...editingUser,
-                            billing: { ...(editingUser.billing || {}), nextDueDate: e.target.value }
-                          })}
+                          onChange={(e) =>
+                            setEditingUser({
+                              ...editingUser,
+                              billing: {
+                                ...(editingUser.billing || {}),
+                                nextDueDate: e.target.value,
+                              },
+                            })
+                          }
                         />
                       </label>
                     </div>
@@ -2918,7 +2977,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </div>
 
                 <div className="flex justify-end gap-3 mt-8 pt-6 border-t">
-                  <button onClick={() => setEditingUser(null)} className="px-6 py-2 font-bold text-slate-500">Cancelar</button>
+                  <button
+                    onClick={() => setEditingUser(null)}
+                    className="px-6 py-2 font-bold text-slate-500"
+                  >
+                    Cancelar
+                  </button>
                   <button
                     onClick={() => handleSaveUser(editingUser)}
                     className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700"
@@ -2941,14 +3005,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {globalUsers
-                      .filter(u =>
-                        u.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-                        u.fullName?.toLowerCase().includes(userSearchTerm.toLowerCase())
+                      .filter(
+                        (u) =>
+                          u.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                          u.fullName?.toLowerCase().includes(userSearchTerm.toLowerCase())
                       )
                       .map((u) => (
                         <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="font-bold text-slate-800">{u.fullName || "Sin nombre"}</div>
+                            <div className="font-bold text-slate-800">
+                              {u.fullName || "Sin nombre"}
+                            </div>
                             <div className="text-xs text-slate-400">{u.email}</div>
                           </td>
                           <td className="px-6 py-4 text-xs font-medium text-slate-600 uppercase">
@@ -2967,12 +3034,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.activo === false || u.billing?.status === 'suspended'
-                              ? "bg-red-100 text-red-700"
-                              : u.billing?.status === 'overdue'
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-emerald-100 text-emerald-700"
-                              }`}>
+                            <span
+                              className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                u.activo === false || u.billing?.status === "suspended"
+                                  ? "bg-red-100 text-red-700"
+                                  : u.billing?.status === "overdue"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                              }`}
+                            >
                               {u.activo === false ? "Inactivo" : u.billing?.status || "active"}
                             </span>
                           </td>
@@ -2999,8 +3069,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div>
               <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
               <p className="text-indigo-200 text-sm max-w-md">
-                Hemos detectado centros con una caída en actividad.
-                Activa una campaña de comunicación para recuperar su interés.
+                Hemos detectado centros con una caída en actividad. Activa una campaña de
+                comunicación para recuperar su interés.
               </p>
             </div>
             <button
@@ -3015,10 +3085,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       {/* Marketing Flyer Modal */}
       {showMarketingModal && (
-        <MarketingFlyerModal
-          type="platform"
-          onClose={() => setShowMarketingModal(false)}
-        />
+        <MarketingFlyerModal type="platform" onClose={() => setShowMarketingModal(false)} />
       )}
 
       {/* FEEDBACK BUTTON (Floating) */}

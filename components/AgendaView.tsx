@@ -47,7 +47,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
     if (selectedAgendaDate && slotsSectionRef.current) {
       const isMobile = window.innerWidth < 1024;
       if (isMobile) {
-        slotsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        slotsSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }
   }, [selectedAgendaDate]);
@@ -83,7 +83,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
         {/* Left: Configuration & Calendar */}
-        <div className={`lg:col-span-4 space-y-6 ${mobileView === "calendar" ? "block" : "hidden lg:block"}`}>
+        <div
+          className={`lg:col-span-4 space-y-6 ${mobileView === "calendar" ? "block" : "hidden lg:block"}`}
+        >
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             {!doctorId && (
               <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl mb-4">
@@ -94,7 +96,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
             )}
             <div className="mb-4">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">2</span>
+                <span className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                  2
+                </span>
                 Selecciona un día
               </p>
             </div>
@@ -119,7 +123,13 @@ const AgendaView: React.FC<AgendaViewProps> = ({
               </div>
 
               <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-400 mb-2">
-                <div>L</div><div>M</div><div>M</div><div>J</div><div>V</div><div>S</div><div>D</div>
+                <div>L</div>
+                <div>M</div>
+                <div>M</div>
+                <div>J</div>
+                <div>V</div>
+                <div>S</div>
+                <div>D</div>
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {getDaysInMonth(currentMonth).map((day, idx) => {
@@ -159,10 +169,15 @@ const AgendaView: React.FC<AgendaViewProps> = ({
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
                 <span className="text-sm font-bold text-blue-800">
-                  {headerDate?.toLocaleDateString("es-CL", { day: 'numeric', month: 'short' })}
+                  {headerDate?.toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
                 </span>
               </div>
-              <button onClick={() => setMobileView("calendar")} className="text-xs font-bold text-blue-600 underline">Cambiar fecha</button>
+              <button
+                onClick={() => setMobileView("calendar")}
+                className="text-xs font-bold text-blue-600 underline"
+              >
+                Cambiar fecha
+              </button>
             </div>
           )}
 
@@ -217,7 +232,15 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                       >
                         {templateSlot.time}
                         <span className="text-[10px] uppercase">
-                          {isPastDate ? "Pasado" : isBooked ? (realSlot.type === "SERVICE" ? (realSlot.serviceName || "Servicio") : "Paciente") : isOpen ? "Disponible" : "Cerrado"}
+                          {isPastDate
+                            ? "Pasado"
+                            : isBooked
+                              ? realSlot.type === "SERVICE"
+                                ? realSlot.serviceName || "Servicio"
+                                : "Paciente"
+                              : isOpen
+                                ? "Disponible"
+                                : "Cerrado"}
                         </span>
                       </button>
                     );
@@ -226,20 +249,35 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 
                 {/* Lista de Pacientes Agendados */}
                 <div className="border-t border-slate-100 pt-6">
-                  <h4 className="font-black text-slate-700 mb-4 text-sm uppercase tracking-widest">Pacientes Agendados</h4>
+                  <h4 className="font-black text-slate-700 mb-4 text-sm uppercase tracking-widest">
+                    Pacientes Agendados
+                  </h4>
                   {activeAppointments.filter(
-                    (a) => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.status === "booked"
+                    (a) =>
+                      appointmentDoctorUid(a) === doctorId &&
+                      a.date === selectedAgendaDate &&
+                      a.status === "booked"
                   ).length === 0 ? (
                     <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                      <p className="text-slate-400 italic text-sm">No hay pacientes agendados para este día.</p>
+                      <p className="text-slate-400 italic text-sm">
+                        No hay pacientes agendados para este día.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {activeAppointments
-                        .filter((a) => appointmentDoctorUid(a) === doctorId && a.date === selectedAgendaDate && a.status === "booked")
+                        .filter(
+                          (a) =>
+                            appointmentDoctorUid(a) === doctorId &&
+                            a.date === selectedAgendaDate &&
+                            a.status === "booked"
+                        )
                         .sort((a, b) => a.time.localeCompare(b.time))
                         .map((apt) => (
-                          <div key={apt.id} className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 hover:bg-blue-50 transition-colors">
+                          <div
+                            key={apt.id}
+                            className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 hover:bg-blue-50 transition-colors"
+                          >
                             <div className="flex items-center gap-4">
                               <div className="bg-white px-3 py-1 rounded-lg font-black text-blue-600 shadow-sm border border-blue-100">
                                 {apt.time}
@@ -262,27 +300,37 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                               {(() => {
                                 const slotDate = new Date(selectedAgendaDate + "T00:00:00");
                                 const isPast = slotDate < today;
-                                return onToggleAttendance && !readOnly && !isPast && (
-                                  <div className="flex bg-white rounded-full border border-slate-200 overflow-hidden shadow-sm">
-                                    <button
-                                      type="button"
-                                      onClick={() => onToggleAttendance(apt, "completed")}
-                                      className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-50 text-slate-500"}`}
-                                      title="Atendido"
-                                    >✓</button>
-                                    <button
-                                      type="button"
-                                      onClick={() => onToggleAttendance(apt, "no-show")}
-                                      className={`px-3 py-1.5 text-xs font-bold transition-colors border-l border-r border-slate-200 ${apt.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-50 text-slate-500"}`}
-                                      title="No Show"
-                                    >✕</button>
-                                    <button
-                                      type="button"
-                                      onClick={() => onToggleAttendance(apt, "cancelled")}
-                                      className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "cancelled" ? "bg-slate-500 text-white" : "hover:bg-slate-100 text-slate-500"}`}
-                                      title="Anular"
-                                    >/</button>
-                                  </div>
+                                return (
+                                  onToggleAttendance &&
+                                  !readOnly &&
+                                  !isPast && (
+                                    <div className="flex bg-white rounded-full border border-slate-200 overflow-hidden shadow-sm">
+                                      <button
+                                        type="button"
+                                        onClick={() => onToggleAttendance(apt, "completed")}
+                                        className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-50 text-slate-500"}`}
+                                        title="Atendido"
+                                      >
+                                        ✓
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onToggleAttendance(apt, "no-show")}
+                                        className={`px-3 py-1.5 text-xs font-bold transition-colors border-l border-r border-slate-200 ${apt.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-50 text-slate-500"}`}
+                                        title="No Show"
+                                      >
+                                        ✕
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onToggleAttendance(apt, "cancelled")}
+                                        className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "cancelled" ? "bg-slate-500 text-white" : "hover:bg-slate-100 text-slate-500"}`}
+                                        title="Anular"
+                                      >
+                                        /
+                                      </button>
+                                    </div>
+                                  )
                                 );
                               })()}
                               <button

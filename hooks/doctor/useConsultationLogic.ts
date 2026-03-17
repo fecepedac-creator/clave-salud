@@ -6,322 +6,339 @@ import { db, auth } from "../../firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 interface UseConsultationLogicProps {
-    selectedPatient: Patient | null;
-    activeCenterId: string | null;
-    activeCenter?: MedicalCenter | null;
-    hasActiveCenter: boolean;
-    doctorId: string;
-    doctorName: string;
-    role: ProfessionalRole;
-    onUpdatePatient: (patient: Patient) => void;
-    onLogActivity: (action: any, details: string, targetId?: string) => void;
-    setActiveTab: (tab: any) => void;
+  selectedPatient: Patient | null;
+  activeCenterId: string | null;
+  activeCenter?: MedicalCenter | null;
+  hasActiveCenter: boolean;
+  doctorId: string;
+  doctorName: string;
+  role: ProfessionalRole;
+  onUpdatePatient: (patient: Patient) => void;
+  onLogActivity: (action: any, details: string, targetId?: string) => void;
+  setActiveTab: (tab: any) => void;
 }
 
 export const useConsultationLogic = ({
-    selectedPatient,
-    activeCenterId,
-    activeCenter,
-    hasActiveCenter,
-    doctorId,
-    doctorName,
-    role,
-    onUpdatePatient,
-    onLogActivity,
-    setActiveTab,
+  selectedPatient,
+  activeCenterId,
+  activeCenter,
+  hasActiveCenter,
+  doctorId,
+  doctorName,
+  role,
+  onUpdatePatient,
+  onLogActivity,
+  setActiveTab,
 }: UseConsultationLogicProps) => {
-    const { showToast } = useToast();
+  const { showToast } = useToast();
 
-    const getEmptyConsultation = (): Partial<Consultation> => ({
-        weight: "",
-        height: "",
-        bmi: "",
-        bloodPressure: "",
-        hgt: "",
-        waist: "",
-        hip: "",
-        reason: "",
-        anamnesis: "",
-        physicalExam: "",
-        diagnosis: "",
-        diagnoses: [],
-        prescriptions: [],
-        dentalMap: [],
-        exams: {},
-        examSheets: [],
-        nextControlDate: "",
-        nextControlReason: "",
-        reminderActive: false,
-        consultationType: "morbidity", // Default to morbidity
+  const getEmptyConsultation = (): Partial<Consultation> => ({
+    weight: "",
+    height: "",
+    bmi: "",
+    bloodPressure: "",
+    hgt: "",
+    waist: "",
+    hip: "",
+    reason: "",
+    anamnesis: "",
+    physicalExam: "",
+    diagnosis: "",
+    diagnoses: [],
+    prescriptions: [],
+    dentalMap: [],
+    exams: {},
+    examSheets: [],
+    nextControlDate: "",
+    nextControlReason: "",
+    reminderActive: false,
+    consultationType: "morbidity", // Default to morbidity
+  });
+
+  const [newConsultation, setNewConsultation] =
+    useState<Partial<Consultation>>(getEmptyConsultation());
+  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+
+  // Auto-Save Draft Logic
+  const DRAFT_KEY = selectedPatient ? `consultation_draft_${selectedPatient.id}` : null;
+
+  useEffect(() => {
+    // Cargar draft inicial si existe
+    if (DRAFT_KEY) {
+      const savedDraft = localStorage.getItem(DRAFT_KEY);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          // Solo restaurar si tiene al menos algun campo con datos relevantes
+          if (parsed.reason || parsed.anamnesis || parsed.physicalExam || parsed.diagnosis) {
+            setNewConsultation(parsed);
+            showToast("Borrador recuperado", "info");
+          }
+        } catch (e) {
+          console.error("Error parseando borrador", e);
+        }
+      }
+    }
+  }, [DRAFT_KEY]);
+
+  // Usar timeout para debouncing del guardado local
+  useEffect(() => {
+    if (!DRAFT_KEY) return;
+    const handler = setTimeout(() => {
+      // Guardar solo si hay algo escrito que valga la pena (motivo, anamnesis, diagnostico)
+      if (
+        newConsultation.reason ||
+        newConsultation.anamnesis ||
+        newConsultation.diagnosis ||
+        (newConsultation.diagnoses?.length || 0) > 0
+      ) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(newConsultation));
+      }
+    }, 1500); // 1.5s de inactividad para guardar
+
+    return () => clearTimeout(handler);
+  }, [newConsultation, DRAFT_KEY]);
+
+  const clearDraft = useCallback(() => {
+    if (DRAFT_KEY) {
+      localStorage.removeItem(DRAFT_KEY);
+    }
+  }, [DRAFT_KEY]);
+
+  // Vitals logic
+  const handleVitalsChange = (field: keyof Consultation, value: string) => {
+    let finalValue = value;
+
+    if (field === "bloodPressure") {
+      const rawNumbers = value.replace(/\D/g, "");
+      if (rawNumbers.length > 6) return;
+      if (rawNumbers.length >= 4) {
+        finalValue = `${rawNumbers.slice(0, -2)}/${rawNumbers.slice(-2)}`;
+      } else {
+        finalValue = rawNumbers;
+      }
+    }
+
+    setNewConsultation((prev) => {
+      const updated = { ...prev, [field]: finalValue };
+      if (field === "weight" || field === "height") {
+        const weight = parseFloat(updated.weight || "0");
+        const height = parseFloat(updated.height || "0") / 100;
+        if (weight > 0 && height > 0) {
+          updated.bmi = (weight / (height * height)).toFixed(1);
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleExamChange = (examId: string, value: string) => {
+    setNewConsultation((prev) => ({
+      ...prev,
+      exams: { ...prev.exams, [examId]: value },
+    }));
+  };
+
+  const addPrescription = (doc: any) => {
+    setNewConsultation((prev) => ({
+      ...prev,
+      prescriptions: [...(prev.prescriptions || []), doc],
+    }));
+  };
+
+  const removePrescription = (id: string) => {
+    setNewConsultation((prev) => ({
+      ...prev,
+      prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
+    }));
+  };
+
+  const addDiagnosis = (diag: string) => {
+    if (!diag) return;
+    setNewConsultation((prev) => {
+      const currentDiagnoses = prev.diagnoses || [];
+      if (currentDiagnoses.includes(diag)) return prev;
+      const updated = [...currentDiagnoses, diag];
+      return {
+        ...prev,
+        diagnoses: updated,
+        diagnosis: updated.join(" • "), // Sync with legacy string
+      };
+    });
+  };
+
+  const removeDiagnosis = (diag: string) => {
+    setNewConsultation((prev) => {
+      const updated = (prev.diagnoses || []).filter((d) => d !== diag);
+      return {
+        ...prev,
+        diagnoses: updated,
+        diagnosis: updated.join(" • "), // Sync with legacy string
+      };
+    });
+  };
+
+  const pinDiagnosis = (diag: string) => {
+    if (!selectedPatient || !diag) return;
+
+    const currentHistory = selectedPatient.medicalHistory || [];
+    // Check if already exists (string match or label match if object)
+    const exists = currentHistory.some((item) => {
+      if (typeof item === "string") return item.toLowerCase() === diag.toLowerCase();
+      return item.label.toLowerCase() === diag.toLowerCase();
     });
 
-    const [newConsultation, setNewConsultation] = useState<Partial<Consultation>>(getEmptyConsultation());
-    const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+    if (exists) {
+      showToast("Este diagnóstico ya está en los antecedentes", "info");
+      return;
+    }
 
-    // Auto-Save Draft Logic
-    const DRAFT_KEY = selectedPatient ? `consultation_draft_${selectedPatient.id}` : null;
-
-    useEffect(() => {
-        // Cargar draft inicial si existe
-        if (DRAFT_KEY) {
-            const savedDraft = localStorage.getItem(DRAFT_KEY);
-            if (savedDraft) {
-                try {
-                    const parsed = JSON.parse(savedDraft);
-                    // Solo restaurar si tiene al menos algun campo con datos relevantes
-                    if (parsed.reason || parsed.anamnesis || parsed.physicalExam || parsed.diagnosis) {
-                        setNewConsultation(parsed);
-                        showToast("Borrador recuperado", "info");
-                    }
-                } catch (e) {
-                    console.error("Error parseando borrador", e);
-                }
-            }
-        }
-    }, [DRAFT_KEY]);
-
-    // Usar timeout para debouncing del guardado local
-    useEffect(() => {
-        if (!DRAFT_KEY) return;
-        const handler = setTimeout(() => {
-            // Guardar solo si hay algo escrito que valga la pena (motivo, anamnesis, diagnostico)
-            if (newConsultation.reason || newConsultation.anamnesis || newConsultation.diagnosis || (newConsultation.diagnoses?.length || 0) > 0) {
-                localStorage.setItem(DRAFT_KEY, JSON.stringify(newConsultation));
-            }
-        }, 1500); // 1.5s de inactividad para guardar
-
-        return () => clearTimeout(handler);
-    }, [newConsultation, DRAFT_KEY]);
-
-    const clearDraft = useCallback(() => {
-        if (DRAFT_KEY) {
-            localStorage.removeItem(DRAFT_KEY);
-        }
-    }, [DRAFT_KEY]);
-
-    // Vitals logic
-    const handleVitalsChange = (field: keyof Consultation, value: string) => {
-        let finalValue = value;
-
-        if (field === "bloodPressure") {
-            const rawNumbers = value.replace(/\D/g, "");
-            if (rawNumbers.length > 6) return;
-            if (rawNumbers.length >= 4) {
-                finalValue = `${rawNumbers.slice(0, -2)}/${rawNumbers.slice(-2)}`;
-            } else {
-                finalValue = rawNumbers;
-            }
-        }
-
-        setNewConsultation((prev) => {
-            const updated = { ...prev, [field]: finalValue };
-            if (field === "weight" || field === "height") {
-                const weight = parseFloat(updated.weight || "0");
-                const height = parseFloat(updated.height || "0") / 100;
-                if (weight > 0 && height > 0) {
-                    updated.bmi = (weight / (height * height)).toFixed(1);
-                }
-            }
-            return updated;
-        });
+    const updatedPatient: Patient = {
+      ...selectedPatient,
+      medicalHistory: [...currentHistory, diag],
+      lastUpdated: new Date().toISOString(),
     };
 
-    const handleExamChange = (examId: string, value: string) => {
-        setNewConsultation((prev) => ({
-            ...prev,
-            exams: { ...prev.exams, [examId]: value },
-        }));
-    };
+    onUpdatePatient(updatedPatient);
+    showToast("Agregado a antecedentes morbidos", "success");
+    onLogActivity(
+      "update",
+      `Agregó ${diag} a antecedentes de ${selectedPatient.fullName}`,
+      selectedPatient.id
+    );
+  };
 
-    const addPrescription = (doc: any) => {
-        setNewConsultation((prev) => ({
-            ...prev,
-            prescriptions: [...(prev.prescriptions || []), doc],
-        }));
-    };
+  const handleCreateConsultation = async () => {
+    console.log("💾 handleCreateConsultation called...");
+    if (!selectedPatient) return;
 
-    const removePrescription = (id: string) => {
-        setNewConsultation((prev) => ({
-            ...prev,
-            prescriptions: prev.prescriptions?.filter((p) => p.id !== id),
-        }));
-    };
+    if (!hasActiveCenter) {
+      showToast("Selecciona un centro activo antes de guardar.", "warning");
+      return;
+    }
 
-    const addDiagnosis = (diag: string) => {
-        if (!diag) return;
-        setNewConsultation((prev) => {
-            const currentDiagnoses = prev.diagnoses || [];
-            if (currentDiagnoses.includes(diag)) return prev;
-            const updated = [...currentDiagnoses, diag];
-            return {
-                ...prev,
-                diagnoses: updated,
-                diagnosis: updated.join(" • ") // Sync with legacy string
-            };
-        });
-    };
+    // Construye un objeto consulta (local + nube) con mapeo explícito para evitar undefined
+    const currentUid = auth.currentUser?.uid || doctorId;
+    const consultation: Consultation = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      consultationType: newConsultation.consultationType || "morbidity",
+      // Vitals & Anthropometry
+      weight: newConsultation.weight || "",
+      height: newConsultation.height || "",
+      bmi: newConsultation.bmi || "",
+      bloodPressure: newConsultation.bloodPressure || "",
+      heartRate: newConsultation.heartRate || "",
+      hgt: newConsultation.hgt || "",
+      waist: newConsultation.waist || "",
+      hip: newConsultation.hip || "",
 
-    const removeDiagnosis = (diag: string) => {
-        setNewConsultation((prev) => {
-            const updated = (prev.diagnoses || []).filter(d => d !== diag);
-            return {
-                ...prev,
-                diagnoses: updated,
-                diagnosis: updated.join(" • ") // Sync with legacy string
-            };
-        });
-    };
+      // Clinical Data
+      reason: newConsultation.reason || "",
+      anamnesis: newConsultation.anamnesis || "",
+      physicalExam: newConsultation.physicalExam || "",
+      diagnosis: newConsultation.diagnosis || "",
+      diagnoses: newConsultation.diagnoses || [],
 
-    const pinDiagnosis = (diag: string) => {
-        if (!selectedPatient || !diag) return;
-        
-        const currentHistory = selectedPatient.medicalHistory || [];
-        // Check if already exists (string match or label match if object)
-        const exists = currentHistory.some(item => {
-            if (typeof item === 'string') return item.toLowerCase() === diag.toLowerCase();
-            return item.label.toLowerCase() === diag.toLowerCase();
-        });
+      // Special Modules
+      prescriptions: (newConsultation.prescriptions || []) as any,
+      dentalMap: (newConsultation.dentalMap || []) as any,
+      podogram: (newConsultation.podogram || []) as any,
+      exams: (newConsultation.exams || {}) as any,
+      examSheets: (newConsultation.examSheets || []) as any,
 
-        if (exists) {
-            showToast("Este diagnóstico ya está en los antecedentes", "info");
-            return;
-        }
+      // Control
+      nextControlDate: newConsultation.nextControlDate || "",
+      nextControlReason: newConsultation.nextControlReason || "",
+      reminderActive: Boolean(newConsultation.reminderActive),
 
-        const updatedPatient: Patient = {
-            ...selectedPatient,
-            medicalHistory: [...currentHistory, diag],
-            lastUpdated: new Date().toISOString(),
-        };
+      // Context
+      patientId: selectedPatient.id,
+      centerId: activeCenterId || "",
+      centerName: activeCenter?.name || "", // NEW
+      professionalName: doctorName || "Profesional",
+      professionalId: currentUid,
+      professionalRole: role,
+    } as any;
 
-        onUpdatePatient(updatedPatient);
-        showToast("Agregado a antecedentes morbidos", "success");
-        onLogActivity("update", `Agregó ${diag} a antecedentes de ${selectedPatient.fullName}`, selectedPatient.id);
-    };
+    // 1) Guardar en Firestore (colección "consultations")
+    try {
+      if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
+      await addDoc(
+        collection(db, "patients", selectedPatient.id, "consultations"),
+        sanitizeForFirestore({
+          ...consultation,
+          centerId: activeCenterId,
+          patientId: selectedPatient?.id ?? null,
+          createdByUid: currentUid,
+          createdAt: serverTimestamp(),
+        })
+      );
+      console.log("✅ Consultation saved to Firestore");
+      showToast("Atención guardada correctamente en la nube", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("Error al guardar en la nube (se guardó localmente)", "error");
+    }
 
-    const handleCreateConsultation = async () => {
-        console.log("💾 handleCreateConsultation called...");
-        if (!selectedPatient) return;
+    // 2) Actualizar estado local (lista de pacientes)
+    // Ensure professional is in care team and allowedUids
+    const careTeamUids = Array.from(new Set([...(selectedPatient.careTeamUids || []), currentUid]));
+    const allowedUids = Array.from(
+      new Set([...(selectedPatient.accessControl?.allowedUids || []), currentUid])
+    );
+    const centerIds = Array.from(
+      new Set([...(selectedPatient.accessControl?.centerIds || []), activeCenterId as string])
+    );
 
-        if (!hasActiveCenter) {
-            showToast("Selecciona un centro activo antes de guardar.", "warning");
-            return;
-        }
+    const updatedPatient: Patient = sanitizeForFirestore({
+      ...selectedPatient,
+      careTeamUids,
+      accessControl: {
+        ...selectedPatient.accessControl,
+        allowedUids,
+        centerIds,
+      },
+      consultations: [consultation, ...(selectedPatient.consultations || [])],
+      lastUpdated: new Date().toISOString(),
+    });
 
-        // Construye un objeto consulta (local + nube) con mapeo explícito para evitar undefined
-        const currentUid = auth.currentUser?.uid || doctorId;
-        const consultation: Consultation = {
-            id: generateId(),
-            date: new Date().toISOString(),
-            consultationType: newConsultation.consultationType || "morbidity",
-            // Vitals & Anthropometry
-            weight: newConsultation.weight || "",
-            height: newConsultation.height || "",
-            bmi: newConsultation.bmi || "",
-            bloodPressure: newConsultation.bloodPressure || "",
-            heartRate: newConsultation.heartRate || "",
-            hgt: newConsultation.hgt || "",
-            waist: newConsultation.waist || "",
-            hip: newConsultation.hip || "",
+    onUpdatePatient(updatedPatient);
 
-            // Clinical Data
-            reason: newConsultation.reason || "",
-            anamnesis: newConsultation.anamnesis || "",
-            physicalExam: newConsultation.physicalExam || "",
-            diagnosis: newConsultation.diagnosis || "",
-            diagnoses: newConsultation.diagnoses || [],
+    // 3) Auditoría
+    try {
+      onLogActivity(
+        "create",
+        `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
+        selectedPatient.id
+      );
+    } catch {
+      // no-op
+    }
 
-            // Special Modules
-            prescriptions: (newConsultation.prescriptions || []) as any,
-            dentalMap: (newConsultation.dentalMap || []) as any,
-            podogram: (newConsultation.podogram || []) as any,
-            exams: (newConsultation.exams || {}) as any,
-            examSheets: (newConsultation.examSheets || []) as any,
+    // 4) Reset UI & Clear Draft
+    clearDraft();
+    setIsCreatingConsultation(false);
+    setNewConsultation(getEmptyConsultation());
+    setActiveTab("patients");
 
-            // Control
-            nextControlDate: newConsultation.nextControlDate || "",
-            nextControlReason: newConsultation.nextControlReason || "",
-            reminderActive: Boolean(newConsultation.reminderActive),
+    return updatedPatient; // Return so the consumer can update selectedPatient
+  };
 
-            // Context
-            patientId: selectedPatient.id,
-            centerId: activeCenterId || "",
-            centerName: activeCenter?.name || "", // NEW
-            professionalName: doctorName || "Profesional",
-            professionalId: currentUid,
-            professionalRole: role,
-        } as any;
-
-        // 1) Guardar en Firestore (colección "consultations")
-        try {
-            if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
-            await addDoc(collection(db, "patients", selectedPatient.id, "consultations"), sanitizeForFirestore({
-                ...consultation,
-                centerId: activeCenterId,
-                patientId: selectedPatient?.id ?? null,
-                createdByUid: currentUid,
-                createdAt: serverTimestamp(),
-            }));
-            console.log("✅ Consultation saved to Firestore");
-            showToast("Atención guardada correctamente en la nube", "success");
-        } catch (error) {
-            console.error(error);
-            showToast("Error al guardar en la nube (se guardó localmente)", "error");
-        }
-
-        // 2) Actualizar estado local (lista de pacientes)
-        // Ensure professional is in care team and allowedUids
-        const careTeamUids = Array.from(new Set([...(selectedPatient.careTeamUids || []), currentUid]));
-        const allowedUids = Array.from(new Set([...(selectedPatient.accessControl?.allowedUids || []), currentUid]));
-        const centerIds = Array.from(new Set([...(selectedPatient.accessControl?.centerIds || []), activeCenterId as string]));
-
-        const updatedPatient: Patient = sanitizeForFirestore({
-            ...selectedPatient,
-            careTeamUids,
-            accessControl: {
-                ...selectedPatient.accessControl,
-                allowedUids,
-                centerIds
-            },
-            consultations: [consultation, ...(selectedPatient.consultations || [])],
-            lastUpdated: new Date().toISOString(),
-        });
-
-        onUpdatePatient(updatedPatient);
-
-        // 3) Auditoría
-        try {
-            onLogActivity(
-                "create",
-                `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
-                selectedPatient.id
-            );
-        } catch {
-            // no-op
-        }
-
-        // 4) Reset UI & Clear Draft
-        clearDraft();
-        setIsCreatingConsultation(false);
-        setNewConsultation(getEmptyConsultation());
-        setActiveTab("patients");
-
-        return updatedPatient; // Return so the consumer can update selectedPatient
-    };
-
-    return {
-        newConsultation,
-        setNewConsultation,
-        isCreatingConsultation,
-        setIsCreatingConsultation,
-        handleVitalsChange,
-        handleExamChange,
-        addPrescription,
-        removePrescription,
-        addDiagnosis,
-        removeDiagnosis,
-        pinDiagnosis,
-        handleCreateConsultation,
-        getEmptyConsultation,
-        clearDraft,
-    };
+  return {
+    newConsultation,
+    setNewConsultation,
+    isCreatingConsultation,
+    setIsCreatingConsultation,
+    handleVitalsChange,
+    handleExamChange,
+    addPrescription,
+    removePrescription,
+    addDiagnosis,
+    removeDiagnosis,
+    pinDiagnosis,
+    handleCreateConsultation,
+    getEmptyConsultation,
+    clearDraft,
+  };
 };

@@ -154,7 +154,13 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
   };
 
   // Visibility for Anthropometry
-  const showAnthropometry = ["NUTRICIONISTA", "MEDICO", "ENFERMERA", "KINESIOLOGO", "PREPARADOR_FISICO"].includes(role || "");
+  const showAnthropometry = [
+    "NUTRICIONISTA",
+    "MEDICO",
+    "ENFERMERA",
+    "KINESIOLOGO",
+    "PREPARADOR_FISICO",
+  ].includes(role || "");
   const isAnthropometryEnabled = anthropometryEnabled === true;
 
   return (
@@ -162,7 +168,10 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
       {/* Standard Vitals */}
       <div className="bg-blue-50/50 p-8 rounded-3xl border border-blue-100">
         <h4 className="text-blue-900 font-bold text-lg uppercase tracking-wider mb-6 flex items-center gap-2">
-          <Activity className="w-5 h-5" /> {role === "NUTRICIONISTA" ? "Antropometría y Signos Vitales" : "Signos Vitales y Antropometría"}
+          <Activity className="w-5 h-5" />{" "}
+          {role === "NUTRICIONISTA"
+            ? "Antropometría y Signos Vitales"
+            : "Signos Vitales y Antropometría"}
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
           {isAnthropometryEnabled ? (
@@ -283,7 +292,7 @@ const VitalsForm: React.FC<VitalsFormProps> = ({
                     key={examId}
                     label={config.label}
                     value={displayedVFG}
-                    onChange={() => { }}
+                    onChange={() => {}}
                     unit={config.unit}
                     readOnly={true}
                     historyData={getExamHistory("vfg")}

@@ -31,7 +31,9 @@ function requiredEnv(name: string): string {
 }
 
 function normalizeEmail(to: string): string {
-  return String(to || "").trim().toLowerCase();
+  return String(to || "")
+    .trim()
+    .toLowerCase();
 }
 
 async function writeMessageLog(params: {
@@ -45,18 +47,22 @@ async function writeMessageLog(params: {
   error?: string;
   tags?: string[];
 }): Promise<void> {
-  await db.collection("centers").doc(params.centerId).collection("messageLogs").add({
-    type: params.type,
-    channel: "email",
-    to: params.to,
-    templateId: params.templateId || null,
-    relatedType: params.relatedType || null,
-    relatedId: params.relatedId || null,
-    status: params.status,
-    error: params.error || null,
-    tags: Array.isArray(params.tags) ? params.tags : [],
-    createdAt: serverTimestamp(),
-  });
+  await db
+    .collection("centers")
+    .doc(params.centerId)
+    .collection("messageLogs")
+    .add({
+      type: params.type,
+      channel: "email",
+      to: params.to,
+      templateId: params.templateId || null,
+      relatedType: params.relatedType || null,
+      relatedId: params.relatedId || null,
+      status: params.status,
+      error: params.error || null,
+      tags: Array.isArray(params.tags) ? params.tags : [],
+      createdAt: serverTimestamp(),
+    });
 }
 
 async function sendWithSendGrid(params: SendEmailParams): Promise<SendEmailResult> {

@@ -1,5 +1,5 @@
-const fs = require('fs');
-let code = fs.readFileSync('components/DoctorDashboard.tsx', 'utf-8');
+const fs = require("fs");
+let code = fs.readFileSync("components/DoctorDashboard.tsx", "utf-8");
 
 // 1. Añadir importaciones (después del último sub-componente importado)
 const importStr = `import { DoctorPatientsListTab } from "../features/doctor/components/DoctorPatientsListTab";
@@ -7,12 +7,13 @@ import { DoctorAgendaTab } from "../features/doctor/components/DoctorAgendaTab";
 import { DoctorSettingsTab } from "../features/doctor/components/DoctorSettingsTab";\n`;
 
 code = code.replace(
-    'import DrivePicker from "./DrivePicker";',
-    'import DrivePicker from "./DrivePicker";\n' + importStr
+  'import DrivePicker from "./DrivePicker";',
+  'import DrivePicker from "./DrivePicker";\n' + importStr
 );
 
 // 2. Extraer y reemplazar la pestaña de pacientes
-const patientsPattern = /\{\/\* CONTENT: PATIENTS LIST \*\/\}.*?(?=\{\/\* CONTENT: AGENDA VIEW \*\/\})/gs;
+const patientsPattern =
+  /\{\/\* CONTENT: PATIENTS LIST \*\/\}.*?(?=\{\/\* CONTENT: AGENDA VIEW \*\/\})/gs;
 const patientsReplacement = `
             {/* CONTENT: PATIENTS LIST */}
             {activeTab === "patients" && (
@@ -43,7 +44,8 @@ const patientsReplacement = `
 code = code.replace(patientsPattern, patientsReplacement);
 
 // 3. Extraer y reemplazar la pestaña de agenda
-const agendaPattern = /\{\/\* CONTENT: AGENDA VIEW \*\/\}.*?(?=\{\/\* CONTENT: SETTINGS \(TEMPLATES & PROFILES\) \*\/\})/gs;
+const agendaPattern =
+  /\{\/\* CONTENT: AGENDA VIEW \*\/\}.*?(?=\{\/\* CONTENT: SETTINGS \(TEMPLATES & PROFILES\) \*\/\})/gs;
 const agendaReplacement = `
             {/* CONTENT: AGENDA VIEW */}
             {activeTab === "agenda" && moduleGuards.agenda && (
@@ -73,7 +75,8 @@ const agendaReplacement = `
 code = code.replace(agendaPattern, agendaReplacement);
 
 // 4. Extraer y reemplazar la pestaña de configuración
-const settingsPattern = /\{\/\* CONTENT: SETTINGS \(TEMPLATES & PROFILES\) \*\/\}.*?(?=\{\/\* Slot Modal \(For Agenda\) \*\/\})/gs;
+const settingsPattern =
+  /\{\/\* CONTENT: SETTINGS \(TEMPLATES & PROFILES\) \*\/\}.*?(?=\{\/\* Slot Modal \(For Agenda\) \*\/\})/gs;
 const settingsReplacement = `
             {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
             {activeTab === "settings" && (
@@ -111,5 +114,5 @@ const settingsReplacement = `
             `;
 code = code.replace(settingsPattern, settingsReplacement);
 
-fs.writeFileSync('components/DoctorDashboard.tsx', code);
-console.log('Reemplazo avanzado finalizado');
+fs.writeFileSync("components/DoctorDashboard.tsx", code);
+console.log("Reemplazo avanzado finalizado");

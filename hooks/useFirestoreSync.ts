@@ -12,7 +12,17 @@ import {
   or,
 } from "firebase/firestore";
 import { User } from "firebase/auth";
-import { Patient, Doctor, Appointment, AuditLogEntry, Preadmission, MedicalCenter, UserProfile, AnyRole, MedicalService } from "../types";
+import {
+  Patient,
+  Doctor,
+  Appointment,
+  AuditLogEntry,
+  Preadmission,
+  MedicalCenter,
+  UserProfile,
+  AnyRole,
+  MedicalService,
+} from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
 
@@ -44,8 +54,16 @@ export function useFirestoreSync(
     // we return empty to avoid it appearing as a "Specialty" in the booking flow.
     const lower = legacyRole.toLowerCase();
     const managementVariants = [
-      "center_admin", "admin_centro", "admin", "superadmin", "super_admin",
-      "secretaria", "administrativo", "administrativa", "secretary", "management"
+      "center_admin",
+      "admin_centro",
+      "admin",
+      "superadmin",
+      "super_admin",
+      "secretaria",
+      "administrativo",
+      "administrativa",
+      "secretary",
+      "management",
     ];
 
     if (managementVariants.includes(lower)) return "";
@@ -59,7 +77,8 @@ export function useFirestoreSync(
       const roleStr = clinicalRole || (payload.role as string)?.trim() || "MEDICO";
 
       const isActive = payload.active !== false && payload.activo !== false;
-      const isVisible = payload.visibleInBooking === true || (payload.visibleInBooking as any) === "true";
+      const isVisible =
+        payload.visibleInBooking === true || (payload.visibleInBooking as any) === "true";
 
       return {
         id,
@@ -260,10 +279,13 @@ export function useFirestoreSync(
     const unsubServices = onSnapshot(
       query(collection(db, "centers", activeCenterId, "services"), where("active", "==", true)),
       (snap) => {
-        const rawServices = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as MedicalService[];
+        const rawServices = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        })) as MedicalService[];
         const filteredServices = auth.currentUser
           ? rawServices
-          : rawServices.filter(s => s.isAgendable !== false);
+          : rawServices.filter((s) => s.isAgendable !== false);
         setServices(filteredServices);
       },
       (error) => {

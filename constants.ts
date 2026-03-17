@@ -140,41 +140,98 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
 ];
 
 export const MEDICAL_HISTORY_OPTIONS = [
-  { id: "HTA", label: "Hipertensión Arterial", snomedCode: "38341003", system: "http://snomed.info/sct" },
-  { id: "DM1", label: "Diabetes Mellitus Tipo 1", snomedCode: "46635009", system: "http://snomed.info/sct" },
-  { id: "DM2", label: "Diabetes Mellitus Tipo 2", snomedCode: "44054006", system: "http://snomed.info/sct" },
-  { id: "DLP", label: "Dislipidemia (Colesterol Alto)", snomedCode: "55822004", system: "http://snomed.info/sct" },
+  {
+    id: "HTA",
+    label: "Hipertensión Arterial",
+    snomedCode: "38341003",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "DM1",
+    label: "Diabetes Mellitus Tipo 1",
+    snomedCode: "46635009",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "DM2",
+    label: "Diabetes Mellitus Tipo 2",
+    snomedCode: "44054006",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "DLP",
+    label: "Dislipidemia (Colesterol Alto)",
+    snomedCode: "55822004",
+    system: "http://snomed.info/sct",
+  },
   { id: "HIPO", label: "Hipotiroidismo", snomedCode: "40930008", system: "http://snomed.info/sct" },
-  { id: "HIPER", label: "Hipertiroidismo", snomedCode: "34486009", system: "http://snomed.info/sct" },
-  { id: "ERC", label: "Enfermedad Renal Crónica", snomedCode: "709044004", system: "http://snomed.info/sct" },
-  { id: "IC", label: "Insuficiencia Cardíaca", snomedCode: "42343007", system: "http://snomed.info/sct" },
-  { id: "COR", label: "Cardiopatía Coronaria (Infartos)", snomedCode: "53741008", system: "http://snomed.info/sct" },
-  { id: "ACV", label: "Accidente Cerebrovascular", snomedCode: "230690007", system: "http://snomed.info/sct" },
+  {
+    id: "HIPER",
+    label: "Hipertiroidismo",
+    snomedCode: "34486009",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "ERC",
+    label: "Enfermedad Renal Crónica",
+    snomedCode: "709044004",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "IC",
+    label: "Insuficiencia Cardíaca",
+    snomedCode: "42343007",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "COR",
+    label: "Cardiopatía Coronaria (Infartos)",
+    snomedCode: "53741008",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "ACV",
+    label: "Accidente Cerebrovascular",
+    snomedCode: "230690007",
+    system: "http://snomed.info/sct",
+  },
   { id: "EPOC", label: "Asma / EPOC", snomedCode: "185086009", system: "http://snomed.info/sct" },
   { id: "CANCER", label: "Cáncer", snomedCode: "363346000", system: "http://snomed.info/sct" },
   { id: "OTRO", label: "Otras", snomedCode: null, system: null },
 ];
 
 export const SURGICAL_HISTORY_OPTIONS = [
-  { id: "APENDICE", label: "Apendicetomía", snomedCode: "80146002", system: "http://snomed.info/sct" },
-  { id: "VESICULA", label: "Colecistectomía", snomedCode: "38102005", system: "http://snomed.info/sct" },
+  {
+    id: "APENDICE",
+    label: "Apendicetomía",
+    snomedCode: "80146002",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "VESICULA",
+    label: "Colecistectomía",
+    snomedCode: "38102005",
+    system: "http://snomed.info/sct",
+  },
   { id: "HERNIA", label: "Hernias", snomedCode: "50448004", system: "http://snomed.info/sct" },
-  { id: "UTERO", label: "Histerectomía", snomedCode: "236886002", system: "http://snomed.info/sct" },
-  { id: "PROSTATA", label: "Cirugía Prostática", snomedCode: "11116008", system: "http://snomed.info/sct" },
+  {
+    id: "UTERO",
+    label: "Histerectomía",
+    snomedCode: "236886002",
+    system: "http://snomed.info/sct",
+  },
+  {
+    id: "PROSTATA",
+    label: "Cirugía Prostática",
+    snomedCode: "11116008",
+    system: "http://snomed.info/sct",
+  },
   { id: "OTRO", label: "Otras", snomedCode: null, system: null },
 ];
 
-export const SMOKING_STATUS_OPTIONS = [
-  "No fumador",
-  "Ex fumador",
-  "Fumador actual",
-] as const;
+export const SMOKING_STATUS_OPTIONS = ["No fumador", "Ex fumador", "Fumador actual"] as const;
 
-export const ALCOHOL_STATUS_OPTIONS = [
-  "No consumo",
-  "Ocasional",
-  "Frecuente",
-] as const;
+export const ALCOHOL_STATUS_OPTIONS = ["No consumo", "Ocasional", "Frecuente"] as const;
 
 export const LIVING_WITH_OPTIONS = [
   "Solo/a",

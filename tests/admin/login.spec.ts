@@ -24,10 +24,14 @@ test("T1 — Admin: login y acceso a dashboard", async ({ page }) => {
   // 3. Validar hidratación dinámica (sustituye al waitForTimeout estático)
   // Asegurar que el tab de Centro de Mando está activo
   await page.click('button:has-text("Centro de Mando")');
-  await expect(page.locator('[data-testid="admin-dashboard-metrics-section"]')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('[data-testid="admin-dashboard-metrics-section"]')).toBeVisible({
+    timeout: 30000,
+  });
 
   // 4. El botón de logout existe (confirma sesión activa)
-  await expect(page.locator('button[title*="Salir"], button:has-text("Salir"), button svg.lucide-log-out')).toBeVisible();
-  
+  await expect(
+    page.locator('button[title*="Salir"], button:has-text("Salir"), button svg.lucide-log-out')
+  ).toBeVisible();
+
   console.log("✅ T1 — Login de Admin exitoso. Dashboard visible.");
 });

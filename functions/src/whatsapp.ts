@@ -1,593 +1,682 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
-import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import {
+  GoogleGenerativeAI,
+  SchemaType,
+  HarmCategory,
+  HarmBlockThreshold,
+} from "@google/generative-ai";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
 // Inicializar admin una sola vez
 if (admin.apps.length === 0) {
-    admin.initializeApp();
+  admin.initializeApp();
 }
 
 const db = admin.firestore();
 
 // ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
-const MAX_AGENT_TURNS = 5;          // Máximo de tool calls por mensaje (evitar loops)
-const MAX_HISTORY_MESSAGES = 10;    // Máximo de mensajes previos enviados a Gemini
-const CONVERSATION_TTL_HOURS = 4;   // Expira conversaciones inactivas
+const MAX_AGENT_TURNS = 5; // Máximo de tool calls por mensaje (evitar loops)
+const MAX_HISTORY_MESSAGES = 10; // Máximo de mensajes previos enviados a Gemini
+const CONVERSATION_TTL_HOURS = 4; // Expira conversaciones inactivas
 
 let _genAI: GoogleGenerativeAI | null = null;
 function getGenAI(): GoogleGenerativeAI {
-    if (!_genAI) {
-        const key = process.env.GEMINI_API_KEY || "";
-        if (!key) {
-            console.error("[Config] GEMINI_API_KEY no disponible — verificar Firebase Secrets");
-            // No cachear si no hay key
-            return new GoogleGenerativeAI("");
-        }
-        _genAI = new GoogleGenerativeAI(key); // El SDK por defecto usa v1
+  if (!_genAI) {
+    const key = process.env.GEMINI_API_KEY || "";
+    if (!key) {
+      console.error("[Config] GEMINI_API_KEY no disponible — verificar Firebase Secrets");
+      // No cachear si no hay key
+      return new GoogleGenerativeAI("");
     }
-    return _genAI;
+    _genAI = new GoogleGenerativeAI(key); // El SDK por defecto usa v1
+  }
+  return _genAI;
 }
 function getWhatsappToken(): string {
-    const token = process.env.WHATSAPP_TOKEN || "";
-    if (!token) console.error("[Config] WHATSAPP_TOKEN no disponible — verificar Firebase Secrets");
-    return token;
+  const token = process.env.WHATSAPP_TOKEN || "";
+  if (!token) console.error("[Config] WHATSAPP_TOKEN no disponible — verificar Firebase Secrets");
+  return token;
 }
 
 // ─── CACHE POR CENTRO (multi-centro) ─────────────────────────────────────────
 interface CenterCache {
-    center: any;
-    staff: any[];
-    lastUpdate: number;
+  center: any;
+  staff: any[];
+  lastUpdate: number;
 }
 const centerCache: Record<string, CenterCache> = {};
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
 
-async function getCenterByPhoneId(phoneNumberId: string): Promise<{ center: any; staff: any[] } | null> {
-    const now = Date.now();
+async function getCenterByPhoneId(
+  phoneNumberId: string
+): Promise<{ center: any; staff: any[] } | null> {
+  const now = Date.now();
 
-    for (const cached of Object.values(centerCache)) {
-        if (
-            cached.center?.whatsappConfig?.phoneNumberId === phoneNumberId &&
-            (now - cached.lastUpdate) < CACHE_TTL
-        ) {
-            return { center: cached.center, staff: cached.staff };
-        }
+  for (const cached of Object.values(centerCache)) {
+    if (
+      cached.center?.whatsappConfig?.phoneNumberId === phoneNumberId &&
+      now - cached.lastUpdate < CACHE_TTL
+    ) {
+      return { center: cached.center, staff: cached.staff };
+    }
+  }
+
+  const cleanId = phoneNumberId.trim();
+  try {
+    const snap = await db
+      .collection("centers")
+      .where("whatsappConfig.phoneNumberId", "==", cleanId)
+      .where("isActive", "==", true)
+      .limit(1)
+      .get();
+
+    if (snap.empty) {
+      console.warn(`[Chatbot] No se encontró centro para phoneNumberId=${phoneNumberId}`);
+      return null;
     }
 
-    const cleanId = phoneNumberId.trim();
-    try {
-        const snap = await db.collection("centers")
-            .where("whatsappConfig.phoneNumberId", "==", cleanId)
-            .where("isActive", "==", true)
-            .limit(1)
-            .get();
+    const centerDoc = snap.docs[0];
+    const center: any = { id: centerDoc.id, ...centerDoc.data() };
 
-        if (snap.empty) {
-            console.warn(`[Chatbot] No se encontró centro para phoneNumberId=${phoneNumberId}`);
-            return null;
-        }
+    const staffSnap = await db
+      .collection("centers")
+      .doc(center.id)
+      .collection("staff")
+      .where("visibleInBooking", "==", true)
+      .where("active", "==", true)
+      .get();
+    const staff = staffSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        const centerDoc = snap.docs[0];
-        const center: any = { id: centerDoc.id, ...centerDoc.data() };
-
-        const staffSnap = await db.collection("centers").doc(center.id)
-            .collection("staff")
-            .where("visibleInBooking", "==", true)
-            .where("active", "==", true)
-            .get();
-        const staff = staffSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        centerCache[center.id] = { center, staff, lastUpdate: now };
-        console.log(`[Chatbot] Centro cargado: ${center.name} (${center.id}), staff: ${staff.length}`);
-        return { center, staff };
-    } catch (error) {
-        console.error("[Chatbot] Error cargando centro por phoneNumberId:", error);
-        return null;
-    }
+    centerCache[center.id] = { center, staff, lastUpdate: now };
+    console.log(`[Chatbot] Centro cargado: ${center.name} (${center.id}), staff: ${staff.length}`);
+    return { center, staff };
+  } catch (error) {
+    console.error("[Chatbot] Error cargando centro por phoneNumberId:", error);
+    return null;
+  }
 }
 
 // ─── CONVERSACIÓN CON MEMORIA (FIRESTORE) ────────────────────────────────────
 
 interface AgentLogEntry {
-    turn: number;
-    tool: string;
-    args: any;
-    result: any;
-    timestamp: string;
+  turn: number;
+  tool: string;
+  args: any;
+  result: any;
+  timestamp: string;
 }
 
 interface AgentConversation {
-    centerId?: string;
-    centerName?: string;
-    patientName?: string;
-    patientRut?: string;
-    patientPhone?: string;
-    // Historial para contexto del agente (últimos N mensajes)
-    history?: { role: string; text: string }[];
-    // Estado estructurado del flujo de agendamiento
-    flowState?: "idle" | "exploring" | "awaiting_confirmation" | "awaiting_rut" | "awaiting_name" | "booking_completed";
-    lastIntent?: string;
-    pendingAction?: string;
-    selectedStaffId?: string;
-    selectedStaffName?: string;
-    selectedDate?: string;
-    selectedSlotDocId?: string;
-    selectedSlotLabel?: string;
-    selectedSlotTime?: string;
-    // Confirmación estructurada: gate para book_appointment
-    pendingBooking?: {
-        slotDocId: string;
-        staffId: string;
-        staffName: string;
-        date: string;
-        time: string;
-        patientName: string;
-        patientRut: string;
-        confirmedAt?: string; // ISO timestamp de confirmación del paciente
-    };
-    bookingSuccess?: boolean;  // Reserva ejecutada con éxito (cierre determinístico)
-    // Auto-Rescate de Controles
-    isRescuingControl?: boolean;
-    targetDoctorId?: string;
-    targetDoctorName?: string;
-    hasPendingExams?: boolean;
-    // Estado simplificado
-    phase: "ACTIVE" | "HANDOFF";
-    handoffStatus?: string;
-    // Auditoría completa
-    lastAgentAction?: string;
-    agentLog?: AgentLogEntry[];
-    interactiveOptions?: any;
-    updatedAt: admin.firestore.FieldValue;
+  centerId?: string;
+  centerName?: string;
+  patientName?: string;
+  patientRut?: string;
+  patientPhone?: string;
+  // Historial para contexto del agente (últimos N mensajes)
+  history?: { role: string; text: string }[];
+  // Estado estructurado del flujo de agendamiento
+  flowState?:
+    | "idle"
+    | "exploring"
+    | "awaiting_confirmation"
+    | "awaiting_rut"
+    | "awaiting_name"
+    | "booking_completed";
+  lastIntent?: string;
+  pendingAction?: string;
+  selectedStaffId?: string;
+  selectedStaffName?: string;
+  selectedDate?: string;
+  selectedSlotDocId?: string;
+  selectedSlotLabel?: string;
+  selectedSlotTime?: string;
+  // Confirmación estructurada: gate para book_appointment
+  pendingBooking?: {
+    slotDocId: string;
+    staffId: string;
+    staffName: string;
+    date: string;
+    time: string;
+    patientName: string;
+    patientRut: string;
+    confirmedAt?: string; // ISO timestamp de confirmación del paciente
+  };
+  bookingSuccess?: boolean; // Reserva ejecutada con éxito (cierre determinístico)
+  // Auto-Rescate de Controles
+  isRescuingControl?: boolean;
+  targetDoctorId?: string;
+  targetDoctorName?: string;
+  hasPendingExams?: boolean;
+  // Estado simplificado
+  phase: "ACTIVE" | "HANDOFF";
+  handoffStatus?: string;
+  // Auditoría completa
+  lastAgentAction?: string;
+  agentLog?: AgentLogEntry[];
+  interactiveOptions?: any;
+  updatedAt: admin.firestore.FieldValue;
 }
 
 function convKey(centerId: string, phone: string): string {
-    return `${centerId}_${phone}`;
+  return `${centerId}_${phone}`;
 }
 
 async function getConversation(phone: string, centerId?: string): Promise<AgentConversation> {
-    // Intentar con clave multi-centro primero
-    if (centerId) {
-        const key = convKey(centerId, phone);
-        const doc = await db.collection("conversations").doc(key).get();
-        if (doc.exists) {
-            const conv = doc.data() as AgentConversation;
-            return await _checkConvExpiry(conv, key);
-        }
+  // Intentar con clave multi-centro primero
+  if (centerId) {
+    const key = convKey(centerId, phone);
+    const doc = await db.collection("conversations").doc(key).get();
+    if (doc.exists) {
+      const conv = doc.data() as AgentConversation;
+      return await _checkConvExpiry(conv, key);
     }
-    // Fallback: clave legacy (solo phone) — migración suave
-    const legacyDoc = await db.collection("conversations").doc(phone).get();
-    if (legacyDoc.exists) {
-        const conv = legacyDoc.data() as AgentConversation;
-        return await _checkConvExpiry(conv, phone);
-    }
-    return { phase: "ACTIVE", history: [], flowState: "idle", updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+  }
+  // Fallback: clave legacy (solo phone) — migración suave
+  const legacyDoc = await db.collection("conversations").doc(phone).get();
+  if (legacyDoc.exists) {
+    const conv = legacyDoc.data() as AgentConversation;
+    return await _checkConvExpiry(conv, phone);
+  }
+  return {
+    phase: "ACTIVE",
+    history: [],
+    flowState: "idle",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
 }
 
-async function _checkConvExpiry(conv: AgentConversation, docId: string): Promise<AgentConversation> {
-
-    // Auto-destrabar conversaciones HANDOFF expiradas
-    if (conv.phase === "HANDOFF" && conv.updatedAt) {
-        let lastUpdate = new Date();
-        if (typeof (conv.updatedAt as any).toDate === "function") {
-            lastUpdate = (conv.updatedAt as any).toDate();
-        }
-        const diffHours = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
-        if (diffHours >= CONVERSATION_TTL_HOURS * 2) {
-            console.log(`[Agent] Reseteando conversación ${docId} atrapada en HANDOFF por >8h.`);
-            await db.collection("conversations").doc(docId).delete();
-            return { phase: "ACTIVE", history: [], flowState: "idle", updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-        }
+async function _checkConvExpiry(
+  conv: AgentConversation,
+  docId: string
+): Promise<AgentConversation> {
+  // Auto-destrabar conversaciones HANDOFF expiradas
+  if (conv.phase === "HANDOFF" && conv.updatedAt) {
+    let lastUpdate = new Date();
+    if (typeof (conv.updatedAt as any).toDate === "function") {
+      lastUpdate = (conv.updatedAt as any).toDate();
     }
-
-    // Auto-expirar conversaciones activas inactivas
-    if (conv.phase === "ACTIVE" && conv.updatedAt) {
-        let lastUpdate = new Date();
-        if (typeof (conv.updatedAt as any).toDate === "function") {
-            lastUpdate = (conv.updatedAt as any).toDate();
-        }
-        const diffHours = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
-        if (diffHours >= CONVERSATION_TTL_HOURS) {
-            console.log(`[Agent] Conversación ${docId} expirada por inactividad (${diffHours.toFixed(1)}h).`);
-            return { phase: "ACTIVE", history: [], flowState: "idle", updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-        }
+    const diffHours = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
+    if (diffHours >= CONVERSATION_TTL_HOURS * 2) {
+      console.log(`[Agent] Reseteando conversación ${docId} atrapada en HANDOFF por >8h.`);
+      await db.collection("conversations").doc(docId).delete();
+      return {
+        phase: "ACTIVE",
+        history: [],
+        flowState: "idle",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
     }
+  }
 
-    return conv;
+  // Auto-expirar conversaciones activas inactivas
+  if (conv.phase === "ACTIVE" && conv.updatedAt) {
+    let lastUpdate = new Date();
+    if (typeof (conv.updatedAt as any).toDate === "function") {
+      lastUpdate = (conv.updatedAt as any).toDate();
+    }
+    const diffHours = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
+    if (diffHours >= CONVERSATION_TTL_HOURS) {
+      console.log(
+        `[Agent] Conversación ${docId} expirada por inactividad (${diffHours.toFixed(1)}h).`
+      );
+      return {
+        phase: "ACTIVE",
+        history: [],
+        flowState: "idle",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+    }
+  }
+
+  return conv;
 }
 
-async function saveConversation(phone: string, data: Partial<AgentConversation>, centerId?: string) {
-    const key = centerId ? convKey(centerId, phone) : phone;
-    await db.collection("conversations").doc(key).set(
-        { ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-        { merge: true }
-    );
+async function saveConversation(
+  phone: string,
+  data: Partial<AgentConversation>,
+  centerId?: string
+) {
+  const key = centerId ? convKey(centerId, phone) : phone;
+  await db
+    .collection("conversations")
+    .doc(key)
+    .set({ ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 }
 
 export async function resetConversation(phone: string, centerId?: string) {
-    const key = centerId ? convKey(centerId, phone) : phone;
-    await db.collection("conversations").doc(key).delete();
-    // Limpiar clave legacy si existe
-    if (centerId) {
-        const legacyRef = db.collection("conversations").doc(phone);
-        const legacySnap = await legacyRef.get();
-        if (legacySnap.exists) await legacyRef.delete();
-    }
+  const key = centerId ? convKey(centerId, phone) : phone;
+  await db.collection("conversations").doc(key).delete();
+  // Limpiar clave legacy si existe
+  if (centerId) {
+    const legacyRef = db.collection("conversations").doc(phone);
+    const legacySnap = await legacyRef.get();
+    if (legacySnap.exists) await legacyRef.delete();
+  }
 }
 
 // ─── MENSAJERÍA WHATSAPP ──────────────────────────────────────────────────────
 
 async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any) {
-    const WHATSAPP_TOKEN = getWhatsappToken();
-    if (!WHATSAPP_TOKEN || !phoneNumberId) return;
-    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
-    try {
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${WHATSAPP_TOKEN}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
-        });
-        if (!res.ok) {
-            const err = await res.text();
-            console.error("[WA API Error]", res.status, err);
-        }
-    } catch (err) {
-        console.error("[sendRawWhatsAppPayload] Error de red:", err);
+  const WHATSAPP_TOKEN = getWhatsappToken();
+  if (!WHATSAPP_TOKEN || !phoneNumberId) return;
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("[WA API Error]", res.status, err);
     }
+  } catch (err) {
+    console.error("[sendRawWhatsAppPayload] Error de red:", err);
+  }
 }
 
 async function sendText(phoneNumberId: string, to: string, text: string) {
-    await sendRawWhatsAppPayload(phoneNumberId, { to, type: "text", text: { body: text } });
+  await sendRawWhatsAppPayload(phoneNumberId, { to, type: "text", text: { body: text } });
 }
 
 export async function sendButtons(
-    phoneNumberId: string,
-    to: string,
-    bodyText: string,
-    buttons: { id: string; title: string }[]
+  phoneNumberId: string,
+  to: string,
+  bodyText: string,
+  buttons: { id: string; title: string }[]
 ) {
-    await sendRawWhatsAppPayload(phoneNumberId, {
-        to,
-        type: "interactive",
-        interactive: {
-            type: "button",
-            body: { text: bodyText },
-            action: {
-                buttons: buttons.map(b => ({ type: "reply", reply: { id: b.id, title: b.title } }))
-            }
-        }
-    });
+  await sendRawWhatsAppPayload(phoneNumberId, {
+    to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: bodyText },
+      action: {
+        buttons: buttons.map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })),
+      },
+    },
+  });
 }
 
 export async function sendList(
-    phoneNumberId: string,
-    to: string,
-    title: string,
-    bodyText: string,
-    buttonLabel: string,
-    sections: any[]
+  phoneNumberId: string,
+  to: string,
+  title: string,
+  bodyText: string,
+  buttonLabel: string,
+  sections: any[]
 ) {
-    await sendRawWhatsAppPayload(phoneNumberId, {
-        to,
-        type: "interactive",
-        interactive: {
-            type: "list",
-            header: { type: "text", text: title },
-            body: { text: bodyText },
-            action: { button: buttonLabel, sections }
-        }
-    });
+  await sendRawWhatsAppPayload(phoneNumberId, {
+    to,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      header: { type: "text", text: title },
+      body: { text: bodyText },
+      action: { button: buttonLabel, sections },
+    },
+  });
 }
 
 // ─── TOOLS: FUNCIONES REALES DEL AGENTE ──────────────────────────────────────
 
 async function getAvailableSlots(
-    centerId: string,
-    staffId: string,
-    date: string
+  centerId: string,
+  staffId: string,
+  date: string
 ): Promise<{ id: string; label: string; docId: string }[]> {
-    try {
-        let snap = await db
-            .collection("centers").doc(centerId)
-            .collection("appointments")
-            .where("doctorId", "==", staffId)
-            .where("date", "==", date)
-            .where("status", "==", "available")
-            .get();
+  try {
+    let snap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .where("doctorId", "==", staffId)
+      .where("date", "==", date)
+      .where("status", "==", "available")
+      .get();
 
-        // Fallback: doctorUid (compatibilidad legado)
-        if (snap.empty) {
-            snap = await db
-                .collection("centers").doc(centerId)
-                .collection("appointments")
-                .where("doctorUid", "==", staffId)
-                .where("date", "==", date)
-                .where("status", "==", "available")
-                .get();
-        }
-
-        if (snap.empty) return [];
-
-        const slots = snap.docs.map(d => {
-            const data = d.data();
-            const time: string = data.time || "00:00";
-            return {
-                id: time.replace(":", ""),
-                label: time,
-                docId: d.id
-            };
-        });
-
-        slots.sort((a, b) => a.label.localeCompare(b.label));
-        return slots;
-    } catch (error) {
-        console.error("[getAvailableSlots] Error:", error);
-        return [];
+    // Fallback: doctorUid (compatibilidad legado)
+    if (snap.empty) {
+      snap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("appointments")
+        .where("doctorUid", "==", staffId)
+        .where("date", "==", date)
+        .where("status", "==", "available")
+        .get();
     }
+
+    if (snap.empty) return [];
+
+    const slots = snap.docs.map((d) => {
+      const data = d.data();
+      const time: string = data.time || "00:00";
+      return {
+        id: time.replace(":", ""),
+        label: time,
+        docId: d.id,
+      };
+    });
+
+    slots.sort((a, b) => a.label.localeCompare(b.label));
+    return slots;
+  } catch (error) {
+    console.error("[getAvailableSlots] Error:", error);
+    return [];
+  }
 }
 
 // ─── VALIDACIÓN DE RUT CHILENO ────────────────────────────────────────────────
 function isValidRut(rut: string): boolean {
-    const clean = rut.replace(/[^0-9kK]/g, "").toUpperCase();
-    if (clean.length < 7 || clean.length > 9) return false;
-    const body = clean.slice(0, -1);
-    const dv = clean.slice(-1);
-    let sum = 0;
-    let mul = 2;
-    for (let i = body.length - 1; i >= 0; i--) {
-        sum += parseInt(body[i]) * mul;
-        mul = mul === 7 ? 2 : mul + 1;
-    }
-    const expected = 11 - (sum % 11);
-    const dvExpected = expected === 11 ? "0" : expected === 10 ? "K" : String(expected);
-    return dv === dvExpected;
+  const clean = rut.replace(/[^0-9kK]/g, "").toUpperCase();
+  if (clean.length < 7 || clean.length > 9) return false;
+  const body = clean.slice(0, -1);
+  const dv = clean.slice(-1);
+  let sum = 0;
+  let mul = 2;
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body[i]) * mul;
+    mul = mul === 7 ? 2 : mul + 1;
+  }
+  const expected = 11 - (sum % 11);
+  const dvExpected = expected === 11 ? "0" : expected === 10 ? "K" : String(expected);
+  return dv === dvExpected;
 }
 
 async function bookAppointmentTool(
-    centerId: string,
-    slotDocId: string,
-    patientName: string,
-    patientRut: string,
-    patientPhone: string,
-    staffId?: string,
-    expectedDate?: string
+  centerId: string,
+  slotDocId: string,
+  patientName: string,
+  patientRut: string,
+  patientPhone: string,
+  staffId?: string,
+  expectedDate?: string
 ): Promise<{ success: boolean; error?: string; details?: any }> {
-    // ── Validaciones duras (no confiar en el modelo) ──
-    if (!slotDocId) return { success: false, error: "MISSING_SLOT_ID" };
-    if (!centerId) return { success: false, error: "MISSING_CENTER_ID" };
-    if (!patientName || patientName.trim().length < 3) {
-        return { success: false, error: "INVALID_NAME", details: "Nombre debe tener al menos 3 caracteres" };
+  // ── Validaciones duras (no confiar en el modelo) ──
+  if (!slotDocId) return { success: false, error: "MISSING_SLOT_ID" };
+  if (!centerId) return { success: false, error: "MISSING_CENTER_ID" };
+  if (!patientName || patientName.trim().length < 3) {
+    return {
+      success: false,
+      error: "INVALID_NAME",
+      details: "Nombre debe tener al menos 3 caracteres",
+    };
+  }
+  if (!patientRut) return { success: false, error: "MISSING_RUT" };
+  const cleanRut = patientRut.replace(/[^0-9kK-]/g, "").toUpperCase();
+  if (!isValidRut(cleanRut)) {
+    return {
+      success: false,
+      error: "INVALID_RUT",
+      details: "RUT inválido: dígito verificador no coincide",
+    };
+  }
+
+  try {
+    const apptRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .doc(slotDocId);
+
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(apptRef);
+      if (!snap.exists) {
+        return { success: false, error: "SLOT_NOT_FOUND" };
+      }
+      const slotData = snap.data()!;
+
+      // Verificar estado
+      if (slotData.status !== "available") {
+        return { success: false, error: "SLOT_TAKEN" };
+      }
+
+      // Verificar que el slot pertenece al staffId esperado
+      if (staffId && slotData.doctorId !== staffId && slotData.doctorUid !== staffId) {
+        return {
+          success: false,
+          error: "STAFF_MISMATCH",
+          details: "El slot no pertenece al profesional indicado",
+        };
+      }
+
+      // Verificar fecha si fue proporcionada
+      if (expectedDate && slotData.date !== expectedDate) {
+        return {
+          success: false,
+          error: "DATE_MISMATCH",
+          details: `Slot es para ${slotData.date}, no ${expectedDate}`,
+        };
+      }
+
+      // Verificar que la fecha no sea pasada
+      const today = format(new Date(), "yyyy-MM-dd");
+      if (slotData.date < today) {
+        return { success: false, error: "DATE_IN_PAST" };
+      }
+
+      tx.set(
+        apptRef,
+        {
+          patientName: patientName.trim(),
+          patientRut: cleanRut,
+          patientPhone,
+          status: "booked",
+          bookedVia: "whatsapp_agent",
+          doctorId: slotData.doctorId,
+          doctorUid: slotData.doctorUid,
+          bookedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        details: {
+          date: slotData.date,
+          time: slotData.time,
+          doctorId: slotData.doctorId,
+        },
+      };
+    });
+
+    if (result.success) {
+      console.log(
+        `[Booking] ✅ Reserva exitosa: centro=${centerId} slot=${slotDocId} paciente=${cleanRut}`
+      );
+    } else {
+      console.warn(`[Booking] ❌ Reserva fallida: ${result.error} slot=${slotDocId}`);
     }
-    if (!patientRut) return { success: false, error: "MISSING_RUT" };
-    const cleanRut = patientRut.replace(/[^0-9kK-]/g, "").toUpperCase();
-    if (!isValidRut(cleanRut)) {
-        return { success: false, error: "INVALID_RUT", details: "RUT inválido: dígito verificador no coincide" };
-    }
 
-    try {
-        const apptRef = db.collection("centers").doc(centerId)
-            .collection("appointments").doc(slotDocId);
-
-        const result = await db.runTransaction(async (tx) => {
-            const snap = await tx.get(apptRef);
-            if (!snap.exists) {
-                return { success: false, error: "SLOT_NOT_FOUND" };
-            }
-            const slotData = snap.data()!;
-
-            // Verificar estado
-            if (slotData.status !== "available") {
-                return { success: false, error: "SLOT_TAKEN" };
-            }
-
-            // Verificar que el slot pertenece al staffId esperado
-            if (staffId && slotData.doctorId !== staffId && slotData.doctorUid !== staffId) {
-                return { success: false, error: "STAFF_MISMATCH", details: "El slot no pertenece al profesional indicado" };
-            }
-
-            // Verificar fecha si fue proporcionada
-            if (expectedDate && slotData.date !== expectedDate) {
-                return { success: false, error: "DATE_MISMATCH", details: `Slot es para ${slotData.date}, no ${expectedDate}` };
-            }
-
-            // Verificar que la fecha no sea pasada
-            const today = format(new Date(), "yyyy-MM-dd");
-            if (slotData.date < today) {
-                return { success: false, error: "DATE_IN_PAST" };
-            }
-
-            tx.set(apptRef, {
-                patientName: patientName.trim(),
-                patientRut: cleanRut,
-                patientPhone,
-                status: "booked",
-                bookedVia: "whatsapp_agent",
-                doctorId: slotData.doctorId,
-                doctorUid: slotData.doctorUid,
-                bookedAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            return {
-                success: true,
-                details: {
-                    date: slotData.date,
-                    time: slotData.time,
-                    doctorId: slotData.doctorId
-                }
-            };
-        });
-
-        if (result.success) {
-            console.log(`[Booking] ✅ Reserva exitosa: centro=${centerId} slot=${slotDocId} paciente=${cleanRut}`);
-        } else {
-            console.warn(`[Booking] ❌ Reserva fallida: ${result.error} slot=${slotDocId}`);
-        }
-
-        return result;
-    } catch (error) {
-        console.error("[bookAppointmentTool] Error:", error);
-        return { success: false, error: "TECHNICAL_ERROR" };
-    }
+    return result;
+  } catch (error) {
+    console.error("[bookAppointmentTool] Error:", error);
+    return { success: false, error: "TECHNICAL_ERROR" };
+  }
 }
 
 async function triggerHandoff(
-    phoneNumberId: string,
-    patientPhone: string,
-    patientName: string,
-    center: any,
-    reason?: string
+  phoneNumberId: string,
+  patientPhone: string,
+  patientName: string,
+  center: any,
+  reason?: string
 ): Promise<void> {
-    const centerId = center.id;
-    const centerName: string = center.name || "Centro Médico";
-    const secretaryPhone: string = center?.whatsappConfig?.secretaryPhone || "";
+  const centerId = center.id;
+  const centerName: string = center.name || "Centro Médico";
+  const secretaryPhone: string = center?.whatsappConfig?.secretaryPhone || "";
 
-    try {
-        const handoffRef = db
-            .collection("centers").doc(centerId)
-            .collection("handoff_requests")
-            .doc();
+  try {
+    const handoffRef = db.collection("centers").doc(centerId).collection("handoff_requests").doc();
 
-        await handoffRef.set({
-            id: handoffRef.id,
-            patientPhone,
-            patientName: patientName || "Desconocido",
-            requestedAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: "pending",
-            assignedTo: null,
-            centerId,
-            reason: reason || null,
-            source: "whatsapp_agent",
-        });
-        console.log(`[Handoff] Solicitud creada: ${handoffRef.id} para ${patientPhone}`);
-    } catch (error) {
-        console.error("[Handoff] Error guardando en Firestore:", error);
-    }
+    await handoffRef.set({
+      id: handoffRef.id,
+      patientPhone,
+      patientName: patientName || "Desconocido",
+      requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: "pending",
+      assignedTo: null,
+      centerId,
+      reason: reason || null,
+      source: "whatsapp_agent",
+    });
+    console.log(`[Handoff] Solicitud creada: ${handoffRef.id} para ${patientPhone}`);
+  } catch (error) {
+    console.error("[Handoff] Error guardando en Firestore:", error);
+  }
 
-    if (secretaryPhone) {
-        const notif =
-            `🔔 *Nueva solicitud de atención — ${centerName}*\n\n` +
-            `👤 Paciente: ${patientName || "Desconocido"}\n` +
-            `📱 Teléfono: +${patientPhone}\n` +
-            `💬 Motivo: ${reason || "Solicitud general"}\n\n` +
-            `Para atenderle, responda directamente al número del paciente.\n` +
-            `_(Registro guardado en el sistema de ${centerName})_`;
-        await sendText(phoneNumberId, secretaryPhone, notif);
-    } else {
-        console.warn(`[Handoff] Centro ${centerId} sin whatsappConfig.secretaryPhone configurado.`);
-    }
+  if (secretaryPhone) {
+    const notif =
+      `🔔 *Nueva solicitud de atención — ${centerName}*\n\n` +
+      `👤 Paciente: ${patientName || "Desconocido"}\n` +
+      `📱 Teléfono: +${patientPhone}\n` +
+      `💬 Motivo: ${reason || "Solicitud general"}\n\n` +
+      `Para atenderle, responda directamente al número del paciente.\n` +
+      `_(Registro guardado en el sistema de ${centerName})_`;
+    await sendText(phoneNumberId, secretaryPhone, notif);
+  } else {
+    console.warn(`[Handoff] Centro ${centerId} sin whatsappConfig.secretaryPhone configurado.`);
+  }
 }
 
 // ─── DEFINICIÓN DE TOOLS PARA GEMINI ──────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AGENT_TOOLS: any[] = [{
+const AGENT_TOOLS: any[] = [
+  {
     functionDeclarations: [
-        {
-            name: "list_professionals",
-            description: "Lista los profesionales médicos disponibles para agendar en el centro. Úsala cuando el paciente quiere agendar pero no especifica con quién.",
-            parameters: { type: SchemaType.OBJECT, properties: {} }
+      {
+        name: "list_professionals",
+        description:
+          "Lista los profesionales médicos disponibles para agendar en el centro. Úsala cuando el paciente quiere agendar pero no especifica con quién.",
+        parameters: { type: SchemaType.OBJECT, properties: {} },
+      },
+      {
+        name: "get_available_slots",
+        description:
+          "Consulta los horarios disponibles para un profesional en una fecha específica. Requiere el ID del profesional (obtenido de list_professionals) y una fecha en formato YYYY-MM-DD.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            staffId: { type: SchemaType.STRING, description: "ID del profesional médico." },
+            date: { type: SchemaType.STRING, description: "Fecha en formato YYYY-MM-DD." },
+          },
+          required: ["staffId", "date"],
         },
-        {
-            name: "get_available_slots",
-            description: "Consulta los horarios disponibles para un profesional en una fecha específica. Requiere el ID del profesional (obtenido de list_professionals) y una fecha en formato YYYY-MM-DD.",
-            parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    staffId: { type: SchemaType.STRING, description: "ID del profesional médico." },
-                    date: { type: SchemaType.STRING, description: "Fecha en formato YYYY-MM-DD." }
-                },
-                required: ["staffId", "date"]
-            }
+      },
+      {
+        name: "suggest_alternative_dates",
+        description:
+          "Busca fechas cercanas con disponibilidad para un profesional cuando la fecha solicitada no tiene horas libres. Busca hasta 14 días hacia adelante.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            staffId: { type: SchemaType.STRING, description: "ID del profesional médico." },
+            startDate: {
+              type: SchemaType.STRING,
+              description: "Fecha de inicio de búsqueda en formato YYYY-MM-DD.",
+            },
+          },
+          required: ["staffId", "startDate"],
         },
-        {
-            name: "suggest_alternative_dates",
-            description: "Busca fechas cercanas con disponibilidad para un profesional cuando la fecha solicitada no tiene horas libres. Busca hasta 14 días hacia adelante.",
-            parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    staffId: { type: SchemaType.STRING, description: "ID del profesional médico." },
-                    startDate: { type: SchemaType.STRING, description: "Fecha de inicio de búsqueda en formato YYYY-MM-DD." }
-                },
-                required: ["staffId", "startDate"]
-            }
+      },
+      {
+        name: "book_appointment",
+        description:
+          "Confirma y agenda una cita médica. SOLO llamar DESPUÉS de que confirm_booking_details haya sido exitoso. Si no se llamó primero a confirm_booking_details, esta tool será rechazada.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            staffId: { type: SchemaType.STRING, description: "ID del profesional." },
+            patientName: { type: SchemaType.STRING, description: "Nombre completo del paciente." },
+            patientRut: {
+              type: SchemaType.STRING,
+              description: "RUT del paciente (formato: 12345678-9).",
+            },
+          },
+          required: ["patientName", "patientRut"],
         },
-        {
-            name: "book_appointment",
-            description: "Confirma y agenda una cita médica. SOLO llamar DESPUÉS de que confirm_booking_details haya sido exitoso. Si no se llamó primero a confirm_booking_details, esta tool será rechazada.",
-            parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    staffId: { type: SchemaType.STRING, description: "ID del profesional." },
-                    patientName: { type: SchemaType.STRING, description: "Nombre completo del paciente." },
-                    patientRut: { type: SchemaType.STRING, description: "RUT del paciente (formato: 12345678-9)." }
-                },
-                required: ["patientName", "patientRut"]
-            }
+      },
+      {
+        name: "confirm_booking_details",
+        description:
+          "Presenta un resumen de la reserva al paciente y espera su confirmación EXPLÍCITA (ej: 'sí', 'confirmo'). DEBE llamarse ANTES de book_appointment. Devuelve un resumen con los datos para que el paciente revise.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            staffId: { type: SchemaType.STRING, description: "ID del profesional." },
+            date: {
+              type: SchemaType.STRING,
+              description: "Fecha de la cita en formato YYYY-MM-DD.",
+            },
+            time: { type: SchemaType.STRING, description: "Hora de la cita (ej: 09:00)." },
+            patientName: { type: SchemaType.STRING, description: "Nombre completo del paciente." },
+            patientRut: { type: SchemaType.STRING, description: "RUT del paciente." },
+          },
+          required: ["staffId", "date", "time", "patientName", "patientRut"],
         },
-        {
-            name: "confirm_booking_details",
-            description: "Presenta un resumen de la reserva al paciente y espera su confirmación EXPLÍCITA (ej: 'sí', 'confirmo'). DEBE llamarse ANTES de book_appointment. Devuelve un resumen con los datos para que el paciente revise.",
-            parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    staffId: { type: SchemaType.STRING, description: "ID del profesional." },
-                    date: { type: SchemaType.STRING, description: "Fecha de la cita en formato YYYY-MM-DD." },
-                    time: { type: SchemaType.STRING, description: "Hora de la cita (ej: 09:00)." },
-                    patientName: { type: SchemaType.STRING, description: "Nombre completo del paciente." },
-                    patientRut: { type: SchemaType.STRING, description: "RUT del paciente." }
-                },
-                required: ["staffId", "date", "time", "patientName", "patientRut"]
-            }
+      },
+      {
+        name: "get_center_info",
+        description:
+          "Obtiene información del centro médico: nombre, dirección, horarios de atención y teléfono de contacto.",
+        parameters: { type: SchemaType.OBJECT, properties: {} },
+      },
+      {
+        name: "trigger_handoff",
+        description:
+          "Transfiere la conversación a una secretaria humana. Usar cuando: el paciente lo pide explícitamente, está frustrado, o la consulta es administrativa compleja (reembolsos, Isapre, convenios).",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            reason: {
+              type: SchemaType.STRING,
+              description: "Motivo de la transferencia a secretaria.",
+            },
+          },
+          required: ["reason"],
         },
-        {
-            name: "get_center_info",
-            description: "Obtiene información del centro médico: nombre, dirección, horarios de atención y teléfono de contacto.",
-            parameters: { type: SchemaType.OBJECT, properties: {} }
-        },
-        {
-            name: "trigger_handoff",
-            description: "Transfiere la conversación a una secretaria humana. Usar cuando: el paciente lo pide explícitamente, está frustrado, o la consulta es administrativa compleja (reembolsos, Isapre, convenios).",
-            parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                    reason: { type: SchemaType.STRING, description: "Motivo de la transferencia a secretaria." }
-                },
-                required: ["reason"]
-            }
-        }
-    ]
-}];
+      },
+    ],
+  },
+];
 
 // ─── SYSTEM PROMPT DEL AGENTE ────────────────────────────────────────────────
 
 function buildSystemPrompt(
-    centerName: string,
-    centerId: string,
-    staff: any[],
-    conv: AgentConversation
+  centerName: string,
+  centerId: string,
+  staff: any[],
+  conv: AgentConversation
 ): string {
-    const today = format(new Date(), "yyyy-MM-dd");
-    const todayReadable = format(new Date(), "eeee d 'de' MMMM yyyy", { locale: es }).replace(/^\w/, (c) => c.toUpperCase());
-    const businessHours = "Lunes a Viernes, 08:00 a 18:00";
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayReadable = format(new Date(), "eeee d 'de' MMMM yyyy", { locale: es }).replace(
+    /^\w/,
+    (c) => c.toUpperCase()
+  );
+  const businessHours = "Lunes a Viernes, 08:00 a 18:00";
 
-    let rescueContext = "";
-    if (conv.isRescuingControl) {
-        rescueContext = `\n\n🔴 CONTEXTO RESCATE DE CONTROL: Este paciente fue contactado proactivamente porque tiene un control médico pendiente con ${conv.targetDoctorName || "su médico tratante"}. ${conv.hasPendingExams ? "El sistema indica que TIENE exámenes pendientes por hacerse antes de su control." : "No tiene exámenes pendientes."} Tu objetivo es ayudarle a agendar su control o derivarlo con secretaría si necesita ayuda con exámenes.`;
-    }
+  let rescueContext = "";
+  if (conv.isRescuingControl) {
+    rescueContext = `\n\n🔴 CONTEXTO RESCATE DE CONTROL: Este paciente fue contactado proactivamente porque tiene un control médico pendiente con ${conv.targetDoctorName || "su médico tratante"}. ${conv.hasPendingExams ? "El sistema indica que TIENE exámenes pendientes por hacerse antes de su control." : "No tiene exámenes pendientes."} Tu objetivo es ayudarle a agendar su control o derivarlo con secretaría si necesita ayuda con exámenes.`;
+  }
 
-    const staffCatalog = JSON.stringify(staff.map(s => ({
-        id: s.id,
-        name: s.fullName || s.name,
-        specialty: s.specialty || s.clinicalRole || "Profesional de Salud"
-    })));
+  const staffCatalog = JSON.stringify(
+    staff.map((s) => ({
+      id: s.id,
+      name: s.fullName || s.name,
+      specialty: s.specialty || s.clinicalRole || "Profesional de Salud",
+    }))
+  );
 
-    return `Eres el Asistente Inteligente de "${centerName}".
+  return `Eres el Asistente Inteligente de "${centerName}".
 Fecha de hoy: ${todayReadable} (${today}).
 Horario de atención: ${businessHours}.
 Centro ID: ${centerId}.
@@ -621,874 +710,1074 @@ DATOS DEL PACIENTE (si ya los conoces):
 // ─── PROCESADOR PRINCIPAL DEL AGENTE ──────────────────────────────────────────
 
 async function processAgentMessage(
-    message: string,
-    phoneNumberId: string,
-    to: string,
-    contactName: string,
-    center: any,
-    staff: any[],
-    conv: AgentConversation
-): Promise<{ responseText: string; intent: "GENERAL" | "BOOKING" | "HANDOFF"; updatedConv: Partial<AgentConversation>; interactiveOptions?: any }> {
-    const centerId: string = center.id;
-    const centerName: string = center.name || "Centro Médico";
+  message: string,
+  phoneNumberId: string,
+  to: string,
+  contactName: string,
+  center: any,
+  staff: any[],
+  conv: AgentConversation
+): Promise<{
+  responseText: string;
+  intent: "GENERAL" | "BOOKING" | "HANDOFF";
+  updatedConv: Partial<AgentConversation>;
+  interactiveOptions?: any;
+}> {
+  const centerId: string = center.id;
+  const centerName: string = center.name || "Centro Médico";
 
-    try {
-        const systemPrompt = buildSystemPrompt(centerName, centerId, staff, conv);
+  try {
+    const systemPrompt = buildSystemPrompt(centerName, centerId, staff, conv);
 
-        const model = getGenAI().getGenerativeModel({
-            model: "gemini-2.0-flash",
-            tools: AGENT_TOOLS,
-            generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
-            systemInstruction: systemPrompt,
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
-            ]
-        });
+    const model = getGenAI().getGenerativeModel({
+      model: "gemini-2.0-flash",
+      tools: AGENT_TOOLS,
+      generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+      systemInstruction: systemPrompt,
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+      ],
+    });
 
-        // Construir historial de chat desde la memoria
-        const geminiHistory: any[] = (conv.history || []).slice(-MAX_HISTORY_MESSAGES).map(h => ({
-            role: h.role === "model" ? "model" : "user",
-            parts: [{ text: h.text }]
-        }));
+    // Construir historial de chat desde la memoria
+    const geminiHistory: any[] = (conv.history || []).slice(-MAX_HISTORY_MESSAGES).map((h) => ({
+      role: h.role === "model" ? "model" : "user",
+      parts: [{ text: h.text }],
+    }));
 
-        const chat = model.startChat({
-            history: geminiHistory
-        });
+    const chat = model.startChat({
+      history: geminiHistory,
+    });
 
-        let intent: "GENERAL" | "BOOKING" | "HANDOFF" = "GENERAL";
-        const convUpdates: Partial<AgentConversation> = {};
-        const agentLog: AgentLogEntry[] = [];
-        let turns = 0;
-        let interactiveOptions: any = null;
+    let intent: "GENERAL" | "BOOKING" | "HANDOFF" = "GENERAL";
+    const convUpdates: Partial<AgentConversation> = {};
+    const agentLog: AgentLogEntry[] = [];
+    let turns = 0;
+    let interactiveOptions: any = null;
 
-        // Enviar mensaje del usuario
-        let result = await chat.sendMessage(message);
-        let response = result.response;
+    // Enviar mensaje del usuario
+    let result = await chat.sendMessage(message);
+    let response = result.response;
 
-        // Loop de tool calling (multi-turn, procesa TODAS las calls por turno)
-        while (response.functionCalls()?.length && turns < MAX_AGENT_TURNS) {
-            turns++;
-            const calls = response.functionCalls()!;
-            const functionResponses: any[] = [];
+    // Loop de tool calling (multi-turn, procesa TODAS las calls por turno)
+    while (response.functionCalls()?.length && turns < MAX_AGENT_TURNS) {
+      turns++;
+      const calls = response.functionCalls()!;
+      const functionResponses: any[] = [];
 
-            for (const call of calls) {
-                console.log(`[Agent] Turn ${turns}: Tool=${call.name}`, JSON.stringify(call.args));
+      for (const call of calls) {
+        console.log(`[Agent] Turn ${turns}: Tool=${call.name}`, JSON.stringify(call.args));
 
-                let toolResult: any = {};
+        let toolResult: any = {};
 
-                // ── TOOL: list_professionals ──
-                if (call.name === "list_professionals") {
-                    toolResult = {
-                        professionals: staff.map(s => ({
-                            id: s.id,
-                            name: s.fullName || s.name,
-                            specialty: s.specialty || s.clinicalRole || "Profesional de Salud"
-                        }))
-                    };
-                    intent = "BOOKING";
-                    interactiveOptions = { type: "professionals", data: toolResult.professionals };
-                }
+        // ── TOOL: list_professionals ──
+        if (call.name === "list_professionals") {
+          toolResult = {
+            professionals: staff.map((s) => ({
+              id: s.id,
+              name: s.fullName || s.name,
+              specialty: s.specialty || s.clinicalRole || "Profesional de Salud",
+            })),
+          };
+          intent = "BOOKING";
+          interactiveOptions = { type: "professionals", data: toolResult.professionals };
+        }
 
-                // ── TOOL: get_available_slots ──
-                else if (call.name === "get_available_slots") {
-                    const args = call.args as any;
-                    const slots = await getAvailableSlots(centerId, args.staffId, args.date);
-                    toolResult = {
-                        date: args.date,
-                        slots: slots.map(s => ({ time: s.label, docId: s.docId })),
-                        count: slots.length,
-                        message: slots.length > 0
-                            ? `${slots.length} horario(s) disponible(s) para ${args.date}: ${slots.map(s => s.label).join(", ")}`
-                            : `No hay horarios disponibles para ${args.date}.`
-                    };
-                    // Guardar staff seleccionado en la conversación
-                    convUpdates.selectedStaffId = args.staffId;
-                    convUpdates.selectedDate = args.date;
-                    intent = "BOOKING";
-                    interactiveOptions = { type: "slots", data: [...slots] };
-                }
+        // ── TOOL: get_available_slots ──
+        else if (call.name === "get_available_slots") {
+          const args = call.args as any;
+          const slots = await getAvailableSlots(centerId, args.staffId, args.date);
+          toolResult = {
+            date: args.date,
+            slots: slots.map((s) => ({ time: s.label, docId: s.docId })),
+            count: slots.length,
+            message:
+              slots.length > 0
+                ? `${slots.length} horario(s) disponible(s) para ${args.date}: ${slots.map((s) => s.label).join(", ")}`
+                : `No hay horarios disponibles para ${args.date}.`,
+          };
+          // Guardar staff seleccionado en la conversación
+          convUpdates.selectedStaffId = args.staffId;
+          convUpdates.selectedDate = args.date;
+          intent = "BOOKING";
+          interactiveOptions = { type: "slots", data: [...slots] };
+        }
 
-                // ── TOOL: suggest_alternative_dates ──
-                else if (call.name === "suggest_alternative_dates") {
-                    const args = call.args as any;
-                    const alternatives: { date: string; label: string; count: number }[] = [];
-                    let d = new Date(args.startDate);
-                    let daysChecked = 0;
+        // ── TOOL: suggest_alternative_dates ──
+        else if (call.name === "suggest_alternative_dates") {
+          const args = call.args as any;
+          const alternatives: { date: string; label: string; count: number }[] = [];
+          let d = new Date(args.startDate);
+          let daysChecked = 0;
 
-                    while (daysChecked < 14 && alternatives.length < 5) {
-                        if (d.getDay() !== 0) { // Excluir domingos
-                            const dateStr = format(d, "yyyy-MM-dd");
-                            const slots = await getAvailableSlots(centerId, args.staffId, dateStr);
-                            if (slots.length > 0) {
-                                alternatives.push({
-                                    date: dateStr,
-                                    label: format(d, "eeee d 'de' MMMM", { locale: es }).replace(/^\w/, (c) => c.toUpperCase()),
-                                    count: slots.length
-                                });
-                            }
-                        }
-                        d = new Date(d.getTime() + 86400000);
-                        daysChecked++;
-                    }
-
-                    toolResult = {
-                        alternatives,
-                        message: alternatives.length > 0
-                            ? `Fechas con disponibilidad: ${alternatives.map(a => `${a.label} (${a.count} hora${a.count !== 1 ? "s" : ""})`).join(", ")}`
-                            : "No se encontró disponibilidad en los próximos 14 días."
-                    };
-                    intent = "BOOKING";
-                    interactiveOptions = { type: "dates", data: alternatives };
-                }
-
-                // ── TOOL: confirm_booking_details (GATE para book_appointment) ──
-                else if (call.name === "confirm_booking_details") {
-                    const args = call.args as any;
-
-                    // Buscar si la hora solicitada REALMENTE existe actualmente
-                    const slots = await getAvailableSlots(centerId, args.staffId, args.date);
-                    const matchedSlot = slots.find(s => s.label === args.time || s.label.startsWith(args.time));
-
-                    if (!matchedSlot) {
-                        toolResult = {
-                            success: false,
-                            error: "SLOT_UNAVAILABLE",
-                            message: `Lo lamento, la hora ${args.time} del ${args.date} ya no está disponible. Por favor, ofrezca otras opciones.`
-                        };
-                    } else {
-                        // Resolver nombre real del profesional
-                        const staffMember = staff.find(s => s.id === args.staffId);
-                        const staffName = staffMember?.fullName || staffMember?.name || "Profesional";
-
-                        // Persistir como pendingBooking (gate para book_appointment)
-                        const pending = {
-                            slotDocId: matchedSlot.docId, // Recuperado desde la DB dinámicamente
-                            staffId: args.staffId,
-                            staffName,
-                            date: args.date,
-                            time: args.time,
-                            patientName: args.patientName,
-                            patientRut: args.patientRut
-                        };
-                        convUpdates.pendingBooking = pending;
-                        convUpdates.flowState = "awaiting_confirmation";
-                        convUpdates.selectedStaffName = staffName;
-
-                        toolResult = {
-                            success: true,
-                            summary: {
-                                professional: staffName,
-                                date: args.date,
-                                time: args.time,
-                                patientName: args.patientName,
-                                patientRut: args.patientRut
-                            },
-                            message: `Resumen de reserva: ${staffName}, ${args.date} a las ${args.time}, paciente ${args.patientName} (RUT: ${args.patientRut}). Presentar al paciente para confirmación.`
-                        };
-                        intent = "BOOKING";
-                        interactiveOptions = { type: "confirmation" };
-                    }
-                }
-
-                // ── TOOL: book_appointment (requiere pendingBooking CON confirmedAt de turno anterior) ──
-                else if (call.name === "book_appointment") {
-
-                    // GATE 1: verificar que confirm_booking_details fue llamado previamente
-                    const pending = conv.pendingBooking; // Solo de turno anterior (no de convUpdates)
-                    if (!pending || !pending.slotDocId) {
-                        toolResult = {
-                            success: false,
-                            error: "CONFIRMATION_REQUIRED",
-                            message: "Debe llamar a confirm_booking_details primero y obtener la confirmación explícita del paciente antes de reservar."
-                        };
-                    } else if (!pending.confirmedAt) {
-                        // GATE 2: confirmedAt debe existir (paciente dijo 'sí' en un mensaje anterior)
-                        toolResult = {
-                            success: false,
-                            error: "PATIENT_NOT_CONFIRMED",
-                            message: "El paciente aún no ha confirmado explícitamente. Debe esperar su respuesta afirmativa ('sí', 'confirmo', etc.) antes de reservar."
-                        };
-                    } else {
-                        // Usar datos del pendingBooking (verificados) en vez de confiar en args
-                        const bookResult = await bookAppointmentTool(
-                            centerId,
-                            pending.slotDocId,
-                            pending.patientName,
-                            pending.patientRut,
-                            to,
-                            pending.staffId,
-                            pending.date
-                        );
-
-                        // Resolver nombre real del profesional para la respuesta
-                        const staffMember = staff.find(s => s.id === pending.staffId);
-                        const staffName = staffMember?.fullName || staffMember?.name || pending.staffName;
-
-                        const errorMessages: Record<string, string> = {
-                            "SLOT_TAKEN": "ese horario ya fue reservado por otro paciente",
-                            "INVALID_RUT": "el RUT proporcionado no es válido",
-                            "STAFF_MISMATCH": "el slot no corresponde al profesional",
-                            "DATE_MISMATCH": "la fecha del slot no coincide",
-                            "DATE_IN_PAST": "la fecha ya pasó",
-                            "SLOT_NOT_FOUND": "el horario ya no existe",
-                            "MISSING_SLOT_ID": "falta el ID del horario",
-                            "INVALID_NAME": "nombre inválido"
-                        };
-
-                        toolResult = {
-                            success: bookResult.success,
-                            error: bookResult.error || null,
-                            details: bookResult.success ? {
-                                professionalName: staffName,
-                                date: pending.date,
-                                time: pending.time,
-                                patientName: pending.patientName
-                            } : null,
-                            message: bookResult.success
-                                ? `Cita agendada correctamente con ${staffName} el ${pending.date} a las ${pending.time}.`
-                                : `No se pudo agendar: ${errorMessages[bookResult.error || ""] || "error técnico"}.`
-                        };
-
-                        if (bookResult.success) {
-                            convUpdates.patientName = pending.patientName;
-                            convUpdates.patientRut = pending.patientRut;
-                            convUpdates.bookingSuccess = true;
-                            convUpdates.flowState = "booking_completed";
-                            convUpdates.selectedStaffName = staffName;
-                        }
-                    }
-                    intent = "BOOKING";
-                }
-
-                // ── TOOL: get_center_info ──
-                else if (call.name === "get_center_info") {
-                    toolResult = {
-                        name: centerName,
-                        address: center.address || "No disponible",
-                        phone: center.contactPhone || center.phone || "No disponible",
-                        businessHours: center.businessHours || "Lunes a Viernes, 08:00 a 18:00",
-                        googleMapsUrl: center.googleMapsUrl || null
-                    };
-                }
-
-                // ── TOOL: trigger_handoff ──
-                else if (call.name === "trigger_handoff") {
-                    const args = call.args as any;
-                    await triggerHandoff(phoneNumberId, to, conv.patientName || contactName, center, args.reason);
-                    convUpdates.phase = "HANDOFF";
-                    convUpdates.handoffStatus = "pending";
-                    intent = "HANDOFF";
-                    toolResult = { success: true, message: "Transferencia a secretaria registrada." };
-                }
-
-                // Registrar en log de auditoría
-                agentLog.push({
-                    turn: turns,
-                    tool: call.name,
-                    args: call.args,
-                    result: toolResult,
-                    timestamp: new Date().toISOString()
+          while (daysChecked < 14 && alternatives.length < 5) {
+            if (d.getDay() !== 0) {
+              // Excluir domingos
+              const dateStr = format(d, "yyyy-MM-dd");
+              const slots = await getAvailableSlots(centerId, args.staffId, dateStr);
+              if (slots.length > 0) {
+                alternatives.push({
+                  date: dateStr,
+                  label: format(d, "eeee d 'de' MMMM", { locale: es }).replace(/^\w/, (c) =>
+                    c.toUpperCase()
+                  ),
+                  count: slots.length,
                 });
-                convUpdates.lastAgentAction = `${call.name}(${JSON.stringify(call.args).substring(0, 200)})`;
+              }
+            }
+            d = new Date(d.getTime() + 86400000);
+            daysChecked++;
+          }
 
-                functionResponses.push({
-                    functionResponse: { name: call.name, response: toolResult }
-                });
-            } // end for (const call of calls)
-
-            // Enviar TODOS los resultados de tools de vuelta a Gemini
-            result = await chat.sendMessage(functionResponses);
-            response = result.response;
+          toolResult = {
+            alternatives,
+            message:
+              alternatives.length > 0
+                ? `Fechas con disponibilidad: ${alternatives.map((a) => `${a.label} (${a.count} hora${a.count !== 1 ? "s" : ""})`).join(", ")}`
+                : "No se encontró disponibilidad en los próximos 14 días.",
+          };
+          intent = "BOOKING";
+          interactiveOptions = { type: "dates", data: alternatives };
         }
 
-        // Extraer texto final del agente
-        let responseText = "";
-        try {
-            responseText = response.text() || "";
-        } catch (e) { }
+        // ── TOOL: confirm_booking_details (GATE para book_appointment) ──
+        else if (call.name === "confirm_booking_details") {
+          const args = call.args as any;
 
-        if (!responseText && agentLog.length > 0) {
-            responseText = agentLog[agentLog.length - 1].result?.message || "";
+          // Buscar si la hora solicitada REALMENTE existe actualmente
+          const slots = await getAvailableSlots(centerId, args.staffId, args.date);
+          const matchedSlot = slots.find(
+            (s) => s.label === args.time || s.label.startsWith(args.time)
+          );
+
+          if (!matchedSlot) {
+            toolResult = {
+              success: false,
+              error: "SLOT_UNAVAILABLE",
+              message: `Lo lamento, la hora ${args.time} del ${args.date} ya no está disponible. Por favor, ofrezca otras opciones.`,
+            };
+          } else {
+            // Resolver nombre real del profesional
+            const staffMember = staff.find((s) => s.id === args.staffId);
+            const staffName = staffMember?.fullName || staffMember?.name || "Profesional";
+
+            // Persistir como pendingBooking (gate para book_appointment)
+            const pending = {
+              slotDocId: matchedSlot.docId, // Recuperado desde la DB dinámicamente
+              staffId: args.staffId,
+              staffName,
+              date: args.date,
+              time: args.time,
+              patientName: args.patientName,
+              patientRut: args.patientRut,
+            };
+            convUpdates.pendingBooking = pending;
+            convUpdates.flowState = "awaiting_confirmation";
+            convUpdates.selectedStaffName = staffName;
+
+            toolResult = {
+              success: true,
+              summary: {
+                professional: staffName,
+                date: args.date,
+                time: args.time,
+                patientName: args.patientName,
+                patientRut: args.patientRut,
+              },
+              message: `Resumen de reserva: ${staffName}, ${args.date} a las ${args.time}, paciente ${args.patientName} (RUT: ${args.patientRut}). Presentar al paciente para confirmación.`,
+            };
+            intent = "BOOKING";
+            interactiveOptions = { type: "confirmation" };
+          }
         }
 
-        responseText = responseText || "Disculpe, ¿podría repetir su consulta?";
+        // ── TOOL: book_appointment (requiere pendingBooking CON confirmedAt de turno anterior) ──
+        else if (call.name === "book_appointment") {
+          // GATE 1: verificar que confirm_booking_details fue llamado previamente
+          const pending = conv.pendingBooking; // Solo de turno anterior (no de convUpdates)
+          if (!pending || !pending.slotDocId) {
+            toolResult = {
+              success: false,
+              error: "CONFIRMATION_REQUIRED",
+              message:
+                "Debe llamar a confirm_booking_details primero y obtener la confirmación explícita del paciente antes de reservar.",
+            };
+          } else if (!pending.confirmedAt) {
+            // GATE 2: confirmedAt debe existir (paciente dijo 'sí' en un mensaje anterior)
+            toolResult = {
+              success: false,
+              error: "PATIENT_NOT_CONFIRMED",
+              message:
+                "El paciente aún no ha confirmado explícitamente. Debe esperar su respuesta afirmativa ('sí', 'confirmo', etc.) antes de reservar.",
+            };
+          } else {
+            // Usar datos del pendingBooking (verificados) en vez de confiar en args
+            const bookResult = await bookAppointmentTool(
+              centerId,
+              pending.slotDocId,
+              pending.patientName,
+              pending.patientRut,
+              to,
+              pending.staffId,
+              pending.date
+            );
 
-        // Guardar log de auditoría ACUMULATIVO (cap 50 entries)
-        if (agentLog.length > 0) {
-            const MAX_LOG_ENTRIES = 50;
-            const existingLog = conv.agentLog || [];
-            const merged = [...existingLog, ...agentLog].slice(-MAX_LOG_ENTRIES);
-            convUpdates.agentLog = merged;
+            // Resolver nombre real del profesional para la respuesta
+            const staffMember = staff.find((s) => s.id === pending.staffId);
+            const staffName = staffMember?.fullName || staffMember?.name || pending.staffName;
+
+            const errorMessages: Record<string, string> = {
+              SLOT_TAKEN: "ese horario ya fue reservado por otro paciente",
+              INVALID_RUT: "el RUT proporcionado no es válido",
+              STAFF_MISMATCH: "el slot no corresponde al profesional",
+              DATE_MISMATCH: "la fecha del slot no coincide",
+              DATE_IN_PAST: "la fecha ya pasó",
+              SLOT_NOT_FOUND: "el horario ya no existe",
+              MISSING_SLOT_ID: "falta el ID del horario",
+              INVALID_NAME: "nombre inválido",
+            };
+
+            toolResult = {
+              success: bookResult.success,
+              error: bookResult.error || null,
+              details: bookResult.success
+                ? {
+                    professionalName: staffName,
+                    date: pending.date,
+                    time: pending.time,
+                    patientName: pending.patientName,
+                  }
+                : null,
+              message: bookResult.success
+                ? `Cita agendada correctamente con ${staffName} el ${pending.date} a las ${pending.time}.`
+                : `No se pudo agendar: ${errorMessages[bookResult.error || ""] || "error técnico"}.`,
+            };
+
+            if (bookResult.success) {
+              convUpdates.patientName = pending.patientName;
+              convUpdates.patientRut = pending.patientRut;
+              convUpdates.bookingSuccess = true;
+              convUpdates.flowState = "booking_completed";
+              convUpdates.selectedStaffName = staffName;
+            }
+          }
+          intent = "BOOKING";
         }
 
-        return { responseText, intent, updatedConv: { ...convUpdates, interactiveOptions }, interactiveOptions };
-    } catch (e) {
-        console.error("[Agent] Error crítico:", e);
-        return {
-            responseText: "Lo siento, tuve un problema procesando su solicitud. ¿Podría intentarlo nuevamente?",
-            intent: "GENERAL",
-            updatedConv: {}
-        };
+        // ── TOOL: get_center_info ──
+        else if (call.name === "get_center_info") {
+          toolResult = {
+            name: centerName,
+            address: center.address || "No disponible",
+            phone: center.contactPhone || center.phone || "No disponible",
+            businessHours: center.businessHours || "Lunes a Viernes, 08:00 a 18:00",
+            googleMapsUrl: center.googleMapsUrl || null,
+          };
+        }
+
+        // ── TOOL: trigger_handoff ──
+        else if (call.name === "trigger_handoff") {
+          const args = call.args as any;
+          await triggerHandoff(
+            phoneNumberId,
+            to,
+            conv.patientName || contactName,
+            center,
+            args.reason
+          );
+          convUpdates.phase = "HANDOFF";
+          convUpdates.handoffStatus = "pending";
+          intent = "HANDOFF";
+          toolResult = { success: true, message: "Transferencia a secretaria registrada." };
+        }
+
+        // Registrar en log de auditoría
+        agentLog.push({
+          turn: turns,
+          tool: call.name,
+          args: call.args,
+          result: toolResult,
+          timestamp: new Date().toISOString(),
+        });
+        convUpdates.lastAgentAction = `${call.name}(${JSON.stringify(call.args).substring(0, 200)})`;
+
+        functionResponses.push({
+          functionResponse: { name: call.name, response: toolResult },
+        });
+      } // end for (const call of calls)
+
+      // Enviar TODOS los resultados de tools de vuelta a Gemini
+      result = await chat.sendMessage(functionResponses);
+      response = result.response;
     }
+
+    // Extraer texto final del agente
+    let responseText = "";
+    try {
+      responseText = response.text() || "";
+    } catch (e) {}
+
+    if (!responseText && agentLog.length > 0) {
+      responseText = agentLog[agentLog.length - 1].result?.message || "";
+    }
+
+    responseText = responseText || "Disculpe, ¿podría repetir su consulta?";
+
+    // Guardar log de auditoría ACUMULATIVO (cap 50 entries)
+    if (agentLog.length > 0) {
+      const MAX_LOG_ENTRIES = 50;
+      const existingLog = conv.agentLog || [];
+      const merged = [...existingLog, ...agentLog].slice(-MAX_LOG_ENTRIES);
+      convUpdates.agentLog = merged;
+    }
+
+    return {
+      responseText,
+      intent,
+      updatedConv: { ...convUpdates, interactiveOptions },
+      interactiveOptions,
+    };
+  } catch (e) {
+    console.error("[Agent] Error crítico:", e);
+    return {
+      responseText:
+        "Lo siento, tuve un problema procesando su solicitud. ¿Podría intentarlo nuevamente?",
+      intent: "GENERAL",
+      updatedConv: {},
+    };
+  }
 }
 
 // ─── PROCESADOR PRINCIPAL DE MENSAJES ─────────────────────────────────────────
 
 async function workerProcessor(
-    phoneNumberId: string,
-    to: string,
-    message: string,
-    type: "text" | "interactive",
-    interactiveData?: any,
-    contactName?: string
+  phoneNumberId: string,
+  to: string,
+  message: string,
+  type: "text" | "interactive",
+  interactiveData?: any,
+  contactName?: string
 ) {
-    // Resolver centro
-    const centerData = await getCenterByPhoneId(phoneNumberId);
-    if (!centerData) {
-        await sendText(phoneNumberId, to,
-            "Lo sentimos, no pudimos identificar el centro médico. Por favor contacte directamente."
+  // Resolver centro
+  const centerData = await getCenterByPhoneId(phoneNumberId);
+  if (!centerData) {
+    await sendText(
+      phoneNumberId,
+      to,
+      "Lo sentimos, no pudimos identificar el centro médico. Por favor contacte directamente."
+    );
+    return;
+  }
+  const { center, staff } = centerData;
+  const centerId: string = center.id;
+  const centerName: string = center.name || "Centro Médico";
+
+  let conv = await getConversation(to, centerId);
+  const name = contactName || conv.patientName || "Paciente";
+
+  // ── HANDOFF activo: no interrumpir ──
+  if (conv.phase === "HANDOFF") {
+    await sendText(
+      phoneNumberId,
+      to,
+      `Su solicitud ya está siendo atendida por el equipo de *${conv.centerName || centerName}*. Le contactarán a la brevedad.`
+    );
+    return;
+  }
+
+  // ── Interacciones con botones (compatibilidad con Templates de Rescate) ──
+  if (type === "interactive" && interactiveData) {
+    const iType = interactiveData.type;
+
+    if (iType === "button_reply") {
+      const btnId: string = interactiveData.button_reply.id;
+
+      // Botón de Rescate: "Agendar Control"
+      if (btnId === "rescate_agendar") {
+        const agentMsg = conv.targetDoctorId
+          ? `Quiero agendar mi control médico con ${conv.targetDoctorName || "mi médico"}`
+          : "Quiero agendar una hora médica";
+        // Redirigir al agente como si fuera texto libre
+        message = agentMsg;
+        type = "text";
+        // Caer al flujo del agente abajo
+      }
+
+      // Botón de Rescate: "Ayuda con Exámenes"
+      else if (btnId === "rescate_examenes") {
+        await sendText(
+          phoneNumberId,
+          to,
+          "¡Entendido! Lo contactaremos para ayudarle con sus exámenes. Opcionalmente, puede enviar una foto de la orden por aquí para agilizar el trámite. 📸"
+        );
+        await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
+        await triggerHandoff(
+          phoneNumberId,
+          to,
+          conv.patientName || name,
+          center,
+          "Agendamiento de exámenes previos a control"
         );
         return;
-    }
-    const { center, staff } = centerData;
-    const centerId: string = center.id;
-    const centerName: string = center.name || "Centro Médico";
+      }
 
-    let conv = await getConversation(to, centerId);
-    const name = contactName || conv.patientName || "Paciente";
-
-    // ── HANDOFF activo: no interrumpir ──
-    if (conv.phase === "HANDOFF") {
-        await sendText(phoneNumberId, to,
-            `Su solicitud ya está siendo atendida por el equipo de *${conv.centerName || centerName}*. Le contactarán a la brevedad.`
+      // Botón: "Secretaria"
+      else if (btnId === "action_handoff") {
+        await sendText(
+          phoneNumberId,
+          to,
+          `Entendido, ${name}. ✅\n\nUna secretaria de *${centerName}* se comunicará con usted a la brevedad.\n\n_Gracias por su paciencia._`
+        );
+        await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
+        await triggerHandoff(
+          phoneNumberId,
+          to,
+          conv.patientName || name,
+          center,
+          "Solicitud directa del paciente"
         );
         return;
+      }
+
+      // Botón nuevo: "Agendar Cita" (Menú Principal)
+      else if (btnId === "menu_agendar") {
+        message = "Quiero agendar una cita médica";
+        type = "text";
+      }
+
+      // Cualquier otro botón: convertir a texto para el agente
+      else {
+        const title = interactiveData.button_reply.title || btnId;
+        message = title;
+        type = "text";
+      }
     }
 
-    // ── Interacciones con botones (compatibilidad con Templates de Rescate) ──
-    if (type === "interactive" && interactiveData) {
-        const iType = interactiveData.type;
+    // Listas interactivas: convertir a texto para el agente
+    if (iType === "list_reply") {
+      const title = interactiveData.list_reply.title || "";
+      const desc = interactiveData.list_reply.description || "";
+      message = `${title}${desc ? ` - ${desc}` : ""}`;
+      type = "text";
+    }
+  }
 
-        if (iType === "button_reply") {
-            const btnId: string = interactiveData.button_reply.id;
+  // ── AGENTE PRINCIPAL: procesar texto libre ──
+  if (type === "text" && message) {
+    // ── MENÚ PRINCIPAL INTERACTIVO ──
+    const isHistoryEmpty = !conv.history || conv.history.length === 0;
+    const testMsg = message.toLowerCase().trim();
+    const greetings = [
+      "hola",
+      "buenas",
+      "buenos",
+      "buenas tardes",
+      "buenas noches",
+      "alo",
+      "hi",
+      "hello",
+      "holi",
+      "holis",
+      "saludos",
+    ];
+    const isGreeting =
+      greetings.some((g) => testMsg.startsWith(g)) && testMsg.split(" ").length < 4;
+    const asksForMenu =
+      testMsg === "menu" ||
+      testMsg === "menú" ||
+      testMsg === "opciones" ||
+      testMsg === "volver al menu";
 
-            // Botón de Rescate: "Agendar Control"
-            if (btnId === "rescate_agendar") {
-                const agentMsg = conv.targetDoctorId
-                    ? `Quiero agendar mi control médico con ${conv.targetDoctorName || "mi médico"}`
-                    : "Quiero agendar una hora médica";
-                // Redirigir al agente como si fuera texto libre
-                message = agentMsg;
-                type = "text";
-                // Caer al flujo del agente abajo
-            }
+    if ((isHistoryEmpty && isGreeting) || asksForMenu || (isGreeting && testMsg === "hola")) {
+      // Si estaba a la mitad de algo y saluda de nuevo, reseteamos la conversación por sanidad
+      if (!isHistoryEmpty) {
+        console.log(`[Agent] Reiniciando conversación para ${to} por nuevo saludo/menú.`);
+        await resetConversation(to, centerId);
+        conv = { ...conv, history: [], flowState: "idle", pendingBooking: undefined };
+      }
 
-            // Botón de Rescate: "Ayuda con Exámenes"
-            else if (btnId === "rescate_examenes") {
-                await sendText(phoneNumberId, to,
-                    "¡Entendido! Lo contactaremos para ayudarle con sus exámenes. Opcionalmente, puede enviar una foto de la orden por aquí para agilizar el trámite. 📸"
-                );
-                await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
-                await triggerHandoff(phoneNumberId, to, conv.patientName || name, center, "Agendamiento de exámenes previos a control");
-                return;
-            }
+      await sendButtons(
+        phoneNumberId,
+        to,
+        `¡Hola, ${name.split(" ")[0]}! Bienvenido a *${centerName}*.\n\nSoy el asistente virtual del centro médico. Por favor, seleccione una opción para ayudarle mejor:`,
+        [
+          { id: "menu_agendar", title: "📅 Agendar Cita" },
+          { id: "rescate_examenes", title: "🩸 Pedir Exámenes" },
+          { id: "action_handoff", title: "👩‍💼 Secretaría" },
+        ]
+      );
 
-            // Botón: "Secretaria"
-            else if (btnId === "action_handoff") {
-                await sendText(phoneNumberId, to,
-                    `Entendido, ${name}. ✅\n\nUna secretaria de *${centerName}* se comunicará con usted a la brevedad.\n\n_Gracias por su paciencia._`
-                );
-                await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
-                await triggerHandoff(phoneNumberId, to, conv.patientName || name, center, "Solicitud directa del paciente");
-                return;
-            }
-
-            // Botón nuevo: "Agendar Cita" (Menú Principal)
-            else if (btnId === "menu_agendar") {
-                message = "Quiero agendar una cita médica";
-                type = "text";
-            }
-
-            // Cualquier otro botón: convertir a texto para el agente
-            else {
-                const title = interactiveData.button_reply.title || btnId;
-                message = title;
-                type = "text";
-            }
-        }
-
-        // Listas interactivas: convertir a texto para el agente
-        if (iType === "list_reply") {
-            const title = interactiveData.list_reply.title || "";
-            const desc = interactiveData.list_reply.description || "";
-            message = `${title}${desc ? ` - ${desc}` : ""}`;
-            type = "text";
-        }
+      // Guardar para evitar re-gatillar si no resetearon
+      await saveConversation(
+        to,
+        { centerId, centerName, patientName: name, history: [] },
+        centerId
+      );
+      return;
     }
 
-    // ── AGENTE PRINCIPAL: procesar texto libre ──
-    if (type === "text" && message) {
+    // Agregar el message al historial (optimista)
+    const history = [...(conv.history || [])];
+    history.push({ role: "user", text: message });
 
-        // ── MENÚ PRINCIPAL INTERACTIVO ──
-        const isHistoryEmpty = !conv.history || conv.history.length === 0;
-        const testMsg = message.toLowerCase().trim();
-        const greetings = ["hola", "buenas", "buenos", "buenas tardes", "buenas noches", "alo", "hi", "hello", "holi", "holis", "saludos"];
-        const isGreeting = greetings.some(g => testMsg.startsWith(g)) && testMsg.split(" ").length < 4;
-        const asksForMenu = testMsg === "menu" || testMsg === "menú" || testMsg === "opciones" || testMsg === "volver al menu";
+    let agentResult: any;
 
-        if ((isHistoryEmpty && isGreeting) || asksForMenu || (isGreeting && testMsg === "hola")) {
-            // Si estaba a la mitad de algo y saluda de nuevo, reseteamos la conversación por sanidad
-            if (!isHistoryEmpty) {
-                console.log(`[Agent] Reiniciando conversación para ${to} por nuevo saludo/menú.`);
-                await resetConversation(to, centerId);
-                conv = { ...conv, history: [], flowState: "idle", pendingBooking: undefined };
-            }
+    // ── Detección de confirmación explícita del paciente ──
+    if (
+      conv.flowState === "awaiting_confirmation" &&
+      conv.pendingBooking &&
+      !conv.pendingBooking.confirmedAt
+    ) {
+      const msgLower = message.toLowerCase().trim();
+      const affirmatives = [
+        "sí",
+        "si",
+        "confirmo",
+        "dale",
+        "ok",
+        "está bien",
+        "esta bien",
+        "correcto",
+        "perfecto",
+        "sí, confirmo",
+        "si confirmo",
+        "de acuerdo",
+        "agendar",
+        "reservar",
+        "confirmar",
+      ];
+      const isConfirmation = affirmatives.some((a) => msgLower.includes(a));
+      const isCancel = ["cancelar", "no", "descartar", "cambiar", "otra hora"].some((a) =>
+        msgLower.includes(a)
+      );
 
-            await sendButtons(phoneNumberId, to, `¡Hola, ${name.split(" ")[0]}! Bienvenido a *${centerName}*.\n\nSoy el asistente virtual del centro médico. Por favor, seleccione una opción para ayudarle mejor:`, [
-                { id: "menu_agendar", title: "📅 Agendar Cita" },
-                { id: "rescate_examenes", title: "🩸 Pedir Exámenes" },
-                { id: "action_handoff", title: "👩‍💼 Secretaría" }
-            ]);
+      if (isConfirmation) {
+        const pending = conv.pendingBooking;
+        console.log(
+          `[Agent] Confirmación explícita programática detectada para ${to}. Ejecutando reserva...`
+        );
 
-            // Guardar para evitar re-gatillar si no resetearon
-            await saveConversation(to, { centerId, centerName, patientName: name, history: [] }, centerId);
-            return;
-        }
+        const bookResult = await bookAppointmentTool(
+          centerId,
+          pending.slotDocId,
+          pending.patientName,
+          pending.patientRut,
+          to,
+          pending.staffId,
+          pending.date
+        );
 
-        // Agregar el message al historial (optimista)
-        const history = [...(conv.history || [])];
-        history.push({ role: "user", text: message });
+        const staffName = pending.staffName || "el profesional";
+        const errorMessages: Record<string, string> = {
+          SLOT_TAKEN: "ese horario ya fue reservado por otro paciente",
+          INVALID_RUT: "el RUT proporcionado no es válido",
+          STAFF_MISMATCH: "el slot no corresponde al profesional",
+          DATE_MISMATCH: "la fecha del slot no coincide",
+          DATE_IN_PAST: "la fecha ya pasó",
+          SLOT_NOT_FOUND: "el horario ya no existe",
+          MISSING_SLOT_ID: "falta el ID del horario",
+          INVALID_NAME: "nombre inválido (mínimo 3 letras)",
+        };
 
-        let agentResult: any;
+        const isSuccess = bookResult.success;
+        let responseText = "";
+        let intent = "BOOKING";
+        const updatedConv: any = {
+          flowState: isSuccess ? "booking_completed" : "idle",
+          bookingSuccess: isSuccess,
+          selectedStaffName: staffName,
+        };
 
-        // ── Detección de confirmación explícita del paciente ──
-        if (conv.flowState === "awaiting_confirmation" && conv.pendingBooking && !conv.pendingBooking.confirmedAt) {
-            const msgLower = message.toLowerCase().trim();
-            const affirmatives = ["sí", "si", "confirmo", "dale", "ok", "está bien", "esta bien", "correcto", "perfecto", "sí, confirmo", "si confirmo", "de acuerdo", "agendar", "reservar", "confirmar"];
-            const isConfirmation = affirmatives.some(a => msgLower.includes(a));
-            const isCancel = ["cancelar", "no", "descartar", "cambiar", "otra hora"].some(a => msgLower.includes(a));
+        if (isSuccess) {
+          // Limpieza proactiva de botones para evitar el "error visual" que reportó el usuario
+          updatedConv.interactiveOptions = null;
+          conv.interactiveOptions = null; // Also clear the current conv object for immediate effect
 
-            if (isConfirmation) {
-                const pending = conv.pendingBooking;
-                console.log(`[Agent] Confirmación explícita programática detectada para ${to}. Ejecutando reserva...`);
-
-                const bookResult = await bookAppointmentTool(
-                    centerId,
-                    pending.slotDocId,
-                    pending.patientName,
-                    pending.patientRut,
-                    to,
-                    pending.staffId,
-                    pending.date
-                );
-
-                const staffName = pending.staffName || "el profesional";
-                const errorMessages: Record<string, string> = {
-                    "SLOT_TAKEN": "ese horario ya fue reservado por otro paciente",
-                    "INVALID_RUT": "el RUT proporcionado no es válido",
-                    "STAFF_MISMATCH": "el slot no corresponde al profesional",
-                    "DATE_MISMATCH": "la fecha del slot no coincide",
-                    "DATE_IN_PAST": "la fecha ya pasó",
-                    "SLOT_NOT_FOUND": "el horario ya no existe",
-                    "MISSING_SLOT_ID": "falta el ID del horario",
-                    "INVALID_NAME": "nombre inválido (mínimo 3 letras)"
-                };
-
-                const isSuccess = bookResult.success;
-                let responseText = "";
-                let intent = "BOOKING";
-                const updatedConv: any = {
-                    flowState: isSuccess ? "booking_completed" : "idle",
-                    bookingSuccess: isSuccess,
-                    selectedStaffName: staffName
-                };
-
-                if (isSuccess) {
-                    // Limpieza proactiva de botones para evitar el "error visual" que reportó el usuario
-                    updatedConv.interactiveOptions = null;
-                    conv.interactiveOptions = null; // Also clear the current conv object for immediate effect
-
-                    responseText = `¡Listo! Su cita ha sido agendada exitosamente con ${staffName} para el ${pending.date} a las ${pending.time}.\n\nPara agilizar su atención, le invitamos a completar su ficha de pre-ingreso aquí: https://clavesalud-2.web.app/center/${conv.centerId}/ficha\n\n¡Que tenga un excelente día! 😊`;
-                    intent = "BOOKING_CONFIRMED";
-                } else {
-                    responseText = `Lo lamento, no se pudo agendar la cita porque ${errorMessages[bookResult.error || ""] || "ocurrió un problema técnico"}. ¿Le gustaría buscar otro horario?`;
-                }
-
-                agentResult = {
-                    responseText,
-                    intent,
-                    updatedConv
-                };
-            } else if (isCancel) {
-                agentResult = {
-                    responseText: "Entendido, he cancelado el proceso de reserva. ¿Desea buscar otro horario o consultar otra cosa?",
-                    intent: "GENERAL",
-                    updatedConv: { flowState: "idle", pendingBooking: null }
-                };
-            }
-        }
-
-        // Si no se resolvió programáticamente (no fue confirmación explícita), usar Gemini
-        if (!agentResult) {
-            agentResult = await processAgentMessage(
-                message, phoneNumberId, to, name, center, staff, conv
-            );
-        }
-
-        // Agregar respuesta al historial
-        history.push({ role: "model", text: agentResult.responseText });
-
-        // Guardar conversación actualizada
-        await saveConversation(to, {
-            centerId,
-            centerName,
-            patientName: conv.patientName || (name !== "Paciente" ? name : undefined),
-            history: history.slice(-MAX_HISTORY_MESSAGES),
-            interactiveOptions: agentResult.interactiveOptions || conv.interactiveOptions,
-            ...agentResult.updatedConv
-        }, centerId);
-
-        // Enviar respuesta (usando botones iteractivos si corresponden)
-        const currentInteractive = agentResult.interactiveOptions || conv.interactiveOptions;
-        if (currentInteractive) {
-            const i = currentInteractive;
-            if (i.type === "confirmation") {
-                await sendButtons(phoneNumberId, to, agentResult.responseText, [
-                    { id: "confirmo", title: "✅ Sí, agendar" },
-                    { id: "cancelar", title: "❌ Cancelar" }
-                ]);
-            } else if (i.type === "professionals") {
-                const profs = i.data || [];
-                if (profs.length > 0 && profs.length <= 3) {
-                    await sendButtons(phoneNumberId, to, agentResult.responseText,
-                        profs.map((p: any) => ({ id: `prof_${p.id}`, title: p.name.substring(0, 20) }))
-                    );
-                } else if (profs.length > 3) {
-                    const rows = profs.slice(0, 10).map((p: any) => ({
-                        id: `prof_${p.id}`,
-                        title: p.name.substring(0, 24),
-                        description: (p.specialty || "").substring(0, 72)
-                    }));
-                    await sendList(phoneNumberId, to, "Médicos", agentResult.responseText, "Ver médicos", [{ title: "Profesionales", rows }]);
-                } else {
-                    await sendText(phoneNumberId, to, agentResult.responseText);
-                }
-            } else if (i.type === "slots") {
-                const slots = i.data || [];
-                if (slots.length > 0 && slots.length <= 3) {
-                    await sendButtons(phoneNumberId, to, agentResult.responseText,
-                        slots.map((s: any) => ({ id: `slot_${s.id}`, title: s.label }))
-                    );
-                } else if (slots.length > 3) {
-                    const rows = slots.slice(0, 10).map((s: any) => ({ id: `slot_${s.id}`, title: s.label }));
-                    await sendList(phoneNumberId, to, "Disponibles", agentResult.responseText, "Ver horarios", [{ title: "Horarios", rows }]);
-                } else {
-                    await sendText(phoneNumberId, to, agentResult.responseText);
-                }
-            } else if (i.type === "dates") {
-                const dates = i.data || [];
-                if (dates.length > 0 && dates.length <= 3) {
-                    await sendButtons(phoneNumberId, to, agentResult.responseText,
-                        dates.map((d: any) => ({ id: `date_${d.date}`, title: d.label.substring(0, 20) }))
-                    );
-                } else if (dates.length > 3) {
-                    const rows = dates.slice(0, 10).map((d: any) => ({
-                        id: `date_${d.date}`,
-                        title: d.label.substring(0, 24),
-                        description: `${d.count} hr${d.count !== 1 ? "s" : ""} disponible${d.count !== 1 ? "s" : ""}`
-                    }));
-                    await sendList(phoneNumberId, to, "Cupos", agentResult.responseText, "Seleccionar Fecha", [{ title: "Próximas Fechas", rows }]);
-                } else {
-                    await sendText(phoneNumberId, to, agentResult.responseText);
-                }
-            } else {
-                await sendText(phoneNumberId, to, agentResult.responseText);
-            }
-        } else if (agentResult.updatedConv?.flowState === "awaiting_confirmation") {
-            await sendButtons(phoneNumberId, to, agentResult.responseText, [
-                { id: "confirmo", title: "✅ Sí, agendar" },
-                { id: "cancelar", title: "❌ Cancelar" }
-            ]);
+          responseText = `¡Listo! Su cita ha sido agendada exitosamente con ${staffName} para el ${pending.date} a las ${pending.time}.\n\nPara agilizar su atención, le invitamos a completar su ficha de pre-ingreso aquí: https://clavesalud-2.web.app/center/${conv.centerId}/ficha\n\n¡Que tenga un excelente día! 😊`;
+          intent = "BOOKING_CONFIRMED";
         } else {
-            await sendText(phoneNumberId, to, agentResult.responseText);
+          responseText = `Lo lamento, no se pudo agendar la cita porque ${errorMessages[bookResult.error || ""] || "ocurrió un problema técnico"}. ¿Le gustaría buscar otro horario?`;
         }
 
-        // Cierre DETERMINÍSTICO: solo limpiar si bookingSuccess fue true (no por texto)
-        if (agentResult.updatedConv.bookingSuccess === true) {
-            console.log(`[Agent] Booking exitoso para ${to}. Limpiando conversación.`);
-            await resetConversation(to, centerId);
-        }
-        return;
+        agentResult = {
+          responseText,
+          intent,
+          updatedConv,
+        };
+      } else if (isCancel) {
+        agentResult = {
+          responseText:
+            "Entendido, he cancelado el proceso de reserva. ¿Desea buscar otro horario o consultar otra cosa?",
+          intent: "GENERAL",
+          updatedConv: { flowState: "idle", pendingBooking: null },
+        };
+      }
     }
 
-    // Fallback
-    await sendText(phoneNumberId, to, `Bienvenido a *${centerName}*. ¿En qué puedo ayudarle?`);
+    // Si no se resolvió programáticamente (no fue confirmación explícita), usar Gemini
+    if (!agentResult) {
+      agentResult = await processAgentMessage(
+        message,
+        phoneNumberId,
+        to,
+        name,
+        center,
+        staff,
+        conv
+      );
+    }
+
+    // Agregar respuesta al historial
+    history.push({ role: "model", text: agentResult.responseText });
+
+    // Guardar conversación actualizada
+    await saveConversation(
+      to,
+      {
+        centerId,
+        centerName,
+        patientName: conv.patientName || (name !== "Paciente" ? name : undefined),
+        history: history.slice(-MAX_HISTORY_MESSAGES),
+        interactiveOptions: agentResult.interactiveOptions || conv.interactiveOptions,
+        ...agentResult.updatedConv,
+      },
+      centerId
+    );
+
+    // Enviar respuesta (usando botones iteractivos si corresponden)
+    const currentInteractive = agentResult.interactiveOptions || conv.interactiveOptions;
+    if (currentInteractive) {
+      const i = currentInteractive;
+      if (i.type === "confirmation") {
+        await sendButtons(phoneNumberId, to, agentResult.responseText, [
+          { id: "confirmo", title: "✅ Sí, agendar" },
+          { id: "cancelar", title: "❌ Cancelar" },
+        ]);
+      } else if (i.type === "professionals") {
+        const profs = i.data || [];
+        if (profs.length > 0 && profs.length <= 3) {
+          await sendButtons(
+            phoneNumberId,
+            to,
+            agentResult.responseText,
+            profs.map((p: any) => ({ id: `prof_${p.id}`, title: p.name.substring(0, 20) }))
+          );
+        } else if (profs.length > 3) {
+          const rows = profs.slice(0, 10).map((p: any) => ({
+            id: `prof_${p.id}`,
+            title: p.name.substring(0, 24),
+            description: (p.specialty || "").substring(0, 72),
+          }));
+          await sendList(phoneNumberId, to, "Médicos", agentResult.responseText, "Ver médicos", [
+            { title: "Profesionales", rows },
+          ]);
+        } else {
+          await sendText(phoneNumberId, to, agentResult.responseText);
+        }
+      } else if (i.type === "slots") {
+        const slots = i.data || [];
+        if (slots.length > 0 && slots.length <= 3) {
+          await sendButtons(
+            phoneNumberId,
+            to,
+            agentResult.responseText,
+            slots.map((s: any) => ({ id: `slot_${s.id}`, title: s.label }))
+          );
+        } else if (slots.length > 3) {
+          const rows = slots.slice(0, 10).map((s: any) => ({ id: `slot_${s.id}`, title: s.label }));
+          await sendList(
+            phoneNumberId,
+            to,
+            "Disponibles",
+            agentResult.responseText,
+            "Ver horarios",
+            [{ title: "Horarios", rows }]
+          );
+        } else {
+          await sendText(phoneNumberId, to, agentResult.responseText);
+        }
+      } else if (i.type === "dates") {
+        const dates = i.data || [];
+        if (dates.length > 0 && dates.length <= 3) {
+          await sendButtons(
+            phoneNumberId,
+            to,
+            agentResult.responseText,
+            dates.map((d: any) => ({ id: `date_${d.date}`, title: d.label.substring(0, 20) }))
+          );
+        } else if (dates.length > 3) {
+          const rows = dates.slice(0, 10).map((d: any) => ({
+            id: `date_${d.date}`,
+            title: d.label.substring(0, 24),
+            description: `${d.count} hr${d.count !== 1 ? "s" : ""} disponible${d.count !== 1 ? "s" : ""}`,
+          }));
+          await sendList(
+            phoneNumberId,
+            to,
+            "Cupos",
+            agentResult.responseText,
+            "Seleccionar Fecha",
+            [{ title: "Próximas Fechas", rows }]
+          );
+        } else {
+          await sendText(phoneNumberId, to, agentResult.responseText);
+        }
+      } else {
+        await sendText(phoneNumberId, to, agentResult.responseText);
+      }
+    } else if (agentResult.updatedConv?.flowState === "awaiting_confirmation") {
+      await sendButtons(phoneNumberId, to, agentResult.responseText, [
+        { id: "confirmo", title: "✅ Sí, agendar" },
+        { id: "cancelar", title: "❌ Cancelar" },
+      ]);
+    } else {
+      await sendText(phoneNumberId, to, agentResult.responseText);
+    }
+
+    // Cierre DETERMINÍSTICO: solo limpiar si bookingSuccess fue true (no por texto)
+    if (agentResult.updatedConv.bookingSuccess === true) {
+      console.log(`[Agent] Booking exitoso para ${to}. Limpiando conversación.`);
+      await resetConversation(to, centerId);
+    }
+    return;
+  }
+
+  // Fallback
+  await sendText(phoneNumberId, to, `Bienvenido a *${centerName}*. ¿En qué puedo ayudarle?`);
 }
 
 // ─── WEBHOOK ─────────────────────────────────────────────────────────────────
 
 export const whatsappWebhook = functions
-    .runWith({
-        timeoutSeconds: 60,
-        memory: "512MB",
-        secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN"],
-    })
-    .https.onRequest(async (req, res) => {
+  .runWith({
+    timeoutSeconds: 60,
+    memory: "512MB",
+    secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN"],
+  })
+  .https.onRequest(async (req, res) => {
+    // GET — verificación del webhook por Meta
+    if (req.method === "GET") {
+      const verifyToken = process.env.WA_VERIFY_TOKEN || "";
+      const mode = req.query["hub.mode"];
+      const token = req.query["hub.verify_token"];
+      if (mode === "subscribe" && token === verifyToken) {
+        res.status(200).send(req.query["hub.challenge"]);
+        return;
+      }
+      res.status(403).send("Forbidden");
+      return;
+    }
 
-        // GET — verificación del webhook por Meta
-        if (req.method === "GET") {
-            const verifyToken = process.env.WA_VERIFY_TOKEN || "";
-            const mode = req.query["hub.mode"];
-            const token = req.query["hub.verify_token"];
-            if (mode === "subscribe" && token === verifyToken) {
-                res.status(200).send(req.query["hub.challenge"]);
-                return;
+    if (req.method === "POST") {
+      const body = req.body;
+      const change = body.entry?.[0]?.changes?.[0]?.value;
+      const message = change?.messages?.[0];
+
+      if (message) {
+        const messageId = message.id;
+        const from: string = message.from;
+        const contactName: string = change?.contacts?.[0]?.profile?.name || "Paciente";
+        const phoneNumberId: string = change?.metadata?.phone_number_id || "";
+
+        // Para asegurar que el webhook procese el mensaje sin que la Cloud Function se congele,
+        // debemos hacer await del trabajo antes de devolver 200.
+        const runWorkerAsync = async () => {
+          try {
+            // Idempotencia
+            const idempotencyRef = db.collection("events").doc(messageId);
+            const docEvent = await idempotencyRef.get();
+            if (docEvent.exists) {
+              console.log(`[Idempotencia] Mensaje ${messageId} ya procesado.`);
+              return;
             }
-            res.status(403).send("Forbidden");
-            return;
-        }
+            await idempotencyRef.set({
+              processedAt: admin.firestore.FieldValue.serverTimestamp(),
+              from,
+            });
 
-        if (req.method === "POST") {
-            const body = req.body;
-            const change = body.entry?.[0]?.changes?.[0]?.value;
-            const message = change?.messages?.[0];
-
-            if (message) {
-                const messageId = message.id;
-                const from: string = message.from;
-                const contactName: string = change?.contacts?.[0]?.profile?.name || "Paciente";
-                const phoneNumberId: string = change?.metadata?.phone_number_id || "";
-
-                // Para asegurar que el webhook procese el mensaje sin que la Cloud Function se congele,
-                // debemos hacer await del trabajo antes de devolver 200.
-                const runWorkerAsync = async () => {
-                    try {
-                        // Idempotencia
-                        const idempotencyRef = db.collection("events").doc(messageId);
-                        const docEvent = await idempotencyRef.get();
-                        if (docEvent.exists) {
-                            console.log(`[Idempotencia] Mensaje ${messageId} ya procesado.`);
-                            return;
-                        }
-                        await idempotencyRef.set({ processedAt: admin.firestore.FieldValue.serverTimestamp(), from });
-
-                        if (message.type === "text") {
-                            await workerProcessor(phoneNumberId, from, message.text.body, "text", undefined, contactName);
-                        } else if (message.type === "interactive") {
-                            await workerProcessor(phoneNumberId, from, "", "interactive", message.interactive, contactName);
-                        }
-                    } catch (e) {
-                        console.error("[Worker] Error no manejado:", e);
-                    }
-                };
-
-                await runWorkerAsync();
-                res.status(200).send("EVENT_RECEIVED");
-                return;
+            if (message.type === "text") {
+              await workerProcessor(
+                phoneNumberId,
+                from,
+                message.text.body,
+                "text",
+                undefined,
+                contactName
+              );
+            } else if (message.type === "interactive") {
+              await workerProcessor(
+                phoneNumberId,
+                from,
+                "",
+                "interactive",
+                message.interactive,
+                contactName
+              );
             }
+          } catch (e) {
+            console.error("[Worker] Error no manejado:", e);
+          }
+        };
 
-            res.status(200).send("OK");
-            return;
-        }
+        await runWorkerAsync();
+        res.status(200).send("EVENT_RECEIVED");
+        return;
+      }
 
-        res.status(405).send("Method Not Allowed");
-    });
+      res.status(200).send("OK");
+      return;
+    }
+
+    res.status(405).send("Method Not Allowed");
+  });
 
 // ─── TRIGGER: NOTIFICACIÓN AL RESERVAR (WEB → WA) ────────────────────────────
 
 export const onAppointmentBooked = functions
-    .runWith({ secrets: ["WHATSAPP_TOKEN"] })
-    .firestore
-    .document("centers/{centerId}/appointments/{appointmentId}")
-    .onUpdate(async (change, context) => {
-        const before = change.before.data();
-        const after = change.after.data();
+  .runWith({ secrets: ["WHATSAPP_TOKEN"] })
+  .firestore.document("centers/{centerId}/appointments/{appointmentId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
 
-        if (before.status === "booked" || after.status !== "booked") return;
-        if (after.bookedVia === "whatsapp" || after.bookedVia === "whatsapp_agent") return;
+    if (before.status === "booked" || after.status !== "booked") return;
+    if (after.bookedVia === "whatsapp" || after.bookedVia === "whatsapp_agent") return;
 
-        const phone: string = after.patientPhone || "";
-        if (!phone) return;
+    const phone: string = after.patientPhone || "";
+    if (!phone) return;
 
-        let waPhone = phone.replace(/\D/g, "");
-        if (waPhone.length === 8) waPhone = "569" + waPhone;
-        else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
+    let waPhone = phone.replace(/\D/g, "");
+    if (waPhone.length === 8) waPhone = "569" + waPhone;
+    else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
 
-        const centerId: string = context.params.centerId;
-        let phoneNumberId = "";
-        try {
-            const centerSnap = await db.collection("centers").doc(centerId).get();
-            phoneNumberId = centerSnap.data()?.whatsappConfig?.phoneNumberId || "";
-        } catch (e) {
-            console.error("[onAppointmentBooked] Error leyendo centro:", e);
+    const centerId: string = context.params.centerId;
+    let phoneNumberId = "";
+    try {
+      const centerSnap = await db.collection("centers").doc(centerId).get();
+      phoneNumberId = centerSnap.data()?.whatsappConfig?.phoneNumberId || "";
+    } catch (e) {
+      console.error("[onAppointmentBooked] Error leyendo centro:", e);
+    }
+
+    if (!phoneNumberId) {
+      console.warn(`[onAppointmentBooked] Centro ${centerId} sin whatsappConfig.phoneNumberId`);
+      return;
+    }
+
+    try {
+      // Resolver nombre real del profesional
+      let professionalName: string = after.doctorId || "Profesional";
+      if (after.doctorId) {
+        const staffSnap = await db
+          .collection("centers")
+          .doc(centerId)
+          .collection("staff")
+          .doc(after.doctorId)
+          .get();
+        if (staffSnap.exists) {
+          const staffData = staffSnap.data()!;
+          professionalName = staffData.fullName || staffData.name || after.doctorId;
         }
+      }
 
-        if (!phoneNumberId) {
-            console.warn(`[onAppointmentBooked] Centro ${centerId} sin whatsappConfig.phoneNumberId`);
-            return;
+      const text =
+        `¡Hola *${after.patientName}*! ✅\n\n` +
+        `Tu reserva está confirmada:\n` +
+        `👨‍⚕️ Profesional: ${professionalName}\n` +
+        `📅 Fecha: ${after.date}\n` +
+        `🕐 Hora: ${after.time}\n\n` +
+        `Gracias por elegirnos.`;
+      await sendText(phoneNumberId, waPhone, text);
+
+      if (after.serviceId) {
+        const serviceSnap = await db
+          .collection("centers")
+          .doc(centerId)
+          .collection("services")
+          .doc(after.serviceId)
+          .get();
+        if (serviceSnap.exists) {
+          const svc = serviceSnap.data()!;
+          if (svc.preparationInstructions?.trim()) {
+            await sendText(
+              phoneNumberId,
+              waPhone,
+              `⚠️ *Preparación para ${after.serviceName || "su examen"}:*\n\n${svc.preparationInstructions}`
+            );
+          }
+          if (svc.preparationPdfUrl?.trim()) {
+            await sendRawWhatsAppPayload(phoneNumberId, {
+              to: waPhone,
+              type: "document",
+              document: {
+                link: svc.preparationPdfUrl,
+                filename: `Preparacion_${(after.serviceName || "Servicio").replace(/\s+/g, "_")}.pdf`,
+              },
+            });
+          }
         }
-
-        try {
-            // Resolver nombre real del profesional
-            let professionalName: string = after.doctorId || "Profesional";
-            if (after.doctorId) {
-                const staffSnap = await db.collection("centers").doc(centerId)
-                    .collection("staff").doc(after.doctorId).get();
-                if (staffSnap.exists) {
-                    const staffData = staffSnap.data()!;
-                    professionalName = staffData.fullName || staffData.name || after.doctorId;
-                }
-            }
-
-            const text =
-                `¡Hola *${after.patientName}*! ✅\n\n` +
-                `Tu reserva está confirmada:\n` +
-                `👨‍⚕️ Profesional: ${professionalName}\n` +
-                `📅 Fecha: ${after.date}\n` +
-                `🕐 Hora: ${after.time}\n\n` +
-                `Gracias por elegirnos.`;
-            await sendText(phoneNumberId, waPhone, text);
-
-            if (after.serviceId) {
-                const serviceSnap = await db.collection("centers").doc(centerId)
-                    .collection("services").doc(after.serviceId).get();
-                if (serviceSnap.exists) {
-                    const svc = serviceSnap.data()!;
-                    if (svc.preparationInstructions?.trim()) {
-                        await sendText(phoneNumberId, waPhone,
-                            `⚠️ *Preparación para ${after.serviceName || "su examen"}:*\n\n${svc.preparationInstructions}`
-                        );
-                    }
-                    if (svc.preparationPdfUrl?.trim()) {
-                        await sendRawWhatsAppPayload(phoneNumberId, {
-                            to: waPhone,
-                            type: "document",
-                            document: {
-                                link: svc.preparationPdfUrl,
-                                filename: `Preparacion_${(after.serviceName || "Servicio").replace(/\s+/g, "_")}.pdf`
-                            }
-                        });
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("[onAppointmentBooked] Error enviando WhatsApp:", err);
-        }
-    });
+      }
+    } catch (err) {
+      console.error("[onAppointmentBooked] Error enviando WhatsApp:", err);
+    }
+  });
 
 // ─── CRON: AUTO-RESCATE DE CONTROLES ──────────────────────────────────────────
 
 export const dailyControlRescuer = functions
-    .runWith({ secrets: ["WHATSAPP_TOKEN"], timeoutSeconds: 300, memory: "512MB" })
-    .pubsub.schedule("30 9 * * *")
-    .timeZone("America/Santiago")
-    .onRun(async () => {
-        console.log("[AutoRescate] Iniciando búsqueda de pacientes con control a 7 días...");
-        const targetDate = format(new Date(Date.now() + 7 * 86400000), "yyyy-MM-dd");
+  .runWith({ secrets: ["WHATSAPP_TOKEN"], timeoutSeconds: 300, memory: "512MB" })
+  .pubsub.schedule("30 9 * * *")
+  .timeZone("America/Santiago")
+  .onRun(async () => {
+    console.log("[AutoRescate] Iniciando búsqueda de pacientes con control a 7 días...");
+    const targetDate = format(new Date(Date.now() + 7 * 86400000), "yyyy-MM-dd");
 
-        try {
-            const centersSnap = await db.collection("centers").where("isActive", "==", true).get();
-            for (const centerDoc of centersSnap.docs) {
-                const center = centerDoc.data();
-                const centerId = centerDoc.id;
-                const centerName = center.name || "Centro Médico";
-                const phoneNumberId = center.whatsappConfig?.phoneNumberId;
-                if (!phoneNumberId) continue;
+    try {
+      const centersSnap = await db.collection("centers").where("isActive", "==", true).get();
+      for (const centerDoc of centersSnap.docs) {
+        const center = centerDoc.data();
+        const centerId = centerDoc.id;
+        const centerName = center.name || "Centro Médico";
+        const phoneNumberId = center.whatsappConfig?.phoneNumberId;
+        if (!phoneNumberId) continue;
 
-                const patientsSnap = await db.collection("patients")
-                    .where("accessControl.centerIds", "array-contains", centerId)
-                    .where("active", "==", true)
-                    .get();
+        const patientsSnap = await db
+          .collection("patients")
+          .where("accessControl.centerIds", "array-contains", centerId)
+          .where("active", "==", true)
+          .get();
 
-                console.log(`[AutoRescate] Revisando ${patientsSnap.size} pacientes en centro ${centerId}`);
+        console.log(`[AutoRescate] Revisando ${patientsSnap.size} pacientes en centro ${centerId}`);
 
-                for (const patientDoc of patientsSnap.docs) {
-                    const patient = patientDoc.data();
-                    const phone = patient.phone;
-                    if (!phone) continue;
+        for (const patientDoc of patientsSnap.docs) {
+          const patient = patientDoc.data();
+          const phone = patient.phone;
+          if (!phone) continue;
 
-                    let waPhone = phone.replace(/\D/g, "");
-                    if (waPhone.length === 8) waPhone = "569" + waPhone;
-                    else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
-                    else if (waPhone.length === 11 && waPhone.startsWith("569")) { }
-                    else continue;
+          let waPhone = phone.replace(/\D/g, "");
+          if (waPhone.length === 8) waPhone = "569" + waPhone;
+          else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
+          else if (waPhone.length === 11 && waPhone.startsWith("569")) {
+          } else continue;
 
-                    const activeConsultations = (patient.consultations || []).filter((c: any) => c.active !== false);
-                    if (activeConsultations.length === 0) continue;
+          const activeConsultations = (patient.consultations || []).filter(
+            (c: any) => c.active !== false
+          );
+          if (activeConsultations.length === 0) continue;
 
-                    activeConsultations.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                    const lastConsult = activeConsultations[0];
+          activeConsultations.sort(
+            (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
+          );
+          const lastConsult = activeConsultations[0];
 
-                    if (!lastConsult.nextControlDate || lastConsult.nextControlDate !== targetDate) continue;
+          if (!lastConsult.nextControlDate || lastConsult.nextControlDate !== targetDate) continue;
 
-                    const targetDoctorId = lastConsult.professionalId || "";
-                    const targetDoctorName = lastConsult.professionalName || "su médico tratante";
+          const targetDoctorId = lastConsult.professionalId || "";
+          const targetDoctorName = lastConsult.professionalName || "su médico tratante";
 
-                    // Verificar si ya tiene cita futura
-                    if (targetDoctorId) {
-                        const existingApps = await db.collection("centers").doc(centerId)
-                            .collection("appointments")
-                            .where("patientRut", "==", patient.rut)
-                            .where("status", "==", "booked")
-                            .where("date", ">=", format(new Date(), "yyyy-MM-dd"))
-                            .get();
+          // Verificar si ya tiene cita futura
+          if (targetDoctorId) {
+            const existingApps = await db
+              .collection("centers")
+              .doc(centerId)
+              .collection("appointments")
+              .where("patientRut", "==", patient.rut)
+              .where("status", "==", "booked")
+              .where("date", ">=", format(new Date(), "yyyy-MM-dd"))
+              .get();
 
-                        if (existingApps.docs.some(doc => doc.data().doctorId === targetDoctorId)) {
-                            console.log(`[AutoRescate] Paciente ${patient.id} ya tiene cita futura.`);
-                            continue;
-                        }
-                    }
-
-                    const hasPendingExams = (lastConsult.prescriptions || []).some((p: any) =>
-                        p.type === "OrdenExamenes" || p.type === "Solicitud de Examen"
-                    );
-
-                    // Inicializar conversación de rescate con contexto para el agente
-                    await saveConversation(waPhone, {
-                        phase: "ACTIVE",
-                        centerId,
-                        centerName,
-                        patientName: patient.fullName,
-                        patientRut: patient.rut,
-                        patientPhone: waPhone,
-                        isRescuingControl: true,
-                        targetDoctorId,
-                        targetDoctorName,
-                        hasPendingExams,
-                        flowState: "idle",
-                        history: []
-                    }, centerId);
-
-                    // Enviar Template de Rescate
-                    const parameters = [
-                        { type: "text", text: patient.fullName?.split(" ")[0] || "Paciente" },
-                        { type: "text", text: centerName },
-                        { type: "text", text: targetDoctorName },
-                        { type: "text", text: hasPendingExams ? "Vimos que el doctor le solicitó exámenes en su última consulta." : " " }
-                    ];
-
-                    await sendRawWhatsAppPayload(phoneNumberId, {
-                        to: waPhone,
-                        type: "template",
-                        template: {
-                            name: "recordatorio_control_asistido",
-                            language: { code: "es" },
-                            components: [
-                                { type: "body", parameters },
-                                { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: "rescate_agendar" }] },
-                                { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: "rescate_examenes" }] },
-                                { type: "button", sub_type: "quick_reply", index: "2", parameters: [{ type: "payload", payload: "action_handoff" }] }
-                            ]
-                        }
-                    });
-                    console.log(`[AutoRescate] Template enviado a ${waPhone}`);
-                }
+            if (existingApps.docs.some((doc) => doc.data().doctorId === targetDoctorId)) {
+              console.log(`[AutoRescate] Paciente ${patient.id} ya tiene cita futura.`);
+              continue;
             }
-            console.log("[AutoRescate] Proceso finalizado.");
-        } catch (error) {
-            console.error("[AutoRescate] Error en el cron job:", error);
+          }
+
+          const hasPendingExams = (lastConsult.prescriptions || []).some(
+            (p: any) => p.type === "OrdenExamenes" || p.type === "Solicitud de Examen"
+          );
+
+          // Inicializar conversación de rescate con contexto para el agente
+          await saveConversation(
+            waPhone,
+            {
+              phase: "ACTIVE",
+              centerId,
+              centerName,
+              patientName: patient.fullName,
+              patientRut: patient.rut,
+              patientPhone: waPhone,
+              isRescuingControl: true,
+              targetDoctorId,
+              targetDoctorName,
+              hasPendingExams,
+              flowState: "idle",
+              history: [],
+            },
+            centerId
+          );
+
+          // Enviar Template de Rescate
+          const parameters = [
+            { type: "text", text: patient.fullName?.split(" ")[0] || "Paciente" },
+            { type: "text", text: centerName },
+            { type: "text", text: targetDoctorName },
+            {
+              type: "text",
+              text: hasPendingExams
+                ? "Vimos que el doctor le solicitó exámenes en su última consulta."
+                : " ",
+            },
+          ];
+
+          await sendRawWhatsAppPayload(phoneNumberId, {
+            to: waPhone,
+            type: "template",
+            template: {
+              name: "recordatorio_control_asistido",
+              language: { code: "es" },
+              components: [
+                { type: "body", parameters },
+                {
+                  type: "button",
+                  sub_type: "quick_reply",
+                  index: "0",
+                  parameters: [{ type: "payload", payload: "rescate_agendar" }],
+                },
+                {
+                  type: "button",
+                  sub_type: "quick_reply",
+                  index: "1",
+                  parameters: [{ type: "payload", payload: "rescate_examenes" }],
+                },
+                {
+                  type: "button",
+                  sub_type: "quick_reply",
+                  index: "2",
+                  parameters: [{ type: "payload", payload: "action_handoff" }],
+                },
+              ],
+            },
+          });
+          console.log(`[AutoRescate] Template enviado a ${waPhone}`);
         }
-    });
+      }
+      console.log("[AutoRescate] Proceso finalizado.");
+    } catch (error) {
+      console.error("[AutoRescate] Error en el cron job:", error);
+    }
+  });

@@ -6,25 +6,25 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 interface CaptionContext {
-    type: 'platform' | 'center' | 'professional';
-    centerName?: string;
-    doctorName?: string;
-    specialties?: string[];
-    url: string;
+  type: "platform" | "center" | "professional";
+  centerName?: string;
+  doctorName?: string;
+  specialties?: string[];
+  url: string;
 }
 
 export async function generateAICaption(idea: string, context: CaptionContext): Promise<string> {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        const prompt = `
+    const prompt = `
 Actúa como un Director Creativo Senior de una agencia de marketing digital de lujo especializada en Healthcare. 
 Tu misión es redactar un "Copy" (texto para redes sociales) que sea IRRESISTIBLE, elegante y que transmita CONFIANZA absoluta.
 
 CONTEXTO DEL NEGOCIO:
-- Marca/Entidad: ${context.doctorName || context.centerName || 'ClaveSalud'}
-- Categoría: ${context.type === 'center' ? 'Centro Médico de Excelencia' : context.type === 'professional' ? 'Especialista en Salud' : 'Innovación en Gestión Clínica'}
-${context.specialties ? `- Portfolio de Servicios: ${context.specialties.join(', ')}` : ''}
+- Marca/Entidad: ${context.doctorName || context.centerName || "ClaveSalud"}
+- Categoría: ${context.type === "center" ? "Centro Médico de Excelencia" : context.type === "professional" ? "Especialista en Salud" : "Innovación en Gestión Clínica"}
+${context.specialties ? `- Portfolio de Servicios: ${context.specialties.join(", ")}` : ""}
 - Enlace Estrellado (Call To Action): ${context.url}
 
 IDEA CREATIVA A DESARROLLAR:
@@ -44,11 +44,13 @@ DIRECTRICES ESTRATÉGICAS:
 Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook o LinkedIn. Sin introducciones ni comentarios del asistente.
 `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text().trim();
-    } catch (error) {
-        console.error("Error generating AI caption:", error);
-        throw new Error("No se pudo conectar con la IA para generar el texto. Intenta de nuevo más tarde.");
-    }
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    console.error("Error generating AI caption:", error);
+    throw new Error(
+      "No se pudo conectar con la IA para generar el texto. Intenta de nuevo más tarde."
+    );
+  }
 }

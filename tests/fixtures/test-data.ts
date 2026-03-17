@@ -38,10 +38,10 @@ export const SEED = {
   /** stats_professional_month/{TEST.DOCTOR_ID}_{TEST.YEAR_MONTH} */
   DOCTOR_STATS: {
     totalAppointments: 10, // [seed] 10 citas agendadas
-    completed: 7,          // [seed] 7 atendidas
-    noShow: 2,             // [seed] 2 inasistencias
-    cancelled: 1,          // [seed] 1 cancelada
-    billableCount: 7,      // [seed] todas las completadas = facturables
+    completed: 7, // [seed] 7 atendidas
+    noShow: 2, // [seed] 2 inasistencias
+    cancelled: 1, // [seed] 1 cancelada
+    billableCount: 7, // [seed] todas las completadas = facturables
     totalAmountBillable: 350000, // [seed] 7 x $50.000 CLP
   },
   /** stats_center_month/{TEST.YEAR_MONTH} — suma de todos los doctores */

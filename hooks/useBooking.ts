@@ -1,7 +1,14 @@
 import { useState, useCallback } from "react";
 import { db, auth } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, setDoc, updateDoc, serverTimestamp, runTransaction, getDoc } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  runTransaction,
+  getDoc,
+} from "firebase/firestore";
 import { Appointment, Doctor, Patient, ViewMode } from "../types";
 import {
   extractChileanPhoneDigits,
@@ -119,11 +126,15 @@ export function useBooking(
       await runTransaction(db, async (transaction) => {
         const apptSnap = await transaction.get(apptRef);
         if (!apptSnap.exists()) {
-          throw new Error("El horario ya no existe. El profesional puede haberlo cerrado recientemente.");
+          throw new Error(
+            "El horario ya no existe. El profesional puede haberlo cerrado recientemente."
+          );
         }
         const currentData = apptSnap.data() as Appointment;
         if (currentData?.status !== "available") {
-          throw new Error("Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque.");
+          throw new Error(
+            "Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque."
+          );
         }
 
         transaction.update(apptRef, {
@@ -148,7 +159,8 @@ export function useBooking(
         patientPhone: phone,
         patientEmail: email || undefined,
         serviceId: bookingType === "service" ? selectedMedicalService?.id || undefined : undefined,
-        serviceName: bookingType === "service" ? selectedMedicalService?.name || undefined : undefined,
+        serviceName:
+          bookingType === "service" ? selectedMedicalService?.name || undefined : undefined,
         bookedAt: new Date().toISOString(),
         active: slotAppointment.active ?? true,
       };
@@ -157,7 +169,8 @@ export function useBooking(
         prev.map((appt) => (appt.id === bookedAppointment.id ? bookedAppointment : appt))
       );
     } catch (txError: unknown) {
-      const message = txError instanceof Error ? txError.message : "No se pudo completar la reserva.";
+      const message =
+        txError instanceof Error ? txError.message : "No se pudo completar la reserva.";
       showToast(message, "error");
       return;
     }

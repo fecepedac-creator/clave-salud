@@ -112,7 +112,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
       console.error(e);
       setError(
         e?.message ||
-        "No se pudo iniciar sesión con Google. Revisa dominios autorizados en Firebase Auth (Authorized domains)."
+          "No se pudo iniciar sesión con Google. Revisa dominios autorizados en Firebase Auth (Authorized domains)."
       );
     }
   };
@@ -280,7 +280,12 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         {
           uid: user.uid,
           emailLower: inviteEmailLower,
-          fullName: profileData.fullName ?? (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
+          fullName:
+            profileData.fullName ??
+            (invite as any).fullName ??
+            user.displayName ??
+            user.email ??
+            "Profesional",
           rut: profileData.rut ?? null,
           role: professionalRole,
           accessRole,
@@ -309,7 +314,12 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         {
           id: user.uid,
           centerId,
-          fullName: profileData.fullName ?? (invite as any).fullName ?? user.displayName ?? user.email ?? "Profesional",
+          fullName:
+            profileData.fullName ??
+            (invite as any).fullName ??
+            user.displayName ??
+            user.email ??
+            "Profesional",
           accessRole,
           clinicalRole: professionalRole,
           role: professionalRole,
@@ -331,7 +341,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         acceptedByUid: user.uid,
         migrationCompletedAt: serverTimestamp(),
         migratedAppointments: migratedCount,
-      }).catch(() => { });
+      }).catch(() => {});
 
       setDone(true);
       if (onDone) onDone();

@@ -119,9 +119,7 @@ const WhatsappTemplatesManager: React.FC<WhatsappTemplatesManagerProps> = ({
     const nextTemplates =
       editingId && editingId !== "new"
         ? templates.map((template) =>
-            template.id === editingId
-              ? { ...template, ...formState }
-              : template
+            template.id === editingId ? { ...template, ...formState } : template
           )
         : [...templates, { id: generateId(), ...formState }];
     await persistTemplates(nextTemplates);
@@ -198,10 +196,7 @@ const WhatsappTemplatesManager: React.FC<WhatsappTemplatesManagerProps> = ({
       {templates.length > 0 && (
         <div className="space-y-4">
           {templates.map((template) => (
-            <div
-              key={template.id}
-              className="bg-slate-800 p-6 rounded-2xl border border-slate-700"
-            >
+            <div key={template.id} className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -216,9 +211,7 @@ const WhatsappTemplatesManager: React.FC<WhatsappTemplatesManagerProps> = ({
                       {template.enabled ? "Habilitada" : "Deshabilitada"}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-400 mt-2 whitespace-pre-wrap">
-                    {template.body}
-                  </p>
+                  <p className="text-sm text-slate-400 mt-2 whitespace-pre-wrap">{template.body}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -265,9 +258,7 @@ const WhatsappTemplatesManager: React.FC<WhatsappTemplatesManagerProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase">
-                Mensaje
-              </label>
+              <label className="text-xs font-bold text-slate-400 uppercase">Mensaje</label>
               <textarea
                 value={formState.body}
                 onChange={(event) => setFormState({ ...formState, body: event.target.value })}
@@ -280,9 +271,7 @@ const WhatsappTemplatesManager: React.FC<WhatsappTemplatesManagerProps> = ({
                 id="template-enabled"
                 type="checkbox"
                 checked={formState.enabled}
-                onChange={(event) =>
-                  setFormState({ ...formState, enabled: event.target.checked })
-                }
+                onChange={(event) => setFormState({ ...formState, enabled: event.target.checked })}
                 className="h-4 w-4"
               />
               <label htmlFor="template-enabled" className="text-sm text-slate-300">

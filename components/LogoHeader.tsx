@@ -45,10 +45,14 @@ const LogoHeader: React.FC<LogoHeaderProps> = ({
 
       {showText && (
         <div className="flex flex-col">
-          <span className={`font-black text-slate-900 ${size === 'lg' ? 'text-xl' : textSizes[size]} tracking-tight leading-none mb-0.5`}>
+          <span
+            className={`font-black text-slate-900 ${size === "lg" ? "text-xl" : textSizes[size]} tracking-tight leading-none mb-0.5`}
+          >
             ClaveSalud
           </span>
-          <span className={`${size === 'lg' ? 'text-xs' : 'text-[10px]'} font-semibold text-slate-500/80 leading-tight uppercase tracking-wider`}>
+          <span
+            className={`${size === "lg" ? "text-xs" : "text-[10px]"} font-semibold text-slate-500/80 leading-tight uppercase tracking-wider`}
+          >
             Ficha Clínica Digital
           </span>
         </div>
