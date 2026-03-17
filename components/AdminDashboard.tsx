@@ -1570,7 +1570,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* Header */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30">
+      <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30 pt-16">
         <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
           <LogoHeader size="md" showText={true} />
           <div className="h-8 w-px bg-slate-700 hidden md:block mx-1" />

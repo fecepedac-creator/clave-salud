@@ -178,6 +178,12 @@ const App: React.FC = () => {
       return "admin-login" as ViewMode;
     }
     if (path.startsWith("/center/")) {
+      const segments = path.split("/");
+      const subPath = segments[3];
+      if (subPath === "ficha") return "patient-form" as ViewMode;
+      if (subPath === "agendar") return "patient-booking" as ViewMode;
+      if (subPath === "cancelar") return "patient-cancel" as ViewMode;
+      if (subPath === "paciente") return "patient-menu" as ViewMode;
       return "center-portal" as ViewMode;
     }
     if (path.startsWith("/superadmin")) {
@@ -227,12 +233,20 @@ const App: React.FC = () => {
     isLoading: isLoadingCenters,
   } = useCenters(demoMode, effectiveIsSuperAdmin, activeCenterId, setActiveCenterId);
 
-  // Sync URL with activeCenterId
+  // Sync URL with activeCenterId and specific patient views
   useEffect(() => {
-    if (activeCenterId && view === "center-portal") {
-      const newPath = `/center/${activeCenterId}`;
-      if (window.location.pathname !== newPath) {
-        window.history.pushState({}, "", newPath + window.location.search);
+    if (activeCenterId) {
+      let pathSuffix = "";
+      if (view === "patient-form") pathSuffix = "/ficha";
+      else if (view === "patient-booking") pathSuffix = "/agendar";
+      else if (view === "patient-cancel") pathSuffix = "/cancelar";
+      else if (view === "patient-menu") pathSuffix = "/paciente";
+
+      if (view === "center-portal" || pathSuffix) {
+        const newPath = `/center/${activeCenterId}${pathSuffix}`;
+        if (window.location.pathname !== newPath) {
+          window.history.pushState({}, "", newPath + window.location.search);
+        }
       }
     } else if (view === "home") {
       if (window.location.pathname !== "/") {
@@ -642,7 +656,13 @@ const App: React.FC = () => {
       else if (nextCenterId) {
         if (nextCenterId !== activeCenterIdRef.current) setActiveCenterId(nextCenterId);
         setLoginViewPreference("admin-dashboard" as ViewMode);
-        if (
+
+        const subPath = pathname.split("/")[3];
+        if (subPath === "ficha") setView("patient-form" as ViewMode);
+        else if (subPath === "agendar") setView("patient-booking" as ViewMode);
+        else if (subPath === "cancelar") setView("patient-cancel" as ViewMode);
+        else if (subPath === "paciente") setView("patient-menu" as ViewMode);
+        else if (
           viewRef.current === ("home" as ViewMode) ||
           viewRef.current === ("select-center" as ViewMode)
         ) {
@@ -686,8 +706,14 @@ const App: React.FC = () => {
     } else if (view === ("superadmin-dashboard" as ViewMode)) {
       nextPath = "/superadmin";
     } else {
+      let pathSuffix = "";
+      if (view === "patient-form") pathSuffix = "/ficha";
+      else if (view === "patient-booking") pathSuffix = "/agendar";
+      else if (view === "patient-cancel") pathSuffix = "/cancelar";
+      else if (view === "patient-menu") pathSuffix = "/paciente";
+
       nextPath =
-        view === ("home" as ViewMode) || !activeCenterId ? "/" : `/center/${activeCenterId}`;
+        (view === ("home" as ViewMode) || !activeCenterId) ? "/" : `/center/${activeCenterId}${pathSuffix}`;
     }
 
     if (lastPathRef.current !== nextPath && window.location.pathname !== nextPath) {
@@ -1492,7 +1518,7 @@ const App: React.FC = () => {
           data-testid={`view-container-${view}`}
         >
           {showBreadcrumbs && view !== "home" && (
-            <div className="fixed top-6 left-6 z-50 pointer-events-auto">
+            <div className="fixed top-2 left-4 z-50 pointer-events-auto">
               <Breadcrumbs
                 view={view}
                 centerName={activeCenterName}
@@ -1553,7 +1579,7 @@ const App: React.FC = () => {
             onLoadMoreCenters={loadMoreCenters}
             isLoadingMoreCenters={isLoadingMoreCenters}
           />,
-          true
+          false
         );
       }
 

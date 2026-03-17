@@ -1022,84 +1022,133 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
   return (
-    <div className="flex flex-col h-screen font-sans">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <LogoHeader size="md" showText={false} />
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-            <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
-          </div>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50">
+      <aside className="w-full lg:w-72 bg-white/80 backdrop-blur-md border-r border-slate-200/60 sticky top-0 h-screen overflow-y-auto z-20 shadow-sm">
+        <div className="p-8 border-b border-slate-100/50">
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+            <ShieldCheck className="w-8 h-8 text-blue-600" />
+            ClaveSalud
+          </h2>
+          <p className="text-[10px] text-blue-600 font-bold uppercase tracking-[0.2em] mt-1">Professional Portal</p>
         </div>
-        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto justify-center">
-          {activeCenter?.logoUrl && (
-            <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
-              <span className="text-slate-500 text-xs font-medium uppercase tracking-tighter">Centro</span>
-              {!centerLogoError ? (
-                <img
-                  src={activeCenter.logoUrl}
-                  alt={`Logo ${activeCenter.name}`}
-                  className="h-6 w-auto max-w-[80px] object-contain rounded"
-                  onError={() => setCenterLogoError(true)}
-                />
-              ) : (
-                <span className="text-slate-700 text-[10px] font-bold">{activeCenter.name}</span>
-              )}
+        <div className="p-8">
+          <nav className="space-y-2">
+            <button
+              onClick={() => setActiveTab("patients")}
+              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "patients" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              <UsersRound className="w-5 h-5" />
+              Pacientes
+            </button>
+            <button
+              onClick={() => setActiveTab("agenda")}
+              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "agenda" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              <CalendarCheck className="w-5 h-5" />
+              Agenda
+            </button>
+            <button
+              onClick={() => setActiveTab("performance")}
+              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "performance" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              <TrendingUp className="w-5 h-5" />
+              Rendimiento
+            </button>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "settings" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              <Settings className="w-5 h-5" />
+              Configuración
+            </button>
+          </nav>
+          <div className="mt-8 pt-8 border-t border-slate-100/50">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
+                {doctorName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="font-bold text-slate-800">{doctorName}</p>
+                <p className="text-xs text-slate-500">{role}</p>
+              </div>
             </div>
-          )}
-          <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg font-bold text-[10px] sm:text-sm border border-blue-100 flex items-center gap-2 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-            {
-              appointments.filter(
-                (a) =>
-                  ((a as any).doctorUid ?? a.doctorId) === doctorId &&
-                  a.status === "booked" &&
-                  a.date === new Date().toISOString().split("T")[0]
-              ).length
-            }{" "}
-            Citas
-          </div>
-          <div className="hidden xs:block">
-            <LegalLinks
-              onOpenTerms={() => onOpenLegal("terms")}
-              onOpenPrivacy={() => onOpenLegal("privacy")}
-              className="flex"
-            />
-          </div>
-          <div className="flex gap-2">
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-all w-full"
+            >
+              <LogOut className="w-5 h-5" />
+              Cerrar Sesión
+            </button>
             {onClosePanel && (
               <button
                 onClick={onClosePanel}
-                className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-3 sm:px-4 py-2 rounded-lg font-bold text-sm border border-slate-200 transition-all flex items-center gap-2"
-                title="Cerrar Panel y Volver"
+                className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all w-full mt-2"
               >
-                <X className="w-4 h-4" /> <span className="hidden sm:inline">Cerrar Panel</span>
+                <X className="w-5 h-5" />
+                Cerrar Panel
               </button>
             )}
-            <button
-              onClick={onLogout}
-              className="bg-white text-slate-500 hover:text-red-500 p-2 sm:px-4 sm:py-2 rounded-lg font-bold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-2"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Salir</span>
-            </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      <main className="flex-1 overflow-hidden flex flex-col">
-        {!hasActiveCenter && (
-          <div className="bg-amber-500/20 text-amber-800 border-b border-amber-200 px-8 py-3 text-sm">
-            Selecciona un centro activo para habilitar pacientes, agenda y consultas.
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
+            <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
           </div>
-        )}
-        <div
-          className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === "settings" ? "" : "lg:overflow-hidden"}`}
-        >
-          {/* Tabs */}
-          <div className="flex-shrink-0 px-4 md:px-8 pt-4 md:pt-8 pb-4">
-            <div data-testid="doctor-tab-bar" className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-full md:w-fit shadow-sm overflow-x-auto">
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto justify-center">
+            {activeCenter?.logoUrl && (
+              <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
+                <span className="text-slate-500 text-xs font-medium uppercase tracking-tighter">Centro</span>
+                {!centerLogoError ? (
+                  <img
+                    src={activeCenter.logoUrl}
+                    alt={`Logo ${activeCenter.name}`}
+                    className="h-6 w-auto max-w-[80px] object-contain rounded"
+                    onError={() => setCenterLogoError(true)}
+                  />
+                ) : (
+                  <span className="text-slate-700 text-[10px] font-bold">{activeCenter.name}</span>
+                )}
+              </div>
+            )}
+            <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg font-bold text-[10px] sm:text-sm border border-blue-100 flex items-center gap-2 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+              {
+                appointments.filter(
+                  (a) =>
+                    ((a as any).doctorUid ?? a.doctorId) === doctorId &&
+                    a.status === "booked" &&
+                    a.date === new Date().toISOString().split("T")[0]
+                ).length
+              }{" "}
+              Citas
+            </div>
+            <div className="hidden xs:block">
+              <LegalLinks
+                onOpenTerms={() => onOpenLegal("terms")}
+                onOpenPrivacy={() => onOpenLegal("privacy")}
+                className="flex"
+              />
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {!hasActiveCenter && (
+            <div className="bg-amber-500/20 text-amber-800 border-b border-amber-200 px-8 py-3 text-sm">
+              Selecciona un centro activo para habilitar pacientes, agenda y consultas.
+            </div>
+          )}
+          <div
+            className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === "settings" ? "" : "lg:overflow-hidden"}`}
+          >
+            {/* Tabs */}
+            {/* The tab buttons are now in the sidebar, so this section is removed or commented out */}
+            {/* <div data-testid="doctor-tab-bar" className="flex gap-2 bg-white/50 backdrop-blur-sm p-1.5 rounded-xl border border-slate-200/50 w-full md:w-fit shadow-sm overflow-x-auto">
               <button
                 data-testid="doctor-tab-patients"
                 onClick={() => setActiveTab("patients")}
@@ -1128,190 +1177,190 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               >
                 <TrendingUp className="w-4 h-4" /> <span className="hidden xs:inline">Rendimiento</span>
               </button>
-            </div>
-          </div>
+            </div> */}
 
-          {/* CONTENT AREA */}
-          <div
-            className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
-          >
+            {/* CONTENT AREA */}
+            <div
+              className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
+            >
 
-            {/* CONTENT: PATIENTS LIST */}
-            {activeTab === "patients" && (
-              <DoctorPatientsListTab
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                filteredPatients={filteredPatients}
-                handleSelectPatient={handleSelectPatient}
-                onSetPortfolioMode={onSetPortfolioMode}
-                portfolioMode={portfolioMode}
-                setFilterNextControl={setFilterNextControl}
-                filterNextControl={filterNextControl}
-                isReadOnly={isReadOnly}
-                hasActiveCenter={hasActiveCenter}
-                activeCenterId={activeCenterId}
-                currentUser={currentUser}
-                setSelectedPatient={setSelectedPatient}
-                setIsEditingPatient={setIsEditingPatient}
-                getActiveConsultations={getActiveConsultations}
-                getNextControlDateFromPatient={getNextControlDateFromPatient}
-                setWhatsAppMenuForPatientId={setWhatsAppMenuForPatientId}
-                whatsAppMenuForPatientId={whatsAppMenuForPatientId}
-                whatsAppTemplates={whatsappTemplates}
-                openWhatsApp={openWhatsApp}
-              />
-            )}
+              {/* CONTENT: PATIENTS LIST */}
+              {activeTab === "patients" && (
+                <DoctorPatientsListTab
+                  searchTerm={searchTerm}
+                  setSearchTerm={setSearchTerm}
+                  filteredPatients={filteredPatients}
+                  handleSelectPatient={handleSelectPatient}
+                  onSetPortfolioMode={onSetPortfolioMode}
+                  portfolioMode={portfolioMode}
+                  setFilterNextControl={setFilterNextControl}
+                  filterNextControl={filterNextControl}
+                  isReadOnly={isReadOnly}
+                  hasActiveCenter={hasActiveCenter}
+                  activeCenterId={activeCenterId}
+                  currentUser={currentUser}
+                  setSelectedPatient={setSelectedPatient}
+                  setIsEditingPatient={setIsEditingPatient}
+                  getActiveConsultations={getActiveConsultations}
+                  getNextControlDateFromPatient={getNextControlDateFromPatient}
+                  setWhatsAppMenuForPatientId={setWhatsAppMenuForPatientId}
+                  whatsAppMenuForPatientId={whatsAppMenuForPatientId}
+                  whatsAppTemplates={whatsappTemplates}
+                  openWhatsApp={openWhatsApp}
+                />
+              )}
 
-            {/* CONTENT: AGENDA VIEW */}
-            {activeTab === "agenda" && moduleGuards.agenda && (
-              <DoctorAgendaTab
-                isAdministrativo={isAdministrativo}
-                clinicalDoctors={clinicalDoctors}
-                viewingDoctorId={viewingDoctorId}
-                setViewingDoctorId={setViewingDoctorId}
-                currentMonth={currentMonth}
-                setCurrentMonth={setCurrentMonth}
-                selectedAgendaDate={selectedAgendaDate}
-                setSelectedAgendaDate={setSelectedAgendaDate}
-                appointments={appointments}
-                effectiveDoctorId={effectiveDoctorId}
-                effectiveAgendaConfig={effectiveAgendaConfig}
-                isSyncingAppointments={isSyncingAppointments}
-                isReadOnly={isReadOnly}
-                hasActiveCenter={hasActiveCenter}
-                currentUser={currentUser}
-                activeCenterId={activeCenterId}
-                onUpdateAppointments={onUpdateAppointments}
-                setSlotModal={setSlotModal}
-                handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
-                onToggleAttendance={handleToggleAttendance}
-              />
-            )}
+              {/* CONTENT: AGENDA VIEW */}
+              {activeTab === "agenda" && moduleGuards.agenda && (
+                <DoctorAgendaTab
+                  isAdministrativo={isAdministrativo}
+                  clinicalDoctors={clinicalDoctors}
+                  viewingDoctorId={viewingDoctorId}
+                  setViewingDoctorId={setViewingDoctorId}
+                  currentMonth={currentMonth}
+                  setCurrentMonth={setCurrentMonth}
+                  selectedAgendaDate={selectedAgendaDate}
+                  setSelectedAgendaDate={setSelectedAgendaDate}
+                  appointments={appointments}
+                  effectiveDoctorId={effectiveDoctorId}
+                  effectiveAgendaConfig={effectiveAgendaConfig}
+                  isSyncingAppointments={isSyncingAppointments}
+                  isReadOnly={isReadOnly}
+                  hasActiveCenter={hasActiveCenter}
+                  currentUser={currentUser}
+                  activeCenterId={activeCenterId}
+                  onUpdateAppointments={onUpdateAppointments}
+                  setSlotModal={setSlotModal}
+                  handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
+                  onToggleAttendance={handleToggleAttendance}
+                />
+              )}
 
-            {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
-            {activeTab === "settings" && (
-              <DoctorSettingsTab
-                currentUser={currentUser}
-                doctorId={doctorId}
-                role={role}
-                moduleGuards={moduleGuards}
-                isReadOnly={isReadOnly}
-                onUpdateDoctor={onUpdateDoctor}
-                onLogActivity={onLogActivity}
-                myExamProfiles={myExamProfiles}
-                setMyExamProfiles={setMyExamProfiles}
-                tempProfile={tempProfile}
-                setTempProfile={setTempProfile}
-                isEditingProfileId={isEditingProfileId}
-                setIsEditingProfileId={setIsEditingProfileId}
-                allExamOptions={allExamOptions}
-                newCustomExam={newCustomExam}
-                setNewCustomExam={setNewCustomExam}
-                myTemplates={myTemplates}
-                setMyTemplates={setMyTemplates}
-                tempTemplate={tempTemplate}
-                setTempTemplate={setTempTemplate}
-                isEditingTemplateId={isEditingTemplateId}
-                setIsEditingTemplateId={setIsEditingTemplateId}
-                isCatalogOpen={isCatalogOpen}
-                setIsCatalogOpen={setIsCatalogOpen}
-                catalogSearch={catalogSearch}
-                setCatalogSearch={setCatalogSearch}
-                pwdState={pwdState}
-                setPwdState={setPwdState}
-              />
-            )}
+              {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
+              {activeTab === "settings" && (
+                <DoctorSettingsTab
+                  currentUser={currentUser}
+                  doctorId={doctorId}
+                  role={role}
+                  moduleGuards={moduleGuards}
+                  isReadOnly={isReadOnly}
+                  onUpdateDoctor={onUpdateDoctor}
+                  onLogActivity={onLogActivity}
+                  myExamProfiles={myExamProfiles}
+                  setMyExamProfiles={setMyExamProfiles}
+                  tempProfile={tempProfile}
+                  setTempProfile={setTempProfile}
+                  isEditingProfileId={isEditingProfileId}
+                  setIsEditingProfileId={setIsEditingProfileId}
+                  allExamOptions={allExamOptions}
+                  newCustomExam={newCustomExam}
+                  setNewCustomExam={setNewCustomExam}
+                  myTemplates={myTemplates}
+                  setMyTemplates={setMyTemplates}
+                  tempTemplate={tempTemplate}
+                  setTempTemplate={setTempTemplate}
+                  isEditingTemplateId={isEditingTemplateId}
+                  setIsEditingTemplateId={setIsEditingTemplateId}
+                  isCatalogOpen={isCatalogOpen}
+                  setIsCatalogOpen={setIsCatalogOpen}
+                  catalogSearch={catalogSearch}
+                  setCatalogSearch={setCatalogSearch}
+                  pwdState={pwdState}
+                  setPwdState={setPwdState}
+                />
+              )}
 
-            {/* CONTENT: PERFORMANCE */}
-            {activeTab === "performance" && activeCenterId && (
-              <DoctorPerformanceTab
-                centerId={activeCenterId}
-                doctorId={doctorId}
-              />
-            )}
-            {/* Slot Modal (For Agenda) */}
-            {slotModal.isOpen && slotModal.appointment && (
-              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
-                  <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
-                  <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
-                    <p className="font-bold text-slate-800">
-                      {formatPersonName(slotModal.appointment.patientName)}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}
-                    </p>
-                    <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
-                      {slotModal.appointment.date} - {slotModal.appointment.time}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={() => setSlotModal({ isOpen: false, appointment: null })}
-                      className="py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
-                    >
-                      Cerrar
-                    </button>
-                    <a
-                      href={cancelWhatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
-                    </a>
-                    <a
-                      href={confirmWhatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
-                    </a>
-                    <div className="pt-2 border-t border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">
-                        Plantillas del centro
+              {/* CONTENT: PERFORMANCE */}
+              {activeTab === "performance" && activeCenterId && (
+                <DoctorPerformanceTab
+                  centerId={activeCenterId}
+                  doctorId={doctorId}
+                />
+              )}
+              {/* Slot Modal (For Agenda) */}
+              {slotModal.isOpen && slotModal.appointment && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                  <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
+                    <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
+                    <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
+                      <p className="font-bold text-slate-800">
+                        {formatPersonName(slotModal.appointment.patientName)}
                       </p>
-                      {whatsappTemplatesError && (
-                        <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
-                      )}
-                      {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
-                        <div className="text-xs text-slate-400">No hay plantillas habilitadas.</div>
-                      )}
-                      <div className="flex flex-col gap-2">
-                        {enabledWhatsappTemplates.map((template) => {
-                          const templateMessage = applyWhatsappTemplate(template.body, {
-                            patientName: patientDisplayName,
-                            nextControlDate: slotDateLabel,
-                            centerName,
-                          });
-                          const whatsappPhone = slotModal.appointment
-                            ? normalizePhone(slotModal.appointment.patientPhone || "")
-                            : "";
-                          const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
-                            templateMessage
-                          )}`;
-                          return (
-                            <a
-                              key={template.id}
-                              href={templateUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
-                            >
-                              <MessageCircle className="w-4 h-4" /> {template.title}
-                            </a>
-                          );
-                        })}
+                      <p className="text-sm text-slate-500">
+                        {slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}
+                      </p>
+                      <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
+                        {slotModal.appointment.date} - {slotModal.appointment.time}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={() => setSlotModal({ isOpen: false, appointment: null })}
+                        className="py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                      >
+                        Cerrar
+                      </button>
+                      <a
+                        href={cancelWhatsappUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
+                      </a>
+                      <a
+                        href={confirmWhatsappUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
+                      </a>
+                      <div className="pt-2 border-t border-slate-200">
+                        <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+                          Plantillas del centro
+                        </p>
+                        {whatsappTemplatesError && (
+                          <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
+                        )}
+                        {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
+                          <div className="text-xs text-slate-400">No hay plantillas habilitadas.</div>
+                        )}
+                        <div className="flex flex-col gap-2">
+                          {enabledWhatsappTemplates.map((template) => {
+                            const templateMessage = applyWhatsappTemplate(template.body, {
+                              patientName: patientDisplayName,
+                              nextControlDate: slotDateLabel,
+                              centerName,
+                            });
+                            const whatsappPhone = slotModal.appointment
+                              ? normalizePhone(slotModal.appointment.patientPhone || "")
+                              : "";
+                            const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
+                              templateMessage
+                            )}`;
+                            return (
+                              <a
+                                key={template.id}
+                                href={templateUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
+                              >
+                                <MessageCircle className="w-4 h-4" /> {template.title}
+                              </a>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
       {/* FEEDBACK BUTTON (Floating) */}
       <a
         href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%A9%20el%20siguiente%20problema%3A%0A%0A"

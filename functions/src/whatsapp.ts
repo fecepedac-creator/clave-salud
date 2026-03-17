@@ -139,6 +139,7 @@ interface AgentConversation {
     // Auditoría completa
     lastAgentAction?: string;
     agentLog?: AgentLogEntry[];
+    interactiveOptions?: any;
     updatedAt: admin.firestore.FieldValue;
 }
 
@@ -572,7 +573,7 @@ function buildSystemPrompt(
     conv: AgentConversation
 ): string {
     const today = format(new Date(), "yyyy-MM-dd");
-    const todayReadable = format(new Date(), "EEEE d 'de' MMMM yyyy", { locale: es });
+    const todayReadable = format(new Date(), "eeee d 'de' MMMM yyyy", { locale: es }).replace(/^\w/, (c) => c.toUpperCase());
     const businessHours = "Lunes a Viernes, 08:00 a 18:00";
 
     let rescueContext = "";
@@ -603,16 +604,10 @@ REGLAS ESTRICTAS:
 3. NO inventes horarios ni profesionales. Solo usa los que devuelvan las herramientas.
 4. Para agendar, SIEMPRE necesitas: profesional, fecha, hora, nombre completo del paciente y RUT.
 5. PROACTIVIDAD CON PROFESIONALES: Si el paciente quiere agendar y no especifica médico, DEBES llamar INMEDIATAMENTE a la herramienta "list_professionals". NO le preguntes de forma abierta con qué médico, simplemente llama a la herramienta para generar los botones visuales.
-6. PROACTIVIDAD CON FECHAS: Cuando el paciente elija un profesional, DEBES llamar INMEDIATAMENTE a la herramienta "suggest_alternative_dates" (usando la fecha de hoy como startDate) para buscar disponibilidad. NO le preguntes qué fecha quiere de forma abierta, muestra los botones llamando a la herramienta automáticamente.
-7. Si el paciente elige una fecha, llama a "get_available_slots" para mostrar las horas de ese día.
-8. PROTOCOLO DE RESERVA OBLIGATORIO (2 pasos):
-   a) PRIMERO llama a confirm_booking_details con TODOS los datos. Presenta el resumen al paciente.
-   b) Espera la respuesta EXPLÍCITA del paciente ("sí", "confirmo", etc.).
-   c) SOLO ENTONCES llama a book_appointment. Si no hay confirmación, NO reserves.
-9. RECOPILACIÓN DE DATOS (CRÍTICO): NO asumas el nombre del paciente a partir de su perfil de WhatsApp. Para agendar, DEBES preguntar explícitamente: "Por favor, indíqueme el nombre completo del paciente y su RUT para agendar la cita."
-10. Si el paciente pide hablar con una persona o está frustrado (tras 2+ intentos fallidos), usa trigger_handoff.
-11. NO menciones IDs internos al paciente. Solo nombres y horarios legibles.
-12. Si el paciente pregunta por algo administrativo (valores, Isapre, convenios, reembolsos), usa trigger_handoff.
+6. PROACTIVIDAD CON FECHAS: Cuando el paciente elija un profesional, DEBES llamar INMEDIATAMENTE a la herramienta "suggest_alternative_dates" (usando la fecha de hoy como startDate). NO preguntes qué fecha quiere ni pidas permiso, solo llama a la herramienta.
+7. Si el paciente elige o menciona una fecha, DEBES llamar OBLIGATORIAMENTE a "get_available_slots" para mostrar las horas de ese día.
+8. INTERACCIÓN VISUAL: Siempre que obtengas opciones (médicos, fechas u horas), DEBES responder con una breve indicación invitando a seleccionar una de las opciones. EJECUTAR la herramienta es PRIORIDAD sobre hablar.
+14. VERACIDAD: Nunca inventes horarios. Usa solo lo que devuelvan las herramientas.
 
 CATÁLOGO DE PROFESIONALES:
 ${staffCatalog}
@@ -641,7 +636,7 @@ async function processAgentMessage(
         const systemPrompt = buildSystemPrompt(centerName, centerId, staff, conv);
 
         const model = getGenAI().getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.0-flash",
             tools: AGENT_TOOLS,
             generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
             systemInstruction: systemPrompt,
@@ -730,7 +725,7 @@ async function processAgentMessage(
                             if (slots.length > 0) {
                                 alternatives.push({
                                     date: dateStr,
-                                    label: format(d, "EEEE d 'de' MMMM", { locale: es }),
+                                    label: format(d, "eeee d 'de' MMMM", { locale: es }).replace(/^\w/, (c) => c.toUpperCase()),
                                     count: slots.length
                                 });
                             }
@@ -929,7 +924,7 @@ async function processAgentMessage(
             convUpdates.agentLog = merged;
         }
 
-        return { responseText, intent, updatedConv: convUpdates, interactiveOptions };
+        return { responseText, intent, updatedConv: { ...convUpdates, interactiveOptions }, interactiveOptions };
     } catch (e) {
         console.error("[Agent] Error crítico:", e);
         return {
@@ -1103,18 +1098,29 @@ async function workerProcessor(
                 };
 
                 const isSuccess = bookResult.success;
-                const responseText = isSuccess
-                    ? `¡Listo! Su cita ha sido agendada exitosamente con ${staffName} para el ${pending.date} a las ${pending.time}.\n\nLe hemos enviado los detalles. ¡Que tenga un excelente día! 😊`
-                    : `Lo lamento, no se pudo agendar la cita porque ${errorMessages[bookResult.error || ""] || "ocurrió un problema técnico"}. ¿Le gustaría buscar otro horario?`;
+                let responseText = "";
+                let intent = "BOOKING";
+                const updatedConv: any = {
+                    flowState: isSuccess ? "booking_completed" : "idle",
+                    bookingSuccess: isSuccess,
+                    selectedStaffName: staffName
+                };
+
+                if (isSuccess) {
+                    // Limpieza proactiva de botones para evitar el "error visual" que reportó el usuario
+                    updatedConv.interactiveOptions = null;
+                    conv.interactiveOptions = null; // Also clear the current conv object for immediate effect
+
+                    responseText = `¡Listo! Su cita ha sido agendada exitosamente con ${staffName} para el ${pending.date} a las ${pending.time}.\n\nPara agilizar su atención, le invitamos a completar su ficha de pre-ingreso aquí: https://clavesalud-2.web.app/center/${conv.centerId}/ficha\n\n¡Que tenga un excelente día! 😊`;
+                    intent = "BOOKING_CONFIRMED";
+                } else {
+                    responseText = `Lo lamento, no se pudo agendar la cita porque ${errorMessages[bookResult.error || ""] || "ocurrió un problema técnico"}. ¿Le gustaría buscar otro horario?`;
+                }
 
                 agentResult = {
                     responseText,
-                    intent: "BOOKING",
-                    updatedConv: {
-                        flowState: isSuccess ? "booking_completed" : "idle",
-                        bookingSuccess: isSuccess,
-                        selectedStaffName: staffName
-                    }
+                    intent,
+                    updatedConv
                 };
             } else if (isCancel) {
                 agentResult = {
@@ -1141,12 +1147,14 @@ async function workerProcessor(
             centerName,
             patientName: conv.patientName || (name !== "Paciente" ? name : undefined),
             history: history.slice(-MAX_HISTORY_MESSAGES),
+            interactiveOptions: agentResult.interactiveOptions || conv.interactiveOptions,
             ...agentResult.updatedConv
         }, centerId);
 
         // Enviar respuesta (usando botones iteractivos si corresponden)
-        if (agentResult.interactiveOptions) {
-            const i = agentResult.interactiveOptions;
+        const currentInteractive = agentResult.interactiveOptions || conv.interactiveOptions;
+        if (currentInteractive) {
+            const i = currentInteractive;
             if (i.type === "confirmation") {
                 await sendButtons(phoneNumberId, to, agentResult.responseText, [
                     { id: "confirmo", title: "✅ Sí, agendar" },
@@ -1164,7 +1172,7 @@ async function workerProcessor(
                         title: p.name.substring(0, 24),
                         description: (p.specialty || "").substring(0, 72)
                     }));
-                    await sendList(phoneNumberId, to, "Profesionales", agentResult.responseText, "Ver médicos", [{ title: "Médicos", rows }]);
+                    await sendList(phoneNumberId, to, "Médicos", agentResult.responseText, "Ver médicos", [{ title: "Profesionales", rows }]);
                 } else {
                     await sendText(phoneNumberId, to, agentResult.responseText);
                 }
@@ -1176,7 +1184,7 @@ async function workerProcessor(
                     );
                 } else if (slots.length > 3) {
                     const rows = slots.slice(0, 10).map((s: any) => ({ id: `slot_${s.id}`, title: s.label }));
-                    await sendList(phoneNumberId, to, "Horarios", agentResult.responseText, "Ver horarios", [{ title: "Disponibles", rows }]);
+                    await sendList(phoneNumberId, to, "Disponibles", agentResult.responseText, "Ver horarios", [{ title: "Horarios", rows }]);
                 } else {
                     await sendText(phoneNumberId, to, agentResult.responseText);
                 }
@@ -1190,9 +1198,9 @@ async function workerProcessor(
                     const rows = dates.slice(0, 10).map((d: any) => ({
                         id: `date_${d.date}`,
                         title: d.label.substring(0, 24),
-                        description: `${d.count} hrs disp.`
+                        description: `${d.count} hr${d.count !== 1 ? "s" : ""} disponible${d.count !== 1 ? "s" : ""}`
                     }));
-                    await sendList(phoneNumberId, to, "Fechas", agentResult.responseText, "Ver fechas", [{ title: "Próximos días", rows }]);
+                    await sendList(phoneNumberId, to, "Cupos", agentResult.responseText, "Seleccionar Fecha", [{ title: "Próximas Fechas", rows }]);
                 } else {
                     await sendText(phoneNumberId, to, agentResult.responseText);
                 }

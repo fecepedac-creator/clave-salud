@@ -397,6 +397,16 @@ const PatientForm: React.FC<PatientFormProps> = ({
                 />
 
                 <div className="md:col-span-2">
+                  <BigInput
+                    label="Dirección Completa (Calle, número, depto)"
+                    value={address}
+                    onChange={(e: any) => setAddress(e.target.value)}
+                    placeholder="Ej: Av. Libertad 123, Depto 402"
+                    error={errors.address}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
                   <select
                     value={commune}
                     onChange={(e) => setCommune(e.target.value)}
@@ -467,20 +477,6 @@ const PatientForm: React.FC<PatientFormProps> = ({
                 </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-xl font-bold text-slate-700 mb-4">Identidad de Género (Ley 21.120)</label>
-                <select
-                  value={genderIdentity}
-                  onChange={(e) => setGenderIdentity(e.target.value)}
-                  className="w-full p-4 text-xl border-2 rounded-xl border-slate-200 focus:border-blue-500 outline-none bg-white font-medium"
-                >
-                  {GENDER_IDENTITY_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               <div className="md:col-span-2 border-t border-slate-100 pt-6 mt-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
