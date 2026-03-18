@@ -151,6 +151,13 @@ export interface Medication {
   frequency: string;
 }
 
+export interface SnomedConcept {
+  code: string; // The SNOMED CT code (e.g., "38341003")
+  display: string; // The human-readable term (e.g., "HTA")
+  system?: string; // terminology system, defaults to "http://snomed.info/sct"
+  id?: string; // Optional local UI ID
+}
+
 export interface Allergy {
   id: string;
   type: "Farmaco" | "Alimento" | "Otro";
@@ -300,7 +307,7 @@ export interface Consultation extends SoftDeletable {
   anamnesis: string;
   physicalExam: string;
   diagnosis: string;
-  diagnoses?: string[]; // Multiple diagnoses support
+  diagnoses?: SnomedConcept[]; // Multiple diagnoses support (Structured)
 
   dentalMap?: ToothState[];
   podogram?: NailState[];
@@ -375,13 +382,11 @@ export interface Patient extends SoftDeletable {
   // --- Bio-Markers Subscription ---
   activeExams?: string[]; // List of exam IDs (e.g., ['hba1c', 'tsh'])
 
-  medicalHistory: Array<string | { id: string; snomedCode: string; system: string; label: string }>;
+  medicalHistory: Array<string | SnomedConcept>;
   medicalHistoryDetails?: string;
   cancerDetails?: string;
 
-  surgicalHistory: Array<
-    string | { id: string; snomedCode: string; system: string; label: string }
-  >;
+  surgicalHistory: Array<string | SnomedConcept>;
   surgicalHistoryDetails?: string;
   herniaDetails?: string;
 

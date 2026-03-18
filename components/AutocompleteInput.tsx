@@ -4,10 +4,10 @@ import { Search } from "lucide-react";
 interface AutocompleteInputProps {
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: Array<string | { display: string; code: string }>;
   placeholder?: string;
   className?: string;
-  onSelect?: (value: string) => void;
+  onSelect?: (option: string | { display: string; code: string }) => void;
 }
 
 const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -19,14 +19,19 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   onSelect,
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredOptions, setFilteredOptions] = useState<string[]>([]);
+  const [filteredOptions, setFilteredOptions] = useState<
+    Array<string | { display: string; code: string }>
+  >([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (value && value.length > 1) {
       const lowerVal = value.toLowerCase();
-      const matches = options.filter((opt) => opt.toLowerCase().includes(lowerVal));
-      setFilteredOptions(matches.slice(0, 5)); // Limit to 5 suggestions
+      const matches = options.filter((opt) => {
+        const label = typeof opt === "string" ? opt : opt.display;
+        return label.toLowerCase().includes(lowerVal);
+      });
+      setFilteredOptions(matches.slice(0, 10)); // Limit to 10 suggestions
     } else {
       setFilteredOptions([]);
     }
@@ -43,8 +48,9 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [wrapperRef]);
 
-  const handleSelect = (opt: string) => {
-    onChange(opt);
+  const handleSelect = (opt: string | { display: string; code: string }) => {
+    const label = typeof opt === "string" ? opt : opt.display;
+    onChange(label);
     setShowSuggestions(false);
     if (onSelect) onSelect(opt);
   };
@@ -68,16 +74,23 @@ const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       />
       {showSuggestions && filteredOptions.length > 0 && (
         <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto animate-fadeIn">
-          {filteredOptions.map((opt, idx) => (
-            <li
-              key={idx}
-              onClick={() => handleSelect(opt)}
-              className="px-4 py-3 hover:bg-blue-50 cursor-pointer text-slate-700 text-sm font-medium border-b border-slate-50 last:border-0 flex items-center gap-2"
-            >
-              <Search className="w-3 h-3 text-slate-400" />
-              {opt}
-            </li>
-          ))}
+          {filteredOptions.map((opt, idx) => {
+            const label = typeof opt === "string" ? opt : opt.display;
+            const code = typeof opt === "string" ? null : opt.code;
+            return (
+              <li
+                key={idx}
+                onClick={() => handleSelect(opt)}
+                className="px-4 py-3 hover:bg-blue-50 cursor-pointer text-slate-700 text-sm font-medium border-b border-slate-50 last:border-0 flex items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <Search className="w-3 h-3 text-slate-400" />
+                  {label}
+                </div>
+                {code && <span className="text-[10px] text-slate-400 font-mono">SCT: {code}</span>}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

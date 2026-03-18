@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Consultation, MedicalCenter, Patient, Prescription } from "../types";
+import { Consultation, MedicalCenter, Patient, Prescription, SnomedConcept } from "../types";
 import { calculateAge } from "../utils";
 import { Printer } from "lucide-react";
 
@@ -33,9 +33,11 @@ const formatDate = (value?: string) => {
   return date.toLocaleDateString("es-CL");
 };
 
-const formatList = (items?: string[]) => {
+const formatList = (items?: Array<string | SnomedConcept>) => {
   if (!items || items.length === 0) return "No registrado";
-  return items.join(", ");
+  return items
+    .map((item) => (typeof item === "string" ? item : item.display))
+    .join(", ");
 };
 
 const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = ({

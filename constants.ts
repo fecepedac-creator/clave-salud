@@ -142,91 +142,62 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
 export const MEDICAL_HISTORY_OPTIONS = [
   {
     id: "HTA",
-    label: "Hipertensión Arterial",
-    snomedCode: "38341003",
+    display: "Hipertensión Arterial",
+    code: "38341003",
     system: "http://snomed.info/sct",
   },
   {
     id: "DM1",
-    label: "Diabetes Mellitus Tipo 1",
-    snomedCode: "46635009",
+    display: "Diabetes Mellitus Tipo 1",
+    code: "46635009",
     system: "http://snomed.info/sct",
   },
   {
     id: "DM2",
-    label: "Diabetes Mellitus Tipo 2",
-    snomedCode: "44054006",
+    display: "Diabetes Mellitus Tipo 2",
+    code: "44054006",
     system: "http://snomed.info/sct",
   },
   {
     id: "DLP",
-    label: "Dislipidemia (Colesterol Alto)",
-    snomedCode: "55822004",
+    display: "Dislipidemia (Colesterol Alto)",
+    code: "55822004",
     system: "http://snomed.info/sct",
   },
-  { id: "HIPO", label: "Hipotiroidismo", snomedCode: "40930008", system: "http://snomed.info/sct" },
+  { id: "HIPO", display: "Hipotiroidismo", code: "40930008", system: "http://snomed.info/sct" },
   {
     id: "HIPER",
-    label: "Hipertiroidismo",
-    snomedCode: "34486009",
+    display: "Hipertiroidismo",
+    code: "34486009",
     system: "http://snomed.info/sct",
   },
   {
     id: "ERC",
-    label: "Enfermedad Renal Crónica",
-    snomedCode: "709044004",
+    display: "Enfermedad Renal Crónica",
+    code: "709044004",
     system: "http://snomed.info/sct",
   },
   {
-    id: "IC",
-    label: "Insuficiencia Cardíaca",
-    snomedCode: "42343007",
+    id: "ASMA",
+    display: "Asma Bronquial",
+    code: "195967001",
     system: "http://snomed.info/sct",
   },
+  { id: "EPOC", display: "EPOC", code: "13645005", system: "http://snomed.info/sct" },
   {
-    id: "COR",
-    label: "Cardiopatía Coronaria (Infartos)",
-    snomedCode: "53741008",
+    id: "ICC",
+    display: "Insuficiencia Cardíaca",
+    code: "84114007",
     system: "http://snomed.info/sct",
   },
-  {
-    id: "ACV",
-    label: "Accidente Cerebrovascular",
-    snomedCode: "230690007",
-    system: "http://snomed.info/sct",
-  },
-  { id: "EPOC", label: "Asma / EPOC", snomedCode: "185086009", system: "http://snomed.info/sct" },
-  { id: "CANCER", label: "Cáncer", snomedCode: "363346000", system: "http://snomed.info/sct" },
-  { id: "OTRO", label: "Otras", snomedCode: null, system: null },
 ];
 
 export const SURGICAL_HISTORY_OPTIONS = [
-  {
-    id: "APENDICE",
-    label: "Apendicetomía",
-    snomedCode: "80146002",
-    system: "http://snomed.info/sct",
-  },
-  {
-    id: "VESICULA",
-    label: "Colecistectomía",
-    snomedCode: "38102005",
-    system: "http://snomed.info/sct",
-  },
-  { id: "HERNIA", label: "Hernias", snomedCode: "50448004", system: "http://snomed.info/sct" },
-  {
-    id: "UTERO",
-    label: "Histerectomía",
-    snomedCode: "236886002",
-    system: "http://snomed.info/sct",
-  },
-  {
-    id: "PROSTATA",
-    label: "Cirugía Prostática",
-    snomedCode: "11116008",
-    system: "http://snomed.info/sct",
-  },
-  { id: "OTRO", label: "Otras", snomedCode: null, system: null },
+  { id: "APP", display: "Apendicectomía", code: "80146002", system: "http://snomed.info/sct" },
+  { id: "CCY", display: "Colecistectomía", code: "38102005", system: "http://snomed.info/sct" },
+  { id: "HER", display: "Hernioplastía", code: "107860002", system: "http://snomed.info/sct" },
+  { id: "CES", display: "Cesárea", code: "11466000", system: "http://snomed.info/sct" },
+  { id: "OTRO", display: "Otras", code: "free-text", system: null },
 ];
 
 export const SMOKING_STATUS_OPTIONS = ["No fumador", "Ex fumador", "Fumador actual"] as const;
@@ -343,15 +314,17 @@ export const COMMON_MEDICATIONS = [
 ].sort();
 
 export const COMMON_DIAGNOSES = [
-  "Hipertensión arterial",
-  "Diabetes mellitus 2",
-  "Caries dentina",
-  "Pulpitis reversible",
-  "Lumbago mecánico",
-  "Trastorno adaptativo",
-  "Gripe",
-  "Faringitis aguda",
-].sort();
+  { code: "38341003", display: "Hipertensión arterial" },
+  { code: "44054006", display: "Diabetes mellitus 2" },
+  { code: "370305001", display: "Caries de dentina" },
+  { code: "235122008", display: "Pulpitis reversible" },
+  { code: "279039007", display: "Lumbago mecánico" },
+  { code: "192305001", display: "Trastorno adaptativo" },
+  { code: "6142004", display: "Gripe" },
+  { code: "195667001", display: "Faringitis aguda" },
+  { code: "20183006", display: "Gingivitis" },
+  { code: "1119003", display: "Rinitis alérgica" },
+].sort((a, b) => a.display.localeCompare(b.display));
 
 export const DEFAULT_TEMPLATES: ClinicalTemplate[] = [
   // --- MEDICINA GENERAL ---

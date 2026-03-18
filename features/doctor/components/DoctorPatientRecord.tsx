@@ -23,6 +23,7 @@ import {
   ProfessionalRole,
   KinesiologyProgram,
   KinesiologySession,
+  SnomedConcept,
 } from "../../../types";
 import {
   generateId,
@@ -78,10 +79,10 @@ export interface DoctorPatientRecordProps {
   setNewConsultation: React.Dispatch<React.SetStateAction<Partial<Consultation>>>;
   isCreatingConsultation: boolean;
   setIsCreatingConsultation: React.Dispatch<React.SetStateAction<boolean>>;
-  diagnoses?: string[];
-  addDiagnosis?: (d: string) => void;
-  removeDiagnosis?: (index: number) => void;
-  pinDiagnosis?: (d: string) => void;
+  diagnoses?: SnomedConcept[];
+  addDiagnosis?: (d: string | SnomedConcept) => void;
+  removeDiagnosis?: (d: SnomedConcept) => void;
+  pinDiagnosis?: (d: SnomedConcept) => void;
   handleVitalsChange: (f: any, v: any) => void;
   handleExamChange: (f: any, v: any) => void;
   handleCreateConsultation: () => Promise<Patient>;
@@ -1211,9 +1212,15 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                   onChange={(val) =>
                                     setNewConsultation((prev) => ({ ...prev, diagnosis: val }))
                                   }
+                                  onSelect={(opt) => {
+                                    if (addDiagnosis) {
+                                      addDiagnosis(opt);
+                                      setNewConsultation((prev) => ({ ...prev, diagnosis: "" }));
+                                    }
+                                  }}
                                   options={COMMON_DIAGNOSES}
                                   className="flex-1 p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none font-bold text-lg text-slate-800"
-                                  placeholder="Buscar CIE-10 o escribir texto libre..."
+                                  placeholder="Buscar diagnóstico o escribir texto libre..."
                                 />
                                 <button
                                   onClick={() => {
@@ -1234,12 +1241,19 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                 <div className="mt-4 flex flex-wrap gap-2">
                                   {diagnoses.map((d, idx) => (
                                     <div
-                                      key={idx}
+                                      key={d.code + idx}
                                       className="flex items-center gap-2 bg-slate-100 pl-4 pr-2 py-2 rounded-full border border-slate-200 group hover:border-emerald-200 hover:bg-emerald-50 transition-all"
                                     >
-                                      <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-700">
-                                        {d}
-                                      </span>
+                                      <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-700 leading-tight">
+                                          {d.display}
+                                        </span>
+                                        {d.code && d.code !== "free-text" && (
+                                          <span className="text-[10px] text-slate-400 font-mono">
+                                            SCT: {d.code}
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="flex items-center gap-1">
                                         <button
                                           onClick={() => pinDiagnosis?.(d)}
@@ -1249,7 +1263,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                                           <Pin className="w-4 h-4" />
                                         </button>
                                         <button
-                                          onClick={() => removeDiagnosis?.(idx)}
+                                          onClick={() => removeDiagnosis?.(d)}
                                           className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                                           title="Eliminar"
                                         >

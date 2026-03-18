@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Consultation, Patient, AuditLogEntry, MedicalCenter, ProfessionalRole } from "../../types";
+import { Consultation, Patient, MedicalCenter, ProfessionalRole, SnomedConcept } from "../../types";
 import { generateId, sanitizeForFirestore } from "../../utils";
 import { useToast } from "../../components/Toast";
 import { db, auth } from "../../firebase";
@@ -153,39 +153,50 @@ export const useConsultationLogic = ({
     }));
   };
 
-  const addDiagnosis = (diag: string) => {
+  const addDiagnosis = (diag: string | SnomedConcept) => {
     if (!diag) return;
     setNewConsultation((prev) => {
       const currentDiagnoses = prev.diagnoses || [];
-      if (currentDiagnoses.includes(diag)) return prev;
-      const updated = [...currentDiagnoses, diag];
+
+      // Check if already exists (by code or by label)
+      const exists = currentDiagnoses.some((d) => {
+        if (typeof diag === "string") return d.display.toLowerCase() === diag.toLowerCase();
+        return d.code === diag.code;
+      });
+
+      if (exists) return prev;
+
+      const newConcept: SnomedConcept =
+        typeof diag === "string" ? { code: "free-text", display: diag } : diag;
+      const updated = [...currentDiagnoses, newConcept];
+
       return {
         ...prev,
         diagnoses: updated,
-        diagnosis: updated.join(" • "), // Sync with legacy string
+        diagnosis: updated.map((d) => d.display).join(" • "), // Sync with legacy string
       };
     });
   };
 
-  const removeDiagnosis = (diag: string) => {
+  const removeDiagnosis = (diag: SnomedConcept) => {
     setNewConsultation((prev) => {
-      const updated = (prev.diagnoses || []).filter((d) => d !== diag);
+      const updated = (prev.diagnoses || []).filter((d) => d.code !== diag.code || d.display !== diag.display);
       return {
         ...prev,
         diagnoses: updated,
-        diagnosis: updated.join(" • "), // Sync with legacy string
+        diagnosis: updated.map(d => d.display).join(" • "), // Sync with legacy string
       };
     });
   };
 
-  const pinDiagnosis = (diag: string) => {
+  const pinDiagnosis = (diag: SnomedConcept) => {
     if (!selectedPatient || !diag) return;
 
     const currentHistory = selectedPatient.medicalHistory || [];
-    // Check if already exists (string match or label match if object)
+    // Check if already exists (by code or by display)
     const exists = currentHistory.some((item) => {
-      if (typeof item === "string") return item.toLowerCase() === diag.toLowerCase();
-      return item.label.toLowerCase() === diag.toLowerCase();
+      if (typeof item === "string") return item.toLowerCase() === diag.display.toLowerCase();
+      return item.code === diag.code;
     });
 
     if (exists) {
@@ -203,7 +214,7 @@ export const useConsultationLogic = ({
     showToast("Agregado a antecedentes morbidos", "success");
     onLogActivity(
       "update",
-      `Agregó ${diag} a antecedentes de ${selectedPatient.fullName}`,
+      `Agregó ${diag.display} a antecedentes de ${selectedPatient.fullName}`,
       selectedPatient.id
     );
   };

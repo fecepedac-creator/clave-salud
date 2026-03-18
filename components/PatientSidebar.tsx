@@ -92,12 +92,15 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     // Evitar duplicados comparando normalizado
     const normalValue = value.trim().toLowerCase();
     const alreadyExists = list.some((item) => {
-      const label = typeof item === "string" ? item : item.label;
+      const label = typeof item === "string" ? item : item.display;
       return label.toLowerCase() === normalValue;
     });
 
     if (!alreadyExists) {
-      handleEditPatientField(field, [...list, value.trim()]);
+      handleEditPatientField(field, [
+        ...list,
+        { code: "free-text", display: value.trim(), system: null },
+      ]);
     }
   };
 
@@ -106,7 +109,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     const field = type === "medical" ? "medicalHistory" : "surgicalHistory";
     const options = type === "medical" ? MEDICAL_HISTORY_OPTIONS : SURGICAL_HISTORY_OPTIONS;
 
-    // Normalizar para admitir tanto 'string' (legacy) como 'objeto' (FHIR)
+    // Normalizar para admitir tanto 'string' (legacy) como 'objeto' (SnomedConcept)
     const isItemSelected = list.some((item) =>
       typeof item === "string" ? item === itemId : item.id === itemId
     );
@@ -119,20 +122,20 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     } else {
       // Buscar información de codificación en constantes
       const option = options.find((o) => o.id === itemId);
-      if (option && option.snomedCode) {
-        // Guardar como objeto codificado (FHIR Ready)
+      if (option && option.code) {
+        // Guardar como objeto codificado
         handleEditPatientField(field, [
           ...list,
           {
             id: option.id,
-            snomedCode: option.snomedCode,
+            code: option.code,
             system: option.system || "http://snomed.info/sct",
-            label: option.label,
+            display: option.display,
           },
         ]);
       } else {
-        // Legacy fallback o texto libre
-        handleEditPatientField(field, [...list, itemId]);
+        // Fallback texto libre
+        handleEditPatientField(field, [...list, { code: "free-text", display: itemId }]);
       }
     }
   };
@@ -309,7 +312,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      {opt.label}
+                      {opt.display}
                     </button>
                   ))}
                 </div>
@@ -343,15 +346,15 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {medicalHistory.map((h) => {
-              const id = typeof h === "string" ? h : h.id;
-              const label = typeof h === "string" ? h : h.label;
-              const code = typeof h === "string" ? "" : h.snomedCode;
+            {medicalHistory.map((h, idx) => {
+              const id = typeof h === "string" ? h : h.id || h.code + idx;
+              const label = typeof h === "string" ? h : h.display;
+              const code = typeof h === "string" ? "" : h.code;
 
               return (
                 <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
                   <span className="px-3 py-1.5 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-100 flex items-center gap-2">
-                    {code && <Activity className="w-3 h-3 text-red-400" />}
+                    {code && code !== "free-text" && <Activity className="w-3 h-3 text-red-400" />}
                     {label}
                   </span>
                 </div>
@@ -370,8 +373,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               const itemId = typeof h === "string" ? h : h.id;
               const itemLabel =
                 typeof h === "string"
-                  ? MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h
-                  : h.label;
+                  ? MEDICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.display || h
+                  : h.display;
 
               return (
                 <span
@@ -384,7 +387,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       handleEditPatientField(
                         "medicalHistory",
                         medicalHistory.filter(
-                          (item) => (typeof item === "string" ? item : item.id) !== itemId
+                          (item) => (typeof item === "string" ? item : item.id || item.code) !== itemId
                         )
                       )
                     }
@@ -543,7 +546,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      {opt.label}
+                      {opt.display}
                     </button>
                   ))}
                 </div>
@@ -577,15 +580,15 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {surgicalHistory.map((h) => {
-              const id = typeof h === "string" ? h : h.id;
-              const label = typeof h === "string" ? h : h.label;
-              const code = typeof h === "string" ? "" : h.snomedCode;
+            {surgicalHistory.map((h, idx) => {
+              const id = typeof h === "string" ? h : h.id || h.code + idx;
+              const label = typeof h === "string" ? h : h.display;
+              const code = typeof h === "string" ? "" : h.code;
 
               return (
                 <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
                   <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100 flex items-center gap-2">
-                    {code && <Activity className="w-3 h-3 text-indigo-400" />}
+                    {code && code !== "free-text" && <Activity className="w-3 h-3 text-indigo-400" />}
                     {label}
                   </span>
                 </div>
@@ -604,8 +607,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               const itemId = typeof h === "string" ? h : h.id;
               const itemLabel =
                 typeof h === "string"
-                  ? SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.label || h
-                  : h.label;
+                  ? SURGICAL_HISTORY_OPTIONS.find((opt) => opt.id === h)?.display || h
+                  : h.display;
 
               return (
                 <span
@@ -618,7 +621,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       handleEditPatientField(
                         "surgicalHistory",
                         surgicalHistory.filter(
-                          (item) => (typeof item === "string" ? item : item.id) !== itemId
+                          (item) => (typeof item === "string" ? item : item.id || item.code) !== itemId
                         )
                       )
                     }
