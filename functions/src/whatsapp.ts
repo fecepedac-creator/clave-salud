@@ -40,6 +40,59 @@ function getWhatsappToken(): string {
   return token;
 }
 
+// ─── CIFRADO AES-256 PARA TOKENS DE META ─────────────────────────────────────
+// Los Access Tokens de Meta se cifran antes de almacenar en Firestore.
+// La llave simétrica se guarda exclusivamente en Firebase Secrets como
+// ENCRYPTION_KEY (64 hex chars = 32 bytes = AES-256).
+import * as cryptoNode from "crypto";
+
+const ENCRYPTION_ALGO = "aes-256-cbc" as const;
+const IV_LENGTH = 16; // bytes
+
+function getEncryptionKey(): Buffer | null {
+  const raw = process.env.ENCRYPTION_KEY || "";
+  if (!raw || raw.length !== 64) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn(
+        "[Crypto] ENCRYPTION_KEY no configurada o inválida. " +
+        "Los tokens se leerán como texto plano (modo compatibilidad)."
+      );
+    }
+    return null;
+  }
+  return Buffer.from(raw, "hex");
+}
+
+/** Cifra un texto y devuelve "iv:ciphertext" en hex. */
+export function encryptToken(plainText: string): string {
+  const key = getEncryptionKey();
+  if (!key) return plainText; // Fallback: devuelve sin cifrar si no hay key
+  const iv = cryptoNode.randomBytes(IV_LENGTH);
+  const cipher = cryptoNode.createCipheriv(ENCRYPTION_ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plainText, "utf8"), cipher.final()]);
+  return iv.toString("hex") + ":" + encrypted.toString("hex");
+}
+
+/** Descifra un valor "iv:ciphertext" o lo devuelve tal cual si no tiene el formato. */
+export function decryptToken(storedValue: string): string {
+  if (!storedValue) return storedValue;
+  // Si no tiene el separador, asumimos texto plano (tokens legacy sin cifrar)
+  if (!storedValue.includes(":")) return storedValue;
+  const key = getEncryptionKey();
+  if (!key) return storedValue; // Sin key no podemos descifrar → devolver raw
+  try {
+    const [ivHex, encryptedHex] = storedValue.split(":");
+    const iv = Buffer.from(ivHex, "hex");
+    const encrypted = Buffer.from(encryptedHex, "hex");
+    const decipher = cryptoNode.createDecipheriv(ENCRYPTION_ALGO, key, iv);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch (e) {
+    console.error("[Crypto] Error descifrando token:", e);
+    return storedValue; // Fallback seguro: devolver el valor almacenado
+  }
+}
+
 // ─── CACHE POR CENTRO (multi-centro) ─────────────────────────────────────────
 interface CenterCache {
   center: any;
@@ -80,6 +133,14 @@ async function getCenterByPhoneId(
     const centerDoc = snap.docs[0];
     const center: any = { id: centerDoc.id, ...centerDoc.data() };
 
+    // Descifrar el Access Token de Meta al cargarlo (compatibilidad con tokens legacy en texto plano)
+    if (center.whatsappConfig?.accessToken) {
+      center.whatsappConfig = {
+        ...center.whatsappConfig,
+        accessToken: decryptToken(center.whatsappConfig.accessToken),
+      };
+    }
+
     const staffSnap = await db
       .collection("centers")
       .doc(center.id)
@@ -98,7 +159,35 @@ async function getCenterByPhoneId(
   }
 }
 
-// ─── CONVERSACIÓN CON MEMORIA (FIRESTORE) ────────────────────────────────────
+// ─── LOOKUP DE STAFF POR TELÉFONO (para Modo Doctor) ─────────────────────────
+
+async function getStaffByPhone(
+  senderPhone: string,
+  centerId: string
+): Promise<{ id: string; name: string; specialty: string } | null> {
+  // Normalizar número: WhatsApp siempre envía en formato 569XXXXXXXX (sin +)
+  const variants = [
+    senderPhone,                              // "56912345678" (como viene de Meta)
+    senderPhone.replace(/^56/, ""),           // "912345678" (formato corto)
+    senderPhone.length === 8 ? "569" + senderPhone : null, // fallback para 8 dígitos
+  ].filter(Boolean) as string[];
+
+  const staffRef = db.collection("centers").doc(centerId).collection("staff");
+  for (const variant of variants) {
+    const snap = await staffRef.where("phone", "==", variant).where("active", "==", true).limit(1).get();
+    if (!snap.empty) {
+      const data = snap.docs[0].data();
+      return {
+        id: snap.docs[0].id,
+        name: data.fullName || data.name || "Profesional",
+        specialty: data.specialty || data.clinicalRole || "Profesional de Salud",
+      };
+    }
+  }
+  return null;
+}
+
+
 
 interface AgentLogEntry {
   turn: number;
@@ -258,8 +347,35 @@ export async function resetConversation(phone: string, centerId?: string) {
 
 // ─── MENSAJERÍA WHATSAPP ──────────────────────────────────────────────────────
 
-async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any) {
-  const WHATSAPP_TOKEN = getWhatsappToken();
+/**
+ * Resuelve el Access Token de WhatsApp correcto para un phoneNumberId dado.
+ * Primero busca el token específico del centro en Firestore (multi-centro),
+ * y si no existe, usa el token global de Firebase Secrets.
+ */
+async function resolveWhatsappToken(phoneNumberId: string): Promise<string> {
+  const globalToken = getWhatsappToken();
+  if (!phoneNumberId) return globalToken;
+  try {
+    // El center ya debería estar en cache, solo consultamos el accessToken
+    const centersSnap = await db
+      .collection("centers")
+      .where("whatsappConfig.phoneNumberId", "==", phoneNumberId)
+      .limit(1)
+      .get();
+    if (!centersSnap.empty) {
+      const centerToken = centersSnap.docs[0].data()?.whatsappConfig?.accessToken;
+      if (centerToken) {
+        return centerToken; // Token específico del centro
+      }
+    }
+  } catch (e) {
+    console.warn("[resolveWhatsappToken] Error al buscar token del centro, usando global:", e);
+  }
+  return globalToken; // Fallback al token global
+}
+
+async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any, overrideToken?: string) {
+  const WHATSAPP_TOKEN = overrideToken || await resolveWhatsappToken(phoneNumberId);
   if (!WHATSAPP_TOKEN || !phoneNumberId) return;
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   try {
@@ -340,13 +456,25 @@ async function getAvailableSlots(
       .where("status", "==", "available")
       .get();
 
-    // Fallback: doctorUid (compatibilidad legado)
+    // Fallback 1: doctorUid (compatibilidad legado)
     if (snap.empty) {
       snap = await db
         .collection("centers")
         .doc(centerId)
         .collection("appointments")
         .where("doctorUid", "==", staffId)
+        .where("date", "==", date)
+        .where("status", "==", "available")
+        .get();
+    }
+
+    // Fallback 2: serviceId (para exámenes/procedimientos)
+    if (snap.empty) {
+      snap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("appointments")
+        .where("serviceId", "==", staffId)
         .where("date", "==", date)
         .where("status", "==", "available")
         .get();
@@ -533,11 +661,15 @@ async function triggerHandoff(
   }
 
   if (secretaryPhone) {
+    // Generar link directo al historial en el Admin Dashboard
+    const dashboardLink = `https://clavesalud-2.web.app/center/${centerId}/admin?tab=whatsapp&chat=${patientPhone}`;
+    
     const notif =
       `🔔 *Nueva solicitud de atención — ${centerName}*\n\n` +
       `👤 Paciente: ${patientName || "Desconocido"}\n` +
       `📱 Teléfono: +${patientPhone}\n` +
       `💬 Motivo: ${reason || "Solicitud general"}\n\n` +
+      `🔗 *Historial del chat:* ${dashboardLink}\n\n` +
       `Para atenderle, responda directamente al número del paciente.\n` +
       `_(Registro guardado en el sistema de ${centerName})_`;
     await sendText(phoneNumberId, secretaryPhone, notif);
@@ -555,17 +687,33 @@ const AGENT_TOOLS: any[] = [
       {
         name: "list_professionals",
         description:
-          "Lista los profesionales médicos disponibles para agendar en el centro. Úsala cuando el paciente quiere agendar pero no especifica con quién.",
-        parameters: { type: SchemaType.OBJECT, properties: {} },
+          "Lista los profesionales disponibles. Permite filtrar por tipo: 'medicos' (doctores) o 'otros' (kinesiólogos, psicólogos, etc.).",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            category: { type: SchemaType.STRING, enum: ["medicos", "otros"], description: "Categoría de profesional." },
+          },
+        },
+      },
+      {
+        name: "list_services",
+        description:
+          "Busca y lista servicios o exámenes disponibles en el centro. Permite filtrar por categoría: 'sangre' (laboratorio), 'eco' (ecotomografía) o 'ginec' (ginecología).",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            category: { type: SchemaType.STRING, enum: ["sangre", "eco", "ginec"], description: "Categoría del examen." },
+          },
+        },
       },
       {
         name: "get_available_slots",
         description:
-          "Consulta los horarios disponibles para un profesional en una fecha específica. Requiere el ID del profesional (obtenido de list_professionals) y una fecha en formato YYYY-MM-DD.",
+          "Consulta los horarios disponibles para un profesional O servicio en una fecha específica. Requiere el ID (obtenido de list_professionals o list_services) y una fecha en formato YYYY-MM-DD.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
-            staffId: { type: SchemaType.STRING, description: "ID del profesional médico." },
+            staffId: { type: SchemaType.STRING, description: "ID del profesional o servicio." },
             date: { type: SchemaType.STRING, description: "Fecha en formato YYYY-MM-DD." },
           },
           required: ["staffId", "date"],
@@ -644,24 +792,107 @@ const AGENT_TOOLS: any[] = [
           required: ["reason"],
         },
       },
+      {
+        name: "cancel_appointment",
+        description:
+          "Cancela una cita agendada del paciente. Requiere el RUT del paciente para verificar identidad. Úsala SOLO cuando el paciente explícitamente solicite cancelar o anular una cita.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            patientRut: {
+              type: SchemaType.STRING,
+              description: "RUT del paciente (sin puntos, con guión). Ej: 12345678-9.",
+            },
+            date: {
+              type: SchemaType.STRING,
+              description: "Fecha de la cita a cancelar en formato YYYY-MM-DD. Si el paciente no la recuerda, busca la próxima cita activa.",
+            },
+            reason: {
+              type: SchemaType.STRING,
+              description: "Motivo de cancelación expresado por el paciente.",
+            },
+          },
+          required: ["patientRut"],
+        },
+      },
     ],
   },
 ];
 
-// ─── SYSTEM PROMPT DEL AGENTE ────────────────────────────────────────────────
+// ─── TOOLS DEL MODO DOCTOR ────────────────────────────────────────────────────
 
-function buildSystemPrompt(
-  centerName: string,
-  centerId: string,
-  staff: any[],
-  conv: AgentConversation
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const DOCTOR_TOOLS: any[] = [
+  {
+    functionDeclarations: [
+      {
+        name: "get_my_agenda",
+        description:
+          "Obtiene la agenda de citas del profesional para una fecha dada. Incluye número de pacientes, horarios, nombres y tipo de consulta.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            date: {
+              type: SchemaType.STRING,
+              description: "Fecha en formato YYYY-MM-DD. Usa 'hoy' o 'mañana' si el profesional lo indica.",
+            },
+          },
+          required: ["date"],
+        },
+      },
+    ],
+  },
+];
+
+function buildDoctorSystemPrompt(
+  doctorName: string,
+  specialty: string,
+  centerName: string
 ): string {
   const today = format(new Date(), "yyyy-MM-dd");
   const todayReadable = format(new Date(), "eeee d 'de' MMMM yyyy", { locale: es }).replace(
     /^\w/,
     (c) => c.toUpperCase()
   );
-  const businessHours = "Lunes a Viernes, 08:00 a 18:00";
+  const tomorrow = format(
+    new Date(new Date().setDate(new Date().getDate() + 1)),
+    "yyyy-MM-dd"
+  );
+
+  return `Eres el asistente de agenda personal de ${doctorName} (${specialty}) en "${centerName}".
+Fecha de hoy: ${todayReadable} (${today}).
+Fecha de mañana: ${tomorrow}.
+
+IDENTIDAD:
+- Solo atiendes consultas de agenda del propio profesional.
+- Tono: Profesional, directo y conciso.
+- Máximo 3 frases de texto propio por respuesta; el resto son datos.
+
+REGLAS:
+1. Cuando te pregunten por la agenda, SIEMPRE llama a get_my_agenda con la fecha correcta.
+2. Si el profesional dice "hoy", usa ${today}. Si dice "mañana", usa ${tomorrow}.
+3. NUNCA inventes datos de pacientes. Solo muestra lo que devuelva get_my_agenda.
+4. Si no hay pacientes, di que la agenda está libre ese día.
+5. No puedes agendar ni cancelar citas en este canal — solo consultar.
+6. Formato de respuesta: número total de pacientes + lista ordenada por hora.`;
+}
+
+
+
+function buildSystemPrompt(
+  centerName: string,
+  centerId: string,
+  staff: any[],
+  conv: AgentConversation,
+  centerBusinessHours?: string
+): string {
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayReadable = format(new Date(), "eeee d 'de' MMMM yyyy", { locale: es }).replace(
+    /^\w/,
+    (c) => c.toUpperCase()
+  );
+  // Usa los horarios reales del centro si están configurados; de lo contrario, fallback genérico.
+  const businessHours = centerBusinessHours || "Lunes a Viernes, 08:00 a 18:00";
 
   let rescueContext = "";
   if (conv.isRescuingControl) {
@@ -690,13 +921,19 @@ IDENTIDAD:
 REGLAS ESTRICTAS:
 1. NO des diagnósticos, recomendaciones médicas ni sugerencias de medicamentos. NUNCA.
 2. Si detectas una urgencia médica (dolor de pecho, dificultad respiratoria, trauma grave), indica al paciente que llame al 131 (SAMU) e inmediatamente usa trigger_handoff.
-3. NO inventes horarios ni profesionales. Solo usa los que devuelvan las herramientas.
-4. Para agendar, SIEMPRE necesitas: profesional, fecha, hora, nombre completo del paciente y RUT.
-5. PROACTIVIDAD CON PROFESIONALES: Si el paciente quiere agendar y no especifica médico, DEBES llamar INMEDIATAMENTE a la herramienta "list_professionals". NO le preguntes de forma abierta con qué médico, simplemente llama a la herramienta para generar los botones visuales.
-6. PROACTIVIDAD CON FECHAS: Cuando el paciente elija un profesional, DEBES llamar INMEDIATAMENTE a la herramienta "suggest_alternative_dates" (usando la fecha de hoy como startDate). NO preguntes qué fecha quiere ni pidas permiso, solo llama a la herramienta.
-7. Si el paciente elige o menciona una fecha, DEBES llamar OBLIGATORIAMENTE a "get_available_slots" para mostrar las horas de ese día.
-8. INTERACCIÓN VISUAL: Siempre que obtengas opciones (médicos, fechas u horas), DEBES responder con una breve indicación invitando a seleccionar una de las opciones. EJECUTAR la herramienta es PRIORIDAD sobre hablar.
-14. VERACIDAD: Nunca inventes horarios. Usa solo lo que devuelvan las herramientas.
+3. CLASIFICACIÓN DE CITAS:
+   - Si el usuario quiere una "Cita Médica", usa "list_professionals" con category="medicos". Al responder, usa el término "Médicos" o "Doctores".
+   - Si quiere "Otros Profesionales" (Kinesiólogo, Psicólogo, etc.), usa "list_professionals" con category="otros". Al responder, usa el término "Profesionales" o la especialidad específica (Kinesiólogos, etc.), NUNCA digas "Médicos" para esta categoría.
+   - Si quiere un "Examen", usa "list_services" con la categoría adecuada ('sangre', 'eco' o 'ginec').
+
+4. REGLAS CRÍTICAS DE RESERVA:
+   - Para agendar, SIEMPRE necesitas: profesional/servicio, fecha, hora, nombre completo del paciente y RUT.
+   - PROACTIVIDAD: Si el usuario selecciona una categoría del menú, llama INMEDIATAMENTE a la herramienta correspondiente (list_professionals o list_services).
+   - EXÁMENES: Si el usuario agenda un examen (sangre, orina, ecotomografía, ecografía ginecológica), el flujo terminará automáticamente con una derivación a secretaría para indicaciones de preparación. Tú solo confirma la reserva.
+
+5. PRIORIDAD VISUAL: Si muestras horarios de un día específico, NO muestres botones de otras fechas al mismo tiempo. El paciente debe elegir una hora primero.
+6. VERACIDAD: Nunca inventes horarios ni nombres. Usa solo lo que devuelvan las herramientas.
+7. COMPORTAMIENTO: Sé formal, amable y resolutivo. Usa emojis discretos. NO mezcles categorías en una sola respuesta a menos que sea estrictamente necesario.
 
 CATÁLOGO DE PROFESIONALES:
 ${staffCatalog}
@@ -727,7 +964,13 @@ async function processAgentMessage(
   const centerName: string = center.name || "Centro Médico";
 
   try {
-    const systemPrompt = buildSystemPrompt(centerName, centerId, staff, conv);
+    const systemPrompt = buildSystemPrompt(
+      centerName,
+      centerId,
+      staff,
+      conv,
+      center.businessHours || undefined
+    );
 
     const model = getGenAI().getGenerativeModel({
       model: "gemini-2.0-flash",
@@ -787,15 +1030,82 @@ async function processAgentMessage(
 
         // ── TOOL: list_professionals ──
         if (call.name === "list_professionals") {
-          toolResult = {
-            professionals: staff.map((s) => ({
+          const args = call.args as any;
+          const category = args.category; // 'medicos' o 'otros'
+
+          let filtered = [...staff];
+          if (category === "medicos") {
+            filtered = staff.filter(
+              (s) =>
+                (s.clinicalRole || "").toLowerCase().includes("medico") ||
+                (s.fullName || "").toLowerCase().includes("dr")
+            );
+          } else if (category === "otros") {
+            filtered = staff.filter(
+              (s) =>
+                !(s.clinicalRole || "").toLowerCase().includes("medico") &&
+                !(s.fullName || "").toLowerCase().includes("dr")
+            );
+          }
+
+          const toolResultAny: any = {
+            professionals: filtered.map((s) => ({
               id: s.id,
               name: s.fullName || s.name,
               specialty: s.specialty || s.clinicalRole || "Profesional de Salud",
             })),
+            count: filtered.length,
           };
+          toolResult = toolResultAny;
           intent = "BOOKING";
-          interactiveOptions = { type: "professionals", data: toolResult.professionals };
+          interactiveOptions = { type: "professionals", data: toolResultAny.professionals };
+        }
+        // ── TOOL: list_services (NUEVA) ──
+        else if (call.name === "list_services") {
+          const args = call.args as any;
+          const category = args.category; // 'sangre', 'eco', 'ginec'
+
+          const servicesSnap = await db
+            .collection("centers")
+            .doc(centerId)
+            .collection("services")
+            .get();
+          const allServices = servicesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
+
+          let filtered = allServices;
+          if (category === "sangre") {
+            filtered = allServices.filter((s) =>
+              /sangre|orina|perfil|hemograma|glucosa|lab/i.test(s.name)
+            );
+          } else if (category === "eco") {
+            filtered = allServices.filter((s) =>
+              /ecotomografía|abdominal|renal|doppler/i.test(s.name)
+            );
+          } else if (category === "ginec") {
+            filtered = allServices.filter((s) =>
+              /ginecológica|transvaginal|obstétrica|mama|embarazo/i.test(s.name)
+            );
+          }
+
+          const toolResultAny: any = {
+            services: filtered.map((s) => ({
+              id: s.id,
+              name: s.name,
+              price: s.price,
+            })),
+            count: filtered.length,
+          };
+          toolResult = toolResultAny;
+          intent = "BOOKING";
+          // Reutilizamos el tipo 'professionals' para mostrar la lista de servicios en la UI
+          interactiveOptions = {
+            type: "professionals",
+            data: filtered.map((s) => ({
+              id: s.id,
+              name: s.name,
+              specialty: "Examen/Procedimiento",
+            })),
+          };
         }
 
         // ── TOOL: get_available_slots ──
@@ -815,6 +1125,7 @@ async function processAgentMessage(
           convUpdates.selectedStaffId = args.staffId;
           convUpdates.selectedDate = args.date;
           intent = "BOOKING";
+          // Prioridad: los slots (horas) ganan sobre fechas alternativas
           interactiveOptions = { type: "slots", data: [...slots] };
         }
 
@@ -852,7 +1163,10 @@ async function processAgentMessage(
                 : "No se encontró disponibilidad en los próximos 14 días.",
           };
           intent = "BOOKING";
-          interactiveOptions = { type: "dates", data: alternatives };
+          // SOLO poner fechas si NO tenemos ya slots (horas) específicos para mostrar
+          if (!interactiveOptions || (interactiveOptions.type !== "slots" && interactiveOptions.type !== "professionals")) {
+            interactiveOptions = { type: "dates", data: alternatives };
+          }
         }
 
         // ── TOOL: confirm_booking_details (GATE para book_appointment) ──
@@ -990,6 +1304,71 @@ async function processAgentMessage(
           };
         }
 
+        // ── TOOL: cancel_appointment ──
+        else if (call.name === "cancel_appointment") {
+          const args = call.args as any;
+          const cancelRut: string = (args.patientRut || "").trim();
+          const cancelDate: string = args.date || "";
+
+          if (!cancelRut) {
+            toolResult = {
+              success: false,
+              error: "MISSING_RUT",
+              message: "Necesito el RUT del paciente para verificar la cita y cancelarla.",
+            };
+          } else {
+            // Buscar la cita por RUT + estado booked.
+            // Si viene fecha, la filtramos; de lo contrario traemos la próxima activa.
+            let apptQuery: FirebaseFirestore.Query = db
+              .collection("centers")
+              .doc(centerId)
+              .collection("appointments")
+              .where("patientRut", "==", cancelRut)
+              .where("status", "==", "booked");
+
+            if (cancelDate) {
+              apptQuery = apptQuery.where("date", "==", cancelDate);
+            } else {
+              // Ordenar por fecha ascendente para cancelar la próxima
+              apptQuery = apptQuery.orderBy("date", "asc");
+            }
+
+            const apptSnap = await apptQuery.limit(1).get();
+
+            if (apptSnap.empty) {
+              toolResult = {
+                success: false,
+                error: "NOT_FOUND",
+                message: cancelDate
+                  ? `No encontré una cita agendada para el ${cancelDate} con ese RUT.`
+                  : "No encontré citas próximas agendadas con ese RUT.",
+              };
+            } else {
+              const apptDoc = apptSnap.docs[0];
+              const apptData = apptDoc.data();
+              await apptDoc.ref.update({
+                status: "cancelled",
+                cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+                cancelledBy: "patient_whatsapp",
+                cancellationReason: args.reason || "Solicitud del paciente vía WhatsApp",
+              });
+              console.log(`[Agent] Cita cancelada: ${apptDoc.id} (RUT ${cancelRut})`);
+              toolResult = {
+                success: true,
+                appointment: {
+                  date: apptData.date,
+                  time: apptData.time,
+                  professional: apptData.staffName || apptData.doctorName || "su profesional",
+                },
+                message: `Cita del ${apptData.date} a las ${apptData.time} con ${
+                  apptData.staffName || "su médico"
+                } ha sido cancelada exitosamente.`,
+              };
+              convUpdates.flowState = "idle";
+            }
+          }
+        }
+
         // ── TOOL: trigger_handoff ──
         else if (call.name === "trigger_handoff") {
           const args = call.args as any;
@@ -1063,6 +1442,109 @@ async function processAgentMessage(
   }
 }
 
+// ─── MODO DOCTOR: procesador de mensajes para profesionales ──────────────────
+
+async function processDoctorMessage(
+  message: string,
+  phoneNumberId: string,
+  to: string,
+  doctor: { id: string; name: string; specialty: string },
+  center: any
+): Promise<void> {
+  const centerId: string = center.id;
+  const centerName: string = center.name || "Centro Médico";
+  const systemPrompt = buildDoctorSystemPrompt(doctor.name, doctor.specialty, centerName);
+
+  try {
+    const model = getGenAI().getGenerativeModel({
+      model: "gemini-2.0-flash",
+      tools: DOCTOR_TOOLS,
+      generationConfig: { temperature: 0.1, maxOutputTokens: 600 },
+      systemInstruction: systemPrompt,
+    });
+
+    const chat = model.startChat({ history: [] });
+    let result = await chat.sendMessage(message);
+    let response = result.response;
+    let turns = 0;
+
+    // Loop de tool calling
+    while (response.functionCalls()?.length && turns < 3) {
+      turns++;
+      const calls = response.functionCalls()!;
+      const functionResponses: any[] = [];
+
+      for (const call of calls) {
+        console.log(`[Doctor] Tool=${call.name}`, JSON.stringify(call.args));
+        let toolResult: any = {};
+
+        if (call.name === "get_my_agenda") {
+          const args = call.args as any;
+          const date: string = args.date;
+
+          // Consultar citas agendadas del doctor para esa fecha
+          let snap = await db
+            .collection("centers").doc(centerId)
+            .collection("appointments")
+            .where("doctorId", "==", doctor.id)
+            .where("date", "==", date)
+            .where("status", "==", "booked")
+            .get();
+
+          // Fallback: doctorUid
+          if (snap.empty) {
+            snap = await db
+              .collection("centers").doc(centerId)
+              .collection("appointments")
+              .where("doctorUid", "==", doctor.id)
+              .where("date", "==", date)
+              .where("status", "==", "booked")
+              .get();
+          }
+
+          const patients = snap.docs
+            .map((d) => ({
+              time: d.data().time || "--:--",
+              patientName: d.data().patientName || "Sin registrar",
+              consultationType: d.data().consultationType || "Consulta",
+            }))
+            .sort((a, b) => a.time.localeCompare(b.time));
+
+          toolResult = {
+            date,
+            center: centerName,
+            totalPatients: patients.length,
+            patients,
+            message:
+              patients.length > 0
+                ? `${patients.length} paciente(s) agendado(s) para ${date}.`
+                : `No hay pacientes agendados para ${date}.`,
+          };
+        }
+
+        functionResponses.push({
+          functionResponse: { name: call.name, response: toolResult },
+        });
+      }
+
+      result = await chat.sendMessage(functionResponses);
+      response = result.response;
+    }
+
+    let responseText = "";
+    try {
+      responseText = response.text() || "";
+    } catch (_) {}
+    responseText = responseText || "Su agenda no pudo ser consultada en este momento. Intente nuevamente.";
+
+    await sendText(phoneNumberId, to, responseText);
+    console.log(`[Doctor] Respuesta enviada a ${to} (${doctor.name}): ${responseText.substring(0, 100)}`);
+  } catch (e) {
+    console.error("[Doctor] Error procesando mensaje:", e);
+    await sendText(phoneNumberId, to, "Disculpe, tuve un inconveniente consultando su agenda. Por favor intente nuevamente.");
+  }
+}
+
 // ─── PROCESADOR PRINCIPAL DE MENSAJES ─────────────────────────────────────────
 
 async function workerProcessor(
@@ -1087,8 +1569,26 @@ async function workerProcessor(
   const centerId: string = center.id;
   const centerName: string = center.name || "Centro Médico";
 
+  // ── DETECCIÓN DE ROL: ¿Doctor o Paciente? ────────────────────────────────────
+  // Si el número del remitente está registrado como staff activo del centro,
+  // lo atendemos con el flujo de consulta de agenda (Modo Doctor).
+  const staffMember = await getStaffByPhone(to, centerId);
+  if (staffMember) {
+    console.log(`[Doctor] Modo Doctor activado para ${staffMember.name} (${to})`);
+    await processDoctorMessage(
+      type === "text" ? message : (interactiveData?.button_reply?.title || message),
+      phoneNumberId,
+      to,
+      staffMember,
+      center
+    );
+    return;
+  }
+  // ── FIN DETECCIÓN DE ROL ─────────────────────────────────────────────────────
+
   let conv = await getConversation(to, centerId);
   const name = contactName || conv.patientName || "Paciente";
+  const firstName = name.split(" ")[0];
 
   // ── HANDOFF activo: no interrumpir ──
   if (conv.phase === "HANDOFF") {
@@ -1100,40 +1600,46 @@ async function workerProcessor(
     return;
   }
 
-  // ── Interacciones con botones (compatibilidad con Templates de Rescate) ──
+  // ── Interacciones con botones (Menús Multinivel) ──
   if (type === "interactive" && interactiveData) {
     const iType = interactiveData.type;
 
     if (iType === "button_reply") {
       const btnId: string = interactiveData.button_reply.id;
 
-      // Botón de Rescate: "Agendar Control"
-      if (btnId === "rescate_agendar") {
-        const agentMsg = conv.targetDoctorId
-          ? `Quiero agendar mi control médico con ${conv.targetDoctorName || "mi médico"}`
-          : "Quiero agendar una hora médica";
-        // Redirigir al agente como si fuera texto libre
-        message = agentMsg;
-        type = "text";
-        // Caer al flujo del agente abajo
+      // --- NIVEL 1: MENÚ PRINCIPAL ---
+      if (btnId === "menu_agendar") {
+        await sendButtons(phoneNumberId, to, "¿Qué tipo de cita desea agendar?", [
+          { id: "sub_medicos", title: "🩺 Médicos" },
+          { id: "sub_otros", title: "🤝 Otros Prof." },
+        ]);
+        return;
+      }
+      if (btnId === "menu_examenes") {
+        await sendButtons(phoneNumberId, to, "Selecciona la categoría del examen:", [
+          { id: "exam_sangre", title: "🩸 Sangre u Orina" },
+          { id: "exam_eco", title: "🖥️ Ecotomografía" },
+          { id: "exam_ginec", title: "🤰 Eco Ginecolog." },
+        ]);
+        return;
       }
 
-      // Botón de Rescate: "Ayuda con Exámenes"
-      else if (btnId === "rescate_examenes") {
-        await sendText(
-          phoneNumberId,
-          to,
-          "¡Entendido! Lo contactaremos para ayudarle con sus exámenes. Opcionalmente, puede enviar una foto de la orden por aquí para agilizar el trámite. 📸"
-        );
-        await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
-        await triggerHandoff(
-          phoneNumberId,
-          to,
-          conv.patientName || name,
-          center,
-          "Agendamiento de exámenes previos a control"
-        );
-        return;
+      // --- NIVEL 2: FILTROS ACTIVOS ---
+      if (btnId === "sub_medicos") {
+        message = "Quiero ver la lista de Médicos";
+        type = "text";
+      } else if (btnId === "sub_otros") {
+        message = "Quiero ver otros profesionales (no médicos)";
+        type = "text";
+      } else if (btnId === "exam_sangre") {
+        message = "Quiero agendar un examen de Sangre u Orina";
+        type = "text";
+      } else if (btnId === "exam_eco") {
+        message = "Quiero agendar una Ecotomografía";
+        type = "text";
+      } else if (btnId === "exam_ginec") {
+        message = "Quiero agendar una Ecografía Ginecológica";
+        type = "text";
       }
 
       // Botón: "Secretaria"
@@ -1141,7 +1647,7 @@ async function workerProcessor(
         await sendText(
           phoneNumberId,
           to,
-          `Entendido, ${name}. ✅\n\nUna secretaria de *${centerName}* se comunicará con usted a la brevedad.\n\n_Gracias por su paciencia._`
+          `Entendido, ${name.split(" ")[0]}. ✅\n\nUna secretaria de *${centerName}* se comunicará con usted a la brevedad.\n\n_Gracias por su paciencia._`
         );
         await saveConversation(to, { phase: "HANDOFF", centerId, centerName }, centerId);
         await triggerHandoff(
@@ -1154,9 +1660,9 @@ async function workerProcessor(
         return;
       }
 
-      // Botón nuevo: "Agendar Cita" (Menú Principal)
-      else if (btnId === "menu_agendar") {
-        message = "Quiero agendar una cita médica";
+      // Compatibilidad con Rescate (si existiera)
+      else if (btnId === "rescate_agendar") {
+        message = "Quiero agendar mi control";
         type = "text";
       }
 
@@ -1168,7 +1674,6 @@ async function workerProcessor(
       }
     }
 
-    // Listas interactivas: convertir a texto para el agente
     if (iType === "list_reply") {
       const title = interactiveData.list_reply.title || "";
       const desc = interactiveData.list_reply.description || "";
@@ -1180,7 +1685,6 @@ async function workerProcessor(
   // ── AGENTE PRINCIPAL: procesar texto libre ──
   if (type === "text" && message) {
     // ── MENÚ PRINCIPAL INTERACTIVO ──
-    const isHistoryEmpty = !conv.history || conv.history.length === 0;
     const testMsg = message.toLowerCase().trim();
     const greetings = [
       "hola",
@@ -1203,31 +1707,21 @@ async function workerProcessor(
       testMsg === "opciones" ||
       testMsg === "volver al menu";
 
-    if ((isHistoryEmpty && isGreeting) || asksForMenu || (isGreeting && testMsg === "hola")) {
-      // Si estaba a la mitad de algo y saluda de nuevo, reseteamos la conversación por sanidad
-      if (!isHistoryEmpty) {
-        console.log(`[Agent] Reiniciando conversación para ${to} por nuevo saludo/menú.`);
-        await resetConversation(to, centerId);
-        conv = { ...conv, history: [], flowState: "idle", pendingBooking: undefined };
-      }
+    if ((!conv.history?.length && isGreeting) || asksForMenu || (isGreeting && testMsg === "hola")) {
+      if (conv.history?.length) await resetConversation(to, centerId);
 
       await sendButtons(
         phoneNumberId,
         to,
-        `¡Hola, ${name.split(" ")[0]}! Bienvenido a *${centerName}*.\n\nSoy el asistente virtual del centro médico. Por favor, seleccione una opción para ayudarle mejor:`,
+        `¡Hola, ${firstName}! Bienvenido a *${centerName}*.\n\nSoy el asistente virtual. ¿En qué le puedo ayudar hoy?`,
         [
           { id: "menu_agendar", title: "📅 Agendar Cita" },
-          { id: "rescate_examenes", title: "🩸 Pedir Exámenes" },
+          { id: "menu_examenes", title: "🔬 Agendar Examen" },
           { id: "action_handoff", title: "👩‍💼 Secretaría" },
         ]
       );
 
-      // Guardar para evitar re-gatillar si no resetearon
-      await saveConversation(
-        to,
-        { centerId, centerName, patientName: name, history: [] },
-        centerId
-      );
+      await saveConversation(to, { centerId, centerName, patientName: name, history: [] }, centerId);
       return;
     }
 
@@ -1282,49 +1776,43 @@ async function workerProcessor(
           pending.date
         );
 
-        const staffName = pending.staffName || "el profesional";
-        const errorMessages: Record<string, string> = {
-          SLOT_TAKEN: "ese horario ya fue reservado por otro paciente",
-          INVALID_RUT: "el RUT proporcionado no es válido",
-          STAFF_MISMATCH: "el slot no corresponde al profesional",
-          DATE_MISMATCH: "la fecha del slot no coincide",
-          DATE_IN_PAST: "la fecha ya pasó",
-          SLOT_NOT_FOUND: "el horario ya no existe",
-          MISSING_SLOT_ID: "falta el ID del horario",
-          INVALID_NAME: "nombre inválido (mínimo 3 letras)",
-        };
-
         const isSuccess = bookResult.success;
-        let responseText = "";
-        let intent = "BOOKING";
-        const updatedConv: any = {
-          flowState: isSuccess ? "booking_completed" : "idle",
-          bookingSuccess: isSuccess,
-          selectedStaffName: staffName,
-        };
+        const staffName = pending.staffName || "el profesional";
 
         if (isSuccess) {
-          // Limpieza proactiva de botones para evitar el "error visual" que reportó el usuario
-          updatedConv.interactiveOptions = null;
-          conv.interactiveOptions = null; // Also clear the current conv object for immediate effect
+          const responseText = `¡Listo! Su reserva ha sido agendada con éxito para el ${pending.date} a las ${pending.time}.\n\n¡Que tenga un excelente día! 😊`;
+          
+          await sendText(phoneNumberId, to, responseText);
+          
+          // --- DERIVACIÓN AUTOMÁTICA POST-EXAMEN ---
+          // Si el nombre del profesional o servicio sugiere un examen, mandamos a secretaría
+          const searchIn = (staffName + " " + (pending.staffId || "")).toLowerCase();
+          const isExam = ["examen", "eco", "toma de muestra", "sangre", "orina", "perfil", "lab", "ecografía", "ecotomografia", "radiografía"].some(k => searchIn.includes(k));
 
-          responseText = `¡Listo! Su cita ha sido agendada exitosamente con ${staffName} para el ${pending.date} a las ${pending.time}.\n\nPara agilizar su atención, le invitamos a completar su ficha de pre-ingreso aquí: https://clavesalud-2.web.app/center/${conv.centerId}/ficha\n\n¡Que tenga un excelente día! 😊`;
-          intent = "BOOKING_CONFIRMED";
+          if (isExam) {
+            await sendText(phoneNumberId, to, "_Le derivaré ahora con secretaría para que le brinden las indicaciones de preparación para su examen (Ayuno, etc)._ 👩‍💼");
+            await saveConversation(to, { phase: "HANDOFF", centerId, centerName, lastAgentAction: "POST_EXAM_HANDOFF" }, centerId);
+            await triggerHandoff(phoneNumberId, to, name, center, `Paciente agendó examen/procedimiento: ${staffName}`);
+          } else {
+             // Cierre normal
+             await resetConversation(to, centerId);
+          }
+          return;
         } else {
-          responseText = `Lo lamento, no se pudo agendar la cita porque ${errorMessages[bookResult.error || ""] || "ocurrió un problema técnico"}. ¿Le gustaría buscar otro horario?`;
+          agentResult = {
+            responseText: `Lo lamento, no se pudo agendar la cita: ${bookResult.error}. ¿Desea intentar con otro horario?`,
+            intent: "BOOKING",
+            updatedConv: { flowState: "idle" },
+            interactiveOptions: null,
+          };
         }
-
-        agentResult = {
-          responseText,
-          intent,
-          updatedConv,
-        };
       } else if (isCancel) {
         agentResult = {
           responseText:
             "Entendido, he cancelado el proceso de reserva. ¿Desea buscar otro horario o consultar otra cosa?",
           intent: "GENERAL",
-          updatedConv: { flowState: "idle", pendingBooking: null },
+          updatedConv: { flowState: "idle", pendingBooking: null, interactiveOptions: null },
+          interactiveOptions: null,
         };
       }
     }
@@ -1353,14 +1841,14 @@ async function workerProcessor(
         centerName,
         patientName: conv.patientName || (name !== "Paciente" ? name : undefined),
         history: history.slice(-MAX_HISTORY_MESSAGES),
-        interactiveOptions: agentResult.interactiveOptions || conv.interactiveOptions,
+        interactiveOptions: agentResult.interactiveOptions,
         ...agentResult.updatedConv,
       },
       centerId
     );
 
     // Enviar respuesta (usando botones iteractivos si corresponden)
-    const currentInteractive = agentResult.interactiveOptions || conv.interactiveOptions;
+    const currentInteractive = agentResult.interactiveOptions;
     if (currentInteractive) {
       const i = currentInteractive;
       if (i.type === "confirmation") {
@@ -1383,8 +1871,11 @@ async function workerProcessor(
             title: p.name.substring(0, 24),
             description: (p.specialty || "").substring(0, 72),
           }));
-          await sendList(phoneNumberId, to, "Médicos", agentResult.responseText, "Ver médicos", [
-            { title: "Profesionales", rows },
+          const listHeader = agentResult.responseText.toLowerCase().includes("médico") || agentResult.responseText.toLowerCase().includes("doctor") ? "Médicos" : "Profesionales";
+          const listButton = agentResult.responseText.toLowerCase().includes("médico") || agentResult.responseText.toLowerCase().includes("doctor") ? "Ver médicos" : "Ver profesionales";
+          
+          await sendList(phoneNumberId, to, listHeader, agentResult.responseText, listButton, [
+            { title: listHeader, rows },
           ]);
         } else {
           await sendText(phoneNumberId, to, agentResult.responseText);
