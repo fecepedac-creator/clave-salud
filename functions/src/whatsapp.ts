@@ -928,12 +928,18 @@ REGLAS ESTRICTAS:
 
 4. REGLAS CRÍTICAS DE RESERVA:
    - Para agendar, SIEMPRE necesitas: profesional/servicio, fecha, hora, nombre completo del paciente y RUT.
-   - PROACTIVIDAD: Si el usuario selecciona una categoría del menú, llama INMEDIATAMENTE a la herramienta correspondiente (list_professionals o list_services).
-   - EXÁMENES: Si el usuario agenda un examen (sangre, orina, ecotomografía, ecografía ginecológica), el flujo terminará automáticamente con una derivación a secretaría para indicaciones de preparación. Tú solo confirma la reserva.
+   - PROACTIVIDAD (FLUJO GUIADO):
+     - Si el usuario selecciona una categoría (Botón: Médicos, Otros, Examen), llama INMEDIATAMENTE a 'list_professionals' o 'list_services'.
+     - Si el usuario selecciona un PROFESIONAL o SERVICIO específico, llama INMEDIATAMENTE a 'suggest_alternative_dates' para ofrecer los próximos 3-5 días disponibles como botones.
+     - Si el usuario selecciona una FECHA, llama INMEDIATAMENTE a 'get_available_slots' para mostrar las horas disponibles como botones.
+   - EXÁMENES: Si el usuario agenda un examen, el flujo termina con derivación a secretaría. Tú solo confirma la reserva.
 
-5. PRIORIDAD VISUAL: Si muestras horarios de un día específico, NO muestres botones de otras fechas al mismo tiempo. El paciente debe elegir una hora primero.
-6. VERACIDAD: Nunca inventes horarios ni nombres. Usa solo lo que devuelvan las herramientas.
-7. COMPORTAMIENTO: Sé formal, amable y resolutivo. Usa emojis discretos. NO mezcles categorías en una sola respuesta a menos que sea estrictamente necesario.
+5. BOTONES E INTERACTIVIDAD:
+   - Usa los botones generados por las herramientas siempre que sea posible.
+   - Si no hay disponibilidad para una fecha, usa 'suggest_alternative_dates' para buscar otras opciones.
+   - Máximo 3 botones por respuesta para fechas (los más próximos).
+
+6. VERACIDAD Y TONO: Nunca inventes horarios. Sé breve y resolutivo. Máximo 2-3 frases.
 
 CATÁLOGO DE PROFESIONALES:
 ${staffCatalog}
@@ -1048,17 +1054,26 @@ async function processAgentMessage(
             );
           }
 
+          // Asegurar IDs únicos para evitar errores en WhatsApp (Duplicated row id)
+          const uniqueMap = new Map();
+          filtered.forEach(s => {
+            if (!uniqueMap.has(s.id)) {
+              uniqueMap.set(s.id, {
+                id: s.id,
+                name: s.fullName || s.name,
+                specialty: s.specialty || s.clinicalRole || "Profesional de Salud",
+              });
+            }
+          });
+          const professionals = Array.from(uniqueMap.values());
+
           const toolResultAny: any = {
-            professionals: filtered.map((s) => ({
-              id: s.id,
-              name: s.fullName || s.name,
-              specialty: s.specialty || s.clinicalRole || "Profesional de Salud",
-            })),
-            count: filtered.length,
+            professionals: professionals,
+            count: professionals.length,
           };
           toolResult = toolResultAny;
           intent = "BOOKING";
-          interactiveOptions = { type: "professionals", data: toolResultAny.professionals };
+          interactiveOptions = { type: "professionals", data: professionals };
         }
         // ── TOOL: list_services (NUEVA) ──
         else if (call.name === "list_services") {
@@ -1087,24 +1102,30 @@ async function processAgentMessage(
             );
           }
 
+          // Asegurar IDs únicos para evitar errores en WhatsApp (Duplicated row id)
+          const uniqueMap = new Map();
+          filtered.forEach((s: any) => {
+            if (!uniqueMap.has(s.id)) {
+              uniqueMap.set(s.id, {
+                id: s.id,
+                name: s.name,
+                price: s.price,
+                specialty: "Examen/Procedimiento", // Para consistencia en la UI de la lista
+              });
+            }
+          });
+          const services = Array.from(uniqueMap.values());
+
           const toolResultAny: any = {
-            services: filtered.map((s) => ({
-              id: s.id,
-              name: s.name,
-              price: s.price,
-            })),
-            count: filtered.length,
+            services: services.map(s => ({ id: s.id, name: s.name, price: s.price })),
+            count: services.length,
           };
           toolResult = toolResultAny;
           intent = "BOOKING";
           // Reutilizamos el tipo 'professionals' para mostrar la lista de servicios en la UI
           interactiveOptions = {
             type: "professionals",
-            data: filtered.map((s) => ({
-              id: s.id,
-              name: s.name,
-              specialty: "Examen/Procedimiento",
-            })),
+            data: services,
           };
         }
 
