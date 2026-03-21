@@ -404,18 +404,28 @@ export async function sendButtons(
   phoneNumberId: string,
   to: string,
   bodyText: string,
-  buttons: { id: string; title: string }[]
+  buttons: { id: string; title: string }[],
+  imageUrl?: string
 ) {
+  const interactive: any = {
+    type: "button",
+    body: { text: bodyText },
+    action: {
+      buttons: buttons.map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })),
+    },
+  };
+
+  if (imageUrl) {
+    interactive.header = {
+      type: "image",
+      image: { link: imageUrl },
+    };
+  }
+
   await sendRawWhatsAppPayload(phoneNumberId, {
     to,
     type: "interactive",
-    interactive: {
-      type: "button",
-      body: { text: bodyText },
-      action: {
-        buttons: buttons.map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })),
-      },
-    },
+    interactive,
   });
 }
 
@@ -1739,7 +1749,8 @@ async function workerProcessor(
           { id: "menu_agendar", title: "📅 Agendar Cita" },
           { id: "menu_examenes", title: "🔬 Agendar Examen" },
           { id: "action_handoff", title: "👩‍💼 Secretaría" },
-        ]
+        ],
+        center.logoUrl
       );
 
       await saveConversation(to, { centerId, centerName, patientName: name, history: [] }, centerId);
