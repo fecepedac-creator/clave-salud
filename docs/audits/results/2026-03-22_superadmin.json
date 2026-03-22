@@ -1,0 +1,31 @@
+{
+  "area": "superadmin",
+  "title": "SuperAdmin Dashboard",
+  "date": "2026-03-22",
+  "generatedAt": "2026-03-22T11:39:40.972Z",
+  "summary": {
+    "pass": 0,
+    "fail": 0,
+    "warning": 2,
+    "overall": "RIESGO MEDIO"
+  },
+  "reportPath": "docs/audits/2026/2026-03-22_superadmin.md",
+  "results": [
+    {
+      "command": "npm run build",
+      "status": "warning",
+      "startedAt": "2026-03-22T11:39:40.971Z",
+      "finishedAt": "2026-03-22T11:39:40.971Z",
+      "output": "Ejecución omitida por --dry-run.",
+      "error": ""
+    },
+    {
+      "command": "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line",
+      "status": "warning",
+      "startedAt": "2026-03-22T11:39:40.971Z",
+      "finishedAt": "2026-03-22T11:39:40.971Z",
+      "output": "Ejecución omitida por --dry-run.",
+      "error": ""
+    }
+  ]
+}
