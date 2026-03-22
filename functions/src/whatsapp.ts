@@ -133,7 +133,7 @@ async function getCenterByPhoneId(
     const centerDoc = snap.docs[0];
     const center: any = { id: centerDoc.id, ...centerDoc.data() };
 
-    // Descifrar el Access Token de Meta al cargarlo (compatibilidad con tokens legacy en texto plano)
+    // Descifrar el Access Token de Meta al cargarlo (compatibilidad con tokens legacy sin cifrar)
     if (center.whatsappConfig?.accessToken) {
       center.whatsappConfig = {
         ...center.whatsappConfig,
@@ -159,12 +159,42 @@ async function getCenterByPhoneId(
   }
 }
 
+// ─── VALIDACIÓN DE FIRMA (WEBHOOK SECURITY) ───────────────────────────────────
+
+/**
+ * Valida que el mensaje venga realmente de Meta comparando la firma HMAC-SHA256.
+ */
+function verifySignature(
+  req: functions.https.Request,
+  appSecret: string
+): boolean {
+  const signature = req.headers["x-hub-signature-256"] as string;
+  if (!signature) {
+    console.warn("[Security] Webhook sin firma X-Hub-Signature-256.");
+    return false;
+  }
+
+  const elements = signature.split("=");
+  const signatureHash = elements[1];
+  const expectedHash = (cryptoNode as any)
+    .createHmac("sha256", appSecret)
+    .update((req as any).rawBody)
+    .digest("hex");
+
+  if (signatureHash !== expectedHash) {
+    console.error("[Security] Firma inválida. Posible intento de suplantación.");
+    return false;
+  }
+  return true;
+}
+
+
 // ─── LOOKUP DE STAFF POR TELÉFONO (para Modo Doctor) ─────────────────────────
 
 async function getStaffByPhone(
   senderPhone: string,
   centerId: string
-): Promise<{ id: string; name: string; specialty: string } | null> {
+): Promise<{ id: string; name: string; specialty: string; whatsappVerified?: boolean; rut?: string } | null> {
   // Normalizar número: WhatsApp siempre envía en formato 569XXXXXXXX (sin +)
   const variants = [
     senderPhone,                              // "56912345678" (como viene de Meta)
@@ -181,6 +211,8 @@ async function getStaffByPhone(
         id: snap.docs[0].id,
         name: data.fullName || data.name || "Profesional",
         specialty: data.specialty || data.clinicalRole || "Profesional de Salud",
+        whatsappVerified: data.whatsappVerified === true, // Check if verified
+        rut: data.rut || "", // For MFA verification
       };
     }
   }
@@ -1601,25 +1633,52 @@ async function workerProcessor(
   const centerName: string = center.name || "Centro Médico";
 
   // ── DETECCIÓN DE ROL: ¿Doctor o Paciente? ────────────────────────────────────
-  // Si el número del remitente está registrado como staff activo del centro,
-  // lo atendemos con el flujo de consulta de agenda (Modo Doctor).
   const staffMember = await getStaffByPhone(to, centerId);
   if (staffMember) {
-    console.log(`[Doctor] Modo Doctor activado para ${staffMember.name} (${to})`);
-    await processDoctorMessage(
-      type === "text" ? message : (interactiveData?.button_reply?.title || message),
-      phoneNumberId,
-      to,
-      staffMember,
-      center
-    );
+    if (staffMember.whatsappVerified) {
+      console.log(`[Doctor] Modo Doctor (Verificado) para ${staffMember.name} (${to})`);
+      await processDoctorMessage(
+        type === "text" ? message : (interactiveData?.button_reply?.title || message),
+        phoneNumberId,
+        to,
+        staffMember as any,
+        center
+      );
+      return;
+    }
+
+    // Flujo de Verificación (MFA)
+    let convStaff = await getConversation(to, centerId);
+    const last4 = staffMember.rut ? staffMember.rut.replace(/[^0-9]/g, "").slice(-4) : "";
+
+    if (convStaff.flowState === "awaiting_name" && type === "text") {
+      const input = message.replace(/[^0-9]/g, "");
+      if (input === last4 && last4 !== "") {
+        await db.collection("centers").doc(centerId).collection("staff").doc(staffMember.id).update({
+          whatsappVerified: true,
+          whatsappPhone: to,
+        });
+        await sendText(phoneNumberId, to, `✅ ¡Identidad confirmada! Bienvenido Dr(a). ${staffMember.name}.\n\nYa puede consultar su agenda enviando cualquier mensaje.`);
+        await saveConversation(to, { flowState: "idle" }, centerId);
+        return;
+      } else {
+        await sendText(phoneNumberId, to, `❌ Código incorrecto. Por favor, ingrese los últimos 4 dígitos de su RUT para activar el Modo Doctor.`);
+        return;
+      }
+    }
+
+    await sendText(phoneNumberId, to, `👨‍⚕️ ¡Hola! Detectamos que intenta acceder como personal de salud (${staffMember.name}).\n\nPor seguridad, por favor ingrese los **últimos 4 dígitos de su RUT** (sin dígito verificador) para activar este dispositivo.`);
+    await saveConversation(to, { flowState: "awaiting_name" }, centerId);
     return;
   }
   // ── FIN DETECCIÓN DE ROL ─────────────────────────────────────────────────────
 
   let conv = await getConversation(to, centerId);
+
   const name = contactName || conv.patientName || "Paciente";
   const firstName = name.split(" ")[0];
+
+  console.log(`[Worker] INICIO - From: ${to}, Type: ${type}, Message: ${message}, state: ${conv.flowState}`);
 
   // ── HANDOFF activo: no interrumpir ──
   if (conv.phase === "HANDOFF") {
@@ -2007,6 +2066,13 @@ export const whatsappWebhook = functions
     }
 
     if (req.method === "POST") {
+      // 1. Validar Firma (Si existe el secreto)
+      const appSecret = process.env.WHATSAPP_APP_SECRET;
+      if (appSecret && !verifySignature(req, appSecret)) {
+        res.status(401).send("Invalid Signature");
+        return;
+      }
+
       const body = req.body;
       const change = body.entry?.[0]?.changes?.[0]?.value;
       const message = change?.messages?.[0];
@@ -2031,6 +2097,8 @@ export const whatsappWebhook = functions
             await idempotencyRef.set({
               processedAt: admin.firestore.FieldValue.serverTimestamp(),
               from,
+              // TTL: expira en 48 horas para limpieza automática
+              expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
             });
 
             if (message.type === "text") {
