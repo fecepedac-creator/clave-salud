@@ -1,0 +1,91 @@
+{
+  "superadmin": {
+    "title": "SuperAdmin Dashboard",
+    "description": "Gobernanza global, preview multi-centro, métricas globales y operaciones de centros.",
+    "focus": [
+      "Acceso y claims de superadmin",
+      "Preview cross-center y salida de preview",
+      "Operaciones globales de centros y comunicaciones",
+      "Aislamiento multi-tenant"
+    ],
+    "evidenceFiles": [
+      "components/SuperAdminDashboard.tsx",
+      "App.tsx",
+      "hooks/useAuth.ts",
+      "hooks/useCenters.ts",
+      "tests/admin/superadmin-audit.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+    ]
+  },
+  "admin-center": {
+    "title": "Admin Center Dashboard",
+    "description": "Operación del centro: staff, agenda, rendimiento, cierre contable, exportaciones y configuración operativa.",
+    "focus": [
+      "Acceso administrativo por rol",
+      "Cierre y reapertura de mes",
+      "Exportación y consistencia de KPIs",
+      "Seguridad multi-tenant a nivel de centro"
+    ],
+    "evidenceFiles": [
+      "components/AdminDashboard.tsx",
+      "features/admin/components/AdminPerformanceTab.tsx",
+      "hooks/useFirestoreSync.ts",
+      "tests/admin/login.spec.ts",
+      "tests/admin/performance-tab.spec.ts",
+      "tests/admin/multi-tenant.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/login.spec.ts --reporter=line",
+      "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
+    ]
+  },
+  "doctor-dashboard": {
+    "title": "Doctor Dashboard",
+    "description": "Flujos clínicos, agenda, rendimiento individual y gestión de pacientes por profesional.",
+    "focus": [
+      "Acceso de profesional y resolución de identidad",
+      "Aislamiento de cartera y métricas",
+      "Flujos clínicos críticos (PSCV)",
+      "Consistencia de agenda y actualizaciones"
+    ],
+    "evidenceFiles": [
+      "components/DoctorDashboard.tsx",
+      "features/doctor/components/DoctorPatientsListTab.tsx",
+      "features/doctor/components/DoctorAgendaTab.tsx",
+      "features/doctor/components/DoctorPatientRecord.tsx",
+      "tests/doctor/login.spec.ts",
+      "tests/doctor/performance-tab.spec.ts",
+      "tests/doctor/pscv-flow.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/doctor/login.spec.ts --reporter=line",
+      "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+    ]
+  },
+  "whatsapp-chatbot": {
+    "title": "WhatsApp Chatbot",
+    "description": "Webhook, flujo conversacional, handoff, idempotencia y notificaciones transaccionales.",
+    "focus": [
+      "Seguridad webhook y manejo de secretos",
+      "Gates de reserva y consistencia transaccional",
+      "Privacidad de conversaciones",
+      "Robustez de handoff a secretaría"
+    ],
+    "evidenceFiles": [
+      "functions/src/whatsapp.ts",
+      "functions/src/index.ts",
+      "firestore.rules",
+      "components/AdminDashboard.tsx",
+      "functions/src/__tests__/whatsapp-agent.test.ts"
+    ],
+    "commands": [
+      "npm run build --prefix functions",
+      "bash -lc \"cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand\""
+    ]
+  }
+}
