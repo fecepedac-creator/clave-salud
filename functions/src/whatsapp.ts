@@ -2049,7 +2049,7 @@ export const whatsappWebhook = functions
   .runWith({
     timeoutSeconds: 60,
     memory: "512MB",
-    secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN"],
+    secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"],
   })
   .https.onRequest(async (req, res) => {
     // GET — verificación del webhook por Meta
