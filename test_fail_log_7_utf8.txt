@@ -1,0 +1,42 @@
+﻿[dotenv@17.3.1] injecting env (17) from .env.test -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+
+Running 1 test using 1 worker
+
+[dotenv@17.3.1] injecting env (0) from .env.test -- tip: ÔÜÖ´©Å  suppress all logs with { quiet: true }
+Iniciando preparaci├│n de Paciente A...
+[Paciente A (Simultaneo)] Navegando a la portal de agendamiento...
+[Paciente A (Simultaneo)] Onboarding no detectado (timeout o ya saltado).
+[Paciente A (Simultaneo)] Esperando pregunta de tipo de atenci├│n...
+[Paciente A (Simultaneo)] Seleccionando especialidad...
+[Paciente A (Simultaneo)] Seleccionando profesional...
+[Paciente A (Simultaneo)] Seleccionando fecha y hora...
+  Ô£ÿ  1 [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito (40.8s)
+
+
+  1) [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito 
+
+    TimeoutError: page.waitForSelector: Timeout 20000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('.bg-white.text-emerald-700') to be visible[22m
+
+
+      52 |       // 4. Calendario y Slot
+      53 |       console.log(`[${name}] Seleccionando fecha y hora...`);
+    > 54 |       await page.waitForSelector('.bg-white.text-emerald-700', { timeout: 20000 });
+         |                  ^
+      55 |       
+      56 |       // Ir al mes siguiente para asegurar disponibilidad (hoy suele estar lleno en SaludMass Real)
+      57 |       const nextMonthBtn = page.locator('button:has(svg)').nth(1); // El bot├│n de "Siguiente" en el mini-calendario
+        at prepararReserva (C:\Users\fecep\clave-salud\tests\demo\concurrency.spec.ts:54:18)
+        at C:\Users\fecep\clave-salud\tests\demo\concurrency.spec.ts:82:18
+
+    attachment #1: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\concurrency-Fase-1-Concurr-19855---Solo-una-debe-tener-├®xito-demo-tests\test-failed-1.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    attachment #2: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\concurrency-Fase-1-Concurr-19855---Solo-una-debe-tener-├®xito-demo-tests\test-failed-2.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+  1 failed
+    [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito 

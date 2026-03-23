@@ -189,7 +189,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     <aside className="lg:col-span-3 h-full overflow-y-auto bg-white border-r border-slate-200 p-6 space-y-8">
       {/* Header with Edit Toggle */}
       <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-        <h3 className="font-bold text-slate-500 text-sm uppercase tracking-wider">Ficha Clínica</h3>
+        <h3 className="font-black text-slate-500 text-base uppercase tracking-tight">Ficha Clínica</h3>
         {!readOnly && (
           <button
             onClick={toggleEditPatient}
@@ -202,19 +202,19 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
       {/* SEGUIMIENTO BIOLÓGICO (BIO-MARKERS) */}
       <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
-        <h4 className="text-sm font-bold text-emerald-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+        <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight mb-3 flex items-center gap-2">
           <TrendingUp className="w-4 h-4" /> Evolución de Exámenes
         </h4>
         {isEditingPatient && !readOnly ? (
           <div className="space-y-4">
             {/* Profile Quick Select */}
             <div>
-              <p className="text-xs font-bold text-emerald-700 mb-1 flex items-center gap-1">
+              <p className="text-sm font-bold text-emerald-700 mb-2 flex items-center gap-1">
                 <Layers className="w-3 h-3" /> Aplicación Rápida de Perfiles
               </p>
               {availableProfiles.length > 0 ? (
                 <select
-                  className="w-full text-xs p-2 rounded-lg border border-emerald-300 bg-white text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="w-full text-sm font-medium p-3 rounded-xl border border-emerald-300 bg-white text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-200"
                   onChange={(e) => {
                     applyProfile(e.target.value);
                     e.target.value = "";
@@ -228,7 +228,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   ))}
                 </select>
               ) : (
-                <p className="text-[10px] text-emerald-600 italic">
+                <p className="text-xs text-emerald-600 italic">
                   Configure perfiles en "Configuración"
                 </p>
               )}
@@ -243,7 +243,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                     <button
                       key={exam.id}
                       onClick={() => toggleActiveExam(exam.id)}
-                      className={`text-xs p-2 rounded-lg border text-left flex items-center justify-between transition-colors ${activeExams.includes(exam.id) ? "bg-white border-emerald-400 text-emerald-700 shadow-sm" : "bg-emerald-50/50 border-emerald-200 text-emerald-600 hover:bg-white"}`}
+                      className={`text-sm p-3 rounded-xl border text-left flex items-center justify-between transition-colors ${activeExams.includes(exam.id) ? "bg-white border-emerald-400 text-emerald-700 shadow-sm" : "bg-emerald-50/50 border-emerald-200 text-emerald-600 hover:bg-white"}`}
                     >
                       {exam.label}
                       {activeExams.includes(exam.id) && (
@@ -263,7 +263,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 return (
                   <span
                     key={id}
-                    className="text-xs bg-white text-emerald-700 px-2 py-1 rounded border border-emerald-200 font-bold"
+                    className="text-sm bg-white text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 font-bold"
                   >
                     {def.label.split("(")[0]}
                   </span>
@@ -278,7 +278,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
       {/* Antecedentes Mórbidos */}
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+        <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
           <Activity className="w-4 h-4 text-red-500" /> Patologías
         </h4>
 
@@ -288,7 +288,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               <button
                 data-testid="btn-add-medical-history"
                 onClick={() => setShowMorbidosMenu(!showMorbidosMenu)}
-                className="w-full py-3 px-4 bg-emerald-50 text-emerald-700 rounded-2xl border-2 border-emerald-100 font-bold text-xs flex items-center justify-between hover:bg-emerald-100 transition-all group"
+                className="w-full py-4 px-6 bg-emerald-50 text-emerald-700 rounded-2xl border-2 border-emerald-100 font-bold text-sm flex items-center justify-between hover:bg-emerald-100 transition-all group"
               >
                 <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar
                 Antecedente
@@ -304,7 +304,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                         toggleHistoryItem("medical", opt.id);
                         setShowMorbidosMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${
+                      className={`w-full text-left px-4 py-4 text-sm font-bold transition-colors ${
                         medicalHistory.some((h) =>
                           typeof h === "string" ? h === opt.id : h.id === opt.id
                         )
@@ -321,7 +321,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
             <div className="flex gap-2">
               <input
-                className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-red-500 bg-white"
+                className="flex-1 p-3 text-sm border border-slate-300 rounded-xl outline-none focus:border-red-500 bg-white"
                 placeholder="+ Otra patología..."
                 value={customMedical}
                 onChange={(e) => setCustomMedical(e.target.value)}
@@ -338,7 +338,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   handleAddHistory("medical", customMedical);
                   setCustomMedical("");
                 }}
-                className="bg-red-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-red-600"
+                className="bg-red-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-600"
               >
                 +
               </button>
@@ -353,7 +353,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
               return (
                 <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
-                  <span className="px-3 py-1.5 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-100 flex items-center gap-2">
+                  <span className="px-4 py-2 bg-red-50 text-red-700 text-sm font-bold rounded-xl border border-red-100 flex items-center gap-2">
                     {code && code !== "free-text" && <Activity className="w-3 h-3 text-red-400" />}
                     {label}
                   </span>
@@ -379,7 +379,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               return (
                 <span
                   key={itemId}
-                  className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
+                  className="px-3 py-1.5 bg-slate-100 text-slate-600 text-sm font-bold rounded-lg border border-slate-200 flex items-center gap-1"
                 >
                   {itemLabel}
                   <button
@@ -404,21 +404,21 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
       {/* ESTILO DE VIDA (Hábitos) */}
       <div className="space-y-4 pt-4 border-t border-slate-100">
-        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+        <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
           <Pill className="w-4 h-4 text-emerald-500" /> Estilo de Vida
         </h4>
 
         {isEditingPatient && !readOnly ? (
           <div className="space-y-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
             <div>
-              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Tabaco</p>
+              <p className="text-sm font-black text-slate-400 mb-2 uppercase">Tabaco</p>
               <div className="flex flex-wrap gap-1.5">
                 {SMOKING_STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => handleEditPatientField("smokingStatus", opt)}
-                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${
+                    className={`text-sm px-4 py-2 rounded-xl border font-bold transition-all ${
                       selectedPatient.smokingStatus === opt
                         ? "bg-slate-700 text-white border-slate-800 shadow-sm"
                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
@@ -431,14 +431,14 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </div>
 
             <div>
-              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">Alcohol</p>
+              <p className="text-sm font-black text-slate-400 mb-2 uppercase">Alcohol</p>
               <div className="flex flex-wrap gap-1.5">
                 {ALCOHOL_STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => handleEditPatientField("alcoholStatus", opt)}
-                    className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold transition-all ${
+                    className={`text-sm px-4 py-2 rounded-xl border font-bold transition-all ${
                       selectedPatient.alcoholStatus === opt
                         ? "bg-slate-700 text-white border-slate-800 shadow-sm"
                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
@@ -451,7 +451,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </div>
 
             <div>
-              <p className="text-[10px] font-black text-slate-400 mb-2 uppercase">
+              <p className="text-sm font-black text-slate-400 mb-2 uppercase">
                 Otras Sustancias
               </p>
               <div className="flex gap-2 mb-2">
@@ -463,14 +463,14 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       selectedPatient.drugUse === "Si" ? "No" : "Si"
                     )
                   }
-                  className={`flex-1 text-[10px] py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.drugUse === "Si" ? "bg-purple-600 text-white border-purple-700" : "bg-white text-slate-600 border-slate-200"}`}
+                  className={`flex-1 text-sm py-1.5 rounded-lg border font-bold transition-all ${selectedPatient.drugUse === "Si" ? "bg-purple-600 text-white border-purple-700" : "bg-white text-slate-600 border-slate-200"}`}
                 >
                   {selectedPatient.drugUse === "Si" ? "Consumo declarado" : "Sin consumo declaredo"}
                 </button>
               </div>
               {selectedPatient.drugUse === "Si" && (
                 <textarea
-                  className="w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-purple-500 min-h-[60px]"
+                  className="w-full p-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-purple-500 min-h-[60px]"
                   placeholder="Especifique qué y frecuencia..."
                   value={selectedPatient.drugDetails || ""}
                   onChange={(e) => handleEditPatientField("drugDetails", e.target.value)}
@@ -483,9 +483,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             <div
               className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.smokingStatus === "Fumador actual" ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100"}`}
             >
-              <span className="text-[10px] font-bold text-slate-500">TABACO</span>
+              <span className="text-sm font-bold text-slate-500">TABACO</span>
               <span
-                className={`text-[10px] font-black ${selectedPatient.smokingStatus === "Fumador actual" ? "text-amber-700" : "text-slate-700"}`}
+                className={`text-sm font-black ${selectedPatient.smokingStatus === "Fumador actual" ? "text-amber-700" : "text-slate-700"}`}
               >
                 {selectedPatient.smokingStatus || "No registrado"}
               </span>
@@ -493,17 +493,17 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             <div
               className={`p-2 rounded-lg border flex items-center justify-between ${selectedPatient.alcoholStatus === "Frecuente" ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-100"}`}
             >
-              <span className="text-[10px] font-bold text-slate-500">ALCOHOL</span>
+              <span className="text-sm font-bold text-slate-500">ALCOHOL</span>
               <span
-                className={`text-[10px] font-black ${selectedPatient.alcoholStatus === "Frecuente" ? "text-red-700" : "text-slate-700"}`}
+                className={`text-sm font-black ${selectedPatient.alcoholStatus === "Frecuente" ? "text-red-700" : "text-slate-700"}`}
               >
                 {selectedPatient.alcoholStatus || "No registrado"}
               </span>
             </div>
             {selectedPatient.drugUse === "Si" && (
               <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-                <p className="text-[10px] font-black text-purple-700 mb-1 uppercase">Sustancias</p>
-                <p className="text-xs text-purple-900 font-medium">{selectedPatient.drugDetails}</p>
+                <p className="text-sm font-black text-purple-700 mb-1 uppercase">Sustancias</p>
+                <p className="text-sm text-purple-900 font-medium">{selectedPatient.drugDetails}</p>
               </div>
             )}
           </div>
@@ -512,7 +512,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
       {/* Antecedentes Quirúrgicos */}
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+        <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
           <Scissors className="w-4 h-4 text-indigo-500" /> Cirugías
         </h4>
 
@@ -522,7 +522,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               <button
                 data-testid="btn-add-surgical-history"
                 onClick={() => setShowQXMenu(!showQXMenu)}
-                className="w-full py-3 px-4 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 font-bold text-xs flex items-center justify-between hover:bg-blue-100 transition-all group"
+                className="w-full py-4 px-6 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 font-bold text-sm flex items-center justify-between hover:bg-blue-100 transition-all group"
               >
                 <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> Agregar
                 Cirugía
@@ -538,7 +538,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                         toggleHistoryItem("surgical", opt.id);
                         setShowQXMenu(false);
                       }}
-                      className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${
+                      className={`w-full text-left px-4 py-4 text-sm font-bold transition-colors ${
                         surgicalHistory.some((h) =>
                           typeof h === "string" ? h === opt.id : h.id === opt.id
                         )
@@ -555,7 +555,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
             <div className="flex gap-2">
               <input
-                className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-indigo-500 bg-white"
+                className="flex-1 p-3 text-sm border border-slate-300 rounded-xl outline-none focus:border-indigo-500 bg-white"
                 placeholder="+ Otra cirugía..."
                 value={customSurgical}
                 onChange={(e) => setCustomSurgical(e.target.value)}
@@ -572,7 +572,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   handleAddHistory("surgical", customSurgical);
                   setCustomSurgical("");
                 }}
-                className="bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-indigo-600"
+                className="bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-600"
               >
                 +
               </button>
@@ -587,7 +587,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
               return (
                 <div key={id} className="group relative" title={code ? `SNOMED: ${code}` : ""}>
-                  <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100 flex items-center gap-2">
+                  <span className="px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-xl border border-indigo-100 flex items-center gap-2">
                     {code && code !== "free-text" && <Activity className="w-3 h-3 text-indigo-400" />}
                     {label}
                   </span>
@@ -613,7 +613,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               return (
                 <span
                   key={itemId}
-                  className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md border border-slate-200 flex items-center gap-1"
+                  className="px-3 py-1.5 bg-slate-100 text-slate-600 text-sm font-bold rounded-lg border border-slate-200 flex items-center gap-1"
                 >
                   {itemLabel}
                   <button
@@ -708,7 +708,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
         </ul>
         {isEditingPatient && !readOnly && (
           <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mt-2">
-            <p className="text-xs font-bold text-blue-800 mb-2">Agregar Medicamento:</p>
+            <p className="text-sm font-bold text-blue-800 mb-2">Agregar Medicamento:</p>
             <AutocompleteInput
               value={tempMedication.name || ""}
               onChange={(val) => setTempMedication({ ...tempMedication, name: val })}
@@ -795,7 +795,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
         </h4>
         <div className="space-y-3">
           <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Ocupación</span>
+            <span className="font-bold block text-sm text-slate-400 uppercase">Ocupación</span>
             {isEditingPatient && !readOnly ? (
               <input
                 className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -808,7 +808,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Dirección</span>
+            <span className="font-bold block text-sm text-slate-400 uppercase">Dirección</span>
             {isEditingPatient && !readOnly ? (
               <input
                 className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -821,7 +821,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Comuna</span>
+            <span className="font-bold block text-sm text-slate-400 uppercase">Comuna</span>
             {isEditingPatient && !readOnly ? (
               <select
                 className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -841,7 +841,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Teléfono</span>
+            <span className="font-bold block text-sm text-slate-400 uppercase">Teléfono</span>
             {isEditingPatient && !readOnly ? (
               <input
                 className="w-full mt-1 p-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
@@ -854,7 +854,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="text-base text-slate-700">
-            <span className="font-bold block text-xs text-slate-400 uppercase">Vive Con</span>
+            <span className="font-bold block text-sm text-slate-400 uppercase">Vive Con</span>
             {isEditingPatient && !readOnly ? (
               <div className="space-y-3 mt-2">
                 <div className="flex flex-wrap gap-1.5">
@@ -863,7 +863,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       key={opt}
                       type="button"
                       onClick={() => handleAddSocial(opt)}
-                      className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all ${livingWith.includes(opt) ? "bg-blue-600 text-white border-blue-700 shadow-sm" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                      className={`text-sm px-2 py-1 rounded-lg border font-bold transition-all ${livingWith.includes(opt) ? "bg-blue-600 text-white border-blue-700 shadow-sm" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
                     >
                       {opt}
                     </button>
@@ -871,7 +871,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 </div>
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
+                    className="flex-1 p-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-blue-500 bg-white"
                     placeholder="+ Otra persona..."
                     value={customSocial}
                     onChange={(e) => setCustomSocial(e.target.value)}
@@ -888,7 +888,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                       handleAddSocial(customSocial);
                       setCustomSocial("");
                     }}
-                    className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold"
+                    className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold"
                   >
                     +
                   </button>
@@ -899,7 +899,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 {livingWith.map((person, idx) => (
                   <span
                     key={idx}
-                    className="bg-slate-200 px-2 py-1 rounded text-xs font-bold text-slate-700 flex items-center gap-1"
+                    className="bg-slate-200 px-2 py-1 rounded text-sm font-bold text-slate-700 flex items-center gap-1"
                   >
                     {person}
                   </span>
@@ -915,7 +915,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 {livingWith.map((person, idx) => (
                   <span
                     key={idx}
-                    className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 flex items-center gap-1"
+                    className="bg-slate-100 px-2 py-0.5 rounded text-sm font-bold text-slate-500 flex items-center gap-1"
                   >
                     {person}
                     <button
@@ -936,12 +936,12 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           </div>
 
           <div className="pt-4 border-t border-slate-100 space-y-3">
-            <h5 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+            <h5 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest">
               Información Regulatoria
             </h5>
 
             <div className="text-base text-slate-700">
-              <span className="font-bold block text-xs text-slate-400 uppercase">
+              <span className="font-bold block text-sm text-slate-400 uppercase">
                 Identidad de Género
               </span>
               {isEditingPatient && !readOnly ? (

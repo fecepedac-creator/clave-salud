@@ -2173,3 +2173,83 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
 export * from "./immutableAudit";
 export * from "./whatsapp";
 export * from "./performance";
+
+// ─── WHATSAPP CONFIG (con cifrado de Access Token) ───────────────────────────
+// Importamos la función de cifrado desde whatsapp.ts para reutilizar la misma
+// lógica AES-256 sin duplicar código.
+import { encryptToken } from "./whatsapp";
+
+export const updateWhatsappConfig = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+
+    const centerId = String(data?.centerId || "").trim();
+    if (!centerId) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
+    }
+
+    // Verificar que el usuario es admin del centro o super_admin
+    const isAdmin = await isCenterAdminForCenter(uid, centerId);
+    if (!isAdmin && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo administradores del centro pueden actualizar la configuración de WhatsApp."
+      );
+    }
+
+    const phoneNumberId = String(data?.phoneNumberId || "").trim();
+    const rawAccessToken = String(data?.accessToken || "").trim();
+    const secretaryPhone = String(data?.secretaryPhone || "").trim();
+    const verifyToken = String(data?.verifyToken || "").trim();
+
+    if (!phoneNumberId) {
+      throw new functions.https.HttpsError("invalid-argument", "phoneNumberId es requerido.");
+    }
+
+    const centerRef = db.collection("centers").doc(centerId);
+
+    const updates: Record<string, any> = {
+      "whatsappConfig.phoneNumberId": phoneNumberId,
+      "whatsappConfig.updatedAt": serverTimestamp(),
+      "whatsappConfig.updatedByUid": uid,
+    };
+
+    // Solo actualizar el token si el admin envió uno nuevo (no el placeholder "********")
+    if (rawAccessToken && rawAccessToken !== "********") {
+      // Cifrar el token antes de persistir en Firestore
+      const encryptedToken = encryptToken(rawAccessToken);
+      updates["whatsappConfig.accessToken"] = encryptedToken;
+      updates["whatsappConfig.tokenEncrypted"] = true;
+    }
+
+    if (secretaryPhone) {
+      updates["whatsappConfig.secretaryPhone"] = secretaryPhone;
+    }
+
+    if (verifyToken) {
+      updates["whatsappConfig.verifyToken"] = verifyToken;
+    }
+
+    await centerRef.update(updates);
+
+    // Registro de auditoría
+    await centerRef.collection("auditLogs").add({
+      type: "ACTION",
+      action: "WHATSAPP_CONFIG_UPDATED",
+      entityType: "centerSettings",
+      entityId: centerId,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: isAdmin ? "center_admin" : "super_admin",
+      resourceType: "whatsappConfig",
+      resourcePath: `/centers/${centerId}`,
+      timestamp: serverTimestamp(),
+      details: "Configuración de WhatsApp actualizada con token cifrado.",
+    });
+
+    console.log(`[updateWhatsappConfig] Centro ${centerId} actualizado por ${uid}. Token cifrado: ${!!rawAccessToken && rawAccessToken !== "********"}`);
+    return { ok: true, tokenEncrypted: !!rawAccessToken && rawAccessToken !== "********" };
+  }
+);
+

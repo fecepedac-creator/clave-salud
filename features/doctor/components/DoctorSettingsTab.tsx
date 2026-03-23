@@ -5,20 +5,21 @@ import { generateId } from "../../../utils";
 import {
   Activity,
   Layers,
-  Edit,
-  Trash2,
-  CheckSquare,
-  Square,
-  RefreshCw,
   TestTube,
   X,
   FileText,
   Book,
   Shield,
   KeyRound,
+  Search,
 } from "lucide-react";
 import { EXAM_PROFILES } from "../../../constants";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../../../constants/clinicalTemplates";
+import Button from "../../../components/ui/Button";
+import Card from "../../../components/ui/Card";
+import Input from "../../../components/ui/Input";
+import DoctorTemplatesSection from "../../../components/DoctorTemplatesSection";
+import DoctorExamProfilesSection from "../../../components/DoctorExamProfilesSection";
 
 interface DoctorSettingsTabProps {
   currentUser: Doctor | undefined;
@@ -127,7 +128,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteProfile = (id: string) => {
-    if (window.confirm("¿Eliminar perfil de exámenes?")) {
+    if (globalThis.confirm("¿Eliminar perfil de exámenes?")) {
       const updated = myExamProfiles.filter((p) => p.id !== id);
       setMyExamProfiles(updated);
       onUpdateDoctor({ id: doctorId, savedExamProfiles: updated });
@@ -135,7 +136,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleResetProfiles = () => {
-    if (window.confirm("¿Restaurar los perfiles de exámenes por defecto?")) {
+    if (globalThis.confirm("¿Restaurar los perfiles de exámenes por defecto?")) {
       setMyExamProfiles(EXAM_PROFILES);
       onUpdateDoctor({ id: doctorId, savedExamProfiles: EXAM_PROFILES });
       showToast("Perfiles restaurados.", "success");
@@ -161,7 +162,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteCustomExam = (examId: string) => {
-    if (window.confirm("¿Eliminar este examen personalizado?")) {
+    if (globalThis.confirm("¿Eliminar este examen personalizado?")) {
       const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
       const updatedProfiles = myExamProfiles.map((p) => ({
         ...p,
@@ -206,7 +207,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteTemplate = (id: string) => {
-    if (window.confirm("¿Eliminar plantilla?")) {
+    if (globalThis.confirm("¿Eliminar plantilla?")) {
       const updated = myTemplates.filter((t) => t.id !== id);
       setMyTemplates(updated);
       onUpdateDoctor({ id: doctorId, savedTemplates: updated });
@@ -260,179 +261,98 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   return (
-    <div className="w-full animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
-      <div className="lg:col-span-12 bg-white/90 backdrop-blur-sm p-6 rounded-3xl border border-white shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
+    <div className="w-full animate-fadeIn flex flex-col gap-8 pb-20 max-w-6xl mx-auto">
+      {/* Vitals Toggle */}
+      <Card variant="glass" className="flex flex-col md:flex-row justify-between items-center gap-6 border-emerald-500/20">
         <div className="flex items-center gap-4">
-          <div className="bg-rose-100 text-rose-600 p-3 rounded-2xl">
+          <div className="bg-emerald-500/10 text-emerald-500 p-4 rounded-2xl border border-emerald-500/20">
             <Activity className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-800">Módulo de Signos Vitales</h3>
-            <p className="text-sm text-slate-500 max-w-xl">
-              Habilita antropometría.{" "}
-              <span className="font-bold text-slate-700 ml-1">
-                (Anula la configuración del centro)
+            <h3 className="text-xl font-bold text-white tracking-tight">Módulo de Signos Vitales</h3>
+            <p className="text-sm text-slate-400 max-w-xl">
+              Habilita la sección de antropometría y parámetros clínicos.{" "}
+              <span className="font-bold text-emerald-400 ml-1">
+                (Esta preferencia anula la configuración global del centro)
               </span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-          <button
+        <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-700">
+          <Button
+            variant={moduleGuards.vitals ? "primary" : "ghost"}
+            size="sm"
             onClick={() =>
               onUpdateDoctor({
                 ...currentUser,
                 preferences: { ...currentUser?.preferences, vitalsEnabled: true },
               })
             }
-            className={`px-4 py-2 rounded-lg text-sm font-bold ${moduleGuards.vitals ? "bg-white text-emerald-600 shadow-sm border border-emerald-100" : "text-slate-400"}`}
+            className={`rounded-xl px-6 ${moduleGuards.vitals ? "shadow-emerald-900/40" : ""}`}
           >
             Activado
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={!moduleGuards.vitals ? "danger" : "ghost"}
+            size="sm"
             onClick={() =>
               onUpdateDoctor({
                 ...currentUser,
                 preferences: { ...currentUser?.preferences, vitalsEnabled: false },
               })
             }
-            className={`px-4 py-2 rounded-lg text-sm font-bold ${!moduleGuards.vitals ? "bg-white text-rose-600 shadow-sm border border-rose-100" : "text-slate-400"}`}
+            className={`rounded-xl px-6 ${!moduleGuards.vitals ? "shadow-red-900/40" : ""}`}
           >
             Desactivado
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {role === "MEDICO" && (
-        <>
-          <div className="lg:col-span-6 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col h-[600px]">
-            <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-              <Layers className="w-6 h-6 text-emerald-500" /> Mis Perfiles de Exámenes
-            </h3>
-            <div className="flex-1 overflow-hidden flex flex-col gap-6">
-              <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4">
-                {myExamProfiles.length === 0 && (
-                  <p className="text-slate-400 italic text-sm text-center py-4">
-                    No tiene perfiles configurados.
-                  </p>
-                )}
-                {myExamProfiles.map((profile) => (
-                  <div
-                    key={profile.id}
-                    className="p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-emerald-200 transition-all shadow-sm group"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-bold text-slate-700 text-sm">{profile.label}</h4>
-                        <p className="text-xs text-slate-400">
-                          {profile.description || "Sin descripción"}
-                        </p>
-                      </div>
-                      {!isReadOnly && (
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleEditProfile(profile)}
-                            className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
-                          >
-                            <Edit className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProfile(profile.id)}
-                            className="p-1.5 hover:bg-red-50 text-red-500 rounded"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {!isReadOnly && (
-                <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 p-2 border rounded-lg text-sm"
-                      placeholder="Ej: Control Diabetes"
-                      value={tempProfile.label}
-                      onChange={(e) => setTempProfile({ ...tempProfile, label: e.target.value })}
-                    />
-                    <input
-                      className="flex-1 p-2 border rounded-lg text-sm"
-                      placeholder="Descripción..."
-                      value={tempProfile.description}
-                      onChange={(e) =>
-                        setTempProfile({ ...tempProfile, description: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
-                    {allExamOptions
-                      .filter((e) => !e.readOnly)
-                      .map((opt) => (
-                        <button
-                          key={opt.id}
-                          onClick={() => toggleExamInTempProfile(opt.id)}
-                          className={`text-xs text-left px-2 py-1 rounded flex items-center gap-2 ${tempProfile.exams.includes(opt.id) ? "bg-emerald-50 text-emerald-700 font-bold" : "text-slate-600"}`}
-                        >
-                          {tempProfile.exams.includes(opt.id) ? (
-                            <CheckSquare className="w-3 h-3" />
-                          ) : (
-                            <Square className="w-3 h-3" />
-                          )}
-                          <span className="truncate">{opt.label}</span>
-                        </button>
-                      ))}
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={handleSaveProfile}
-                      className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg hover:bg-emerald-700 text-sm"
-                    >
-                      {isEditingProfileId ? "Guardar Cambios" : "Crear Perfil"}
-                    </button>
-                    {isEditingProfileId && (
-                      <button
-                        onClick={() => setIsEditingProfileId(null)}
-                        className="px-3 py-2 bg-slate-200 font-bold rounded-lg text-sm"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleResetProfiles}
-                    className="w-full text-xs text-slate-400 hover:text-emerald-600 flex justify-center items-center gap-1 mt-1"
-                  >
-                    <RefreshCw className="w-3 h-3" /> Restaurar predeterminados
-                  </button>
-                </div>
-              )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-2">
+              <Layers className="w-5 h-5 text-emerald-400" />
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider">Perfiles y Packs</h3>
             </div>
+            <DoctorExamProfilesSection
+              profiles={myExamProfiles}
+              allExamOptions={allExamOptions}
+              tempProfile={tempProfile}
+              isEditingId={isEditingProfileId}
+              onTempChange={setTempProfile}
+              onSave={handleSaveProfile}
+              onEdit={handleEditProfile}
+              onDelete={handleDeleteProfile}
+              onReset={handleResetProfiles}
+              onCancel={() => setIsEditingProfileId(null)}
+              onToggleExam={toggleExamInTempProfile}
+            />
           </div>
 
-          <div className="lg:col-span-6 space-y-8">
-            <div className="bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col">
-              <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <TestTube className="w-6 h-6 text-purple-500" /> Definir Nuevo Examen
-              </h3>
-              <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-2">
+              <TestTube className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider">Exámenes Personalizados</h3>
+            </div>
+            <Card variant="glass" className="border-purple-500/20">
+              <p className="text-sm text-slate-400 mb-6">Define exámenes específicos que no estén en el catálogo nacional.</p>
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <Input
                     placeholder="Nombre (ej: Estradiol)"
                     value={newCustomExam.label}
                     onChange={(e) => setNewCustomExam({ ...newCustomExam, label: e.target.value })}
                   />
-                  <input
-                    className="w-24 p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500"
+                  <Input
                     placeholder="Unidad"
+                    className="w-24"
                     value={newCustomExam.unit}
                     onChange={(e) => setNewCustomExam({ ...newCustomExam, unit: e.target.value })}
                   />
                 </div>
                 <select
-                  className="w-full p-2 border border-purple-200 rounded-lg text-sm outline-none focus:border-purple-500 bg-white"
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all font-medium"
                   value={newCustomExam.category}
                   onChange={(e) => setNewCustomExam({ ...newCustomExam, category: e.target.value })}
                 >
@@ -443,28 +363,24 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                   <option value="Cardíaco">Cardíaco</option>
                   <option value="Otro">Otro</option>
                 </select>
-                <button
-                  onClick={handleCreateCustomExam}
-                  className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 text-sm"
-                >
-                  Agregar a la Lista
-                </button>
+                <Button variant="primary" className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-900/20" onClick={handleCreateCustomExam}>
+                  Agregar a mi Lista
+                </Button>
               </div>
+
               {currentUser?.customExams && currentUser.customExams.length > 0 && (
-                <div className="mt-4 border-t border-slate-100 pt-4">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
-                    Mis Exámenes Personalizados
-                  </h4>
+                <div className="mt-8 pt-6 border-t border-white/5">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Mis Exámenes Personales</h4>
                   <div className="flex flex-wrap gap-2">
                     {currentUser.customExams.map((ex) => (
                       <span
                         key={ex.id}
-                        className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full flex items-center gap-1 border border-purple-200"
+                        className="bg-purple-500/10 text-purple-400 text-xs font-bold px-3 py-1.5 rounded-full border border-purple-500/20 flex items-center gap-2 group"
                       >
                         {ex.label} ({ex.unit})
                         <button
                           onClick={() => handleDeleteCustomExam(ex.id)}
-                          className="hover:text-red-500"
+                          className="hover:text-red-400 transition-colors"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -473,196 +389,121 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Templates Editor */}
-      <div className="lg:col-span-12 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col min-h-[300px]">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-slate-400" /> Mis Plantillas Clínicas
-          </h3>
-          <button
-            onClick={() => setIsCatalogOpen(true)}
-            className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
-          >
-            <Book className="w-3 h-3" /> Explorar Catálogo
-          </button>
-        </div>
-        <div className="flex-1 overflow-hidden flex flex-col gap-6">
-          <div className="flex-1 overflow-y-auto pr-2 space-y-2 border-b border-slate-100 pb-4 max-h-40">
-            {myTemplates.length === 0 && (
-              <p className="text-center text-slate-400 text-sm italic py-4">
-                No tiene plantillas. Importe desde el catálogo o cree una.
-              </p>
-            )}
-            {myTemplates.map((t) => (
-              <div
-                key={t.id}
-                className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-colors group"
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-bold text-slate-700 text-sm">{t.title}</span>
-                  {!isReadOnly && (
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleEditTemplate(t)}
-                        className="p-1.5 hover:bg-blue-50 text-blue-600 rounded"
-                      >
-                        <Edit className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTemplate(t.id)}
-                        className="p-1.5 hover:bg-red-50 text-red-500 rounded"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 line-clamp-1">{t.content}</p>
-              </div>
-            ))}
+      {/* Templates Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-400" />
+            <h3 className="text-lg font-bold text-white uppercase tracking-wider">Plantillas Clínicas</h3>
           </div>
-
-          <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <input
-              className="w-full p-2 border-2 rounded-lg text-sm"
-              placeholder="Ej: Resfrío Común"
-              value={tempTemplate.title}
-              onChange={(e) => setTempTemplate({ ...tempTemplate, title: e.target.value })}
-              readOnly={isReadOnly}
-            />
-            <textarea
-              className="w-full p-2 border-2 rounded-lg h-16 resize-none text-sm"
-              placeholder="Texto predefinido..."
-              value={tempTemplate.content}
-              onChange={(e) => setTempTemplate({ ...tempTemplate, content: e.target.value })}
-              readOnly={isReadOnly}
-            />
-            {!isReadOnly && (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSaveTemplate}
-                  className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 text-sm"
-                >
-                  {isEditingTemplateId ? "Actualizar" : "Crear Nueva"}
-                </button>
-                {isEditingTemplateId && (
-                  <button
-                    onClick={() => {
-                      setIsEditingTemplateId(null);
-                      setTempTemplate({ id: "", title: "", content: "" });
-                    }}
-                    className="px-3 py-2 bg-slate-200 font-bold rounded-lg text-sm"
-                  >
-                    Cancelar
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          <Button variant="glass" size="sm" onClick={() => setIsCatalogOpen(true)}>
+            <Book className="w-4 h-4 mr-2" /> Explorar Catálogo
+          </Button>
         </div>
+        <DoctorTemplatesSection
+          templates={myTemplates}
+          tempTemplate={tempTemplate}
+          isEditingId={isEditingTemplateId}
+          onTempChange={setTempTemplate}
+          onSave={handleSaveTemplate}
+          onEdit={handleEditTemplate}
+          onDelete={handleDeleteTemplate}
+          onReset={() => {}} // Se puede implementar si se desea
+          onCancel={() => {
+            setIsEditingTemplateId(null);
+            setTempTemplate({ id: "", title: "", content: "" });
+          }}
+        />
       </div>
 
-      {isCatalogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <div>
-                <h3 className="font-bold text-lg text-slate-800">Catálogo de Plantillas</h3>
-              </div>
-              <button
-                onClick={() => setIsCatalogOpen(false)}
-                className="p-2 hover:bg-slate-200 rounded-full"
-              >
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-            <div className="p-4 border-b border-slate-100 bg-white space-y-3">
-              <input
-                className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm"
-                placeholder="Escriba para buscar..."
-                value={catalogSearch}
-                onChange={(e) => setCatalogSearch(e.target.value)}
-              />
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 max-h-64">
-                {DEFAULT_CLINICAL_TEMPLATES.filter((t) => !t.roles || t.roles.includes(role)).map(
-                  (t) => (
-                    <div
-                      key={t.id}
-                      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2"
-                    >
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-slate-800">{t.title}</span>
-                        <button
-                          onClick={() => handleImportTemplate(t)}
-                          className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold"
-                        >
-                          Importar
-                        </button>
-                      </div>
-                      <p className="text-xs text-slate-500 line-clamp-2">{t.content}</p>
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Contraseña */}
-      <div className="lg:col-span-12 bg-white/90 backdrop-blur-sm p-8 rounded-3xl border border-white shadow-lg flex flex-col">
-        <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-indigo-500" /> Seguridad de la Cuenta
+      {/* Seguridad */}
+      <Card variant="glass" className="border-indigo-500/20">
+        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+          <Shield className="w-6 h-6 text-indigo-400" /> Seguridad de la Cuenta
         </h3>
-        <div className="flex flex-col md:flex-row gap-8">
-          <div className="md:w-1/3">
-            <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 text-indigo-900">
-              <KeyRound className="w-8 h-8 mb-4 opacity-80" />
-              <h4 className="font-bold text-lg mb-2">Cambiar Contraseña</h4>
-              <p className="text-sm opacity-80 mb-4">Actualice su contraseña periódicamente.</p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="bg-indigo-500/5 p-6 rounded-2xl border border-indigo-500/10">
+            <KeyRound className="w-10 h-10 text-indigo-400 mb-4" />
+            <h4 className="font-bold text-lg text-white mb-2">Cambiar Contraseña</h4>
+            <p className="text-sm text-slate-400 leading-relaxed">Actualice su contraseña periódicamente para mantener su cuenta protegida.</p>
           </div>
-          <div className="flex-1 space-y-4 max-w-md">
-            <input
+          <div className="md:col-span-2 space-y-4 max-w-md">
+            <Input
               type="password"
-              placeholder="Contraseña Actual"
-              className="w-full p-3 border rounded-xl"
+              label="Contraseña Actual"
               value={pwdState.current}
               onChange={(e) => setPwdState({ ...pwdState, current: e.target.value })}
               readOnly={isReadOnly}
             />
-            <input
+            <Input
               type="password"
-              placeholder="Nueva Contraseña"
-              className="w-full p-3 border rounded-xl"
+              label="Nueva Contraseña"
               value={pwdState.new}
               onChange={(e) => setPwdState({ ...pwdState, new: e.target.value })}
               readOnly={isReadOnly}
             />
-            <input
+            <Input
               type="password"
-              placeholder="Repetir Nueva"
-              className="w-full p-3 border rounded-xl"
+              label="Confirmar Nueva"
               value={pwdState.confirm}
               onChange={(e) => setPwdState({ ...pwdState, confirm: e.target.value })}
               readOnly={isReadOnly}
             />
-            {!isReadOnly && (
-              <button
-                onClick={handleChangePassword}
-                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 w-full md:w-auto"
-              >
+            <div className="pt-2">
+              <Button variant="primary" onClick={handleChangePassword} className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20">
                 Actualizar Contraseña
-              </button>
-            )}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
+
+      {/* Catálogo Modal */}
+      {isCatalogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsCatalogOpen(false)} />
+          <Card variant="glass" className="w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden relative border-emerald-500/30 shadow-2xl">
+            <div className="p-6 border-b border-white/10 flex justify-between items-center">
+              <h3 className="font-bold text-xl text-white">Catálogo de Plantillas</h3>
+              <button onClick={() => setIsCatalogOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                <X className="w-6 h-6 text-slate-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 flex-1 flex flex-col">
+              <Input
+                icon={<Search className="w-4 h-4" />}
+                placeholder="Buscar por título o contenido..."
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+              />
+              <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
+                {DEFAULT_CLINICAL_TEMPLATES
+                  .filter((t) => !t.roles || t.roles.includes(role))
+                  .filter((t) => t.title.toLowerCase().includes(catalogSearch.toLowerCase()) || t.content.toLowerCase().includes(catalogSearch.toLowerCase()))
+                  .map((t) => (
+                    <div
+                      key={t.id}
+                      className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition-all group"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <span className="font-bold text-white group-hover:text-emerald-400 transition-colors">{t.title}</span>
+                        <Button variant="glass" size="sm" onClick={() => handleImportTemplate(t)}>
+                          Importar
+                        </Button>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed italic line-clamp-2">"{t.content}"</p>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

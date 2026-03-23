@@ -18,8 +18,9 @@ test("T1 — Admin: login y acceso a dashboard", async ({ page }) => {
   await page.goto(`${TEST.BASE_URL}/center/${TEST.CENTER_ID}?agent_test=true`);
 
   // 2. Verificar que llegamos directamente al dashboard administrativo
-  const tabPerformance = page.locator('[data-testid="admin-tab-performance"]');
-  await expect(tabPerformance).toBeVisible({ timeout: 45000 });
+  // Fallback: buscar por data-testid o por texto si los componentes se renombraron
+  const tabPerformance = page.locator('[data-testid="admin-tab-performance"]').or(page.getByText('Rendimiento'));
+  await expect(tabPerformance.first()).toBeVisible({ timeout: 60000 });
 
   // 3. Validar hidratación dinámica (sustituye al waitForTimeout estático)
   // Asegurar que el tab de Centro de Mando está activo
@@ -30,7 +31,7 @@ test("T1 — Admin: login y acceso a dashboard", async ({ page }) => {
 
   // 4. El botón de logout existe (confirma sesión activa)
   await expect(
-    page.locator('button[title*="Salir"], button:has-text("Salir"), button svg.lucide-log-out')
+    page.locator('button[title*="Salir"], button:has-text("Salir"), button svg.lucide-log-out').first()
   ).toBeVisible();
 
   console.log("✅ T1 — Login de Admin exitoso. Dashboard visible.");

@@ -1,0 +1,37 @@
+﻿[dotenv@17.3.1] injecting env (17) from .env.test -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+
+Running 1 test using 1 worker
+
+[dotenv@17.3.1] injecting env (0) from .env.test -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+Navegando a la home de producci├│n...
+  Ô£ÿ  1 [demo-tests] ÔÇ║ tests\demo\debug_centers.spec.ts:3:1 ÔÇ║ Depuraci├│n: Listar todos los centros activos en producci├│n (33.0s)
+
+
+  1) [demo-tests] ÔÇ║ tests\demo\debug_centers.spec.ts:3:1 ÔÇ║ Depuraci├│n: Listar todos los centros activos en producci├│n 
+
+    TimeoutError: page.goto: Timeout 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://clavesalud-2.web.app/", waiting until "networkidle"[22m
+
+
+      3 | test("Depuraci├│n: Listar todos los centros activos en producci├│n", async ({ page }) => {
+      4 |   console.log("Navegando a la home de producci├│n...");
+    > 5 |   await page.goto("https://clavesalud-2.web.app/", { waitUntil: 'networkidle' });
+        |              ^
+      6 |
+      7 |   console.log("Esperando carga de centros...");
+      8 |   await page.waitForTimeout(10000);
+        at C:\Users\fecep\clave-salud\tests\demo\debug_centers.spec.ts:5:14
+
+    attachment #1: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\debug_centers-Depuraci├│n-L-e7d83-ntros-activos-en-producci├│n-demo-tests\test-failed-1.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    attachment #2: video (video/webm) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\debug_centers-Depuraci├│n-L-e7d83-ntros-activos-en-producci├│n-demo-tests\video.webm
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    Error Context: test-results\debug_centers-Depuraci├│n-L-e7d83-ntros-activos-en-producci├│n-demo-tests\error-context.md
+
+  1 failed
+    [demo-tests] ÔÇ║ tests\demo\debug_centers.spec.ts:3:1 ÔÇ║ Depuraci├│n: Listar todos los centros activos en producci├│n 

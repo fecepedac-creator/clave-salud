@@ -13,20 +13,31 @@ test.describe("SuperAdmin Access & Multi-tenant Visibility", () => {
   // Usamos agent_test=true para bypasear guards que asuman Firebase local de cierta manera,
   // o ?master_access=true si tu app usa esa bandera localmente para forzar rol.
 
+  test.beforeEach(async ({ page }) => {
+    page.on("console", (msg) => console.log(`[BROWSER] ${msg.type()}: ${msg.text()}`));
+    // Limpiar rastro de versiones o roles anteriores para evitar saltos de ruta
+    await page.addInitScript(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
+  });
+
   test("E2E-SA-01: Acceso al dashboard SuperAdmin", async ({ page }) => {
-    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true`);
+    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true&demo_role=superadmin`);
 
     // Debe ser visible el dashboard de superadmin
-    // Usamos un heading que sepamos que está en la pestaña inicial
-    await expect(page.getByRole("heading", { name: /Centros Activos/i })).toBeVisible({
+    // Tras la refactorización, "Visión General" es el H1 principal
+    await expect(page.getByRole("heading", { name: /Visión General/i })).toBeVisible({
       timeout: 15000,
     });
-    await expect(page.getByText("Visión General", { exact: false }).first()).toBeVisible();
+    
+    // "Centros Activos" está dentro de un MetricCard como H3
+    await expect(page.getByRole("heading", { name: /Centros Activos/i })).toBeVisible();
     await expect(page.getByText("SuperAdmin", { exact: false }).first()).toBeVisible();
   });
 
   test("E2E-SA-02: SuperAdmin puede alternar entre centros en Preview", async ({ page }) => {
-    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true`);
+    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true&demo_role=superadmin`);
     await expect(page.locator('[data-testid="superadmin-dashboard-root"]')).toBeVisible();
 
     // 1. Usar el selector de centro para preview
@@ -42,8 +53,8 @@ test.describe("SuperAdmin Access & Multi-tenant Visibility", () => {
     await page.getByRole("button", { name: /Activar preview/i }).click();
 
     // 4. Esperar a que la página cambie y muestre el modo auditoría
-    // El TestBanner muestra "Modo Auditoría Activo"
-    await expect(page.getByText("Modo Auditoría Activo")).toBeVisible({ timeout: 15000 });
+    // El TestBanner muestra "Modo Auditoría Activo" (usamos first() porque puede haber más de una instancia por banners responsive)
+    await expect(page.getByText("Modo Auditoría Activo").first()).toBeVisible({ timeout: 15000 });
 
     // 5. Salir del preview para volver a superadmin
     const btnExit = page.getByRole("button", { name: /Salir de Preview/i });
@@ -57,7 +68,7 @@ test.describe("SuperAdmin Access & Multi-tenant Visibility", () => {
   });
 
   test("E2E-SA-03: Visibilidad del Log de Auditoría Global (Opcional)", async ({ page }) => {
-    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true`);
+    await page.goto(`${TEST.BASE_URL}/superadmin?agent_test=true&demo_role=superadmin`);
 
     // Si hay una pestaña de Auditoría en superadmin
     const tabAudit = page.getByRole("button", { name: "Auditoría de seguridad" }).first();

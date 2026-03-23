@@ -1,0 +1,31 @@
+{
+  "area": "whatsapp-chatbot",
+  "title": "WhatsApp Chatbot",
+  "date": "2026-03-22",
+  "generatedAt": "2026-03-22T21:12:36.832Z",
+  "summary": {
+    "pass": 2,
+    "fail": 0,
+    "warning": 0,
+    "overall": "SIN BLOQUEOS"
+  },
+  "reportPath": "docs/audits/2026/2026-03-22_whatsapp-chatbot_smoke.md",
+  "results": [
+    {
+      "command": "npm run build --prefix functions",
+      "status": "pass",
+      "startedAt": "2026-03-22T21:12:07.017Z",
+      "finishedAt": "2026-03-22T21:12:21.596Z",
+      "output": "> build\n> tsc",
+      "error": ""
+    },
+    {
+      "command": "npm run test:agent --prefix functions",
+      "status": "pass",
+      "startedAt": "2026-03-22T21:12:21.596Z",
+      "finishedAt": "2026-03-22T21:12:36.829Z",
+      "output": "> test:agent\n> jest src/__tests__/whatsapp-agent.test.ts --runInBand",
+      "error": ""
+    }
+  ]
+}

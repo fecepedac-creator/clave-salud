@@ -4,12 +4,10 @@ import {
   Consultation,
   Attachment,
   Appointment,
-  Prescription,
   AgendaConfig,
   ClinicalTemplate,
   Doctor,
   ProfessionalRole,
-  AuditLogEvent,
   ExamProfile,
   ExamDefinition,
   WhatsappTemplate,
@@ -17,110 +15,31 @@ import {
 import {
   calculateAge,
   generateId,
-  generateSlotId,
-  sanitizeText,
-  base64ToBlob,
   normalizePhone,
   formatPersonName,
   applyWhatsappTemplate,
   openEmailCompose,
   getProfessionalPrefix,
 } from "../utils";
-import {
-  COMMON_DIAGNOSES,
-  DEFAULT_TEMPLATES,
-  EXAM_PROFILES,
-  TRACKED_EXAMS_OPTIONS,
-} from "../constants";
-import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
-import {
-  Search,
-  Book,
-  Plus,
-  User,
-  Calendar,
-  ChevronRight,
-  LogOut,
-  Save,
-  ShieldCheck,
-  X,
-  AlertCircle,
-  ExternalLink,
-  FileText,
-  Bell,
-  UsersRound,
-  CalendarCheck,
-  AlarmClock,
-  MessageCircle,
-  Clock,
-  ArrowUpDown,
-  Filter,
-  Settings,
-  Trash2,
-  Edit,
-  Activity,
-  RefreshCw,
-  Layers,
-  CheckSquare,
-  Square,
-  KeyRound,
-  Shield,
-  TestTube,
-  History,
-  TrendingUp,
-} from "lucide-react";
+import { DEFAULT_TEMPLATES, EXAM_PROFILES, TRACKED_EXAMS_OPTIONS } from "../constants";
+import { MessageCircle } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
-import {
-  collection,
-  serverTimestamp,
-  doc,
-  getDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  setDoc,
-  limit,
-} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, auth, functions } from "../firebase";
-import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
+import { functions } from "../firebase";
 import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
 import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
 import { usePrescriptionLogic } from "../hooks/doctor/usePrescriptionLogic";
 import { useDashboardData } from "../hooks/doctor/useDashboardData";
 
-// Sub-components
-import VitalsForm from "./VitalsForm";
-import PrescriptionManager from "./PrescriptionManager";
-import ConsultationHistory from "./ConsultationHistory";
-import AgendaView from "./AgendaView";
-import PatientSidebar from "./PatientSidebar";
-import PatientDetail from "./PatientDetail";
-import PrintPreviewModal from "./PrintPreviewModal";
-import ClinicalReportModal from "./ClinicalReportModal";
-import ConsultationDetailModal from "./ConsultationDetailModal";
-import ExamOrderModal from "./ExamOrderModal";
-import AutocompleteInput from "./AutocompleteInput";
-import Odontogram from "./Odontogram";
-import Podogram from "./Podogram";
-import BioMarkers from "./BioMarkers";
-import LogoHeader from "./LogoHeader";
-import {
-  DEFAULT_EXAM_ORDER_CATALOG,
-  ExamOrderCatalog,
-  getCategoryLabel,
-} from "../utils/examOrderCatalog";
-import LegalLinks from "./LegalLinks";
-import { StartProgramModal, SessionModal } from "./KinesiologyModals";
-import { ExamSheetsSection } from "./ExamSheetsSection";
 import { KinesiologyProgram, KinesiologySession } from "../types";
-import DrivePicker from "./DrivePicker";
 import { DoctorPatientsListTab } from "../features/doctor/components/DoctorPatientsListTab";
 import { DoctorAgendaTab } from "../features/doctor/components/DoctorAgendaTab";
 import { DoctorSettingsTab } from "../features/doctor/components/DoctorSettingsTab";
 import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatientRecord";
 import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
+import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
+import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -290,7 +209,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     handlePrint,
   } = usePrescriptionLogic();
 
-  const [centerLogoError, setCenterLogoError] = useState(false);
 
   // --- Clinical Templates State ---
   const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>(savedTemplates || []);
@@ -442,10 +360,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     const nextCtrlStr = nextCtrl ? nextCtrl.toLocaleDateString("es-CL") : "";
     const nextCtrlReason = getNextControlReasonFromPatient(p);
     return templateBody
-      .replaceAll("{patientName}", formatPersonName(p.fullName) || "Paciente")
-      .replaceAll("{centerName}", centerName)
-      .replaceAll("{nextControlDate}", nextCtrlStr)
-      .replaceAll("{nextControlReason}", nextCtrlReason);
+      .replace(/{patientName}/g, formatPersonName(p.fullName) || "Paciente")
+      .replace(/{centerName}/g, centerName)
+      .replace(/{nextControlDate}/g, nextCtrlStr)
+      .replace(/{nextControlReason}/g, nextCtrlReason);
   };
 
   const openWhatsApp = (p: Patient, templateBody: string) => {
@@ -573,11 +491,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     };
   }, [isModuleEnabled, currentUser]);
 
-  const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
-  const [previewFile, setPreviewFile] = useState<Attachment | null>(null);
-  const [safePdfUrl, setSafePdfUrl] = useState<string>("");
-
-  // Agenda State
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedAgendaDate, setSelectedAgendaDate] = useState<string>("");
   const [slotModal, setSlotModal] = useState<{ isOpen: boolean; appointment: Appointment | null }>({
@@ -964,181 +877,28 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     }
   }, [role]);
 
-  // --- RENDER SELECTED PATIENT ---
-  if (selectedPatient) {
-    return (
-      <DoctorPatientRecord
-        selectedPatient={selectedPatient}
-        setSelectedPatient={setSelectedPatient}
-        isEditingPatient={isEditingPatient}
-        setIsEditingPatient={setIsEditingPatient}
-        handleSavePatient={handleSavePatient}
-        onUpdatePatient={onUpdatePatient}
-        onLogActivity={onLogActivity}
-        activeCenterId={activeCenterId ?? ""}
-        activeCenter={activeCenter}
-        hasActiveCenter={hasActiveCenter}
-        moduleGuards={moduleGuards}
-        doctorName={doctorName}
-        doctorId={doctorId}
-        role={role}
-        currentUser={currentUser}
-        isReadOnly={isReadOnly}
-        newConsultation={newConsultation}
-        setNewConsultation={setNewConsultation}
-        isCreatingConsultation={isCreatingConsultation}
-        setIsCreatingConsultation={setIsCreatingConsultation}
-        handleVitalsChange={handleVitalsChange}
-        handleExamChange={handleExamChange}
-        addDiagnosis={addDiagnosis}
-        removeDiagnosis={removeDiagnosis}
-        pinDiagnosis={pinDiagnosis}
-        handleCreateConsultation={handleCreateConsultation}
-        selectedPatientConsultations={selectedPatientConsultations}
-        isUsingLegacyConsultations={isUsingLegacyConsultations}
-        docsToPrint={docsToPrint}
-        setDocsToPrint={setDocsToPrint}
-        isPrintModalOpen={isPrintModalOpen}
-        setIsPrintModalOpen={setIsPrintModalOpen}
-        isClinicalReportOpen={isClinicalReportOpen}
-        setIsClinicalReportOpen={setIsClinicalReportOpen}
-        selectedConsultationForModal={selectedConsultationForModal}
-        setSelectedConsultationForModal={setSelectedConsultationForModal}
-        isExamOrderModalOpen={isExamOrderModalOpen}
-        setIsExamOrderModalOpen={setIsExamOrderModalOpen}
-        examOrderCatalog={examOrderCatalog}
-        myExamProfiles={myExamProfiles}
-        allExamOptions={allExamOptions}
-        myTemplates={myTemplates}
-        sendConsultationByEmail={sendConsultationByEmail}
-        safeAgeLabel={safeAgeLabel}
-        onSaveExamOrderProfile={handleSaveExamOrderProfile}
-        onDeleteExamOrderProfile={handleDeleteExamOrderProfile}
-        savedExamOrderProfiles={currentUser?.savedExamOrderProfiles || []}
-      />
-    );
-  }
+
 
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50">
-      <aside className="w-full lg:w-72 bg-white/80 backdrop-blur-md border-r border-slate-200/60 sticky top-0 h-screen overflow-y-auto z-20 shadow-sm">
-        <div className="p-8 border-b border-slate-100/50">
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <ShieldCheck className="w-8 h-8 text-blue-600" />
-            ClaveSalud
-          </h2>
-          <p className="text-[10px] text-blue-600 font-bold uppercase tracking-[0.2em] mt-1">
-            Professional Portal
-          </p>
-        </div>
-        <div className="p-8">
-          <nav className="space-y-2">
-            <button
-              onClick={() => setActiveTab("patients")}
-              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "patients" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
-            >
-              <UsersRound className="w-5 h-5" />
-              Pacientes
-            </button>
-            <button
-              onClick={() => setActiveTab("agenda")}
-              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "agenda" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
-            >
-              <CalendarCheck className="w-5 h-5" />
-              Agenda
-            </button>
-            <button
-              onClick={() => setActiveTab("performance")}
-              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "performance" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
-            >
-              <TrendingUp className="w-5 h-5" />
-              Rendimiento
-            </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold transition-all w-full ${activeTab === "settings" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-700 hover:bg-slate-100"}`}
-            >
-              <Settings className="w-5 h-5" />
-              Configuración
-            </button>
-          </nav>
-          <div className="mt-8 pt-8 border-t border-slate-100/50">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
-                {doctorName.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="font-bold text-slate-800">{doctorName}</p>
-                <p className="text-xs text-slate-500">{role}</p>
-              </div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-all w-full"
-            >
-              <LogOut className="w-5 h-5" />
-              Cerrar Sesión
-            </button>
-            {onClosePanel && (
-              <button
-                onClick={onClosePanel}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all w-full mt-2"
-              >
-                <X className="w-5 h-5" />
-                Cerrar Panel
-              </button>
-            )}
-          </div>
-        </div>
-      </aside>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 transition-all duration-300">
+      <DoctorSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        doctorName={doctorName}
+        role={role}
+        onLogout={onLogout}
+        onClosePanel={onClosePanel}
+      />
 
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-white/20 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4">
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-            <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
-          </div>
-          <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto justify-center">
-            {activeCenter?.logoUrl && (
-              <div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
-                <span className="text-slate-500 text-xs font-medium uppercase tracking-tighter">
-                  Centro
-                </span>
-                {!centerLogoError ? (
-                  <img
-                    src={activeCenter.logoUrl}
-                    alt={`Logo ${activeCenter.name}`}
-                    className="h-6 w-auto max-w-[80px] object-contain rounded"
-                    onError={() => setCenterLogoError(true)}
-                  />
-                ) : (
-                  <span className="text-slate-700 text-[10px] font-bold">{activeCenter.name}</span>
-                )}
-              </div>
-            )}
-            <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg font-bold text-[10px] sm:text-sm border border-blue-100 flex items-center gap-2 whitespace-nowrap">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-              {
-                appointments.filter(
-                  (a) =>
-                    ((a as any).doctorUid ?? a.doctorId) === doctorId &&
-                    a.status === "booked" &&
-                    a.date === new Date().toISOString().split("T")[0]
-                ).length
-              }{" "}
-              Citas
-            </div>
-            <div className="hidden xs:block">
-              <LegalLinks
-                onOpenTerms={() => onOpenLegal("terms")}
-                onOpenPrivacy={() => onOpenLegal("privacy")}
-                className="flex"
-              />
-            </div>
-          </div>
-        </header>
+        <DoctorMainHeader
+          doctorName={doctorName}
+          activeCenter={activeCenter}
+          appointments={appointments}
+          doctorId={doctorId}
+          onOpenLegal={onOpenLegal}
+        />
 
         <main className="flex-1 overflow-hidden flex flex-col">
           {!hasActiveCenter && (
@@ -1183,9 +943,61 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             </div> */}
 
             {/* CONTENT AREA */}
-            <div
-              className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
-            >
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {selectedPatient ? (
+                <DoctorPatientRecord
+                  selectedPatient={selectedPatient}
+                  setSelectedPatient={setSelectedPatient}
+                  isEditingPatient={isEditingPatient}
+                  setIsEditingPatient={setIsEditingPatient}
+                  handleSavePatient={handleSavePatient}
+                  onUpdatePatient={onUpdatePatient}
+                  onLogActivity={onLogActivity}
+                  activeCenterId={activeCenterId ?? ""}
+                  activeCenter={activeCenter}
+                  hasActiveCenter={hasActiveCenter}
+                  moduleGuards={moduleGuards}
+                  doctorName={doctorName}
+                  doctorId={doctorId}
+                  role={role}
+                  currentUser={currentUser}
+                  isReadOnly={isReadOnly}
+                  newConsultation={newConsultation}
+                  setNewConsultation={setNewConsultation}
+                  isCreatingConsultation={isCreatingConsultation}
+                  setIsCreatingConsultation={setIsCreatingConsultation}
+                  handleVitalsChange={handleVitalsChange}
+                  handleExamChange={handleExamChange}
+                  addDiagnosis={addDiagnosis}
+                  removeDiagnosis={removeDiagnosis}
+                  pinDiagnosis={pinDiagnosis}
+                  handleCreateConsultation={handleCreateConsultation}
+                  selectedPatientConsultations={selectedPatientConsultations}
+                  isUsingLegacyConsultations={isUsingLegacyConsultations}
+                  docsToPrint={docsToPrint}
+                  setDocsToPrint={setDocsToPrint}
+                  isPrintModalOpen={isPrintModalOpen}
+                  setIsPrintModalOpen={setIsPrintModalOpen}
+                  isClinicalReportOpen={isClinicalReportOpen}
+                  setIsClinicalReportOpen={setIsClinicalReportOpen}
+                  selectedConsultationForModal={selectedConsultationForModal}
+                  setSelectedConsultationForModal={setSelectedConsultationForModal}
+                  isExamOrderModalOpen={isExamOrderModalOpen}
+                  setIsExamOrderModalOpen={setIsExamOrderModalOpen}
+                  examOrderCatalog={examOrderCatalog}
+                  myExamProfiles={myExamProfiles}
+                  allExamOptions={allExamOptions}
+                  myTemplates={myTemplates}
+                  sendConsultationByEmail={sendConsultationByEmail}
+                  safeAgeLabel={safeAgeLabel}
+                  onSaveExamOrderProfile={handleSaveExamOrderProfile}
+                  onDeleteExamOrderProfile={handleDeleteExamOrderProfile}
+                  savedExamOrderProfiles={currentUser?.savedExamOrderProfiles || []}
+                />
+              ) : (
+                <div
+                  className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
+                >
               {/* CONTENT: PATIENTS LIST */}
               {activeTab === "patients" && (
                 <DoctorPatientsListTab
@@ -1359,9 +1171,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        </main>
+          )}
+        </div>
       </div>
+    </main>
+  </div>
       {/* FEEDBACK BUTTON (Floating) */}
       <a
         href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%A9%20el%20siguiente%20problema%3A%0A%0A"

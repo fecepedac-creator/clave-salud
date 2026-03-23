@@ -1,0 +1,23 @@
+{
+  "area": "patient-portal",
+  "title": "Patient Portal",
+  "date": "2026-03-22",
+  "generatedAt": "2026-03-22T21:11:38.805Z",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "warning": 0,
+    "overall": "ALTO RIESGO"
+  },
+  "reportPath": "docs/audits/2026/2026-03-22_patient-portal_smoke.md",
+  "results": [
+    {
+      "command": "npx playwright test tests/pilot.spec.ts --reporter=line",
+      "status": "fail",
+      "startedAt": "2026-03-22T21:11:34.047Z",
+      "finishedAt": "2026-03-22T21:11:38.803Z",
+      "output": "[dotenv@17.3.1] injecting env (17) from .env.test -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com\nError: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments.\n\n\u001b[1A\u001b[2K",
+      "error": "Command failed: npx playwright test tests/pilot.spec.ts --reporter=line"
+    }
+  ]
+}

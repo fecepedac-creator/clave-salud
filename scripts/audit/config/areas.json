@@ -1,0 +1,163 @@
+{
+  "superadmin": {
+    "title": "SuperAdmin Dashboard",
+    "description": "Gobernanza global, preview multi-centro y gestión de tenant.",
+    "focus": [
+      "Claims de superadmin",
+      "Preview cross-center",
+      "Listado de centros",
+      "Aislamiento de datos"
+    ],
+    "evidenceFiles": [
+      "components/SuperAdminDashboard.tsx",
+      "App.tsx",
+      "hooks/useAuth.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "admin-center": {
+    "title": "Admin Center Dashboard",
+    "description": "Gestión operativa del centro: staff, agenda, métricas y configuración.",
+    "focus": [
+      "Roles administrativos locales",
+      "Gestión de staff y servicios",
+      "Consistencia de la agenda",
+      "Exportaciones contables"
+    ],
+    "evidenceFiles": [
+      "components/AdminDashboard.tsx",
+      "hooks/useFirestoreSync.ts",
+      "tests/admin/multi-tenant.spec.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/admin/login.spec.ts --reporter=line",
+        "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/admin/login.spec.ts --reporter=line",
+        "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "doctor-dashboard": {
+    "title": "Doctor Dashboard",
+    "description": "Flujo clínico, agenda y gestión de ficha de paciente.",
+    "focus": [
+      "Aislamiento por profesional",
+      "Flujo clínico (PSCV)",
+      "Actualización de agenda",
+      "Privacidad del registro clínico"
+    ],
+    "evidenceFiles": [
+      "components/DoctorDashboard.tsx",
+      "features/doctor/components/DoctorPatientRecord.tsx"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/doctor/login.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/doctor/login.spec.ts --reporter=line",
+        "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "doctor-subviews": {
+    "title": "Doctor Subviews",
+    "description": "Componentes especializados del flujo clínico.",
+    "focus": [
+      "Gestión de recetas",
+      "Evoluciones",
+      "Historial clínico detallado"
+    ],
+    "evidenceFiles": [
+      "features/doctor/components/DoctorClinicalHistory.tsx",
+      "hooks/doctor/usePrescriptionLogic.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "patient-portal": {
+    "title": "Patient Portal",
+    "description": "Experiencia del paciente: reserva, cancelación y portal personal.",
+    "focus": [
+      "Reserva pública",
+      "Cancelación determinista",
+      "Verificación de documentos (QR)"
+    ],
+    "evidenceFiles": [
+      "App.tsx",
+      "tests/pilot.spec.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/pilot.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npx playwright test tests/pilot.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "transversal-tenancy": {
+    "title": "Transversal Tenancy",
+    "description": "Seguridad y aislamiento multi-centro a nivel de infraestructura.",
+    "focus": [
+      "Aislamiento de Firestore",
+      "Claims de Auth",
+      "Leakage prevention"
+    ],
+    "evidenceFiles": [
+      "firebase.json",
+      "tests/admin/multi-tenant.spec.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "whatsapp-chatbot": {
+    "title": "WhatsApp Chatbot",
+    "description": "Webhook, agente IA, handoff e idempotencia.",
+    "focus": [
+      "Seguridad del Webhook (firmas)",
+      "MFA para Doctores",
+      "Consistencia en lógica de reserva",
+      "Idempotencia y TTL"
+    ],
+    "evidenceFiles": [
+      "functions/src/whatsapp.ts",
+      "functions/src/index.ts"
+    ],
+    "profiles": {
+      "smoke": [
+        "npm run build --prefix functions",
+        "npm run test:agent --prefix functions"
+      ],
+      "deep": [
+        "npm run build --prefix functions",
+        "npm run test:agent --prefix functions"
+      ]
+    }
+  }
+}

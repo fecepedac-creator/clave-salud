@@ -1,0 +1,46 @@
+﻿[dotenv@17.3.1] injecting env (17) from .env.test -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+
+Running 1 test using 1 worker
+
+[dotenv@17.3.1] injecting env (0) from .env.test -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+Iniciando preparaci├│n de Paciente A...
+[Paciente A (Simultaneo)] Navegando a: https://clavesalud-2.web.app/center/c_eji2qv61/agendar
+[Paciente A (Simultaneo)] Esperando carga inicial de la aplicaci├│n...
+[Paciente A (Simultaneo)] Onboarding no detectado (timeout o ya saltado).
+[Paciente A (Simultaneo)] Detectando estado inicial (Home o Care Type)...
+[Paciente A (Simultaneo)] Portal detectado directamente o 'Soy Paciente' no visible.
+[Paciente A (Simultaneo)] Esperando pregunta de tipo de atenci├│n...
+[Paciente A (Simultaneo)] Esperando breadcrumbs 'Reserva'...
+[Paciente A (Simultaneo)] Esperando header '┬┐Qu├® tipo de atenci├│n necesitas?'...
+  Ô£ÿ  1 [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito (1.2m)
+
+
+  1) [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito 
+
+    TimeoutError: page.waitForSelector: Timeout 40000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('text=/┬┐Qu├® tipo de atenci├│n necesitas?/i') to be visible[22m
+
+
+      61 |       console.log(`[${name}] Esperando header '┬┐Qu├® tipo de atenci├│n necesitas?'...`);
+      62 |       // Selector flexible por texto
+    > 63 |       await page.waitForSelector('text=/┬┐Qu├® tipo de atenci├│n necesitas?/i', { timeout: 40000 });
+         |                  ^
+      64 |       
+      65 |       const careTypeBtn = page.locator('div').filter({ hasText: /^Consulta M├®dica/ }).first();
+      66 |       await careTypeBtn.click({ force: true });
+        at prepararReserva (C:\Users\fecep\clave-salud\tests\demo\concurrency.spec.ts:63:18)
+        at C:\Users\fecep\clave-salud\tests\demo\concurrency.spec.ts:124:18
+
+    attachment #1: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\concurrency-Fase-1-Concurr-19855---Solo-una-debe-tener-├®xito-demo-tests\test-failed-2.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    attachment #2: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\concurrency-Fase-1-Concurr-19855---Solo-una-debe-tener-├®xito-demo-tests\test-failed-1.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    Error Context: test-results\concurrency-Fase-1-Concurr-19855---Solo-una-debe-tener-├®xito-demo-tests\error-context.md
+
+  1 failed
+    [demo-tests] ÔÇ║ tests\demo\concurrency.spec.ts:4:3 ÔÇ║ Fase 1: Concurrencia de Agendamiento ÔÇ║ Simular reserva simult├ínea - Solo una debe tener ├®xito 
