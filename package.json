@@ -11,10 +11,16 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "audit:run": "node scripts/audit/run-audit.cjs",
+    "audit:setup:e2e": "node scripts/audit/run-audit.cjs --setup-playwright",
     "audit:superadmin": "node scripts/audit/run-audit.cjs --area superadmin",
     "audit:admin": "node scripts/audit/run-audit.cjs --area admin-center",
     "audit:doctor": "node scripts/audit/run-audit.cjs --area doctor-dashboard",
-    "audit:whatsapp": "node scripts/audit/run-audit.cjs --area whatsapp-chatbot"
+    "audit:whatsapp": "node scripts/audit/run-audit.cjs --area whatsapp-chatbot",
+    "audit:all": "node scripts/audit/run-audit.cjs --all",
+    "audit:all:smoke": "node scripts/audit/run-audit.cjs --all --profile smoke",
+    "audit:all:deep": "node scripts/audit/run-audit.cjs --all --profile deep",
+    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

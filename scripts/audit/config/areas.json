@@ -37,17 +37,19 @@
       "hooks/useFirestoreSync.ts",
       "tests/admin/multi-tenant.spec.ts"
     ],
-    "profiles": {
-      "smoke": [
-        "npx playwright test tests/admin/login.spec.ts --reporter=line",
-        "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
-      ],
-      "deep": [
-        "npm run build",
-        "npx playwright test tests/admin/login.spec.ts --reporter=line",
-        "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
-      ]
-    }
+      "profiles": {
+        "smoke": [
+          "npx playwright test tests/admin/login.spec.ts --reporter=line",
+          "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line",
+          "npx playwright test tests/admin/navigation-ux.spec.ts --reporter=line"
+        ],
+        "deep": [
+          "npm run build",
+          "npx playwright test tests/admin/login.spec.ts --reporter=line",
+          "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line",
+          "npx playwright test tests/admin/navigation-ux.spec.ts --reporter=line"
+        ]
+      }
   },
   "doctor-dashboard": {
     "title": "Doctor Dashboard",

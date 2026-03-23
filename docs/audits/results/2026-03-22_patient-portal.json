@@ -1,5 +1,6 @@
 {
   "area": "patient-portal",
+<<<<<<< HEAD
   "title": "Patient Portal",
   "date": "2026-03-22",
   "generatedAt": "2026-03-22T21:11:38.805Z",
@@ -18,6 +19,42 @@
       "finishedAt": "2026-03-22T21:11:38.803Z",
       "output": "[dotenv@17.3.1] injecting env (17) from .env.test -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com\nError: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments.\n\n\u001b[1A\u001b[2K",
       "error": "Command failed: npx playwright test tests/pilot.spec.ts --reporter=line"
+=======
+  "title": "Portal paciente y booking público",
+  "date": "2026-03-22",
+  "generatedAt": "2026-03-22T21:37:59.461Z",
+  "summary": {
+    "pass": 1,
+    "fail": 2,
+    "warning": 0,
+    "overall": "ALTO RIESGO"
+  },
+  "reportPath": "docs/audits/2026/2026-03-22_patient-portal.md",
+  "results": [
+    {
+      "command": "npm run build",
+      "status": "pass",
+      "startedAt": "2026-03-22T21:37:48.677Z",
+      "finishedAt": "2026-03-22T21:37:59.460Z",
+      "output": "> ficha-clínica-electrónica--dr-felipe-cepeda@0.0.0 build\n> vite build\n\nvite v6.4.1 building for production...\ntransforming...\n✓ 2106 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                                0.88 kB │ gzip:   0.42 kB\ndist/assets/index-BGqxSdXN.css               118.86 kB │ gzip:  18.11 kB\ndist/assets/templates-ycbpQ0iN.js              0.34 kB │ gzip:   0.22 kB\ndist/assets/examOrderCatalog-TXdJpgBn.js       4.14 kB │ gzip:   1.47 kB\ndist/assets/vendor-uS-d4TUT.js                11.92 kB │ gzip:   4.25 kB\ndist/assets/PatientForm-CZl24OFA.js           22.25 kB │ gzip:   5.90 kB\ndist/assets/purify.es-CFh60W_8.js             22.77 kB │ gzip:   8.79 kB\ndist/assets/browser-Bdxs9EOp.js               25.39 kB │ gzip:   9.97 kB\ndist/assets/MarketingFlyerModal-DHoZ9ZI1.js   56.97 kB │ gzip:  15.93 kB\ndist/assets/SuperAdminDashboard-dsVnP5gq.js   71.41 kB │ gzip:  17.15 kB\ndist/assets/AdminDashboard-HmWFptm3.js       137.12 kB │ gzip:  34.04 kB\ndist/assets/index.es-CqViaiZx.js             159.51 kB │ gzip:  53.50 kB\ndist/assets/html2canvas.esm-QH1iLAAe.js      202.38 kB │ gzip:  48.04 kB\ndist/assets/DoctorDashboard-B5stY1NY.js      323.82 kB │ gzip:  85.09 kB\ndist/assets/index-DdIkfk5w.js                339.31 kB │ gzip: 101.36 kB\ndist/assets/jspdf.es.min-CvBBgz5P.js         390.53 kB │ gzip: 128.65 kB\ndist/assets/firebase-BcxoqvZe.js             543.02 kB │ gzip: 127.52 kB\ndist/assets/ui-B58arjGI.js                   872.18 kB │ gzip: 161.70 kB\n✓ built in 10.13s",
+      "error": ""
+    },
+    {
+      "command": "npx playwright test tests/demo/smoke.spec.ts --reporter=line",
+      "status": "fail",
+      "startedAt": "2026-03-22T21:37:59.460Z",
+      "finishedAt": "2026-03-22T21:37:59.460Z",
+      "output": "Playwright preflight falló y --require-playwright está activo.",
+      "error": "browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝\nSugerencia: npx playwright install"
+    },
+    {
+      "command": "npx playwright test tests/admin/navigation-ux.spec.ts --reporter=line",
+      "status": "fail",
+      "startedAt": "2026-03-22T21:37:59.460Z",
+      "finishedAt": "2026-03-22T21:37:59.460Z",
+      "output": "Playwright preflight falló y --require-playwright está activo.",
+      "error": "browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝\nSugerencia: npx playwright install"
+>>>>>>> pr-104
     }
   ]
 }
