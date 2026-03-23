@@ -1,0 +1,236 @@
+{
+  "superadmin": {
+    "title": "SuperAdmin Dashboard",
+    "description": "Gobernanza global, preview multi-centro, métricas globales y operaciones de centros.",
+    "focus": [
+      "Acceso y claims de superadmin",
+      "Preview cross-center y salida de preview",
+      "Operaciones globales de centros y comunicaciones",
+      "Aislamiento multi-tenant"
+    ],
+    "evidenceFiles": [
+      "components/SuperAdminDashboard.tsx",
+      "App.tsx",
+      "hooks/useAuth.ts",
+      "hooks/useCenters.ts",
+      "tests/admin/superadmin-audit.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/admin/superadmin-audit.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "admin-center": {
+    "title": "Admin Center Dashboard",
+    "description": "Operación del centro: staff, agenda, rendimiento, cierre contable, exportaciones y configuración operativa.",
+    "focus": [
+      "Acceso administrativo por rol",
+      "Cierre y reapertura de mes",
+      "Exportación y consistencia de KPIs",
+      "Seguridad multi-tenant a nivel de centro"
+    ],
+    "evidenceFiles": [
+      "components/AdminDashboard.tsx",
+      "features/admin/components/AdminPerformanceTab.tsx",
+      "hooks/useFirestoreSync.ts",
+      "tests/admin/login.spec.ts",
+      "tests/admin/performance-tab.spec.ts",
+      "tests/admin/multi-tenant.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/login.spec.ts --reporter=line",
+      "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/admin/login.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/admin/login.spec.ts --reporter=line",
+        "npx playwright test tests/admin/performance-tab.spec.ts --reporter=line",
+        "npx playwright test tests/admin/closed-month-guard.spec.ts --reporter=line",
+        "npx playwright test tests/admin/export-csv.spec.ts --reporter=line",
+        "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "doctor-dashboard": {
+    "title": "Doctor Dashboard",
+    "description": "Flujos clínicos, agenda, rendimiento individual y gestión de pacientes por profesional.",
+    "focus": [
+      "Acceso de profesional y resolución de identidad",
+      "Aislamiento de cartera y métricas",
+      "Flujos clínicos críticos (PSCV)",
+      "Consistencia de agenda y actualizaciones"
+    ],
+    "evidenceFiles": [
+      "components/DoctorDashboard.tsx",
+      "features/doctor/components/DoctorPatientsListTab.tsx",
+      "features/doctor/components/DoctorAgendaTab.tsx",
+      "features/doctor/components/DoctorPatientRecord.tsx",
+      "tests/doctor/login.spec.ts",
+      "tests/doctor/performance-tab.spec.ts",
+      "tests/doctor/pscv-flow.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/doctor/login.spec.ts --reporter=line",
+      "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/doctor/login.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/doctor/login.spec.ts --reporter=line",
+        "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "transversal-tenancy": {
+    "title": "Capa transversal de acceso y tenancy",
+    "description": "Autenticación, resolución de roles, selección de centros y sincronización de datos por alcance.",
+    "focus": [
+      "Claims y control de acceso por rol",
+      "Selección y aislamiento por centro",
+      "Filtrado de datos por usuario/tenancy",
+      "Riesgos de fuga horizontal y vertical"
+    ],
+    "evidenceFiles": [
+      "hooks/useAuth.ts",
+      "hooks/useCenters.ts",
+      "hooks/useFirestoreSync.ts",
+      "firestore.rules",
+      "tests/admin/multi-tenant.spec.ts",
+      "tests/doctor/performance-tab.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line",
+      "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/admin/multi-tenant.spec.ts --reporter=line",
+        "npx playwright test tests/doctor/performance-tab.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "doctor-subviews": {
+    "title": "Subvistas por profesional",
+    "description": "Auditoría de tabs funcionales de profesional: pacientes, agenda, ficha, configuración y rendimiento.",
+    "focus": [
+      "Permisos por subvista",
+      "Integridad de ficha clínica",
+      "Estados de error y vacíos",
+      "Consistencia entre tabs y datos"
+    ],
+    "evidenceFiles": [
+      "features/doctor/components/DoctorPatientsListTab.tsx",
+      "features/doctor/components/DoctorAgendaTab.tsx",
+      "features/doctor/components/DoctorPatientRecord.tsx",
+      "features/doctor/components/DoctorSettingsTab.tsx",
+      "features/doctor/components/DoctorPerformanceTab.tsx",
+      "tests/doctor/pscv-flow.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "patient-portal": {
+    "title": "Portal paciente y booking público",
+    "description": "Flujos públicos de reserva, anulación y formularios de paciente.",
+    "focus": [
+      "Validaciones de entrada en flujos públicos",
+      "Riesgos de fuga de información por rutas",
+      "Resiliencia de reserva y cancelación",
+      "Comportamiento UX en errores y borde"
+    ],
+    "evidenceFiles": [
+      "components/PatientPortal.tsx",
+      "components/BookingPortal.tsx",
+      "components/PatientForm.tsx",
+      "App.tsx",
+      "tests/admin/navigation-ux.spec.ts",
+      "tests/demo/smoke.spec.ts"
+    ],
+    "commands": [
+      "npm run build",
+      "npx playwright test tests/admin/navigation-ux.spec.ts --reporter=line",
+      "npx playwright test tests/demo/smoke.spec.ts --reporter=line"
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build",
+        "npx playwright test tests/demo/smoke.spec.ts --reporter=line"
+      ],
+      "deep": [
+        "npm run build",
+        "npx playwright test tests/demo/smoke.spec.ts --reporter=line",
+        "npx playwright test tests/admin/navigation-ux.spec.ts --reporter=line"
+      ]
+    }
+  },
+  "whatsapp-chatbot": {
+    "title": "WhatsApp Chatbot",
+    "description": "Webhook, flujo conversacional, handoff, idempotencia y notificaciones transaccionales.",
+    "focus": [
+      "Seguridad webhook y manejo de secretos",
+      "Gates de reserva y consistencia transaccional",
+      "Privacidad de conversaciones",
+      "Robustez de handoff a secretaría"
+    ],
+    "evidenceFiles": [
+      "functions/src/whatsapp.ts",
+      "functions/src/index.ts",
+      "firestore.rules",
+      "components/AdminDashboard.tsx",
+      "functions/src/__tests__/whatsapp-agent.test.ts"
+    ],
+    "commands": [
+      "npm run build --prefix functions",
+      "bash -lc \"cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand\""
+    ],
+    "commandSets": {
+      "smoke": [
+        "npm run build --prefix functions",
+        "bash -lc \"cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand\""
+      ],
+      "deep": [
+        "npm run build --prefix functions",
+        "bash -lc \"cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand\""
+      ]
+    }
+  }
+}

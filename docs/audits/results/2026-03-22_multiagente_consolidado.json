@@ -1,0 +1,95 @@
+{
+  "date": "2026-03-22",
+  "generatedAt": "2026-03-22T21:38:37.195Z",
+  "dryRun": false,
+  "overall": "ALTO RIESGO",
+  "totals": {
+    "pass": 8,
+    "fail": 13,
+    "warning": 0
+  },
+  "gate": {
+    "name": "clean-audit",
+    "rule": "fail == 0 && warning == 0",
+    "passed": false
+  },
+  "areas": [
+    {
+      "area": "admin-center",
+      "title": "Admin Center Dashboard",
+      "summary": {
+        "pass": 1,
+        "fail": 5,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_admin-center.md"
+    },
+    {
+      "area": "doctor-dashboard",
+      "title": "Doctor Dashboard",
+      "summary": {
+        "pass": 1,
+        "fail": 2,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_doctor-dashboard.md"
+    },
+    {
+      "area": "doctor-subviews",
+      "title": "Subvistas por profesional",
+      "summary": {
+        "pass": 1,
+        "fail": 1,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_doctor-subviews.md"
+    },
+    {
+      "area": "patient-portal",
+      "title": "Portal paciente y booking público",
+      "summary": {
+        "pass": 1,
+        "fail": 2,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_patient-portal.md"
+    },
+    {
+      "area": "superadmin",
+      "title": "SuperAdmin Dashboard",
+      "summary": {
+        "pass": 1,
+        "fail": 1,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_superadmin.md"
+    },
+    {
+      "area": "transversal-tenancy",
+      "title": "Capa transversal de acceso y tenancy",
+      "summary": {
+        "pass": 1,
+        "fail": 2,
+        "warning": 0,
+        "overall": "ALTO RIESGO"
+      },
+      "reportPath": "2026/2026-03-22_transversal-tenancy.md"
+    },
+    {
+      "area": "whatsapp-chatbot",
+      "title": "WhatsApp Chatbot",
+      "summary": {
+        "pass": 2,
+        "fail": 0,
+        "warning": 0,
+        "overall": "SIN BLOQUEOS"
+      },
+      "reportPath": "2026/2026-03-22_whatsapp-chatbot.md"
+    }
+  ]
+}
