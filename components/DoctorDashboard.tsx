@@ -879,6 +879,10 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
 
 
+  const { activeCenterId, activeCenter, hasActiveCenter } = useContext(CenterContext);
+  
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 transition-all duration-300">
@@ -889,6 +893,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         role={role}
         onLogout={onLogout}
         onClosePanel={onClosePanel}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       <div className="flex-1 flex flex-col">
