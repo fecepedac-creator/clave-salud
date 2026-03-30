@@ -627,7 +627,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   const totals = useMemo(() => {
     const total = centers.length;
-    const active = centers.filter((c) => !!(c as any).isActive).length;
+    const activeCount = centers.filter((c) => !!(c as any).active).length;
+    const inactiveCount = centers.length - activeCount;
     const maxUsers = centers.reduce((acc, c) => acc + (Number((c as any).maxUsers) || 0), 0);
 
     const billingStats = centers.reduce(
@@ -646,13 +647,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       return mockAttentions < 60;
     }).length;
 
-    return { total, active, maxUsers, billingStats, atRisk };
+    return { total, active: activeCount, inactive: inactiveCount, maxUsers, billingStats, atRisk };
   }, [centers]);
 
   useEffect(() => {
     if (!commCenterId) return;
     void fetchCommHistory(commCenterId);
-    void fetchCenterInvites(commCenterId);
   }, [commCenterId]);
 
   useEffect(() => {
@@ -715,12 +715,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   }, [editingCenter?.id]);
 
   const renderHealthBadge = (center: CenterExt) => {
-    const isActive = !!(center as any).isActive;
-    const billingStatus = (center as any).billing?.billingStatus as BillingStatus | undefined;
-    const nextDueDate = (center as any).billing?.nextDueDate as string | undefined;
-    const isOverdue = billingStatus === "overdue";
-    const isRisk =
-      !isActive || isOverdue || (nextDueDate ? new Date(nextDueDate) < new Date() : false);
+    const isActive = !!(center as any).active;
+    const isOverdue = (center as any).billingStatus === "overdue";
+    const isRisk = (center as any).billingStatus === "risk";
+    const nextDueDate = (center as any).nextBillingDate;
+    const isNearLimit = (center as any).patientCount >= (center as any).patientLimit * 0.9;
+
     const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "Atención" : "OK";
     const cls = !isActive
       ? "bg-slate-200 text-slate-700"
@@ -742,7 +742,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       name: "",
       slug: "",
       primaryColor: "teal",
-      isActive: true,
+      active: true,
       maxUsers: 10,
       allowedRoles: ["MEDICO", "ENFERMERA"],
       modules: { dental: false, prescriptions: true, agenda: true },
@@ -824,6 +824,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         id: centerId,
         name,
         slug,
+        active: (editingCenter as any).active ?? true,
         logoUrl: finalLogoUrl,
         createdAt: isCreating ? new Date().toISOString() : editingCenter.createdAt,
         adminEmail: isCreating
@@ -844,7 +845,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       if (!isCreating) {
         const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
         const isActiveChanged =
-          previous && !!(previous as any).isActive !== !!(finalCenter as any).isActive;
+          previous && !!(previous as any).active !== !!(finalCenter as any).active;
         const billingPrev = (previous as any)?.billing || {};
         const billingNext = (finalCenter as any)?.billing || {};
         const billingChanged =
@@ -889,8 +890,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   const handleDeleteCenter = async (id: string) => {
     if (!id) return;
-    if (!window.confirm("¿Eliminar este centro? (no se puede deshacer)")) return;
-    const reason = promptChangeReason("eliminar el centro");
+    if (
+      !window.confirm(
+        "¿DAR DE BAJA ESTE CENTRO? Esta acción es ATÓMICA e IRREVERSIBLE desde el panel. " +
+          "Se desactivarán todos los usuarios y servicios del centro. Los datos se conservarán " +
+          "únicamente por motivos legales. ¿Confirmar baja formal?"
+      )
+    )
+      return;
+    const reason = promptChangeReason("dar de baja el centro");
     if (!reason) return;
     try {
       await onDeleteCenter(id, reason);
@@ -1356,54 +1364,54 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
         {/* CENTERS */}
         {activeTab === "centers" && (
-            <SuperAdminCenters
-              centers={centers}
-              editingCenter={editingCenter}
-              setEditingCenter={setEditingCenter}
-              isCreating={isCreating}
-              setIsCreating={setIsCreating}
-              handleStartCreate={handleStartCreate}
-              handleSaveCenter={handleSaveCenter}
-              handleDeleteCenter={handleDeleteCenter}
-              isUploadingLogo={isUploadingLogo}
-              logoPreview={logoPreview}
-              setLogoPreview={setLogoPreview}
-              logoFile={logoFile}
-              setLogoFile={setLogoFile}
-              resetLogoState={resetLogoState}
-              marketingSettings={marketingSettings}
-              setMarketingSettings={setMarketingSettings}
-              marketingSaving={marketingSaving}
-              handleSaveMarketingSettings={handleSaveMarketingSettings}
-              isInvitingAdmin={isInvitingAdmin}
-              setIsInvitingAdmin={setIsInvitingAdmin}
-              handleInviteCenterAdmin={handleInviteCenterAdmin}
-              lastInviteLink={lastInviteLink}
-              setLastInviteLink={setLastInviteLink}
-              lastInviteTo={lastInviteTo}
-              setLastInviteTo={setLastInviteTo}
-              lastInviteSubject={lastInviteSubject}
-              setLastInviteSubject={setLastInviteSubject}
-              lastInviteBody={lastInviteBody}
-              setLastInviteBody={setLastInviteBody}
-              invitesLoading={invitesLoading}
-              centerInvites={centerInvites}
-              hasMoreCenters={hasMoreCenters}
-              onLoadMoreCenters={onLoadMoreCenters}
-              isLoadingMoreCenters={isLoadingMoreCenters}
-              newCenterName={newCenterName}
-              setNewCenterName={setNewCenterName}
-              newCenterSlug={newCenterSlug}
-              setNewCenterSlug={setNewCenterSlug}
-              newCenterAdminEmail={newCenterAdminEmail}
-              setNewCenterAdminEmail={setNewCenterAdminEmail}
-              renderBadge={renderBadge}
-              renderHealthBadge={renderHealthBadge}
-              buildGmailComposeUrl={buildGmailComposeUrl}
-              buildCopyEmailText={buildCopyEmailText}
-              showToast={showToast}
-              fetchCenterInvites={fetchCenterInvites}
-            />
+          <SuperAdminCenters
+            centers={centers}
+            editingCenter={editingCenter}
+            setEditingCenter={setEditingCenter}
+            isCreating={isCreating}
+            setIsCreating={setIsCreating}
+            handleStartCreate={handleStartCreate}
+            handleSaveCenter={handleSaveCenter}
+            handleDeleteCenter={handleDeleteCenter}
+            isUploadingLogo={isUploadingLogo}
+            logoPreview={logoPreview}
+            setLogoPreview={setLogoPreview}
+            logoFile={logoFile}
+            setLogoFile={setLogoFile}
+            resetLogoState={resetLogoState}
+            marketingSettings={marketingSettings}
+            setMarketingSettings={setMarketingSettings}
+            marketingSaving={marketingSaving}
+            handleSaveMarketingSettings={handleSaveMarketingSettings}
+            isInvitingAdmin={isInvitingAdmin}
+            setIsInvitingAdmin={setIsInvitingAdmin}
+            handleInviteCenterAdmin={handleInviteCenterAdmin}
+            lastInviteLink={lastInviteLink}
+            setLastInviteLink={setLastInviteLink}
+            lastInviteTo={lastInviteTo}
+            setLastInviteTo={setLastInviteTo}
+            lastInviteSubject={lastInviteSubject}
+            setLastInviteSubject={setLastInviteSubject}
+            lastInviteBody={lastInviteBody}
+            setLastInviteBody={setLastInviteBody}
+            invitesLoading={invitesLoading}
+            centerInvites={centerInvites}
+            hasMoreCenters={hasMoreCenters}
+            onLoadMoreCenters={onLoadMoreCenters}
+            isLoadingMoreCenters={isLoadingMoreCenters}
+            newCenterName={newCenterName}
+            setNewCenterName={setNewCenterName}
+            newCenterSlug={newCenterSlug}
+            setNewCenterSlug={setNewCenterSlug}
+            newCenterAdminEmail={newCenterAdminEmail}
+            setNewCenterAdminEmail={setNewCenterAdminEmail}
+            renderBadge={renderBadge}
+            renderHealthBadge={renderHealthBadge}
+            buildGmailComposeUrl={buildGmailComposeUrl}
+            buildCopyEmailText={buildCopyEmailText}
+            showToast={showToast}
+            fetchCenterInvites={fetchCenterInvites}
+          />
         )}
 
         {/* FINANZAS */}

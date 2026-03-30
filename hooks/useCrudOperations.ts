@@ -226,18 +226,36 @@ export function useCrudOperations(
   const deleteStaff = useCallback(
     async (id: string) => {
       if (!requireCenter("eliminar profesionales")) return;
-      await setDoc(
-        doc(db, "centers", activeCenterId, "staff", id),
-        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-        { merge: true }
-      );
-      await setDoc(
-        doc(db, "centers", activeCenterId, "publicStaff", id),
-        { active: false, updatedAt: serverTimestamp(), deletedAt: serverTimestamp() },
-        { merge: true }
-      );
+      const reason = requestDeleteReason("este profesional");
+      if (!reason) return;
+
+      const deletePayload = {
+        active: false,
+        updatedAt: serverTimestamp(),
+        deletedAt: serverTimestamp(),
+        deletedBy: authUser?.uid ?? "unknown",
+        deleteReason: reason,
+      };
+
+      await setDoc(doc(db, "centers", activeCenterId, "staff", id), deletePayload, { merge: true });
+      await setDoc(doc(db, "centers", activeCenterId, "publicStaff", id), deletePayload, {
+        merge: true,
+      });
+
+      await updateAuditLog({
+        id: generateId(),
+        centerId: activeCenterId,
+        actorUid: authUser?.uid ?? "unknown",
+        actorName: authUser?.displayName ?? "Usuario",
+        actorRole: "admin",
+        action: "STAFF_DELETE",
+        entityType: "staff",
+        entityId: id,
+        details: `Eliminación (archivo) de profesional de staff: ${id}`,
+        metadata: { deleteReason: reason },
+      });
     },
-    [activeCenterId, requireCenter]
+    [activeCenterId, requireCenter, requestDeleteReason, updateAuditLog, authUser]
   );
 
   const updateAppointment = useCallback(
@@ -532,8 +550,14 @@ export function useCrudOperations(
 
         if (!isSuper) throw err;
 
-        // Fallback defensivo: eliminación directa de Firestore si la función falla (CORS/Red)
-        await deleteDoc(doc(db, "centers", id));
+        // Fallback defensivo: desactivación lógica (soft-delete) si la función falla (CORS/Red)
+        await updateDoc(doc(db, "centers", id), {
+          active: false,
+          updatedAt: serverTimestamp(),
+          deletedAt: serverTimestamp(),
+          deletedBy: authUser?.uid ?? "unknown",
+          deleteReason: reason || "Falla en backend (Soft-Delete Fallback)",
+        });
 
         // Registrar auditoría manual si el callable falló (ya que el servidor no lo hizo)
         await updateAuditLog({

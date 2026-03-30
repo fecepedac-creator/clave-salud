@@ -1,37 +1,37 @@
 import React, { useState } from "react";
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Camera, 
-  User, 
-  Briefcase, 
-  Mail, 
-  ShieldCheck, 
-  ImageIcon, 
-  RefreshCw, 
-  Upload, 
+import {
+  Users,
+  Plus,
+  Edit,
+  Trash2,
+  Camera,
+  User,
+  Briefcase,
+  Mail,
+  ShieldCheck,
+  ImageIcon,
+  RefreshCw,
+  Upload,
   Check,
-  Phone
+  Phone,
 } from "lucide-react";
-import { 
-  doc, 
-  setDoc, 
-  serverTimestamp, 
-  query, 
-  collection, 
-  where, 
-  getDocs 
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  query,
+  collection,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "../../../firebase";
 import { Doctor, ProfessionalRole, RoleId } from "../../../types";
-import { 
-  normalizeRut, 
-  formatRUT, 
-  generateId, 
-  fileToBase64, 
-  formatPersonName 
+import {
+  normalizeRut,
+  formatRUT,
+  generateId,
+  fileToBase64,
+  formatPersonName,
 } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 
@@ -232,7 +232,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
         },
         { merge: true }
       );
-      
+
       await setDoc(
         doc(db, "centers", centerId, "publicStaff", id),
         {
@@ -296,8 +296,15 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
     if (!db || !centerId) return;
     try {
       await upsertStaffAndPublic(docObj.id, { ...docObj, visibleInBooking: visible });
-      onUpdateDoctors(doctors.map(d => d.id === docObj.id ? { ...d, visibleInBooking: visible } : d));
-      showToast(visible ? "Profesional visible en reserva pública." : "Profesional oculto en reserva pública.", "success");
+      onUpdateDoctors(
+        doctors.map((d) => (d.id === docObj.id ? { ...d, visibleInBooking: visible } : d))
+      );
+      showToast(
+        visible
+          ? "Profesional visible en reserva pública."
+          : "Profesional oculto en reserva pública.",
+        "success"
+      );
     } catch (e) {
       showToast("Error al cambiar visibilidad.", "error");
     }
@@ -386,9 +393,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
         <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
           <div>
             <p className="text-sm font-bold text-slate-200">Migración de Fichas</p>
-            <p className="text-xs text-slate-400">
-              Importa fichas clínicas desde JSON (Piloto).
-            </p>
+            <p className="text-xs text-slate-400">Importa fichas clínicas desde JSON (Piloto).</p>
           </div>
           <button
             onClick={() => setShowMigrationModal(true)}
@@ -435,7 +440,8 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="bg-slate-900 text-indigo-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600">
                       {ROLE_LABELS[
-                        (docObj.clinicalRole as ProfessionalRole) || (docObj.role as ProfessionalRole)
+                        (docObj.clinicalRole as ProfessionalRole) ||
+                          (docObj.role as ProfessionalRole)
                       ] ||
                         docObj.clinicalRole ||
                         docObj.role}
@@ -522,9 +528,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Profesión / Rol
-              </label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Profesión / Rol</label>
               <div className="relative">
                 <select
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500 appearance-none font-medium"
@@ -554,15 +558,11 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Nombre Completo
-              </label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Nombre Completo</label>
               <input
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500"
                 value={currentDoctor.fullName || ""}
-                onChange={(e) =>
-                  setCurrentDoctor({ ...currentDoctor, fullName: e.target.value })
-                }
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, fullName: e.target.value })}
                 placeholder="Ej: Dr. Juan Pérez"
               />
             </div>
@@ -582,16 +582,12 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
               <input
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500"
                 value={currentDoctor.specialty || ""}
-                onChange={(e) =>
-                  setCurrentDoctor({ ...currentDoctor, specialty: e.target.value })
-                }
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, specialty: e.target.value })}
                 placeholder="Ej: Cardiología, General..."
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Email (Login)
-              </label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Email (Login)</label>
               <input
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500"
                 type="email"
@@ -606,13 +602,18 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                 WhatsApp (sin + ni espacios)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">+</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">
+                  +
+                </span>
                 <input
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-7 pr-3 py-3 text-white font-mono text-sm outline-none focus:border-emerald-500"
                   type="tel"
                   value={(currentDoctor as any).phone || ""}
                   onChange={(e) =>
-                    setCurrentDoctor({ ...currentDoctor, phone: e.target.value.replace(/[^0-9]/g, "") } as any)
+                    setCurrentDoctor({
+                      ...currentDoctor,
+                      phone: e.target.value.replace(/[^0-9]/g, ""),
+                    } as any)
                   }
                   placeholder="56912345678"
                 />
@@ -621,7 +622,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                 Necesario para que el profesional consulte su agenda vía WhatsApp.
               </p>
             </div>
-            
+
             <label
               className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.isAdmin ? "bg-indigo-900/30 border-indigo-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
             >
@@ -634,14 +635,10 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                 type="checkbox"
                 className="hidden"
                 checked={currentDoctor.isAdmin || false}
-                onChange={(e) =>
-                  setCurrentDoctor({ ...currentDoctor, isAdmin: e.target.checked })
-                }
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, isAdmin: e.target.checked })}
               />
               <div>
-                <span className="block font-bold text-white text-sm">
-                  Acceso Administrativo
-                </span>
+                <span className="block font-bold text-white text-sm">Acceso Administrativo</span>
                 <span className="block text-xs text-slate-400">
                   Permite gestionar agenda y usuarios
                 </span>
@@ -665,9 +662,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                 }
               />
               <div>
-                <span className="block font-bold text-white text-sm">
-                  Visible para pacientes
-                </span>
+                <span className="block font-bold text-white text-sm">Visible para pacientes</span>
                 <span className="block text-xs text-slate-400">
                   Controla si aparece en la agenda pública.
                 </span>

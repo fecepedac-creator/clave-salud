@@ -54,3 +54,31 @@ Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook
     );
   }
 }
+
+export async function summarizeAnamnesis(text: string): Promise<string> {
+  if (!text || text.length < 20) return text;
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+Actúa como un Médico Consultor Senior. Tu tarea es resumir y estructurar la siguiente anamnesis clínica de forma profesional, clara y técnica.
+
+ANAMNESIS RAW:
+"${text}"
+
+DIRECTRICES:
+1. Usa terminología médica correcta (Snomed, CIE-10 style).
+2. Estructura el resultado con viñetas si es necesario.
+3. Mantén los datos críticos (fechas, síntomas principales, medicamentos mencionados).
+4. Elimina redundancias o frases informales.
+5. Responde ÚNICAMENTE con el texto corregido y estructurado. Sin saludos ni comentarios adicionales.
+
+Si el texto es muy corto o ya está bien estructurado, devuélvelo tal cual.
+`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    console.error("Error summarizing anamnesis:", error);
+    return text; // Fallback to original text
+  }
+}

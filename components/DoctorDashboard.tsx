@@ -155,6 +155,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     isEditingPatient,
     setIsEditingPatient,
     filteredPatients,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    sortBy,
+    setSortBy,
+    totalCount,
     handleSelectPatient,
     handleSavePatient,
     handleOpenPatientFromAppointment,
@@ -208,7 +214,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     setIsClinicalReportOpen,
     handlePrint,
   } = usePrescriptionLogic();
-
 
   // --- Clinical Templates State ---
   const [myTemplates, setMyTemplates] = useState<ClinicalTemplate[]>(savedTemplates || []);
@@ -876,11 +881,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
         };
     }
   }, [role]);
-
-
-
-  const { activeCenterId, activeCenter, hasActiveCenter } = useContext(CenterContext);
-  
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
@@ -913,7 +913,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             </div>
           )}
           <div
-            className={`max-w-7xl mx-auto w-full h-full flex flex-col ${activeTab === "settings" ? "" : "lg:overflow-hidden"}`}
+            className={`${selectedPatient ? "w-full" : "max-w-7xl mx-auto w-full"} h-full flex flex-col ${activeTab === "settings" ? "" : "lg:overflow-hidden"}`}
           >
             {/* Tabs */}
             {/* The tab buttons are now in the sidebar, so this section is removed or commented out */}
@@ -1004,184 +1004,193 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                 <div
                   className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
                 >
-              {/* CONTENT: PATIENTS LIST */}
-              {activeTab === "patients" && (
-                <DoctorPatientsListTab
-                  searchTerm={searchTerm}
-                  setSearchTerm={setSearchTerm}
-                  filteredPatients={filteredPatients}
-                  handleSelectPatient={handleSelectPatient}
-                  onSetPortfolioMode={onSetPortfolioMode}
-                  portfolioMode={portfolioMode}
-                  setFilterNextControl={setFilterNextControl}
-                  filterNextControl={filterNextControl}
-                  isReadOnly={isReadOnly}
-                  hasActiveCenter={hasActiveCenter}
-                  activeCenterId={activeCenterId}
-                  currentUser={currentUser}
-                  setSelectedPatient={setSelectedPatient}
-                  setIsEditingPatient={setIsEditingPatient}
-                  getActiveConsultations={getActiveConsultations}
-                  getNextControlDateFromPatient={getNextControlDateFromPatient}
-                  setWhatsAppMenuForPatientId={setWhatsAppMenuForPatientId}
-                  whatsAppMenuForPatientId={whatsAppMenuForPatientId}
-                  whatsAppTemplates={whatsappTemplates}
-                  openWhatsApp={openWhatsApp}
-                />
-              )}
+                  {/* CONTENT: PATIENTS LIST */}
+                  {activeTab === "patients" && (
+                    <DoctorPatientsListTab
+                      searchTerm={searchTerm}
+                      setSearchTerm={setSearchTerm}
+                      filteredPatients={filteredPatients}
+                      handleSelectPatient={handleSelectPatient}
+                      onSetPortfolioMode={onSetPortfolioMode}
+                      portfolioMode={portfolioMode}
+                      setFilterNextControl={setFilterNextControl}
+                      filterNextControl={filterNextControl}
+                      isReadOnly={isReadOnly}
+                      hasActiveCenter={hasActiveCenter}
+                      activeCenterId={activeCenterId}
+                      currentUser={currentUser}
+                      setSelectedPatient={setSelectedPatient}
+                      setIsEditingPatient={setIsEditingPatient}
+                      getActiveConsultations={getActiveConsultations}
+                      getNextControlDateFromPatient={getNextControlDateFromPatient}
+                      setWhatsAppMenuForPatientId={setWhatsAppMenuForPatientId}
+                      whatsAppMenuForPatientId={whatsAppMenuForPatientId}
+                      whatsAppTemplates={whatsappTemplates}
+                      openWhatsApp={openWhatsApp}
+                      currentPage={currentPage}
+                      setCurrentPage={setCurrentPage}
+                      totalPages={totalPages}
+                      sortBy={sortBy}
+                      setSortBy={setSortBy}
+                      totalCount={totalCount}
+                    />
+                  )}
 
-              {/* CONTENT: AGENDA VIEW */}
-              {activeTab === "agenda" && moduleGuards.agenda && (
-                <DoctorAgendaTab
-                  isAdministrativo={isAdministrativo}
-                  clinicalDoctors={clinicalDoctors}
-                  viewingDoctorId={viewingDoctorId}
-                  setViewingDoctorId={setViewingDoctorId}
-                  currentMonth={currentMonth}
-                  setCurrentMonth={setCurrentMonth}
-                  selectedAgendaDate={selectedAgendaDate}
-                  setSelectedAgendaDate={setSelectedAgendaDate}
-                  appointments={appointments}
-                  effectiveDoctorId={effectiveDoctorId}
-                  effectiveAgendaConfig={effectiveAgendaConfig}
-                  isSyncingAppointments={isSyncingAppointments}
-                  isReadOnly={isReadOnly}
-                  hasActiveCenter={hasActiveCenter}
-                  currentUser={currentUser}
-                  activeCenterId={activeCenterId}
-                  onUpdateAppointments={onUpdateAppointments}
-                  setSlotModal={setSlotModal}
-                  handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
-                  onToggleAttendance={handleToggleAttendance}
-                />
-              )}
+                  {/* CONTENT: AGENDA VIEW */}
+                  {activeTab === "agenda" && moduleGuards.agenda && (
+                    <DoctorAgendaTab
+                      isAdministrativo={isAdministrativo}
+                      clinicalDoctors={clinicalDoctors}
+                      viewingDoctorId={viewingDoctorId}
+                      setViewingDoctorId={setViewingDoctorId}
+                      currentMonth={currentMonth}
+                      setCurrentMonth={setCurrentMonth}
+                      selectedAgendaDate={selectedAgendaDate}
+                      setSelectedAgendaDate={setSelectedAgendaDate}
+                      appointments={appointments}
+                      effectiveDoctorId={effectiveDoctorId}
+                      effectiveAgendaConfig={effectiveAgendaConfig}
+                      isSyncingAppointments={isSyncingAppointments}
+                      isReadOnly={isReadOnly}
+                      hasActiveCenter={hasActiveCenter}
+                      currentUser={currentUser}
+                      activeCenterId={activeCenterId}
+                      onUpdateAppointments={onUpdateAppointments}
+                      setSlotModal={setSlotModal}
+                      handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
+                      onToggleAttendance={handleToggleAttendance}
+                    />
+                  )}
 
-              {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
-              {activeTab === "settings" && (
-                <DoctorSettingsTab
-                  currentUser={currentUser}
-                  doctorId={doctorId}
-                  role={role}
-                  moduleGuards={moduleGuards}
-                  isReadOnly={isReadOnly}
-                  onUpdateDoctor={onUpdateDoctor}
-                  onLogActivity={onLogActivity}
-                  myExamProfiles={myExamProfiles}
-                  setMyExamProfiles={setMyExamProfiles}
-                  tempProfile={tempProfile}
-                  setTempProfile={setTempProfile}
-                  isEditingProfileId={isEditingProfileId}
-                  setIsEditingProfileId={setIsEditingProfileId}
-                  allExamOptions={allExamOptions}
-                  newCustomExam={newCustomExam}
-                  setNewCustomExam={setNewCustomExam}
-                  myTemplates={myTemplates}
-                  setMyTemplates={setMyTemplates}
-                  tempTemplate={tempTemplate}
-                  setTempTemplate={setTempTemplate}
-                  isEditingTemplateId={isEditingTemplateId}
-                  setIsEditingTemplateId={setIsEditingTemplateId}
-                  isCatalogOpen={isCatalogOpen}
-                  setIsCatalogOpen={setIsCatalogOpen}
-                  catalogSearch={catalogSearch}
-                  setCatalogSearch={setCatalogSearch}
-                  pwdState={pwdState}
-                  setPwdState={setPwdState}
-                />
-              )}
+                  {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
+                  {activeTab === "settings" && (
+                    <DoctorSettingsTab
+                      currentUser={currentUser}
+                      doctorId={doctorId}
+                      role={role}
+                      moduleGuards={moduleGuards}
+                      isReadOnly={isReadOnly}
+                      onUpdateDoctor={onUpdateDoctor}
+                      onLogActivity={onLogActivity}
+                      myExamProfiles={myExamProfiles}
+                      setMyExamProfiles={setMyExamProfiles}
+                      tempProfile={tempProfile}
+                      setTempProfile={setTempProfile}
+                      isEditingProfileId={isEditingProfileId}
+                      setIsEditingProfileId={setIsEditingProfileId}
+                      allExamOptions={allExamOptions}
+                      newCustomExam={newCustomExam}
+                      setNewCustomExam={setNewCustomExam}
+                      myTemplates={myTemplates}
+                      setMyTemplates={setMyTemplates}
+                      tempTemplate={tempTemplate}
+                      setTempTemplate={setTempTemplate}
+                      isEditingTemplateId={isEditingTemplateId}
+                      setIsEditingTemplateId={setIsEditingTemplateId}
+                      isCatalogOpen={isCatalogOpen}
+                      setIsCatalogOpen={setIsCatalogOpen}
+                      catalogSearch={catalogSearch}
+                      setCatalogSearch={setCatalogSearch}
+                      pwdState={pwdState}
+                      setPwdState={setPwdState}
+                    />
+                  )}
 
-              {/* CONTENT: PERFORMANCE */}
-              {activeTab === "performance" && activeCenterId && (
-                <DoctorPerformanceTab centerId={activeCenterId} doctorId={doctorId} />
-              )}
-              {/* Slot Modal (For Agenda) */}
-              {slotModal.isOpen && slotModal.appointment && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                  <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
-                    <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
-                    <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
-                      <p className="font-bold text-slate-800">
-                        {formatPersonName(slotModal.appointment.patientName)}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}
-                      </p>
-                      <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
-                        {slotModal.appointment.date} - {slotModal.appointment.time}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      <button
-                        onClick={() => setSlotModal({ isOpen: false, appointment: null })}
-                        className="py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
-                      >
-                        Cerrar
-                      </button>
-                      <a
-                        href={cancelWhatsappUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
-                      </a>
-                      <a
-                        href={confirmWhatsappUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
-                      </a>
-                      <div className="pt-2 border-t border-slate-200">
-                        <p className="text-xs font-bold text-slate-500 uppercase mb-2">
-                          Plantillas del centro
-                        </p>
-                        {whatsappTemplatesError && (
-                          <div className="text-xs text-red-500 mb-2">{whatsappTemplatesError}</div>
-                        )}
-                        {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
-                          <div className="text-xs text-slate-400">
-                            No hay plantillas habilitadas.
+                  {/* CONTENT: PERFORMANCE */}
+                  {activeTab === "performance" && activeCenterId && (
+                    <DoctorPerformanceTab centerId={activeCenterId} doctorId={doctorId} />
+                  )}
+                  {/* Slot Modal (For Agenda) */}
+                  {slotModal.isOpen && slotModal.appointment && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fadeIn">
+                        <h3 className="font-bold text-lg mb-2">Detalle de Cita</h3>
+                        <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
+                          <p className="font-bold text-slate-800">
+                            {formatPersonName(slotModal.appointment.patientName)}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            {slotModal.appointment.patientRut} •{" "}
+                            {slotModal.appointment.patientPhone}
+                          </p>
+                          <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
+                            {slotModal.appointment.date} - {slotModal.appointment.time}
                           </div>
-                        )}
-                        <div className="flex flex-col gap-2">
-                          {enabledWhatsappTemplates.map((template) => {
-                            const templateMessage = applyWhatsappTemplate(template.body, {
-                              patientName: patientDisplayName,
-                              nextControlDate: slotDateLabel,
-                              centerName,
-                            });
-                            const whatsappPhone = slotModal.appointment
-                              ? normalizePhone(slotModal.appointment.patientPhone || "")
-                              : "";
-                            const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
-                              templateMessage
-                            )}`;
-                            return (
-                              <a
-                                key={template.id}
-                                href={templateUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
-                              >
-                                <MessageCircle className="w-4 h-4" /> {template.title}
-                              </a>
-                            );
-                          })}
+                        </div>
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={() => setSlotModal({ isOpen: false, appointment: null })}
+                            className="py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                          >
+                            Cerrar
+                          </button>
+                          <a
+                            href={cancelWhatsappUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
+                          </a>
+                          <a
+                            href={confirmWhatsappUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
+                          </a>
+                          <div className="pt-2 border-t border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+                              Plantillas del centro
+                            </p>
+                            {whatsappTemplatesError && (
+                              <div className="text-xs text-red-500 mb-2">
+                                {whatsappTemplatesError}
+                              </div>
+                            )}
+                            {enabledWhatsappTemplates.length === 0 && !whatsappTemplatesError && (
+                              <div className="text-xs text-slate-400">
+                                No hay plantillas habilitadas.
+                              </div>
+                            )}
+                            <div className="flex flex-col gap-2">
+                              {enabledWhatsappTemplates.map((template) => {
+                                const templateMessage = applyWhatsappTemplate(template.body, {
+                                  patientName: patientDisplayName,
+                                  nextControlDate: slotDateLabel,
+                                  centerName,
+                                });
+                                const whatsappPhone = slotModal.appointment
+                                  ? normalizePhone(slotModal.appointment.patientPhone || "")
+                                  : "";
+                                const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
+                                  templateMessage
+                                )}`;
+                                return (
+                                  <a
+                                    key={template.id}
+                                    href={templateUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
+                                  >
+                                    <MessageCircle className="w-4 h-4" /> {template.title}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        </main>
       </div>
-    </main>
-  </div>
       {/* FEEDBACK BUTTON (Floating) */}
       <a
         href="mailto:soporte@clavesalud.cl?subject=Reporte%20de%20Problema%20-%20ClaveSalud&body=Hola%2C%20encontr%C3%A9%20el%20siguiente%20problema%3A%0A%0A"

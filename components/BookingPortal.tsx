@@ -64,7 +64,7 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
     () =>
       doctors.filter((d) => {
         const isVisible = d.visibleInBooking === true;
-        const isActive = d.active !== false && (d as any).activo !== false;
+        const isActive = d.active !== false;
         const roleName = String(d.clinicalRole || d.role || "").toLowerCase();
         const isInternalRole = NON_BOOKABLE_ROLES.includes(roleName);
         return isVisible && isActive && !isInternalRole;

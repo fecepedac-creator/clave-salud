@@ -125,7 +125,6 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
     description: "",
     preparationInstructions: "",
     durationMinutes: 20,
-    isActive: true,
     active: true,
     isAgendable: true,
   });
@@ -195,7 +194,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
       const payload: any = {
         ...currentService,
         id,
-        active: currentService.isActive ?? true,
+        active: currentService.active ?? true,
         updatedAt: serverTimestamp(),
         createdAt: currentService.id ? currentService.createdAt : serverTimestamp(),
       };
@@ -218,7 +217,6 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
         description: "",
         preparationInstructions: "",
         durationMinutes: 20,
-        isActive: true,
         active: true,
         isAgendable: true,
       });
@@ -251,7 +249,6 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           price: s.price,
           durationMinutes: s.duration,
           active: true,
-          isActive: true,
           isAgendable: true,
           preparationInstructions: "",
           description: `Carga automática de ${bundle.title}`,
@@ -310,7 +307,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                 description: "",
                 preparationInstructions: "",
                 durationMinutes: 20,
-                isActive: true,
+                active: true,
               });
               setIsEditing(true);
             }}

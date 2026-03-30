@@ -43,9 +43,7 @@ export const SuperAdminMetrics: React.FC<SuperAdminMetricsProps> = ({
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
-          <p className="text-slate-500">
-            Monitoreo de actividad clínica y adopción por centro.
-          </p>
+          <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
         </div>
         <button
           onClick={() => handleRecalcStats()}

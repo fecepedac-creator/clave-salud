@@ -25,9 +25,7 @@ const Input: React.FC<InputProps> = ({
       )}
       <div className="relative">
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            {icon}
-          </div>
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
         )}
         <input
           id={id}
@@ -35,9 +33,11 @@ const Input: React.FC<InputProps> = ({
             w-full bg-slate-900/50 border rounded-xl px-4 py-2.5 text-white placeholder-slate-500
             transition-all duration-200 outline-none
             ${icon ? "pl-10" : "pl-4"}
-            ${error 
-              ? "border-red-500 focus:ring-2 focus:ring-red-500/20" 
-              : "border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"}
+            ${
+              error
+                ? "border-red-500 focus:ring-2 focus:ring-red-500/20"
+                : "border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            }
             ${className}
           `}
           {...props}

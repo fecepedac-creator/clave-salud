@@ -29,6 +29,8 @@ import { Patient, Doctor, ClinicalTemplate, MedicalCenter, ExamOrderCatalog } fr
 // Vectorized version of the Blue/Green Snake & Staff Logo + "ClaveSalud" Text
 export const CORPORATE_LOGO = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 100" fill="none"><defs><linearGradient id="snakeGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="%231e40af" /><stop offset="100%" stop-color="%234ade80" /></linearGradient><linearGradient id="staffGrad" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="%233b82f6" /><stop offset="100%" stop-color="%231d4ed8" /></linearGradient><linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="%230ea5e9" /><stop offset="100%" stop-color="%230f766e" /></linearGradient></defs><!-- Icon Container --><g transform="translate(10, 5) scale(0.9)"><!-- Staff --><rect x="46" y="10" width="8" height="85" rx="4" fill="url(%23staffGrad)" /><!-- Snake Body --><path d="M48 85 C 15 85 15 60 50 55 C 85 50 85 25 50 20 L 54 20" stroke="url(%23snakeGrad)" stroke-width="10" stroke-linecap="round" fill="none"/><circle cx="56" cy="20" r="6" fill="%234ade80" /></g><!-- Text Logo --><text x="100" y="50" font-family="sans-serif" font-weight="800" font-size="38" fill="%230ea5e9">Clave</text><text x="208" y="50" font-family="sans-serif" font-weight="800" font-size="38" fill="%230f766e">Salud</text><!-- Slogan --><text x="102" y="75" font-family="sans-serif" font-weight="500" font-size="12" fill="%2364748b">Ficha clínica digital para equipos de salud.</text></svg>`;
 
+export const CORPORATE_ICON = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none"><defs><linearGradient id="snakeGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="%231e40af" /><stop offset="100%" stop-color="%234ade80" /></linearGradient><linearGradient id="staffGrad" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="%233b82f6" /><stop offset="100%" stop-color="%231d4ed8" /></linearGradient></defs><g transform="translate(0, 5) scale(0.9)"><rect x="46" y="10" width="8" height="85" rx="4" fill="url(%23staffGrad)" /><path d="M48 85 C 15 85 15 60 50 55 C 85 50 85 25 50 20 L 54 20" stroke="url(%23snakeGrad)" stroke-width="10" stroke-linecap="round" fill="none"/><circle cx="56" cy="20" r="6" fill="%234ade80" /></g></svg>`;
+
 export const TRACKED_EXAMS_OPTIONS = [
   { id: "hba1c", label: "Hemoglobina Glicosilada (HbA1c)", unit: "%", category: "Metabólico" },
   { id: "creatinina", label: "Creatinina Plasmática", unit: "mg/dL", category: "Renal" },
@@ -78,6 +80,7 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
     primaryColor: "teal",
     createdAt: "2023-01-01",
     isActive: true,
+    active: true,
     isPinned: true,
     maxUsers: 10,
     allowedRoles: [
@@ -117,10 +120,11 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
     primaryColor: "indigo",
     createdAt: "2023-01-01",
     isActive: true,
+    active: true,
     isPinned: true,
     maxUsers: 100,
     allowedRoles: ["MEDICO", "ENFERMERA", "ADMINISTRATIVO", "ADMIN_CENTRO"],
-    modules: { dental: true, prescriptions: true, agenda: true, reports: true },
+    modules: { dental: true, prescriptions: true, agenda: true },
     features: { anthropometryEnabled: true },
     legalInfo: {
       rut: "77.777.777-7",
@@ -145,6 +149,7 @@ export const INITIAL_CENTERS: MedicalCenter[] = [
     primaryColor: "blue",
     createdAt: "2023-05-15",
     isActive: true,
+    active: true,
     isPinned: false,
     maxUsers: 5,
     allowedRoles: ["ODONTOLOGO", "ENFERMERA"], // Only Dental roles
