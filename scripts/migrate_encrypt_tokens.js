@@ -1,11 +1,11 @@
 /**
  * Script de migración: Cifra los Access Tokens de Meta almacenados en Firestore.
- * 
+ *
  * USO:
  *   $env:ENCRYPTION_KEY = "TU_CLAVE_DE_64_HEX_CHARS"
  *   $env:GOOGLE_APPLICATION_CREDENTIALS = "ruta/a/serviceAccount.json"
  *   node scripts/migrate_encrypt_tokens.js
- * 
+ *
  * SEGURIDAD:
  *   - Solo modifica el campo `whatsappConfig.accessToken` de cada centro.
  *   - Si el token ya tiene formato "ivHex:ciphertextHex", lo salta (ya fue cifrado).
@@ -24,8 +24,8 @@ const IV_LENGTH = 16;
 if (!ENCRYPTION_KEY_HEX || ENCRYPTION_KEY_HEX.length !== 64) {
   console.error(
     "❌ ENCRYPTION_KEY env var no configurada o no tiene 64 caracteres hex.\n" +
-    "   Exportarla antes de ejecutar este script:\n" +
-    '   $env:ENCRYPTION_KEY = "tu_clave_de_64_hex"'
+      "   Exportarla antes de ejecutar este script:\n" +
+      '   $env:ENCRYPTION_KEY = "tu_clave_de_64_hex"'
   );
   process.exit(1);
 }
@@ -66,7 +66,10 @@ async function main() {
   console.log("🔐 Iniciando migración de cifrado de tokens de Meta...\n");
 
   const centersSnap = await db.collection("centers").get();
-  let total = 0, encrypted = 0, skipped = 0, errors = 0;
+  let total = 0,
+    encrypted = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const doc of centersSnap.docs) {
     total++;

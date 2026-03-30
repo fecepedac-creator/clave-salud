@@ -75,7 +75,7 @@ export function useCenters(
       try {
         if (!auth.currentUser) {
           const unsub = onSnapshot(
-            query(collection(db, "centers"), where("isActive", "==", true)),
+            query(collection(db, "centers"), where("active", "==", true)),
             (snap) => {
               if (cancelled) return;
               const items = snap.docs.map((d) => ({

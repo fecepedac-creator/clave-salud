@@ -260,7 +260,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
       />
 
       <main className="flex-1 lg:overflow-hidden">
-        <div className="h-auto lg:h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
+        <div className="h-auto lg:h-full w-full grid grid-cols-1 lg:grid-cols-12">
           <PatientSidebar
             selectedPatient={selectedPatient}
             isEditingPatient={isEditingPatient}
@@ -274,58 +274,13 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
             handleEditPatientField={(f, v) =>
               setSelectedPatient((prev) => (prev ? { ...prev, [f]: v } : null))
             }
-            onFileUpload={async (e) => {
-              if (e.target.files?.[0] && currentUser) {
-                const f = e.target.files[0];
-                showToast("Subiendo archivo...", "info");
-                try {
-                  const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
-                  const { storage } = await import("../../../firebase");
-                  const storageRef = ref(
-                    storage,
-                    `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`
-                  );
-                  await uploadBytes(storageRef, f);
-                  const downloadUrl = await getDownloadURL(storageRef);
-
-                  const fileType = f.type.includes("image")
-                    ? "image"
-                    : f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf")
-                      ? "pdf"
-                      : "other";
-                  const att: Attachment = {
-                    id: generateId(),
-                    name: f.name,
-                    type: fileType,
-                    date: new Date().toISOString(),
-                    url: downloadUrl,
-                  };
-                  const up = {
-                    ...selectedPatient,
-                    attachments: [...(selectedPatient.attachments || []), att],
-                    lastUpdated: new Date().toISOString(),
-                  };
-                  onUpdatePatient(up);
-                  setSelectedPatient(up);
-                  showToast("Archivo subido correctamente", "success");
-                  onLogActivity({
-                    action: "update",
-                    details: `Subió archivo ${f.name} a paciente ${selectedPatient.fullName}`,
-                    targetId: selectedPatient.id,
-                  } as any);
-                } catch (err) {
-                  console.error("Upload error", err);
-                  showToast("Error al subir archivo", "error");
-                }
-              }
-            }}
             onPreviewFile={setPreviewFile}
             readOnly={isReadOnly}
             availableProfiles={myExamProfiles}
             examOptions={allExamOptions}
           />
 
-          <section className="lg:col-span-9 h-auto lg:h-full lg:overflow-y-auto bg-slate-50/30 p-4 lg:p-10">
+          <section className="lg:col-span-9 h-auto lg:h-full lg:overflow-y-auto bg-slate-50/30 p-4 lg:p-6">
             {!isCreatingConsultation && (
               <div className="flex justify-between items-end mb-8">
                 <div>
@@ -339,9 +294,14 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 </div>
                 {!isReadOnly &&
                   role !== "KINESIOLOGO" &&
-                  (["MEDICO", "ENFERMERA", "NUTRICIONISTA", "PODOLOGO", "ADMIN_CENTRO", "SUPER_ADMIN"].includes(
-                    role as string
-                  ) ||
+                  ([
+                    "MEDICO",
+                    "ENFERMERA",
+                    "NUTRICIONISTA",
+                    "PODOLOGO",
+                    "ADMIN_CENTRO",
+                    "SUPER_ADMIN",
+                  ].includes(role as string) ||
                     (role as string).includes("ADMIN")) && (
                     <div className="flex gap-4">
                       <button
@@ -350,7 +310,10 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                         className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="btn-new-morbidity-consultation"
                         onClick={() => {
-                          setNewConsultation((prev) => ({ ...prev, consultationType: "morbidity" }));
+                          setNewConsultation((prev) => ({
+                            ...prev,
+                            consultationType: "morbidity",
+                          }));
                           setIsCreatingConsultation(true);
                         }}
                       >

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useBooking } from "../useBooking";
+import { useBooking } from "../../../hooks/useBooking";
 import * as firestore from "firebase/firestore";
 
 // Mocks de dependencias

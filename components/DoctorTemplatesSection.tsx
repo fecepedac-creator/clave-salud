@@ -53,7 +53,9 @@ const DoctorTemplatesSection: React.FC<DoctorTemplatesSectionProps> = ({
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Contenido</label>
+            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">
+              Contenido
+            </label>
             <textarea
               rows={6}
               value={tempTemplate.content}
@@ -86,7 +88,12 @@ const DoctorTemplatesSection: React.FC<DoctorTemplatesSectionProps> = ({
                 <Button variant="ghost" size="sm" onClick={() => onEdit(t)} className="h-8 w-8 p-0">
                   <Edit className="w-4 h-4 text-emerald-400" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)} className="h-8 w-8 p-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(t.id)}
+                  className="h-8 w-8 p-0"
+                >
                   <Trash2 className="w-4 h-4 text-red-400" />
                 </Button>
               </div>

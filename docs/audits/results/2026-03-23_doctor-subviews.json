@@ -1,0 +1,21 @@
+{
+  "area": "doctor-subviews",
+  "title": "Doctor Subviews",
+  "date": "2026-03-23",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "warning": 0,
+    "overall": "ALTO RIESGO"
+  },
+  "results": [
+    {
+      "command": "npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line",
+      "status": "fail",
+      "startedAt": "2026-03-23T02:23:27.019Z",
+      "finishedAt": "2026-03-23T02:23:59.173Z",
+      "output": "[dotenv@17.3.1] injecting env (17) from .env.test -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2\n\nRunning 3 tests using 1 worker\n\n\u001b[1A\u001b[2K[dotenv@17.3.1] injecting env (0) from .env.test -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`\n\n\u001b[1A\u001b[2K[1/3] [setup] › tests\\auth\\auth.setup.ts:61:1 › Admin: generar sesión\n\u001b[1A\u001b[2K[setup] › tests\\auth\\auth.setup.ts:61:1 › Admin: generar sesión\nDEBUG: [Auth Setup Admin] URL inicial: http://localhost:5175/acceso-admin?agent_test=true\n\n\u001b[1A\u001b[2KDEBUG: Ya estamos en el Dashboard (Bypass activado)\n\n\u001b[1A\u001b[2KDEBUG: Esperando Dashboard (Admin)...\n\n\u001b[1A\u001b[2K✅ Admin storageState guardado en C:\\Users\\fecep\\clave-salud\\tests\\auth\\.auth\\admin.json\n\n\u001b[1A\u001b[2K[2/3] [setup] › tests\\auth\\auth.setup.ts:111:1 › Doctor: generar sesión\n\u001b[1A\u001b[2K[setup] › tests\\auth\\auth.setup.ts:111:1 › Doctor: generar sesión\nDEBUG: [Auth Setup Doctor] URL inicial: http://localhost:5175/accesoprofesionales?agent_test=true\n\n\u001b[1A\u001b[2KDEBUG: Ya estamos en el Dashboard de Doctor (Bypass activado)\n\n\u001b[1A\u001b[2KDEBUG: Esperando Dashboard (Doctor)...\n\n\u001b[1A\u001b[2K✅ Doctor storageState guardado en C:\\Users\\fecep\\clave-salud\\tests\\auth\\.auth\\doctor.json\n\n\u001b[1A\u001b[2K[dotenv@17.3.1] injecting env (0) from .env.test -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2\n\n\u001b[1A\u001b[2K[3/3] [doctor-tests] › tests\\doctor\\pscv-flow.spec.ts:6:3 › Doctor: PSCV Flow Automation › should create a patient and complete a full PSCV control\n\u001b[1A\u001b[2K[doctor-tests] › tests\\doctor\\pscv-flow.spec.ts:6:3 › Doctor: PSCV Flow Automation › should create a patient and complete a full PSCV control\nBROWSER LOG: loadExamOrderCatalog FirebaseError: Missing or insufficient permissions.\n\n\u001b[1A\u001b[2KBROWSER LOG: loadExamOrderCatalog FirebaseError: Missing or insufficient permissions.\n\n\u001b[1A\u001b[2K  1) [doctor-tests] › tests\\doctor\\pscv-flow.spec.ts:6:3 › Doctor: PSCV Flow Automation › should create a patient and complete a full PSCV control \n\n    TimeoutError: page.click: Timeout 15000ms exceeded.\n    Call log:\n    \u001b[2m  - waiting for locator('[data-testid=\"btn-surgical-item-VESICULA\"]')\u001b[22m\n\n\n      28 |\n      29 |     await page.click('[data-testid=\"btn-add-surgical-history\"]');\n    > 30 |     await page.click('[data-testid=\"btn-surgical-item-VESICULA\"]');\n         |                ^\n      31 |\n      32 |     // Insurance\n      33 |     // We find the select that contains \"FONASA\" option\n        at C:\\Users\\fecep\\clave-salud\\tests\\doctor\\pscv-flow.spec.ts:30:16\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results\\pscv-flow-Doctor-PSCV-Flow-c66e8-omplete-a-full-PSCV-control-doctor-tests\\test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────\n    test-results\\pscv-flow-Doctor-PSCV-Flow-c66e8-omplete-a-full-PSCV-control-doctor-tests\\video.webm\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    Error Context: test-results\\pscv-flow-Doctor-PSCV-Flow-c66e8-omplete-a-full-PSCV-control-doctor-tests\\error-context.md\n\n\n\u001b[1A\u001b[2K  1 failed\n    [doctor-tests] › tests\\doctor\\pscv-flow.spec.ts:6:3 › Doctor: PSCV Flow Automation › should create a patient and complete a full PSCV control \n  2 passed (27.9s)",
+      "error": "Command failed: npx playwright test tests/doctor/pscv-flow.spec.ts --reporter=line"
+    }
+  ]
+}

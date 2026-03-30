@@ -117,7 +117,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   };
 
   const data = patients ?? remotePatients;
-  const isActiveRecord = (p: Patient) => p?.active !== false && (p as any).activo !== false;
+  const isActiveRecord = (p: Patient) => p?.active !== false;
   const activeData = data.filter(isActiveRecord);
 
   const filtered = useMemo(() => {

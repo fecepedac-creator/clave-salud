@@ -178,7 +178,8 @@ const App: React.FC = () => {
   // Combined superadmin check
   const effectiveIsSuperAdmin = useMemo(() => {
     const res = (demoMode && demoRole === "superadmin") || isSuperAdminClaim;
-    process.env.NODE_ENV === "development" && console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
+    process.env.NODE_ENV === "development" &&
+      console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
     return res;
   }, [demoMode, demoRole, isSuperAdminClaim]);
 
@@ -186,7 +187,7 @@ const App: React.FC = () => {
     const p = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
     const isAgentTest = params.has("agent_test") || params.has("master_access");
-    
+
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
     if (isAgentTest) return "c_eji2qv61";
@@ -199,11 +200,12 @@ const App: React.FC = () => {
     const isAgentTest = params.has("agent_test") || params.has("master_access");
 
     if (isAgentTest) {
-       if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
-       return "admin-dashboard" as ViewMode;
+      if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
+      return "admin-dashboard" as ViewMode;
     }
     if (path.startsWith("/verify/")) return "verify-document" as ViewMode;
-    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) return "doctor-login" as ViewMode;
+    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro"))
+      return "doctor-login" as ViewMode;
     if (path.startsWith("/acceso-admin")) return "admin-login" as ViewMode;
     if (path.startsWith("/center/")) {
       const segments = path.split("/");
@@ -811,7 +813,12 @@ const App: React.FC = () => {
   // AGGRESSIVE E2E FORCE: Isolate from main logic to avoid breaking login
   useEffect(() => {
     const isAgentTest = window.location.search.includes("agent_test=true");
-    if (isAgentTest && window.location.pathname.startsWith("/superadmin") && effectiveLocalCurrentUser && !isPreviewActive) {
+    if (
+      isAgentTest &&
+      window.location.pathname.startsWith("/superadmin") &&
+      effectiveLocalCurrentUser &&
+      !isPreviewActive
+    ) {
       if (view !== "superadmin-dashboard") {
         setView("superadmin-dashboard" as ViewMode);
       }
@@ -848,8 +855,7 @@ const App: React.FC = () => {
             setView("superadmin-dashboard" as ViewMode);
             return;
           }
-        }
-        else if (isPublicView || isExplicitLoginView) {
+        } else if (isPublicView || isExplicitLoginView) {
           const targetView = resolveDashboardView(effectiveLocalCurrentUser);
           if (view !== targetView) {
             setView(targetView);
@@ -901,7 +907,7 @@ const App: React.FC = () => {
         }
       }
     }
-/*
+    /*
     if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
       console.log("[DEBUG] Auth Redirect Check:", {
         view,
@@ -911,8 +917,14 @@ const App: React.FC = () => {
       });
     }
 */
-
-  }, [effectiveLocalCurrentUser, activeCenterId, view, centers.length, resolveDashboardView, effectiveIsSuperAdmin]);
+  }, [
+    effectiveLocalCurrentUser,
+    activeCenterId,
+    view,
+    centers.length,
+    resolveDashboardView,
+    effectiveIsSuperAdmin,
+  ]);
 
   const renderCenterPortal = () => {
     if (isLoadingCenters && activeCenterId) {
@@ -926,7 +938,10 @@ const App: React.FC = () => {
       );
     }
 
-    if (!activeCenterId || (!isValidCenter(activeCenter) && !window.location.search.includes("agent_test=true"))) {
+    if (
+      !activeCenterId ||
+      (!isValidCenter(activeCenter) && !window.location.search.includes("agent_test=true"))
+    ) {
       if (activeCenterId && !isLoadingCenters) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
@@ -1641,7 +1656,13 @@ const App: React.FC = () => {
           data-testid={`view-container-${view}`}
         >
           {showBreadcrumbs && view !== "home" && (
-            <div className="fixed top-2 left-4 z-50 pointer-events-auto">
+            <div
+              className={`fixed top-2 z-50 pointer-events-auto transition-all duration-300 ${
+                view === "doctor-dashboard"
+                  ? "left-4 lg:left-[calc(var(--doctor-sidebar-width,18rem)+1.5rem)]"
+                  : "left-4"
+              }`}
+            >
               <Breadcrumbs
                 view={view}
                 centerName={activeCenterName}
@@ -1733,7 +1754,8 @@ const App: React.FC = () => {
           }
         : null;
 
-      const userForView = effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
+      const userForView =
+        effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
 
       if (view === ("doctor-dashboard" as ViewMode) && userForView) {
         const currentUid = userForView.uid ?? userForView.id;

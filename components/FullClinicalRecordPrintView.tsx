@@ -35,9 +35,7 @@ const formatDate = (value?: string) => {
 
 const formatList = (items?: Array<string | SnomedConcept>) => {
   if (!items || items.length === 0) return "No registrado";
-  return items
-    .map((item) => (typeof item === "string" ? item : item.display))
-    .join(", ");
+  return items.map((item) => (typeof item === "string" ? item : item.display)).join(", ");
 };
 
 const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = ({
@@ -49,11 +47,10 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
   generatedAt,
   generatedBy,
 }) => {
-  if (!isOpen) return null;
-
   const centerName = center?.name ?? "Centro Médico";
   const centerRut = center?.legalInfo?.rut ?? "";
   const age = calculateAge(patient.birthDate);
+
   const sortedConsultations = useMemo(
     () =>
       [...(consultations || [])].sort(
@@ -65,6 +62,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
   const documents = useMemo<Prescription[]>(() => {
     return sortedConsultations.flatMap((consultation) => consultation.prescriptions || []);
   }, [sortedConsultations]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">

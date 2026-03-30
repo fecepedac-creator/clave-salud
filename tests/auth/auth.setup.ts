@@ -68,13 +68,19 @@ setup("Admin: generar sesión", async ({ page }) => {
   console.log("DEBUG: [Auth Setup Admin] URL inicial:", page.url());
 
   // 2. Intentar Login o detectar si el bypass ya nos metió al dashboard
-  const dashboardMarker = page.locator('[data-testid="admin-tab-bar"]').or(page.getByText('Centro de Mando')).or(page.getByText('Rendimiento'));
+  const dashboardMarker = page
+    .locator('[data-testid="admin-tab-bar"]')
+    .or(page.getByText("Centro de Mando"))
+    .or(page.getByText("Rendimiento"));
   const loginForm = page.locator('input[type="email"]');
 
   // Esperar a que aparezca uno de los dos
   await Promise.race([
-    dashboardMarker.first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {}),
-    loginForm.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {})
+    dashboardMarker
+      .first()
+      .waitFor({ state: "visible", timeout: 30000 })
+      .catch(() => {}),
+    loginForm.waitFor({ state: "visible", timeout: 30000 }).catch(() => {}),
   ]);
 
   if (await dashboardMarker.first().isVisible()) {
@@ -96,7 +102,10 @@ setup("Admin: generar sesión", async ({ page }) => {
 
   // Señal determinista: dashboard visible
   console.log("DEBUG: Esperando Dashboard (Admin)...");
-  const adminDashboardMarker = page.locator('[data-testid="admin-tab-bar"]').or(page.getByText('Centro de Mando')).or(page.getByText('Rendimiento'));
+  const adminDashboardMarker = page
+    .locator('[data-testid="admin-tab-bar"]')
+    .or(page.getByText("Centro de Mando"))
+    .or(page.getByText("Rendimiento"));
   await expect(adminDashboardMarker.first()).toBeVisible({ timeout: 60000 });
 
   // Capturar sesión
@@ -117,13 +126,19 @@ setup("Doctor: generar sesión", async ({ page }) => {
   console.log("DEBUG: [Auth Setup Doctor] URL inicial:", page.url());
 
   // 2. Intentar Login o detectar si el bypass ya nos metió al dashboard
-  const doctorDashboardMarker = page.locator('[data-testid="doctor-tab-bar"]').or(page.getByText('Mi Agenda')).or(page.getByText('Pacientes'));
+  const doctorDashboardMarker = page
+    .locator('[data-testid="doctor-tab-bar"]')
+    .or(page.getByText("Mi Agenda"))
+    .or(page.getByText("Pacientes"));
   const loginFormDoctor = page.locator('input[type="email"]');
 
   // Esperar a que aparezca uno de los dos
   await Promise.race([
-    doctorDashboardMarker.first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {}),
-    loginFormDoctor.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {})
+    doctorDashboardMarker
+      .first()
+      .waitFor({ state: "visible", timeout: 30000 })
+      .catch(() => {}),
+    loginFormDoctor.waitFor({ state: "visible", timeout: 30000 }).catch(() => {}),
   ]);
 
   if (await doctorDashboardMarker.first().isVisible()) {

@@ -66,9 +66,7 @@ export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <label className="block">
-                <span className="text-xs font-bold text-slate-400 uppercase">
-                  Nombre Completo
-                </span>
+                <span className="text-xs font-bold text-slate-400 uppercase">Nombre Completo</span>
                 <input
                   className="w-full p-3 border rounded-xl bg-slate-50"
                   value={editingUser.fullName || ""}
@@ -189,9 +187,7 @@ export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
                 .map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-800">
-                        {u.fullName || "Sin nombre"}
-                      </div>
+                      <div className="font-bold text-slate-800">{u.fullName || "Sin nombre"}</div>
                       <div className="text-xs text-slate-400">{u.email}</div>
                     </td>
                     <td className="px-6 py-4 text-xs font-medium text-slate-600 uppercase">

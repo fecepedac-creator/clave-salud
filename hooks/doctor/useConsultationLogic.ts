@@ -180,11 +180,13 @@ export const useConsultationLogic = ({
 
   const removeDiagnosis = (diag: SnomedConcept) => {
     setNewConsultation((prev) => {
-      const updated = (prev.diagnoses || []).filter((d) => d.code !== diag.code || d.display !== diag.display);
+      const updated = (prev.diagnoses || []).filter(
+        (d) => d.code !== diag.code || d.display !== diag.display
+      );
       return {
         ...prev,
         diagnoses: updated,
-        diagnosis: updated.map(d => d.display).join(" • "), // Sync with legacy string
+        diagnosis: updated.map((d) => d.display).join(" • "), // Sync with legacy string
       };
     });
   };
@@ -217,6 +219,22 @@ export const useConsultationLogic = ({
       `Agregó ${diag.display} a antecedentes de ${selectedPatient.fullName}`,
       selectedPatient.id
     );
+  };
+
+  const toggleChronicDiagnosis = (diag: SnomedConcept) => {
+    setNewConsultation((prev) => {
+      const currentDiagnoses = prev.diagnoses || [];
+      const updated = currentDiagnoses.map((d) => {
+        if (d.code === diag.code && d.display === diag.display) {
+          return { ...d, isChronic: !d.isChronic };
+        }
+        return d;
+      });
+      return {
+        ...prev,
+        diagnoses: updated,
+      };
+    });
   };
 
   const handleCreateConsultation = async () => {
@@ -348,6 +366,7 @@ export const useConsultationLogic = ({
     addDiagnosis,
     removeDiagnosis,
     pinDiagnosis,
+    toggleChronicDiagnosis,
     handleCreateConsultation,
     getEmptyConsultation,
     clearDraft,

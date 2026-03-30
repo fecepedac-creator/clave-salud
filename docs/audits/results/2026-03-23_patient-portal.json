@@ -1,0 +1,21 @@
+{
+  "area": "patient-portal",
+  "title": "Patient Portal",
+  "date": "2026-03-23",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "warning": 0,
+    "overall": "ALTO RIESGO"
+  },
+  "results": [
+    {
+      "command": "npx playwright test tests/pilot.spec.ts --reporter=line",
+      "status": "fail",
+      "startedAt": "2026-03-23T02:23:59.176Z",
+      "finishedAt": "2026-03-23T02:24:03.149Z",
+      "output": "[dotenv@17.3.1] injecting env (17) from .env.test -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2\nError: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments.\n\n\u001b[1A\u001b[2K",
+      "error": "Command failed: npx playwright test tests/pilot.spec.ts --reporter=line"
+    }
+  ]
+}

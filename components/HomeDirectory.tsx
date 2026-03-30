@@ -148,7 +148,7 @@ const HomeDirectory: React.FC<HomeDirectoryProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {centers.map((c) => {
-              const isActive = (c as any).isActive !== false;
+              const isActive = (c as any).active !== false;
               if (!isSuperAdminClaim && !isActive) return null;
 
               return (

@@ -8,6 +8,20 @@ if (!admin.apps.length) {
 import * as crypto from "crypto";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
+import {
+  UpsertCenterInputSchema,
+  DecommissionCenterInputSchema,
+  UpdateWhatsappConfigInputSchema,
+  AcceptInviteInputSchema,
+  CreateInviteInputSchema,
+  CancelAppointmentInputSchema,
+  SetSuperAdminInputSchema,
+  LogAuditInputSchema,
+  GenerateMarketingPosterInputSchema,
+  LinkPatientInputSchema,
+  CreateNotificationInputSchema,
+} from "./schemas";
+import { validateOrThrow } from "./validation";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
@@ -326,16 +340,10 @@ export const createCenterAdminInvite = (functions.https.onCall as any)(
       throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
 
-    const centerId = String(data?.centerId || "").trim();
-    const emailLower = String(data?.adminEmail || data?.email || "")
-      .trim()
-      .toLowerCase();
-    const centerName = String(data?.centerName || "").trim();
-
-    if (!centerId)
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!emailLower)
-      throw new functions.https.HttpsError("invalid-argument", "adminEmail/email es requerido.");
+    const validated = validateOrThrow(CreateInviteInputSchema, data);
+    const centerId = validated.centerId;
+    const emailLower = validated.adminEmail.trim().toLowerCase();
+    const centerName = validated.centerName;
 
     const token = randToken(24);
     const createdAt = admin.firestore.Timestamp.now();
@@ -448,18 +456,12 @@ export const createCenterNotification = (functions.https.onCall as any)(
       throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
 
-    const centerId = String(data?.centerId || "").trim();
-    const title = String(data?.title || "").trim();
-    const body = String(data?.body || "").trim();
-    const type = String(data?.type || "info").trim();
-    const severity = String(data?.severity || "medium").trim();
-
-    if (!centerId || !title || !body) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "centerId, title y body son requeridos."
-      );
-    }
+    const validated = validateOrThrow(CreateNotificationInputSchema, data);
+    const centerId = validated.centerId;
+    const title = validated.title;
+    const body = validated.body;
+    const type = validated.type;
+    const severity = validated.severity;
 
     const notifRef = db.collection("centers").doc(centerId).collection("adminNotifications").doc();
 
@@ -548,21 +550,15 @@ export const upsertCenter = (functions.https.onCall as any)(
       throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
 
-    const centerId = String(data?.id || data?.centerId || "").trim();
-    if (!centerId) {
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    }
-
-    const name = String(data?.name || "").trim();
-    const slug = String(data?.slug || "").trim();
-    if (!name || !slug) {
-      throw new functions.https.HttpsError("invalid-argument", "name y slug son requeridos.");
-    }
+    const validated = validateOrThrow(UpsertCenterInputSchema, data);
+    const centerId = validated.id;
+    const name = validated.name;
+    const slug = validated.slug;
+    const auditReason = validated.auditReason || "";
 
     const centerRef = db.collection("centers").doc(centerId);
     const existingSnap = await centerRef.get();
     const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
-    const auditReason = String(data?.auditReason || "").trim();
 
     const payload = { ...(data || {}) };
     delete (payload as any).createdAt;
@@ -631,14 +627,12 @@ export const deleteCenter = (functions.https.onCall as any)(
       throw new functions.https.HttpsError("permission-denied", "No tiene permisos de SuperAdmin.");
     }
 
-    const centerId = String(data?.centerId || data?.id || "").trim();
-    if (!centerId) {
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    }
+    const validated = validateOrThrow(DecommissionCenterInputSchema, data);
+    const centerId = validated.centerId;
+    const reason = validated.reason;
 
-    const reason = String(data?.reason || "").trim();
     await db.collection("auditLogs").add({
-      action: "delete_center",
+      action: "decommission_center",
       actorUid: context.auth?.uid ?? "unknown",
       actorEmail: lowerEmailFromContext(context) || null,
       targetUid: centerId,
@@ -646,7 +640,13 @@ export const deleteCenter = (functions.https.onCall as any)(
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    await db.collection("centers").doc(centerId).delete();
+    await db.collection("centers").doc(centerId).update({
+      active: false,
+      isActive: false,
+      decommissionedAt: admin.firestore.FieldValue.serverTimestamp(),
+      decommissionReason: reason || "No especificado",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
     return { ok: true, centerId };
   }
@@ -668,17 +668,15 @@ export const setSuperAdmin = (functions.https.onCall as any)(
       );
     }
 
-    const targetUidRaw = String(data?.uid || "").trim();
-    if (!targetUidRaw) {
-      throw new functions.https.HttpsError("invalid-argument", "El UID del objetivo es requerido.");
-    }
-    const targetUid = targetUidRaw;
+    const validated = validateOrThrow(SetSuperAdminInputSchema, data);
+    const targetUid = validated.uid;
+    const action = validated.action;
 
     const targetUser = await admin.auth().getUser(targetUid);
     const existingClaims = (targetUser.customClaims || {}) as Record<string, unknown>;
     await admin.auth().setCustomUserClaims(targetUid, {
       ...existingClaims,
-      super_admin: true,
+      super_admin: action === "set",
     });
 
     await db.collection("auditLogs").add({
@@ -696,9 +694,8 @@ export const setSuperAdmin = (functions.https.onCall as any)(
 export const acceptInvite = (functions.https.onCall as any)(
   async (data: any, context: CallableContext) => {
     requireAuth(context);
-
-    const token = String(data?.token || "").trim();
-    if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+    const validated = validateOrThrow(AcceptInviteInputSchema, data);
+    const token = validated.token;
 
     const uid = context.auth?.uid as string;
     const emailLower = lowerEmailFromContext(context);
@@ -830,17 +827,11 @@ export const listPatientAppointments = (functions.https.onCall as any)(
 
 export const cancelPatientAppointment = (functions.https.onCall as any)(
   async (data: any, _context: CallableContext) => {
-    const centerId = String(data?.centerId || "").trim();
-    const appointmentId = String(data?.appointmentId || "").trim();
-    const patientRut = String(data?.rut || "").trim();
-    const phone = formatChileanPhone(String(data?.phone || ""));
-
-    if (!centerId)
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!appointmentId)
-      throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
-    if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
-    if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+    const validated = validateOrThrow(CancelAppointmentInputSchema, data);
+    const centerId = validated.centerId;
+    const appointmentId = validated.appointmentId;
+    const patientRut = validated.rut;
+    const phone = formatChileanPhone(validated.phone);
 
     const ref = db
       .collection("centers")
@@ -1282,31 +1273,13 @@ export const logAuditEvent = (functions.https.onCall as any)(
       throw new functions.https.HttpsError("unauthenticated", "Usuario no autenticado.");
     }
 
-    const centerId = String(data?.centerId || "").trim();
-    const action = String(data?.action || "").trim();
-    const entityType = String(data?.entityType || "").trim();
-    const entityId = String(data?.entityId || "").trim();
+    const validated = validateOrThrow(LogAuditInputSchema, data);
+    const centerId = validated.centerId;
+    const action = validated.action;
+    const entityType = validated.entityType;
+    const entityId = validated.entityId;
 
-    if (!centerId || !action || !entityType || !entityId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "centerId, action, entityType y entityId son requeridos."
-      );
-    }
-
-    const validEntityTypes = [
-      "patient",
-      "consultation",
-      "appointment",
-      "document",
-      "centerSettings",
-    ];
-    if (!validEntityTypes.includes(entityType)) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        `entityType debe ser uno de: ${validEntityTypes.join(", ")}`
-      );
-    }
+    // validEntityTypes check removed (handled by Zod)
 
     const uid = context.auth.uid as string;
     const emailLower = lowerEmailFromContext(context);
@@ -1480,19 +1453,10 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
 export const generateMarketingPoster = functions.https.onCall(
   async (data: any, context: CallableContext) => {
     requireAuth(context);
-    const centerId = String(data?.centerId || "").trim();
-    const format = String(data?.format || "").trim() as PosterFormat;
-    const message = String(data?.message || "").trim();
-
-    if (!centerId) {
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    }
-    if (!message) {
-      throw new functions.https.HttpsError("invalid-argument", "message es requerido.");
-    }
-    if (!posterDimensions[format]) {
-      throw new functions.https.HttpsError("invalid-argument", "format inválido.");
-    }
+    const validated = validateOrThrow(GenerateMarketingPosterInputSchema, data);
+    const centerId = validated.centerId;
+    const format = validated.format;
+    const message = validated.message;
 
     const staffRef = db.doc(`centers/${centerId}/staff/${context.auth?.uid}`);
     const staffSnap = await staffRef.get();
@@ -2067,15 +2031,9 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
     requireAuth(context);
     const uid = context.auth?.uid as string;
 
-    const centerId = String(data?.centerId || "").trim();
-    const patientId = String(data?.patientId || "").trim();
-
-    if (!centerId || !patientId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "centerId y patientId son requeridos."
-      );
-    }
+    const validated = validateOrThrow(LinkPatientInputSchema, data);
+    const centerId = validated.centerId;
+    const patientId = validated.patientId;
 
     // 1. Verificar que el profesional sea staff del centro y esté ACTIVO
     const staffDoc = await db
@@ -2184,10 +2142,8 @@ export const updateWhatsappConfig = (functions.https.onCall as any)(
     requireAuth(context);
     const uid = context.auth?.uid as string;
 
-    const centerId = String(data?.centerId || "").trim();
-    if (!centerId) {
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    }
+    const validated = validateOrThrow(UpdateWhatsappConfigInputSchema, data);
+    const centerId = validated.centerId;
 
     // Verificar que el usuario es admin del centro o super_admin
     const isAdmin = await isCenterAdminForCenter(uid, centerId);
@@ -2198,14 +2154,10 @@ export const updateWhatsappConfig = (functions.https.onCall as any)(
       );
     }
 
-    const phoneNumberId = String(data?.phoneNumberId || "").trim();
-    const rawAccessToken = String(data?.accessToken || "").trim();
-    const secretaryPhone = String(data?.secretaryPhone || "").trim();
-    const verifyToken = String(data?.verifyToken || "").trim();
-
-    if (!phoneNumberId) {
-      throw new functions.https.HttpsError("invalid-argument", "phoneNumberId es requerido.");
-    }
+    const phoneNumberId = validated.phoneNumberId;
+    const rawAccessToken = validated.accessToken || "";
+    const secretaryPhone = validated.secretaryPhone || "";
+    const verifyToken = validated.verifyToken || "";
 
     const centerRef = db.collection("centers").doc(centerId);
 

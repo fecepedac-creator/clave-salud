@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Patient, Appointment, Consultation } from "../../types";
-import { normalizeRut, formatPersonName, getPatientIdByRut, normalizePhone } from "../../utils";
+import { normalizeRut, getPatientIdByRut } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -31,11 +31,21 @@ export const usePatientManagement = ({
   const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
   const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
 
+  // Pagination and Sorting State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"alphabetical" | "recent">("alphabetical");
+  const pageSize = 20;
+
   const getActiveConsultations = (p: Patient) =>
     (p.consultations || []).filter((consultation) => consultation.active !== false);
 
-  // Filter Patients
-  const filteredPatients = useMemo(() => {
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy, filterNextControl]);
+
+  // Total filtered patients (before pagination)
+  const allFilteredPatients = useMemo(() => {
     let result = patients;
 
     // 1. Next Control Filter
@@ -55,15 +65,35 @@ export const usePatientManagement = ({
     }
 
     // 2. Search Filter
-    if (!searchTerm) return result;
-    const lower = searchTerm.toLowerCase();
-    return result.filter(
-      (p) =>
-        (p.fullName?.toLowerCase() || "").includes(lower) ||
-        (p.rut?.toLowerCase() || "").includes(lower) ||
-        (p.email?.toLowerCase() || "").includes(lower)
-    );
-  }, [patients, searchTerm, filterNextControl]);
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.fullName?.toLowerCase() || "").includes(lower) ||
+          (p.rut?.toLowerCase() || "").includes(lower) ||
+          (p.email?.toLowerCase() || "").includes(lower)
+      );
+    }
+
+    // 3. Sorting
+    return [...result].sort((a, b) => {
+      if (sortBy === "recent") {
+        const dA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+        const dB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+        return dB - dA;
+      }
+      // Alphabetical default (A-Z)
+      return (a.fullName || "").localeCompare(b.fullName || "");
+    });
+  }, [patients, searchTerm, filterNextControl, sortBy]);
+
+  // Paginated patients
+  const filteredPatients = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return allFilteredPatients.slice(start, start + pageSize);
+  }, [allFilteredPatients, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(allFilteredPatients.length / pageSize) || 1;
 
   // Handle Patient Selection with Audit Log
   const handleSelectPatient = async (patient: Patient) => {
@@ -206,6 +236,12 @@ export const usePatientManagement = ({
     isEditingPatient,
     setIsEditingPatient,
     filteredPatients,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    sortBy,
+    setSortBy,
+    totalCount: allFilteredPatients.length,
     handleSelectPatient,
     handleSavePatient,
     handleOpenPatientFromAppointment,

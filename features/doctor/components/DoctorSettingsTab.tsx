@@ -263,13 +263,18 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   return (
     <div className="w-full animate-fadeIn flex flex-col gap-8 pb-20 max-w-6xl mx-auto">
       {/* Vitals Toggle */}
-      <Card variant="glass" className="flex flex-col md:flex-row justify-between items-center gap-6 border-emerald-500/20">
+      <Card
+        variant="glass"
+        className="flex flex-col md:flex-row justify-between items-center gap-6 border-emerald-500/20"
+      >
         <div className="flex items-center gap-4">
           <div className="bg-emerald-500/10 text-emerald-500 p-4 rounded-2xl border border-emerald-500/20">
             <Activity className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white tracking-tight">Módulo de Signos Vitales</h3>
+            <h3 className="text-xl font-bold text-white tracking-tight">
+              Módulo de Signos Vitales
+            </h3>
             <p className="text-sm text-slate-400 max-w-xl">
               Habilita la sección de antropometría y parámetros clínicos.{" "}
               <span className="font-bold text-emerald-400 ml-1">
@@ -313,7 +318,9 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-2">
               <Layers className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-lg font-bold text-white uppercase tracking-wider">Perfiles y Packs</h3>
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider">
+                Perfiles y Packs
+              </h3>
             </div>
             <DoctorExamProfilesSection
               profiles={myExamProfiles}
@@ -333,10 +340,14 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-2">
               <TestTube className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-bold text-white uppercase tracking-wider">Exámenes Personalizados</h3>
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider">
+                Exámenes Personalizados
+              </h3>
             </div>
             <Card variant="glass" className="border-purple-500/20">
-              <p className="text-sm text-slate-400 mb-6">Define exámenes específicos que no estén en el catálogo nacional.</p>
+              <p className="text-sm text-slate-400 mb-6">
+                Define exámenes específicos que no estén en el catálogo nacional.
+              </p>
               <div className="space-y-4">
                 <div className="flex gap-3">
                   <Input
@@ -363,14 +374,20 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                   <option value="Cardíaco">Cardíaco</option>
                   <option value="Otro">Otro</option>
                 </select>
-                <Button variant="primary" className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-900/20" onClick={handleCreateCustomExam}>
+                <Button
+                  variant="primary"
+                  className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-900/20"
+                  onClick={handleCreateCustomExam}
+                >
                   Agregar a mi Lista
                 </Button>
               </div>
 
               {currentUser?.customExams && currentUser.customExams.length > 0 && (
                 <div className="mt-8 pt-6 border-t border-white/5">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Mis Exámenes Personales</h4>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+                    Mis Exámenes Personales
+                  </h4>
                   <div className="flex flex-wrap gap-2">
                     {currentUser.customExams.map((ex) => (
                       <span
@@ -399,7 +416,9 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-bold text-white uppercase tracking-wider">Plantillas Clínicas</h3>
+            <h3 className="text-lg font-bold text-white uppercase tracking-wider">
+              Plantillas Clínicas
+            </h3>
           </div>
           <Button variant="glass" size="sm" onClick={() => setIsCatalogOpen(true)}>
             <Book className="w-4 h-4 mr-2" /> Explorar Catálogo
@@ -430,7 +449,9 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           <div className="bg-indigo-500/5 p-6 rounded-2xl border border-indigo-500/10">
             <KeyRound className="w-10 h-10 text-indigo-400 mb-4" />
             <h4 className="font-bold text-lg text-white mb-2">Cambiar Contraseña</h4>
-            <p className="text-sm text-slate-400 leading-relaxed">Actualice su contraseña periódicamente para mantener su cuenta protegida.</p>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              Actualice su contraseña periódicamente para mantener su cuenta protegida.
+            </p>
           </div>
           <div className="md:col-span-2 space-y-4 max-w-md">
             <Input
@@ -455,7 +476,11 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
               readOnly={isReadOnly}
             />
             <div className="pt-2">
-              <Button variant="primary" onClick={handleChangePassword} className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20">
+              <Button
+                variant="primary"
+                onClick={handleChangePassword}
+                className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20"
+              >
                 Actualizar Contraseña
               </Button>
             </div>
@@ -466,11 +491,20 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
       {/* Catálogo Modal */}
       {isCatalogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsCatalogOpen(false)} />
-          <Card variant="glass" className="w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden relative border-emerald-500/30 shadow-2xl">
+          <div
+            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+            onClick={() => setIsCatalogOpen(false)}
+          />
+          <Card
+            variant="glass"
+            className="w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden relative border-emerald-500/30 shadow-2xl"
+          >
             <div className="p-6 border-b border-white/10 flex justify-between items-center">
               <h3 className="font-bold text-xl text-white">Catálogo de Plantillas</h3>
-              <button onClick={() => setIsCatalogOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <button
+                onClick={() => setIsCatalogOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
                 <X className="w-6 h-6 text-slate-400" />
               </button>
             </div>
@@ -482,21 +516,28 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                 onChange={(e) => setCatalogSearch(e.target.value)}
               />
               <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
-                {DEFAULT_CLINICAL_TEMPLATES
-                  .filter((t) => !t.roles || t.roles.includes(role))
-                  .filter((t) => t.title.toLowerCase().includes(catalogSearch.toLowerCase()) || t.content.toLowerCase().includes(catalogSearch.toLowerCase()))
+                {DEFAULT_CLINICAL_TEMPLATES.filter((t) => !t.roles || t.roles.includes(role))
+                  .filter(
+                    (t) =>
+                      t.title.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+                      t.content.toLowerCase().includes(catalogSearch.toLowerCase())
+                  )
                   .map((t) => (
                     <div
                       key={t.id}
                       className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition-all group"
                     >
                       <div className="flex justify-between items-start mb-3">
-                        <span className="font-bold text-white group-hover:text-emerald-400 transition-colors">{t.title}</span>
+                        <span className="font-bold text-white group-hover:text-emerald-400 transition-colors">
+                          {t.title}
+                        </span>
                         <Button variant="glass" size="sm" onClick={() => handleImportTemplate(t)}>
                           Importar
                         </Button>
                       </div>
-                      <p className="text-xs text-slate-500 leading-relaxed italic line-clamp-2">"{t.content}"</p>
+                      <p className="text-xs text-slate-500 leading-relaxed italic line-clamp-2">
+                        "{t.content}"
+                      </p>
                     </div>
                   ))}
               </div>

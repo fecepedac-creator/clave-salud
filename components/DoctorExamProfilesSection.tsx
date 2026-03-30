@@ -33,9 +33,10 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = React.useState("");
 
-  const filteredExams = allExamOptions.filter((e) =>
-    e.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.category.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredExams = allExamOptions.filter(
+    (e) =>
+      e.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -54,7 +55,9 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Nombre del Pack</label>
+            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">
+              Nombre del Pack
+            </label>
             <input
               type="text"
               value={tempProfile.label}
@@ -65,7 +68,9 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2 ml-1">Seleccionar Exámenes</label>
+            <label className="block text-sm font-semibold text-slate-300 mb-2 ml-1">
+              Seleccionar Exámenes
+            </label>
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input
@@ -91,14 +96,18 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
                         : "bg-slate-800/50 border-slate-700/50 text-slate-400 hover:border-slate-600"
                     }`}
                   >
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                      isSelected ? "bg-emerald-500 border-emerald-500" : "border-slate-600"
-                    }`}>
+                    <div
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                        isSelected ? "bg-emerald-500 border-emerald-500" : "border-slate-600"
+                      }`}
+                    >
                       {isSelected && <Plus className="w-3 h-3 text-white" />}
                     </div>
                     <div>
                       <div className="font-bold text-xs">{e.label}</div>
-                      <div className="text-[10px] opacity-60 uppercase tracking-tighter">{e.category}</div>
+                      <div className="text-[10px] opacity-60 uppercase tracking-tighter">
+                        {e.category}
+                      </div>
                     </div>
                   </button>
                 );
@@ -135,7 +144,12 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
                 <Button variant="ghost" size="sm" onClick={() => onEdit(p)} className="h-8 w-8 p-0">
                   <Edit className="w-4 h-4 text-emerald-400" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)} className="h-8 w-8 p-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(p.id)}
+                  className="h-8 w-8 p-0"
+                >
                   <Trash2 className="w-4 h-4 text-red-400" />
                 </Button>
               </div>
@@ -144,7 +158,10 @@ const DoctorExamProfilesSection: React.FC<DoctorExamProfilesSectionProps> = ({
               {p.exams.slice(0, 5).map((eid) => {
                 const ex = allExamOptions.find((o) => o.id === eid);
                 return (
-                  <span key={eid} className="px-2 py-0.5 bg-slate-700/50 text-slate-400 text-[10px] font-bold rounded-lg border border-slate-700">
+                  <span
+                    key={eid}
+                    className="px-2 py-0.5 bg-slate-700/50 text-slate-400 text-[10px] font-bold rounded-lg border border-slate-700"
+                  >
                     {ex?.label || eid}
                   </span>
                 );
