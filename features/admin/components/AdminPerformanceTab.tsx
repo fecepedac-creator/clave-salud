@@ -146,7 +146,7 @@ export const AdminPerformanceTab: React.FC<AdminPerformanceTabProps> = ({
 
   const exportCenterCSV = () => {
     const esc = (v: string | number | null | undefined) =>
-      `"${String(v ?? "").replaceAll('"', '""')}"`;
+      `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = [
       "Profesional",
       "Citas Agendadas",

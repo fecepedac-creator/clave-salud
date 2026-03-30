@@ -40,9 +40,15 @@ import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatient
 import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
 import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
 import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
+import { resolveActiveState } from "../utils/activeState";
+import SensitiveField from "./clinical/SensitiveField";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
+  patientsLoading?: boolean;
+  patientsError?: string;
+  onRetryPatients?: () => void;
   doctorName: string; // Professional Name
   doctorId: string; // Professional ID
   role: ProfessionalRole;
@@ -57,6 +63,9 @@ interface ProfessionalDashboardProps {
   onLogout: () => void;
   onOpenLegal: (target: "terms" | "privacy") => void;
   appointments: Appointment[];
+  appointmentsLoading?: boolean;
+  appointmentsError?: string;
+  onRetryAppointments?: () => void;
   onUpdateAppointments: (appointments: Appointment[]) => void;
   onUpdateAppointment?: (appointment: Appointment) => Promise<void>;
   onDeleteAppointment?: (id: string) => Promise<void>;
@@ -109,6 +118,9 @@ const DEFAULT_WHATSAPP_TEMPLATES: WhatsappTemplate[] = [
 
 export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   patients,
+  patientsLoading = false,
+  patientsError = "",
+  onRetryPatients,
   doctorName,
   doctorId,
   role: roleRaw,
@@ -121,6 +133,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   onLogout,
   onOpenLegal,
   appointments,
+  appointmentsLoading = false,
+  appointmentsError = "",
+  onRetryAppointments,
   onUpdateAppointments,
   onUpdateAppointment,
   onDeleteAppointment,
@@ -330,9 +345,13 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   };
 
   const getActiveConsultations = (p: Patient) =>
-    (p.consultations || []).filter((consultation) => consultation.active !== false);
+    (p.consultations || []).filter((consultation) => resolveActiveState(consultation as any));
 
   const getNextControlDateFromPatient = (p: Patient): Date | null => {
+    if (p.nextControlDate) {
+      const directDate = new Date(p.nextControlDate + "T12:00:00");
+      if (!Number.isNaN(directDate.getTime())) return directDate;
+    }
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
@@ -346,6 +365,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   };
 
   const getNextControlReasonFromPatient = (p: Patient): string => {
+    if (p.nextControlReason) {
+      return p.nextControlReason;
+    }
     const activeConsultations = getActiveConsultations(p);
     const lastConsult = activeConsultations[0]
       ? [...activeConsultations].sort(
@@ -378,7 +400,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       return;
     }
     const text = buildWhatsAppText(templateBody, p);
-    const waPhone = phone.replaceAll("+", "");
+    const waPhone = phone.replace(/\+/g, "");
     const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -594,21 +616,33 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     setIsEditingTemplateId(t.id);
   };
 
-  const handleDeleteTemplate = (id: string) => {
-    if (window.confirm("¿Eliminar plantilla?")) {
-      const updated = myTemplates.filter((t) => t.id !== id);
-      setMyTemplates(updated);
-      onUpdateDoctor({ id: doctorId, savedTemplates: updated } as any);
-    }
+  const handleDeleteTemplate = async (id: string) => {
+    const response = await requestCriticalAction({
+      title: "Eliminar plantilla clínica",
+      message: "La plantilla dejará de estar disponible en tu configuración personal.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar esta plantilla.",
+    });
+    if (!response?.confirmed) return;
+    const updated = myTemplates.filter((t) => t.id !== id);
+    setMyTemplates(updated);
+    onUpdateDoctor({ id: doctorId, savedTemplates: updated } as any);
   };
 
-  const handleResetTemplates = () => {
-    if (window.confirm("¿Restaurar las plantillas originales?")) {
-      const roleDefaults = DEFAULT_TEMPLATES.filter((t) => t.roles?.includes(role));
-      onUpdateDoctor({ id: doctorId, savedTemplates: roleDefaults } as any);
-      setMyTemplates(roleDefaults);
-      showToast("Plantillas restauradas.", "success");
-    }
+  const handleResetTemplates = async () => {
+    const response = await requestCriticalAction({
+      title: "Restaurar plantillas por defecto",
+      message: "Se reemplazarán tus plantillas actuales por las recomendadas para tu rol.",
+      confirmLabel: "Restaurar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo restaurar las plantillas originales.",
+    });
+    if (!response?.confirmed) return;
+    const roleDefaults = DEFAULT_TEMPLATES.filter((t) => t.roles?.includes(role));
+    onUpdateDoctor({ id: doctorId, savedTemplates: roleDefaults } as any);
+    setMyTemplates(roleDefaults);
+    showToast("Plantillas restauradas.", "success");
   };
 
   // --- PROFILE HANDLERS ---
@@ -639,20 +673,32 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     setIsEditingProfileId(p.id);
   };
 
-  const handleDeleteProfile = (id: string) => {
-    if (window.confirm("¿Eliminar perfil de exámenes?")) {
-      const updated = myExamProfiles.filter((p) => p.id !== id);
-      setMyExamProfiles(updated);
-      onUpdateDoctor({ id: doctorId, savedExamProfiles: updated } as any);
-    }
+  const handleDeleteProfile = async (id: string) => {
+    const response = await requestCriticalAction({
+      title: "Eliminar perfil de exámenes",
+      message: "Este perfil dejará de estar disponible para nuevas solicitudes.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar este perfil.",
+    });
+    if (!response?.confirmed) return;
+    const updated = myExamProfiles.filter((p) => p.id !== id);
+    setMyExamProfiles(updated);
+    onUpdateDoctor({ id: doctorId, savedExamProfiles: updated } as any);
   };
 
-  const handleResetProfiles = () => {
-    if (window.confirm("¿Restaurar los perfiles de exámenes por defecto?")) {
-      setMyExamProfiles(EXAM_PROFILES);
-      onUpdateDoctor({ id: doctorId, savedExamProfiles: EXAM_PROFILES } as any);
-      showToast("Perfiles restaurados.", "success");
-    }
+  const handleResetProfiles = async () => {
+    const response = await requestCriticalAction({
+      title: "Restaurar perfiles de exámenes",
+      message: "Se volverá al catálogo recomendado por defecto.",
+      confirmLabel: "Restaurar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo restaurar los perfiles por defecto.",
+    });
+    if (!response?.confirmed) return;
+    setMyExamProfiles(EXAM_PROFILES);
+    onUpdateDoctor({ id: doctorId, savedExamProfiles: EXAM_PROFILES } as any);
+    showToast("Perfiles restaurados.", "success");
   };
 
   const toggleExamInTempProfile = (examId: string) => {
@@ -683,23 +729,28 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     showToast("Nuevo examen creado exitosamente.", "success");
   };
 
-  const handleDeleteCustomExam = (examId: string) => {
-    if (window.confirm("¿Eliminar este examen personalizado?")) {
-      const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
-      onUpdateDoctor({ id: doctorId, customExams: updatedCustoms } as any);
+  const handleDeleteCustomExam = async (examId: string) => {
+    const response = await requestCriticalAction({
+      title: "Eliminar examen personalizado",
+      message: "El examen también se retirará de los perfiles que lo usan.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar este examen personalizado.",
+    });
+    if (!response?.confirmed) return;
+    const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
+    onUpdateDoctor({ id: doctorId, customExams: updatedCustoms } as any);
 
-      // Also remove from any profile that uses it
-      const updatedProfiles = myExamProfiles.map((p) => ({
-        ...p,
-        exams: p.exams.filter((eid) => eid !== examId),
-      }));
-      setMyExamProfiles(updatedProfiles);
-      onUpdateDoctor({
-        id: doctorId,
-        savedExamProfiles: updatedProfiles,
-        customExams: updatedCustoms,
-      } as any);
-    }
+    const updatedProfiles = myExamProfiles.map((p) => ({
+      ...p,
+      exams: p.exams.filter((eid) => eid !== examId),
+    }));
+    setMyExamProfiles(updatedProfiles);
+    onUpdateDoctor({
+      id: doctorId,
+      savedExamProfiles: updatedProfiles,
+      customExams: updatedCustoms,
+    } as any);
   };
 
   // --- PASSWORD CHANGE HANDLER ---
@@ -1016,6 +1067,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       setFilterNextControl={setFilterNextControl}
                       filterNextControl={filterNextControl}
                       isReadOnly={isReadOnly}
+                      appointmentsLoading={appointmentsLoading}
+                      appointmentsError={appointmentsError}
+                      onRetryAppointments={onRetryAppointments}
                       hasActiveCenter={hasActiveCenter}
                       activeCenterId={activeCenterId}
                       currentUser={currentUser}
@@ -1033,6 +1087,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       sortBy={sortBy}
                       setSortBy={setSortBy}
                       totalCount={totalCount}
+                      patientsLoading={patientsLoading}
+                      patientsError={patientsError}
+                      onRetryPatients={onRetryPatients}
                     />
                   )}
 
@@ -1052,6 +1109,9 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       effectiveAgendaConfig={effectiveAgendaConfig}
                       isSyncingAppointments={isSyncingAppointments}
                       isReadOnly={isReadOnly}
+                      appointmentsLoading={appointmentsLoading}
+                      appointmentsError={appointmentsError}
+                      onRetryAppointments={onRetryAppointments}
                       hasActiveCenter={hasActiveCenter}
                       currentUser={currentUser}
                       activeCenterId={activeCenterId}
@@ -1110,8 +1170,25 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                             {formatPersonName(slotModal.appointment.patientName)}
                           </p>
                           <p className="text-sm text-slate-500">
-                            {slotModal.appointment.patientRut} •{" "}
-                            {slotModal.appointment.patientPhone}
+                            <SensitiveField
+                              value={slotModal.appointment.patientRut}
+                              kind="rut"
+                              centerId={activeCenterId}
+                              entityType="appointment"
+                              entityId={slotModal.appointment.id}
+                              patientId={slotModal.appointment.patientId}
+                              auditLabel="Revelacion de RUT desde modal de cita."
+                            />
+                            {" � "}
+                            <SensitiveField
+                              value={slotModal.appointment.patientPhone}
+                              kind="phone"
+                              centerId={activeCenterId}
+                              entityType="appointment"
+                              entityId={slotModal.appointment.id}
+                              patientId={slotModal.appointment.patientId}
+                              auditLabel="Revelacion de telefono desde modal de cita."
+                            />
                           </p>
                           <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
                             {slotModal.appointment.date} - {slotModal.appointment.time}
@@ -1207,3 +1284,4 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 };
 
 export default ProfessionalDashboard;
+

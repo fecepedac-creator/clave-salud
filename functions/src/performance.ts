@@ -1,5 +1,10 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import {
+  appendAuditLogInTransaction,
+  resolveActiveFlag,
+  writeAuditLog,
+} from "./immutableAudit";
 
 const db = admin.firestore();
 
@@ -68,7 +73,7 @@ export const updateAppointmentAttendance = functions.https.onCall(async (data, c
       .collection("staff")
       .doc(uid!)
       .get();
-    if (!staffSnap.exists || staffSnap.data()?.active !== true) {
+    if (!staffSnap.exists || !resolveActiveFlag(staffSnap.data() as Record<string, any>)) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
     const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
@@ -111,40 +116,43 @@ export const updateAppointmentAttendance = functions.https.onCall(async (data, c
     return { success: true, message: "Sin cambios." };
   }
 
-  // Creamos un batch para Appointment + Audit
-  const batch = db.batch();
+  await db.runTransaction(async (transaction) => {
+    transaction.update(apptRef, {
+      attendanceStatus: payload.attendanceStatus !== undefined ? payload.attendanceStatus : null,
+      billable: payload.billable ?? false,
+      amount: payload.amount !== undefined ? payload.amount : null,
+      attendanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      attendanceUpdatedBy: uid,
+    });
 
-  batch.update(apptRef, {
-    attendanceStatus: payload.attendanceStatus !== undefined ? payload.attendanceStatus : null,
-    billable: payload.billable ?? false,
-    amount: payload.amount !== undefined ? payload.amount : null,
-    attendanceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    attendanceUpdatedBy: uid,
+    const auditRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+    await appendAuditLogInTransaction(
+      transaction,
+      {
+        centerId,
+        type: "ACTION",
+        actorUid: uid || "system",
+        actorEmail: String(context.auth?.token?.email || "").trim().toLowerCase(),
+        actorRole: "unknown",
+        action: "APPOINTMENT_ATTENDANCE_CHANGE",
+        entityType: "appointment",
+        entityId: appointmentId,
+        resourceType: "appointment",
+        resourcePath: `/centers/${centerId}/appointments/${appointmentId}`,
+        patientId: apptData.patientId || null,
+        details: `Cambiado a ${payload.attendanceStatus} (Billable: ${payload.billable}, $: ${payload.amount})`,
+        metadata: {
+          oldStatus,
+          newStatus: payload.attendanceStatus,
+          oldBillable,
+          newBillable: payload.billable,
+          oldAmount,
+          newAmount: payload.amount,
+        },
+      },
+      auditRef
+    );
   });
-
-  // Auditoría centralizada
-  const auditRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
-  batch.set(auditRef, {
-    id: auditRef.id,
-    centerId,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    actorUid: uid,
-    action: "APPOINTMENT_ATTENDANCE_CHANGE",
-    entityType: "appointment",
-    entityId: appointmentId,
-    patientId: apptData.patientId || null,
-    details: `Cambiado a ${payload.attendanceStatus} (Billable: ${payload.billable}, $: ${payload.amount})`,
-    metadata: {
-      oldStatus,
-      newStatus: payload.attendanceStatus,
-      oldBillable,
-      newBillable: payload.billable,
-      oldAmount,
-      newAmount: payload.amount,
-    },
-  });
-
-  await batch.commit();
   return { success: true, message: "Actualizado correctamente." };
 });
 
@@ -218,15 +226,17 @@ export const onAppointmentChanged_Performance = functions.firestore
 
     if (closedMonths.size > 0) {
       // Block update and register audit log
-      const auditRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
-      await auditRef.set({
-        id: auditRef.id,
+      await writeAuditLog({
         centerId,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        actorUid: "system", // Trigger execution
+        type: "ACTION",
         action: "CLOSED_MONTH_UPDATE_BLOCKED",
         entityType: "appointment",
         entityId: context.params.appointmentId,
+        actorUid: "system",
+        actorEmail: "",
+        actorRole: "system",
+        resourceType: "appointment",
+        resourcePath: `/centers/${centerId}/appointments/${context.params.appointmentId}`,
         details: `Intento de modificar stats en meses cerrados: ${Array.from(closedMonths).join(", ")}`,
         metadata: {
           oldYearMonth,
@@ -375,7 +385,7 @@ export const recomputeMonthStats = functions.https.onCall(async (data, context) 
       .collection("staff")
       .doc(uid!)
       .get();
-    if (!staffSnap.exists || staffSnap.data()?.active !== true) {
+    if (!staffSnap.exists || !resolveActiveFlag(staffSnap.data() as Record<string, any>)) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
     const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
@@ -550,7 +560,7 @@ export const closeMonth = functions.https.onCall(async (data, context) => {
       .collection("staff")
       .doc(uid!)
       .get();
-    if (!staffSnap.exists || staffSnap.data()?.active !== true) {
+    if (!staffSnap.exists || !resolveActiveFlag(staffSnap.data() as Record<string, any>)) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
     const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
@@ -603,7 +613,7 @@ export const reopenMonth = functions.https.onCall(async (data, context) => {
       .collection("staff")
       .doc(uid!)
       .get();
-    if (!staffSnap.exists || staffSnap.data()?.active !== true) {
+    if (!staffSnap.exists || !resolveActiveFlag(staffSnap.data() as Record<string, any>)) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
     const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();

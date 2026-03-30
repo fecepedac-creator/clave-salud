@@ -147,8 +147,16 @@ service cloud.firestore {
     }
 
     function isActiveCenter(centerId) {
-      let center = get(/databases/$(database)/documents/centers/$(centerId));
-      return center.data.active != false && center.data.isActive != false;
+      let centerPath = /databases/$(database)/documents/centers/$(centerId);
+      return exists(centerPath)
+        && (
+          get(centerPath).data.active == true
+          || get(centerPath).data.isActive == true
+        );
+    }
+
+    function clinicalRetentionWindow() {
+      return duration.value(5475, "d");
     }
 
     function isPublicAppointmentBooking() {
@@ -164,6 +172,20 @@ service cloud.firestore {
         && request.resource.data.patientRut is string
         && request.resource.data.patientPhone is string
         && publicBookingOnlyAllowedFields();
+    }
+
+    function canReadPublicServicesCollection(centerId) {
+      return isActiveCenter(centerId);
+    }
+
+    function publicServiceReadable() {
+      let servicePath = /databases/$(database)/documents/centers/$(centerId)/services/$(serviceId);
+      return canReadPublicServicesCollection(centerId)
+        && exists(servicePath)
+        && (
+          get(servicePath).data.active == true
+          || get(servicePath).data.isActive == true
+        );
     }
 
     function publicBookingOnlyAllowedFields() {
@@ -212,6 +234,57 @@ service cloud.firestore {
         && request.resource.data.lastUpdated is string
         && request.resource.data.active == true
         && isActiveCenter(centerId);
+    }
+
+    function preadmissionAllowedFields() {
+      return [
+        'id',
+        'centerId',
+        'patientDraft',
+        'appointmentDraft',
+        'contact',
+        'source',
+        'submittedByUid',
+        'createdAt',
+        'status'
+      ];
+    }
+
+    function isValidPreadmissionContact(contact) {
+      return contact is map
+        && contact.keys().hasOnly(['name', 'rut', 'phone', 'email'])
+        && (!contact.keys().hasAny(['name']) || (contact.name is string && contact.name.size() >= 3 && contact.name.size() <= 120))
+        && (!contact.keys().hasAny(['rut']) || (contact.rut is string && contact.rut.size() >= 7 && contact.rut.size() <= 16))
+        && (!contact.keys().hasAny(['phone']) || (contact.phone is string && contact.phone.size() >= 8 && contact.phone.size() <= 16))
+        && (!contact.keys().hasAny(['email']) || (contact.email is string && contact.email.size() <= 160));
+    }
+
+    function isValidPreadmissionPayload(centerId) {
+      return isActiveCenter(centerId)
+        && request.resource.data.keys().hasOnly(preadmissionAllowedFields())
+        && request.resource.data.id is string
+        && request.resource.data.id.size() >= 8
+        && request.resource.data.id.size() <= 80
+        && request.resource.data.centerId == centerId
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.status == "pending"
+        && request.resource.data.source is string
+        && (
+          request.resource.data.source == "public"
+          || request.resource.data.source == "staff"
+        )
+        && (
+          !request.resource.data.keys().hasAny(['contact'])
+          || isValidPreadmissionContact(request.resource.data.contact)
+        )
+        && (
+          !request.resource.data.keys().hasAny(['patientDraft'])
+          || request.resource.data.patientDraft is map
+        )
+        && (
+          !request.resource.data.keys().hasAny(['appointmentDraft'])
+          || request.resource.data.appointmentDraft is map
+        );
     }
 
     function inviteDoc(token) {
@@ -266,7 +339,10 @@ service cloud.firestore {
       }
 
       match /services/{serviceId} {
-        allow read: if true;
+        allow get: if publicServiceReadable();
+        allow get: if signedIn() && (isSuperAdmin() || isStaff(centerId));
+        allow list: if canReadPublicServicesCollection(centerId);
+        allow list: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
@@ -332,7 +408,7 @@ service cloud.firestore {
       }
 
       function softDeleteKeys() {
-        return ['active', 'deletedAt', 'deletedBy', 'deleteReason'];
+        return ['active', 'deletedAt', 'deletedBy', 'deleteReason', 'retentionUntil'];
       }
 
       function softDeleteKeysChanged() {
@@ -348,12 +424,14 @@ service cloud.firestore {
           )
           && request.resource.data.deletedAt is timestamp
           && request.resource.data.deletedBy is string
-          && request.resource.data.deleteReason is string;
+          && request.resource.data.deleteReason is string
+          && request.resource.data.retentionUntil is timestamp
+          && request.resource.data.retentionUntil > request.time;
       }
 
       function canArchiveByRetention() {
         return !(resource.data.createdAt is timestamp)
-          || request.time < (resource.data.createdAt + duration.value(15, "y"));
+          || request.time < (resource.data.createdAt + clinicalRetentionWindow());
       }
 
       function careTeamKeys() {
@@ -384,11 +462,6 @@ service cloud.firestore {
         allow read: if isActiveCenter(centerId);
         allow create, update: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow delete: if false;
-      }
-
-      match /settings/{settingId} {
-        allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-        allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
       match /patients/{patientId} {
@@ -525,33 +598,30 @@ service cloud.firestore {
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
           ))
         );
-        allow update: if isPublicAppointmentBooking()
+        allow update: if signedIn() && (
+          isSuperAdmin()
+          || isCenterAdmin(centerId)
+          || isAdministrative(centerId)
+          || (isDoctor(centerId) && (
+            request.resource.data.doctorUid == uid()
+            || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
+          ))
+        )
+        && performanceFieldsUnchanged()
+        && (
+          !softDeleteKeysChanged()
           || (
-            signedIn() && (
-              isSuperAdmin()
-              || isCenterAdmin(centerId)
-              || isAdministrative(centerId)
+            (
+              isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId)
               || (isDoctor(centerId) && (
                 request.resource.data.doctorUid == uid()
                 || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
               ))
             )
-            && performanceFieldsUnchanged()
-            && (
-            !softDeleteKeysChanged()
-            || (
-              (
-                isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId)
-                || (isDoctor(centerId) && (
-                  request.resource.data.doctorUid == uid()
-                  || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
-                ))
-              )
-              && isSoftDeleteValid()
-              && canArchiveByRetention()
-            )
+            && isSoftDeleteValid()
+            && canArchiveByRetention()
           )
-          );
+        );
         allow delete: if false;
       }
 
@@ -589,11 +659,15 @@ service cloud.firestore {
       }
 
       match /preadmissions/{preadmissionId} {
-        allow create: if (
-          request.resource.data.centerId == centerId
-          && request.resource.data.status == "pending"
-          && (request.auth == null || isStaff(centerId) || isSuperAdmin())
-        );
+        allow create: if isValidPreadmissionPayload(centerId)
+          && (
+            (request.auth == null
+              && request.resource.data.source == "public"
+              && (!request.resource.data.keys().hasAny(['submittedByUid']) || request.resource.data.submittedByUid == null))
+            || (signedIn()
+              && (isStaff(centerId) || isSuperAdmin())
+              && request.resource.data.source == "staff")
+          );
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId) || isAdministrative(centerId));
       }
@@ -679,6 +753,33 @@ service cloud.firestore {
     // ROOT PATIENTS COLLECTION (Professional-Centric Model)
     // =====================================================
     match /patients/{patientId} {
+      function rootSoftDeleteKeys() {
+        return ['active', 'deletedAt', 'deletedBy', 'deleteReason', 'retentionUntil'];
+      }
+
+      function rootSoftDeleteKeysChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasAny(rootSoftDeleteKeys());
+      }
+
+      function rootSoftDeleteValid() {
+        return request.resource.data.active == false
+          && (
+            resource.data.active == true
+            || resource.data.active == null
+            || !resource.data.keys().hasAny(["active"])
+          )
+          && request.resource.data.deletedAt is timestamp
+          && request.resource.data.deletedBy is string
+          && request.resource.data.deleteReason is string
+          && request.resource.data.retentionUntil is timestamp
+          && request.resource.data.retentionUntil > request.time;
+      }
+
+      function rootArchiveWithinRetentionWindow() {
+        return !(resource.data.createdAt is timestamp)
+          || request.time < (resource.data.createdAt + clinicalRetentionWindow());
+      }
+
       // Helper: Is the current user the owner?
       function isOwner() {
         return signedIn() && resource.data.ownerUid == uid();
@@ -713,7 +814,14 @@ service cloud.firestore {
 
       // Update: owner, allowed professional, or superadmin
       allow update: if (isOwner() || isAllowedProfessional() || isSuperAdmin())
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUid', 'accessControl']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUid', 'accessControl'])
+        && (
+          !rootSoftDeleteKeysChanged()
+          || (
+            rootSoftDeleteValid()
+            && rootArchiveWithinRetentionWindow()
+          )
+        );
 
       // Delete físico prohibido para cumplir conservación clínica.
       // El archivado debe realizarse por soft-delete (active=false + metadata).
@@ -734,6 +842,13 @@ service cloud.firestore {
           || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
               uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
           || isSuperAdmin()
+        )
+        && (
+          !rootSoftDeleteKeysChanged()
+          || (
+            rootSoftDeleteValid()
+            && rootArchiveWithinRetentionWindow()
+          )
         );
         // Delete físico prohibido para mantener trazabilidad clínica.
         // Usar archivado lógico y retención.

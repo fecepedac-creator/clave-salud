@@ -117,6 +117,7 @@ export interface AuditLogEntry {
   id: string;
   centerId: string;
   timestamp: FirestoreDateLike;
+  signedAt?: string;
   actorUid?: string;
   actorName?: string; // Who did it
   actorRole?: string;
@@ -127,7 +128,26 @@ export interface AuditLogEntry {
   patientId?: string;
   metadata?: Record<string, string | number | boolean | null | undefined>;
   details?: string;
+  chainScope?: string;
+  chainIndex?: number;
+  chainPrevHash?: string | null;
+  chainHash?: string;
   targetId?: string; // legacy compatibility
+}
+
+export interface ClinicalVersionRecord {
+  id: string;
+  entityType: "patient" | "consultation";
+  entityId: string;
+  patientId: string;
+  centerId?: string | null;
+  version: number;
+  actorUid?: string | null;
+  actorName?: string | null;
+  summary: string;
+  snapshot: Record<string, any>;
+  diff?: Record<string, any> | null;
+  createdAt: FirestoreDateLike;
 }
 
 export type AuditLogEvent = {
@@ -297,9 +317,11 @@ export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
   createdAt?: FirestoreDateLike;
+  version?: number;
   patientId?: string;
   centerId?: string;
   createdBy?: string;
+  createdByUid?: string;
   consultationType?: "morbidity" | "pscv"; // New field to distinguish visit types
 
   weight?: string;
@@ -356,6 +378,9 @@ export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
   createdAt?: FirestoreDateLike;
+  version?: number;
+  updatedByUid?: string;
+  updatedByName?: string;
   ownerUid?: string; // UID of the professional who owns this patient
   accessControl?: {
     allowedUids: string[]; // Professional UIDs who can view/edit
@@ -426,6 +451,10 @@ export interface Patient extends SoftDeletable {
   kinePrograms?: KinesiologyProgram[];
   whatsAppTemplates?: WhatsappTemplate[];
   attachments: Attachment[];
+  lastConsultationAt?: string;
+  lastConsultationReason?: string;
+  nextControlDate?: string;
+  nextControlReason?: string;
 
   lastUpdated: string;
   consent?: boolean;

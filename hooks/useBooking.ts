@@ -1,22 +1,13 @@
 import { useState, useCallback } from "react";
-import { db, auth } from "../firebase";
+import { auth } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import {
-  doc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  runTransaction,
-  getDoc,
-} from "firebase/firestore";
-import { Appointment, Doctor, Patient, ViewMode } from "../types";
+import { Appointment, Doctor, Patient } from "../types";
+import { issuePublicAppointmentChallenge } from "../src/publicAppointmentChallenge";
 import {
   extractChileanPhoneDigits,
   formatChileanPhone,
   formatRUT,
-  generateId,
   validateRUT,
-  getPatientIdByRut,
 } from "../utils";
 
 export function useBooking(
@@ -113,56 +104,41 @@ export function useBooking(
 
     const normalizedRut = normalizeRut(rut);
     const formattedRut = formatRUT(normalizedRut);
-    const patientId = getPatientIdByRut(normalizedRut);
-    const existingPatient = patients.find(
-      (patient) => normalizeRut((patient.rut ?? "").trim()) === normalizedRut
-    );
-
-    // ---- TRANSACTIONAL BOOKING (prevents double bookings) ----
-    const apptRef = doc(db, "centers", activeCenterId, "appointments", selectedSlot.appointmentId);
     let bookedAppointment: Appointment;
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const apptSnap = await transaction.get(apptRef);
-        if (!apptSnap.exists()) {
-          throw new Error(
-            "El horario ya no existe. El profesional puede haberlo cerrado recientemente."
-          );
-        }
-        const currentData = apptSnap.data() as Appointment;
-        if (currentData?.status !== "available") {
-          throw new Error(
-            "Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque."
-          );
-        }
-
-        transaction.update(apptRef, {
-          status: "booked",
-          patientName: name,
-          patientRut: formattedRut,
-          patientId,
-          patientPhone: phone,
-          patientEmail: email || null,
-          serviceId: bookingType === "service" ? selectedMedicalService?.id || null : null,
-          serviceName: bookingType === "service" ? selectedMedicalService?.name || null : null,
-          bookedAt: serverTimestamp(),
-        });
+      const functions = getFunctions();
+      const challenge = await issuePublicAppointmentChallenge({
+        centerId: activeCenterId,
+        action: "book",
+        rut: formattedRut,
+        phone,
       });
+      const fn = httpsCallable(functions, "bookPublicAppointment");
+      const response = await fn({
+        centerId: activeCenterId,
+        appointmentId: selectedSlot.appointmentId,
+        doctorId: selectedDoctorForBooking.id,
+        date: selectedSlot.date,
+        patientName: name,
+        rut: formattedRut,
+        phone,
+        email,
+        serviceId: bookingType === "service" ? selectedMedicalService?.id || "" : "",
+        serviceName: bookingType === "service" ? selectedMedicalService?.name || "" : "",
+        challengeId: challenge.challengeId,
+        challengeToken: challenge.challengeToken,
+      });
+
+      const data = (response.data as { appointment?: Appointment } | undefined)?.appointment;
+      if (!data) {
+        throw new Error("No se recibió confirmación de la reserva.");
+      }
 
       bookedAppointment = {
         ...slotAppointment,
-        status: "booked",
-        patientName: name,
-        patientRut: formattedRut,
-        patientId,
-        patientPhone: phone,
-        patientEmail: email || undefined,
-        serviceId: bookingType === "service" ? selectedMedicalService?.id || undefined : undefined,
-        serviceName:
-          bookingType === "service" ? selectedMedicalService?.name || undefined : undefined,
-        bookedAt: new Date().toISOString(),
-        active: slotAppointment.active ?? true,
+        ...data,
+        active: data.active ?? slotAppointment.active ?? true,
       };
 
       setAppointments((prev) =>
@@ -173,46 +149,6 @@ export function useBooking(
         txError instanceof Error ? txError.message : "No se pudo completar la reserva.";
       showToast(message, "error");
       return;
-    }
-
-    if (activeCenterId && !existingPatient) {
-      // Assign patient to the DOCTOR (not the person booking)
-      const doctorUid = selectedDoctorForBooking.id;
-      const patientPayload: Patient = {
-        id: patientId,
-        ownerUid: doctorUid,
-        accessControl: {
-          allowedUids: [doctorUid],
-          centerIds: activeCenterId ? [activeCenterId] : [],
-        },
-        centerId: activeCenterId,
-        rut: formattedRut,
-        fullName: name,
-        birthDate: "",
-        gender: "Otro",
-        phone,
-        email: email || undefined,
-        medicalHistory: [],
-        surgicalHistory: [],
-        smokingStatus: "No fumador",
-        alcoholStatus: "No consumo",
-        medications: [],
-        allergies: [],
-        consultations: [],
-        attachments: [],
-        lastUpdated: new Date().toISOString(),
-        active: true,
-      };
-
-      try {
-        // We use setDoc on the GLOBAL collection.
-        // If it already exists, this might fail if the user is public and has no update permissions.
-        // But for a new patient, it will create the record correctly.
-        await setDoc(doc(db, "patients", patientId), patientPayload);
-      } catch (err) {
-        console.warn("Patient already exists or creation failed (Global):", err);
-        // We don't block the booking if patient creation fails (it likely already exists)
-      }
     }
 
     if (!auth.currentUser) {
@@ -275,10 +211,18 @@ export function useBooking(
       setCancelLoading(true);
       const functions = getFunctions();
       const fn = httpsCallable(functions, "listPatientAppointments");
+      const challenge = await issuePublicAppointmentChallenge({
+        centerId: activeCenterId,
+        action: "lookup",
+        rut,
+        phone: formatChileanPhone(phoneDigits),
+      });
       const response = await fn({
         centerId: activeCenterId,
         rut,
         phone: formatChileanPhone(phoneDigits),
+        challengeId: challenge.challengeId,
+        challengeToken: challenge.challengeToken,
       });
       const data = (response.data as { appointments?: Appointment[] }) || {};
       setCancelResults((data.appointments || []) as Appointment[]);
@@ -308,11 +252,19 @@ export function useBooking(
       try {
         const functions = getFunctions();
         const fn = httpsCallable(functions, "cancelPatientAppointment");
+        const challenge = await issuePublicAppointmentChallenge({
+          centerId: activeCenterId,
+          action: "cancel",
+          rut,
+          phone: formatChileanPhone(phoneDigits),
+        });
         await fn({
           centerId: activeCenterId,
           appointmentId: appointment.id,
           rut,
           phone: formatChileanPhone(phoneDigits),
+          challengeId: challenge.challengeId,
+          challengeToken: challenge.challengeToken,
         });
         setCancelResults((prev) => prev.filter((item) => item.id !== appointment.id));
         showToast("Hora cancelada y liberada correctamente.", "success");

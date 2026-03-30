@@ -30,6 +30,7 @@ import {
 import { MedicalService } from "../types";
 import { generateId, fileToBase64 } from "../utils";
 import { useToast } from "./Toast";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ServicesManagerProps {
   centerId: string;
@@ -43,13 +44,13 @@ const CATEGORY_LABELS = {
     bg: "bg-blue-500/10",
   },
   IMAGING: {
-    label: "Imagenología",
+    label: "ImagenologÃƒÆ’Ã‚Â­a",
     icon: ImageIcon,
     color: "text-purple-400",
     bg: "bg-purple-500/10",
   },
   CARDIOLOGY: {
-    label: "Cardiología",
+    label: "CardiologÃƒÆ’Ã‚Â­a",
     icon: HeartPulse,
     color: "text-red-400",
     bg: "bg-red-500/10",
@@ -69,20 +70,20 @@ const PREDEFINED_BUNDLES = [
     title: "Pack Laboratorio",
     icon: FlaskConical,
     color: "text-blue-400",
-    description: "Hemograma, Perfil Bioquímico, Orina, Glucosa, etc.",
+    description: "Hemograma, Perfil BioquÃƒÆ’Ã‚Â­mico, Orina, Glucosa, etc.",
     category: "LABORATORY",
     services: [
       { name: "Hemograma Completo", price: 15000, duration: 15 },
-      { name: "Perfil Bioquímico (12 parámetros)", price: 25000, duration: 15 },
+      { name: "Perfil BioquÃƒÆ’Ã‚Â­mico (12 parÃƒÆ’Ã‚Â¡metros)", price: 25000, duration: 15 },
       { name: "Orina Completa", price: 8000, duration: 15 },
       { name: "Glicemia en ayunas", price: 5000, duration: 15 },
-      { name: "Perfil Lipídico", price: 12000, duration: 15 },
-      { name: "Creatinina plasmática", price: 6000, duration: 15 },
+      { name: "Perfil LipÃƒÆ’Ã‚Â­dico", price: 12000, duration: 15 },
+      { name: "Creatinina plasmÃƒÆ’Ã‚Â¡tica", price: 6000, duration: 15 },
     ],
   },
   {
     id: "cardio_basic",
-    title: "Pack Cardiología",
+    title: "Pack CardiologÃƒÆ’Ã‚Â­a",
     icon: HeartPulse,
     color: "text-red-400",
     description: "Electro, Holter Arritmia, MAPA, Ecocardio.",
@@ -97,17 +98,17 @@ const PREDEFINED_BUNDLES = [
   },
   {
     id: "imaging_basic",
-    title: "Pack Imagenología",
+    title: "Pack ImagenologÃƒÆ’Ã‚Â­a",
     icon: ImageIcon,
     color: "text-purple-400",
-    description: "Ecografías y Radiografías comunes.",
+    description: "EcografÃƒÆ’Ã‚Â­as y RadiografÃƒÆ’Ã‚Â­as comunes.",
     category: "IMAGING",
     services: [
-      { name: "Ecografía Abdominal", price: 35000, duration: 20 },
-      { name: "Ecografía Renal y Vesical", price: 30000, duration: 20 },
-      { name: "Ecografía de Partes Blandas", price: 28000, duration: 20 },
-      { name: "Radiografía de Tórax (AP y Lat)", price: 22000, duration: 15 },
-      { name: "Radiografía de Extremidades", price: 18000, duration: 15 },
+      { name: "EcografÃƒÆ’Ã‚Â­a Abdominal", price: 35000, duration: 20 },
+      { name: "EcografÃƒÆ’Ã‚Â­a Renal y Vesical", price: 30000, duration: 20 },
+      { name: "EcografÃƒÆ’Ã‚Â­a de Partes Blandas", price: 28000, duration: 20 },
+      { name: "RadiografÃƒÆ’Ã‚Â­a de TÃƒÆ’Ã‚Â³rax (AP y Lat)", price: 22000, duration: 15 },
+      { name: "RadiografÃƒÆ’Ã‚Â­a de Extremidades", price: 18000, duration: 15 },
     ],
   },
 ];
@@ -134,7 +135,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      showToast("El archivo es muy pesado (máx 2MB).", "warning");
+      showToast("El archivo es muy pesado (mÃƒÆ’Ã‚Â¡x 2MB).", "warning");
       return;
     }
 
@@ -206,7 +207,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
 
       await setDoc(serviceRef, payload, { merge: true });
       showToast(
-        `Prestación ${currentService.id ? "actualizada" : "creada"} correctamente.`,
+        `PrestaciÃƒÆ’Ã‚Â³n ${currentService.id ? "actualizada" : "creada"} correctamente.`,
         "success"
       );
       setIsEditing(false);
@@ -222,17 +223,19 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
       });
     } catch (error) {
       console.error("Error saving service:", error);
-      showToast("Error al guardar la prestación.", "error");
+      showToast("Error al guardar la prestaciÃƒÆ’Ã‚Â³n.", "error");
     }
   };
 
   const handleActivateBundle = async (bundle: (typeof PREDEFINED_BUNDLES)[0]) => {
-    if (
-      !window.confirm(
-        `¿Desea cargar automáticamente el ${bundle.title}? Se añadirán ${bundle.services.length} prestaciones base.`
-      )
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: `Activar ${bundle.title}`,
+      message: `Se anadiran automaticamente ${bundle.services.length} prestaciones base.`,
+      confirmLabel: "Cargar bundle",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo cargar este bundle de prestaciones.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       setLoading(true);
@@ -251,7 +254,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           active: true,
           isAgendable: true,
           preparationInstructions: "",
-          description: `Carga automática de ${bundle.title}`,
+          description: `Carga automatica de ${bundle.title}`,
           createdAt: serverTimestamp() as any,
           updatedAt: serverTimestamp() as any,
         };
@@ -269,16 +272,24 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Está seguro de eliminar esta prestación?")) return;
+    const response = await requestCriticalAction({
+      title: "Eliminar prestacion",
+      message: "La prestacion dejara de estar disponible para agenda y catalogo publico.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar esta prestacion.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       await deleteDoc(doc(db, "centers", centerId, "services", id));
-      showToast("Prestación eliminada.", "success");
+      showToast("Prestacion eliminada.", "success");
     } catch (error) {
       console.error("Error deleting service:", error);
-      showToast("Error al eliminar la prestación.", "error");
+      showToast("Error al eliminar la prestacion.", "error");
     }
   };
+
 
   const filteredServices = services.filter(
     (s) =>
@@ -292,10 +303,10 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h3 className="font-bold text-white text-2xl flex items-center gap-3">
-              <Activity className="w-8 h-8 text-indigo-400" /> Catálogo de Prestaciones
+              <Activity className="w-8 h-8 text-indigo-400" /> CatÃƒÆ’Ã‚Â¡logo de Prestaciones
             </h3>
             <p className="text-slate-400 mt-2">
-              Administra los exámenes, procedimientos y servicios del centro.
+              Administra los exÃƒÆ’Ã‚Â¡menes, procedimientos y servicios del centro.
             </p>
           </div>
           <button
@@ -313,7 +324,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
             }}
             className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
           >
-            <Plus className="w-5 h-5" /> Nueva Prestación
+            <Plus className="w-5 h-5" /> Nueva PrestaciÃƒÆ’Ã‚Â³n
           </button>
         </div>
 
@@ -321,7 +332,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
           <input
             type="text"
-            placeholder="Buscar por nombre o categoría..."
+            placeholder="Buscar por nombre o categorÃƒÆ’Ã‚Â­a..."
             className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-12 pr-4 text-white outline-none focus:border-indigo-500 transition-colors"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -338,7 +349,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
               <Plus
                 className={`w-4 h-4 transition-transform ${showQuickStart ? "rotate-45" : ""}`}
               />
-              {showQuickStart ? "Ocultar Módulos Rápidos" : "Cargar Módulos Predefinidos (Packs)"}
+              {showQuickStart ? "Ocultar MÃƒÆ’Ã‚Â³dulos RÃƒÆ’Ã‚Â¡pidos" : "Cargar MÃƒÆ’Ã‚Â³dulos Predefinidos (Packs)"}
             </button>
           </div>
         )}
@@ -348,10 +359,10 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           <div className="mb-8 p-6 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl animate-pulse-subtle">
             <div className="flex items-center gap-3 mb-4">
               <Plus className="w-5 h-5 text-indigo-400" />
-              <h4 className="font-bold text-white">Configuración Rápida</h4>
+              <h4 className="font-bold text-white">ConfiguraciÃƒÆ’Ã‚Â³n RÃƒÆ’Ã‚Â¡pida</h4>
             </div>
             <p className="text-sm text-slate-400 mb-6">
-              Activa módulos predefinidos con los exámenes más comunes para comenzar de inmediato.
+              Activa mÃƒÆ’Ã‚Â³dulos predefinidos con los exÃƒÆ’Ã‚Â¡menes mÃƒÆ’Ã‚Â¡s comunes para comenzar de inmediato.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -411,7 +422,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                         <h4 className="font-bold text-white">{service.name}</h4>
                         <div className="flex items-center gap-2 text-xs">
                           <span className={`font-bold ${CatInfo.color}`}>{CatInfo.label}</span>
-                          <span className="text-slate-500">•</span>
+                          <span className="text-slate-500">ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢</span>
                           <span className="text-emerald-400 font-bold">
                             ${(service.price || 0).toLocaleString("es-CL")}
                           </span>
@@ -451,7 +462,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                   ) : (
                     <Plus className="w-5 h-5 text-indigo-400" />
                   )}
-                  {currentService.id ? "Editar Prestación" : "Nueva Prestación"}
+                  {currentService.id ? "Editar PrestaciÃƒÆ’Ã‚Â³n" : "Nueva PrestaciÃƒÆ’Ã‚Â³n"}
                 </h4>
                 <button
                   onClick={() => setIsEditing(false)}
@@ -474,7 +485,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase">Categoría</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">CategorÃƒÆ’Ã‚Â­a</label>
                     <select
                       className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500"
                       value={currentService.category}
@@ -504,7 +515,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
 
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">
-                    Instrucciones de Preparación
+                    Instrucciones de PreparaciÃƒÆ’Ã‚Â³n
                   </label>
                   <textarea
                     rows={3}
@@ -519,13 +530,13 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                     }
                   />
                   <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-                    <Info className="w-3 h-3" /> Estas instrucciones las leerá el Bot de WhatsApp.
+                    <Info className="w-3 h-3" /> Estas instrucciones las leerÃƒÆ’Ã‚Â¡ el Bot de WhatsApp.
                   </p>
                 </div>
 
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">
-                    Descripción (Interna)
+                    DescripciÃƒÆ’Ã‚Â³n (Interna)
                   </label>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500 text-sm"
@@ -538,7 +549,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
 
                 <div className="p-4 bg-slate-800 rounded-xl border border-slate-700">
                   <label className="text-xs font-bold text-slate-500 uppercase block mb-3">
-                    Documento de Preparación (PDF/Imagen)
+                    Documento de PreparaciÃƒÆ’Ã‚Â³n (PDF/Imagen)
                   </label>
                   {currentService.instructionsFile ? (
                     <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/30 p-2 rounded-lg">
@@ -565,7 +576,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                     <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 rounded-xl p-4 hover:border-indigo-500 transition-colors cursor-pointer group">
                       <Upload className="w-6 h-6 text-slate-500 group-hover:text-indigo-400 mb-2" />
                       <span className="text-xs text-slate-500 group-hover:text-slate-300">
-                        Cargar preparación
+                        Cargar preparaciÃƒÆ’Ã‚Â³n
                       </span>
                       <input
                         type="file"
@@ -608,7 +619,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
             <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-slate-900/30 rounded-2xl border border-dashed border-slate-700 text-slate-500">
               <Activity className="w-12 h-12 mb-4 opacity-20" />
               <p className="text-center text-sm">
-                Selecciona una prestación para editarla o crea una nueva.
+                Selecciona una prestaciÃƒÆ’Ã‚Â³n para editarla o crea una nueva.
               </p>
             </div>
           )}

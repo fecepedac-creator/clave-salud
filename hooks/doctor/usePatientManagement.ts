@@ -6,6 +6,7 @@ import { useToast } from "../../components/Toast";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, getDoc, collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
+import { resolveActiveState } from "../../utils/activeState";
 
 interface UsePatientManagementProps {
   patients: Patient[];
@@ -37,7 +38,23 @@ export const usePatientManagement = ({
   const pageSize = 20;
 
   const getActiveConsultations = (p: Patient) =>
-    (p.consultations || []).filter((consultation) => consultation.active !== false);
+    (p.consultations || []).filter((consultation) => resolveActiveState(consultation as any));
+
+  const getNextControlDate = (patient: Patient): Date | null => {
+    if (patient.nextControlDate) {
+      const summaryDate = new Date(`${patient.nextControlDate}T12:00:00`);
+      if (!Number.isNaN(summaryDate.getTime())) return summaryDate;
+    }
+
+    const activeConsults = getActiveConsultations(patient);
+    const lastConsult = activeConsults[0]
+      ? [...activeConsults].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      : null;
+
+    if (!lastConsult?.nextControlDate) return null;
+    const nextDate = new Date(`${lastConsult.nextControlDate}T12:00:00`);
+    return Number.isNaN(nextDate.getTime()) ? null : nextDate;
+  };
 
   // Reset page when search changes
   useEffect(() => {
@@ -56,10 +73,8 @@ export const usePatientManagement = ({
       else if (filterNextControl === "month") horizon.setDate(now.getDate() + 30);
 
       result = result.filter((p) => {
-        const activeConsults = getActiveConsultations(p);
-        const lastConsult = activeConsults[0];
-        if (!lastConsult?.nextControlDate) return false;
-        const nextDate = new Date(lastConsult.nextControlDate + "T12:00:00");
+        const nextDate = getNextControlDate(p);
+        if (!nextDate) return false;
         return nextDate >= now && nextDate <= horizon;
       });
     }
@@ -188,20 +203,13 @@ export const usePatientManagement = ({
 
   // --- Sync Consultations ---
   useEffect(() => {
-    if (!activeCenterId || !selectedPatient?.id) {
+    if (!selectedPatient?.id) {
       setConsultationsFromDb([]);
       setIsUsingLegacyConsultations(false);
       return;
     }
 
-    const consultationsRef = collection(
-      db,
-      "centers",
-      activeCenterId,
-      "patients",
-      selectedPatient.id,
-      "consultations"
-    );
+    const consultationsRef = collection(db, "patients", selectedPatient.id, "consultations");
 
     const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
 
@@ -212,7 +220,11 @@ export const usePatientManagement = ({
           id: d.id,
           ...(d.data() as any),
         })) as Consultation[];
-        const filtered = docs.filter((c) => c.active !== false);
+        const filtered = docs.filter(
+          (c) =>
+            resolveActiveState(c as any) &&
+            (!activeCenterId || !c.centerId || c.centerId === activeCenterId)
+        );
         setConsultationsFromDb(filtered);
 
         const legacyCount = getActiveConsultations(selectedPatient).length;
@@ -226,7 +238,7 @@ export const usePatientManagement = ({
     );
 
     return () => unsubscribe();
-  }, [activeCenterId, selectedPatient?.id]);
+  }, [activeCenterId, selectedPatient?.id, selectedPatient?.consultations]);
 
   return {
     selectedPatient,

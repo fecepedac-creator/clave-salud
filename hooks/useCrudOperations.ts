@@ -13,6 +13,8 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { Patient, Doctor, Appointment, AuditLogEntry, MedicalCenter, Preadmission } from "../types";
 import { generateId, generateSlotId, sanitizeForFirestore } from "../utils";
 import { logAuditEventSafe } from "./useAuditLog";
+import { requestCriticalAction } from "../utils/criticalActions";
+import { buildClinicalVersionRecord } from "../utils/clinicalVersioning";
 
 export function useCrudOperations(
   activeCenterId: string,
@@ -25,28 +27,39 @@ export function useCrudOperations(
     "Por normativa, la ficha clínica debe conservarse por al menos 15 años. Archivar no elimina definitivamente.";
   const RETENTION_YEARS = 15;
 
-  const requestDeleteReason = (label: string) => {
-    const selection = window.prompt(
-      `${ARCHIVE_WARNING}\n\nMotivo para archivar ${label}:\n1) Duplicado\n2) Error administrativo\n3) Solicitud del paciente (Ley 19.628)\n4) Otro (especificar)\n\nEscribe el número o un motivo libre:`
-    );
-    if (!selection || !selection.trim()) {
-      showToast("Debes indicar un motivo para archivar.", "warning");
-      return null;
-    }
-    const normalized = selection.trim();
-    if (normalized === "1") return "Duplicado";
-    if (normalized === "2") return "Error administrativo";
-    if (normalized === "3") return "Solicitud del paciente (Ley 19.628)";
-    if (normalized === "4") {
-      const other = window.prompt("Especifica el motivo:");
-      if (!other || !other.trim()) {
+  const buildRetentionUntil = () => {
+    const retentionUntil = new Date();
+    retentionUntil.setFullYear(retentionUntil.getFullYear() + RETENTION_YEARS);
+    return retentionUntil;
+  };
+
+  const requestDeleteReasonDialog = useCallback(
+    async (label: string) => {
+      const result = await requestCriticalAction({
+        title: `Archivar ${label}`,
+        message: "La acción se registrará en auditoría y conservará metadatos de retención.",
+        warning: ARCHIVE_WARNING,
+        confirmLabel: "Archivar",
+        reasonRequired: true,
+        reasonLabel: "Motivo del archivo",
+        reasonOptions: [
+          "Duplicado",
+          "Error administrativo",
+          "Solicitud del paciente (Ley 19.628)",
+        ],
+        reasonPlaceholder: "Escribe un motivo complementario si aplica",
+        requireFinalConfirmation: true,
+        confirmationLabel: "Confirmo que revise el motivo y deseo archivar este registro.",
+      });
+      const selection = result?.confirmed ? result.reason : null;
+      if (!selection || !selection.trim()) {
         showToast("Debes indicar un motivo para archivar.", "warning");
         return null;
       }
-      return `Otro: ${other.trim()}`;
-    }
-    return normalized;
-  };
+      return selection.trim();
+    },
+    [ARCHIVE_WARNING, showToast]
+  );
 
   const isOverRetention = (createdAt?: any) => {
     if (!createdAt) return false;
@@ -111,16 +124,40 @@ export function useCrudOperations(
       const ref = doc(db, "patients", id);
       const existingSnap = await getDoc(ref);
 
+      const previousVersion = Number(existingSnap.data()?.version || 0);
+      const nextVersion = previousVersion + 1;
+      const persistedPatient = sanitizeForFirestore({
+        ...payload,
+        id,
+        ownerUid,
+        accessControl,
+        version: nextVersion,
+        updatedByUid: authUser?.uid ?? currentUid,
+        updatedByName: authUser?.displayName ?? "Usuario",
+        lastUpdated: new Date().toISOString(),
+        createdAt: payload.createdAt ?? serverTimestamp(),
+      });
+
+      await setDoc(ref, persistedPatient, { merge: true });
+
       await setDoc(
-        ref,
-        sanitizeForFirestore({
-          ...payload,
-          id,
-          ownerUid,
-          accessControl,
-          lastUpdated: new Date().toISOString(),
-          createdAt: payload.createdAt ?? serverTimestamp(),
-        }),
+        doc(db, "patients", id, "versions", generateId()),
+        {
+          ...buildClinicalVersionRecord({
+            entityType: "patient",
+            entityId: id,
+            patientId: id,
+            centerId: activeCenterId,
+            version: nextVersion,
+            actorUid: authUser?.uid ?? currentUid,
+            actorName: authUser?.displayName ?? "Usuario",
+            summary: existingSnap.exists()
+              ? "Actualización de ficha clínica"
+              : "Creación de ficha clínica",
+            snapshot: persistedPatient,
+          }),
+          createdAt: serverTimestamp(),
+        },
         { merge: true }
       );
 
@@ -139,7 +176,7 @@ export function useCrudOperations(
           : "Creación de ficha clínica.",
       });
     },
-    [activeCenterId, updateAuditLog]
+    [activeCenterId, authUser?.displayName, authUser?.uid, updateAuditLog]
   );
 
   const deletePatient = useCallback(
@@ -166,7 +203,7 @@ export function useCrudOperations(
         return;
       }
 
-      const reason = requestDeleteReason("este paciente");
+      const reason = await requestDeleteReasonDialog("este paciente");
       if (!reason) return;
 
       await updateDoc(doc(db, "patients", id), {
@@ -174,6 +211,7 @@ export function useCrudOperations(
         deletedAt: serverTimestamp(),
         deletedBy: authUser?.uid ?? "unknown",
         deleteReason: reason,
+        retentionUntil: buildRetentionUntil(),
       });
 
       await updateAuditLog({
@@ -190,7 +228,7 @@ export function useCrudOperations(
         metadata: { deleteReason: reason },
       });
     },
-    [activeCenterId, requestDeleteReason, updateAuditLog]
+    [activeCenterId, requestDeleteReasonDialog, updateAuditLog]
   );
 
   const updateStaff = useCallback(
@@ -226,7 +264,7 @@ export function useCrudOperations(
   const deleteStaff = useCallback(
     async (id: string) => {
       if (!requireCenter("eliminar profesionales")) return;
-      const reason = requestDeleteReason("este profesional");
+      const reason = await requestDeleteReasonDialog("este profesional");
       if (!reason) return;
 
       const deletePayload = {
@@ -255,7 +293,7 @@ export function useCrudOperations(
         metadata: { deleteReason: reason },
       });
     },
-    [activeCenterId, requireCenter, requestDeleteReason, updateAuditLog, authUser]
+    [activeCenterId, requireCenter, requestDeleteReasonDialog, updateAuditLog, authUser]
   );
 
   const updateAppointment = useCallback(
@@ -317,13 +355,14 @@ export function useCrudOperations(
         });
         return;
       }
-      const reason = reasonOverride ?? requestDeleteReason("esta cita");
+      const reason = reasonOverride ?? (await requestDeleteReasonDialog("esta cita"));
       if (!reason) return;
       await updateDoc(doc(db, "centers", activeCenterId, "appointments", id), {
         active: false,
         deletedAt: serverTimestamp(),
         deletedBy: authUser?.uid ?? "unknown",
         deleteReason: reason,
+        retentionUntil: buildRetentionUntil(),
       });
       await updateAuditLog({
         id: generateId(),
@@ -339,7 +378,7 @@ export function useCrudOperations(
         metadata: { deleteReason: reason },
       });
     },
-    [activeCenterId, requireCenter, requestDeleteReason, updateAuditLog]
+    [activeCenterId, requireCenter, requestDeleteReasonDialog, updateAuditLog]
   );
 
   const syncAppointments = useCallback(
@@ -411,6 +450,7 @@ export function useCrudOperations(
             deletedAt: serverTimestamp(),
             deletedBy: authUser?.uid ?? "unknown",
             deleteReason: "Sincronización de bloques (cierre masivo)",
+            retentionUntil: buildRetentionUntil(),
           });
         }
 

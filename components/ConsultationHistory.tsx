@@ -14,6 +14,7 @@ import {
 import { auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { getCategoryLabel } from "../utils/examOrderCatalog";
+import { rootPatientConsultationPath } from "../utils/clinicalPaths";
 
 interface ConsultationHistoryProps {
   consultations: Consultation[];
@@ -73,7 +74,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
       logAccessSafe(logAccess, {
         centerId,
         resourceType: "consultation",
-        resourcePath: `/centers/${centerId}/patients/${patientId}/consultations/${consultation.id}`,
+        resourcePath: rootPatientConsultationPath(patientId, consultation.id),
         patientId,
         actorUid: auth.currentUser?.uid ?? undefined,
       });

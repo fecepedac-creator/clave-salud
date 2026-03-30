@@ -1,30 +1,16 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { db, auth } from "../firebase";
-import {
-  collection,
-  DocumentData,
-  limit,
-  onSnapshot,
-  orderBy,
-  QuerySnapshot,
-  query,
-  where,
-  or,
-} from "firebase/firestore";
+import { useEffect, useCallback, useMemo } from "react";
 import { User } from "firebase/auth";
 import {
-  Patient,
   Doctor,
-  Appointment,
-  AuditLogEntry,
-  Preadmission,
   MedicalCenter,
   UserProfile,
   AnyRole,
-  MedicalService,
 } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
+import { resolveActiveState } from "../utils/activeState";
+import { usePatientsSync } from "./firestoreSync/usePatientsSync";
+import { useCenterDataSync } from "./firestoreSync/useCenterDataSync";
 
 export function useFirestoreSync(
   activeCenterId: string,
@@ -35,12 +21,6 @@ export function useFirestoreSync(
   currentUser?: UserProfile | null, // Corrected from any
   portfolioMode: "global" | "center" = "global"
 ) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [preadmissions, setPreadmissions] = useState<Preadmission[]>([]);
-  const [services, setServices] = useState<MedicalService[]>([]);
   const normalizeClinicalRole = useCallback((data: Record<string, unknown>): string => {
     const clinicalRole = String(
       (data.clinicalRole as string) ?? (data.professionalRole as string) ?? ""
@@ -76,7 +56,7 @@ export function useFirestoreSync(
       const clinicalRole = normalizeClinicalRole(payload);
       const roleStr = clinicalRole || (payload.role as string)?.trim() || "MEDICO";
 
-      const isActive = payload.active !== false && payload.activo !== false;
+      const isActive = resolveActiveState(payload as any);
       const isVisible =
         payload.visibleInBooking === true || (payload.visibleInBooking as any) === "true";
 
@@ -118,203 +98,55 @@ export function useFirestoreSync(
     );
   }, [isAdmin, currentUser, isSuperAdminClaim]);
 
-  // 1. Reset / Demo Mode Effect
   useEffect(() => {
     if (demoMode) {
-      setPatients(MOCK_PATIENTS);
-      setDoctors(INITIAL_DOCTORS);
-      setAppointments([]);
-      setAuditLogs([]);
-      setPreadmissions([]);
       return;
-    }
-
-    if (!activeCenterId && portfolioMode === "center") {
-      setPatients([]);
-      setDoctors([]);
-      setAppointments([]);
-      setAuditLogs([]);
-      setPreadmissions([]);
-      setServices([]);
     }
   }, [demoMode, activeCenterId, portfolioMode]);
+  const patientSync = usePatientsSync({
+    activeCenterId,
+    authUser,
+    demoMode,
+    portfolioMode,
+    isAdmin,
+  });
 
-  // 2. Centers Effect removed - handled by useCenters centrally
+  const centerDataSync = useCenterDataSync({
+    activeCenterId,
+    demoMode,
+    isAdminOrStaff,
+    mapStaffToDoctor,
+  });
 
-  // 3. Patients Effect
-  useEffect(() => {
-    if (demoMode) return;
-    const currentUid = authUser?.uid;
-    if (!currentUid) {
-      setPatients([]);
-      return;
-    }
-
-    if (!activeCenterId && portfolioMode === "center") {
-      return;
-    }
-
-    let patientsQuery;
-    if (isAdmin && activeCenterId && portfolioMode === "center") {
-      // Admin View: Everything in this center
-      patientsQuery = query(
-        collection(db, "patients"),
-        where("accessControl.centerIds", "array-contains", activeCenterId),
-        orderBy("lastUpdated", "desc"),
-        limit(400)
-      );
-    } else if (portfolioMode === "global") {
-      // Professional View: Their global carter (all centers)
-      patientsQuery = query(
-        collection(db, "patients"),
-        where("accessControl.allowedUids", "array-contains", currentUid),
-        orderBy("lastUpdated", "desc"),
-        limit(400)
-      );
-    } else {
-      // Professional View: Their patients in THIS center
-      patientsQuery = query(
-        collection(db, "patients"),
-        where("accessControl.allowedUids", "array-contains", currentUid),
-        where("accessControl.centerIds", "array-contains", activeCenterId),
-        orderBy("lastUpdated", "desc"),
-        limit(400)
-      );
-    }
-
-    const unsub = onSnapshot(
-      patientsQuery,
-      (snap: QuerySnapshot<DocumentData>) => {
-        const pts = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
-        setPatients(pts);
-      },
-      () => setPatients([])
-    );
-
-    return () => unsub();
-  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdmin]);
-
-  // 4. Center Data Effect (Staff, Appointments, Logs, Preadmissions)
-  useEffect(() => {
-    if (demoMode || !activeCenterId) return;
-
-    const doctorsCollection = isAdminOrStaff
-      ? collection(db, "centers", activeCenterId, "staff")
-      : collection(db, "centers", activeCenterId, "publicStaff");
-
-    const unsubDoctors = onSnapshot(
-      doctorsCollection,
-      (snap) => {
-        const items = snap.docs.map((d) => mapStaffToDoctor(d.id, d.data() as any));
-        const filtered = auth.currentUser
-          ? items.filter((doctor) => doctor.active !== false)
-          : items.filter((doctor) => doctor.active !== false && doctor.visibleInBooking === true);
-
-        setDoctors(filtered);
-      },
-      (error) => {
-        console.error("[useFirestoreSync] doctors error:", error);
-        setDoctors([]);
-      }
-    );
-
-    const apptCollection = collection(db, "centers", activeCenterId, "appointments");
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    const startDateStr = startDate.toISOString().split("T")[0];
-
-    // We fetch the collection without complex queries to avoid index dependencies (Legacy Orientation)
-    const apptQuery = auth.currentUser
-      ? query(apptCollection, limit(1000))
-      : query(apptCollection, where("status", "==", "available"), limit(500));
-
-    const unsubAppts = onSnapshot(
-      apptQuery,
-      (snap) => {
-        const raw = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[];
-        // Filter and Sort client-side to be 100% robust against missing Firestore indexes
-        const filtered = raw
-          .filter((a) => a.active !== false)
-          .filter((a) => a.date >= startDateStr) // Keep it relevant to current/future
-          .sort((a, b) => {
-            const dateCompare = (a.date || "").localeCompare(b.date || "");
-            if (dateCompare !== 0) return dateCompare;
-            return (a.time || "").localeCompare(b.time || "");
-          });
-        setAppointments(filtered);
-      },
-      (error) => {
-        console.error("appointments snapshot error", error);
-        setAppointments([]);
-      }
-    );
-
-    const logsCollection = collection(db, "centers", activeCenterId, "auditLogs");
-    const logsQuery = query(logsCollection, orderBy("timestamp", "desc"), limit(50));
-    const fallbackLogsQuery = query(logsCollection, orderBy("createdAt", "desc"), limit(50));
-
-    let unsubLogs: () => void;
-    let usingFallback = false;
-
-    const handleLogsSnapshot = (snap: QuerySnapshot<DocumentData>) =>
-      setAuditLogs(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLogEntry[]);
-
-    const unsubPrimaryLogs = onSnapshot(logsQuery, handleLogsSnapshot, () => {
-      if (usingFallback) return;
-      usingFallback = true;
-      unsubLogs = onSnapshot(fallbackLogsQuery, handleLogsSnapshot, () => setAuditLogs([]));
-    });
-
-    unsubLogs = unsubPrimaryLogs;
-
-    const unsubPreadmissions = onSnapshot(
-      collection(db, "centers", activeCenterId, "preadmissions"),
-      (snap) =>
-        setPreadmissions(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Preadmission[]
-        ),
-      () => setPreadmissions([])
-    );
-
-    const unsubServices = onSnapshot(
-      query(collection(db, "centers", activeCenterId, "services"), where("active", "==", true)),
-      (snap) => {
-        const rawServices = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        })) as MedicalService[];
-        const filteredServices = auth.currentUser
-          ? rawServices
-          : rawServices.filter((s) => s.isAgendable !== false);
-        setServices(filteredServices);
-      },
-      (error) => {
-        console.error("services snapshot error", error);
-        setServices([]);
-      }
-    );
-
-    return () => {
-      unsubDoctors();
-      unsubAppts();
-      unsubLogs();
-      unsubPreadmissions();
-      unsubServices();
-    };
-  }, [demoMode, activeCenterId, isAdminOrStaff, mapStaffToDoctor]);
+  const patients = demoMode ? MOCK_PATIENTS : patientSync.patients;
+  const doctors = demoMode ? INITIAL_DOCTORS : centerDataSync.doctors;
+  const appointments = demoMode ? [] : centerDataSync.appointments;
+  const auditLogs = demoMode ? [] : centerDataSync.auditLogs;
+  const preadmissions = demoMode ? [] : centerDataSync.preadmissions;
+  const services = demoMode ? [] : centerDataSync.services;
 
   return {
     patients,
-    setPatients,
+    setPatients: patientSync.setPatients,
+    isLoadingPatients: patientSync.isLoadingPatients,
+    patientsError: patientSync.patientsError,
+    reloadPatients: patientSync.reloadPatients,
     doctors,
-    setDoctors,
+    setDoctors: centerDataSync.setDoctors,
+    isLoadingDoctors: centerDataSync.isLoadingDoctors,
+    doctorsError: centerDataSync.doctorsError,
     appointments,
-    setAppointments,
+    setAppointments: centerDataSync.setAppointments,
+    isLoadingAppointments: centerDataSync.isLoadingAppointments,
+    appointmentsError: centerDataSync.appointmentsError,
     auditLogs,
-    setAuditLogs,
+    setAuditLogs: centerDataSync.setAuditLogs,
     preadmissions,
-    setPreadmissions,
+    setPreadmissions: centerDataSync.setPreadmissions,
     services,
-    setServices,
+    setServices: centerDataSync.setServices,
+    isLoadingServices: centerDataSync.isLoadingServices,
+    servicesError: centerDataSync.servicesError,
+    reloadCenterData: centerDataSync.reloadCenterData,
   };
 }

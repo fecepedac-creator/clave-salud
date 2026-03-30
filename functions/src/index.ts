@@ -7,21 +7,40 @@ if (!admin.apps.length) {
 
 import * as crypto from "crypto";
 import { sendEmail } from "./email";
-import { AuditLogData } from "./types";
 import {
   UpsertCenterInputSchema,
   DecommissionCenterInputSchema,
   UpdateWhatsappConfigInputSchema,
   AcceptInviteInputSchema,
   CreateInviteInputSchema,
+  BookPublicAppointmentInputSchema,
+  IssuePublicAppointmentChallengeInputSchema,
+  ListAppointmentsInputSchema,
   CancelAppointmentInputSchema,
   SetSuperAdminInputSchema,
   LogAuditInputSchema,
   GenerateMarketingPosterInputSchema,
   LinkPatientInputSchema,
+  AssessPatientMigrationConsistencyInputSchema,
   CreateNotificationInputSchema,
 } from "./schemas";
 import { validateOrThrow } from "./validation";
+import {
+  PUBLIC_APPOINTMENT_CHALLENGE_TTL_MS,
+  buildPublicAppointmentSubjectHash,
+  hashPublicAppointmentChallengeToken,
+  normalizePublicAppointmentPhone,
+  type PublicAppointmentAction,
+  verifyPublicAppointmentChallengeToken,
+} from "./publicAppointmentSecurity";
+import { comparePatientConsistency } from "./patientMigrationConsistency";
+import {
+  appendAuditLogInTransaction,
+  buildActorFromContext,
+  canonicalizeActiveFields,
+  resolveActiveFlag,
+  writeAuditLog,
+} from "./immutableAudit";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
@@ -34,6 +53,12 @@ const BACKUP_PREFIX = process.env.BACKUP_PREFIX || "backups/firestore";
 const METADATA_TOKEN_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
 const METADATA_FLAVOR_HEADER = "Metadata-Flavor";
+const PUBLIC_APPOINTMENT_RATE_LIMITS = {
+  challenge: { maxAttempts: 12, windowMinutes: 10 },
+  lookup: { maxAttempts: 8, windowMinutes: 10 },
+  cancel: { maxAttempts: 5, windowMinutes: 10 },
+  book: { maxAttempts: 5, windowMinutes: 10 },
+} as const;
 
 function getProjectId(): string {
   return (
@@ -45,6 +70,9 @@ type CallableContext = {
   auth?: {
     uid?: string;
     token?: Record<string, any>;
+  } | null;
+  app?: {
+    appId?: string;
   } | null;
 };
 
@@ -137,13 +165,6 @@ function resolveVisibleInBooking(data: Record<string, any> | undefined): boolean
   return data.visibleInBooking === true;
 }
 
-function resolveActive(data: Record<string, any> | undefined): boolean {
-  if (!data) return true;
-  if (typeof data.active === "boolean") return data.active;
-  if (typeof data.activo === "boolean") return data.activo;
-  return true;
-}
-
 function buildPublicStaffData(
   staffUid: string,
   centerId: string,
@@ -170,7 +191,7 @@ function buildPublicStaffData(
     photoUrl: normalizeString(staffData?.photoUrl ?? ""),
     visibleInBooking: resolveVisibleInBooking(staffData),
     agendaConfig,
-    active: resolveActive(staffData),
+    active: resolveActiveFlag(staffData),
     updatedAt: serverTimestamp(),
     createdAt: createdAt ?? serverTimestamp(),
   };
@@ -195,7 +216,7 @@ function isSuperAdmin(context: CallableContext): boolean {
 async function isCenterAdminForCenter(uid: string, centerId: string): Promise<boolean> {
   const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
   if (!staffSnap.exists) return false;
-  const active = staffSnap.get("active") === true || staffSnap.get("activo") === true;
+  const active = resolveActiveFlag(staffSnap.data() as Record<string, any> | undefined);
   if (!active) return false;
   const role = String(staffSnap.get("accessRole") || staffSnap.get("role") || "").trim();
   return role === "center_admin";
@@ -206,18 +227,51 @@ function randToken(bytes = 24): string {
 }
 
 function formatChileanPhone(raw: string): string {
-  const digits = String(raw || "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("56")) {
-    return `+${digits}`;
+  return normalizePublicAppointmentPhone(raw);
+}
+
+function normalizeRut(value: string): string {
+  return String(value || "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+function formatRUT(value: string): string {
+  const cleanRut = normalizeRut(value);
+  if (cleanRut.length < 2) return cleanRut;
+
+  const body = cleanRut.slice(0, -1);
+  const dv = cleanRut.slice(-1).toUpperCase();
+  const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formattedBody}-${dv}`;
+}
+
+function getPatientIdByRut(rut: string): string {
+  const clean = normalizeRut(rut);
+  return clean ? `p_${clean}` : "";
+}
+
+function validateRUT(rut: string): boolean {
+  const cleanRut = normalizeRut(rut);
+  if (cleanRut.length < 2) return false;
+
+  const body = cleanRut.slice(0, -1);
+  const dv = cleanRut.slice(-1).toUpperCase();
+  if (!/^\d+$/.test(body)) return false;
+
+  let suma = 0;
+  let multiplo = 2;
+
+  for (let i = 1; i <= body.length; i++) {
+    suma += multiplo * parseInt(body.charAt(body.length - i), 10);
+    multiplo = multiplo < 7 ? multiplo + 1 : 2;
   }
-  if (digits.startsWith("9") && digits.length >= 9) {
-    return `+56${digits}`;
-  }
-  if (digits.length === 8) {
-    return `+569${digits}`;
-  }
-  return `+56${digits}`;
+
+  const dvEsperado = 11 - (suma % 11);
+  const dvCalculado =
+    dvEsperado === 11 ? "0" : dvEsperado === 10 ? "K" : dvEsperado.toString();
+
+  return dv === dvCalculado;
 }
 
 function lowerEmailFromContext(context: CallableContext): string {
@@ -225,6 +279,166 @@ function lowerEmailFromContext(context: CallableContext): string {
   return String(raw || "")
     .trim()
     .toLowerCase();
+}
+
+async function assertCenterAvailableForPublicOperations(centerId: string) {
+  const centerSnap = await db.collection("centers").doc(centerId).get();
+  if (!centerSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "El centro no existe.");
+  }
+  const centerData = centerSnap.data() as Record<string, any> | undefined;
+  if (!resolveActiveFlag(centerData)) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "El centro no está disponible para operaciones públicas."
+    );
+  }
+}
+
+function shouldRequirePublicAppointmentAppCheck(): boolean {
+  return String(process.env.PUBLIC_APPOINTMENT_REQUIRE_APP_CHECK || "").trim() === "true";
+}
+
+function assertPublicAppointmentAppCheck(context: CallableContext) {
+  if (!shouldRequirePublicAppointmentAppCheck()) return;
+  if (context.app?.appId) return;
+  throw new functions.https.HttpsError(
+    "failed-precondition",
+    "La verificacion de App Check es obligatoria para esta operacion."
+  );
+}
+
+function buildPublicAppointmentRateLimitKey(
+  action: keyof typeof PUBLIC_APPOINTMENT_RATE_LIMITS,
+  centerId: string,
+  rut: string,
+  phone: string
+) {
+  return buildPublicAppointmentSubjectHash(action as PublicAppointmentAction, centerId, rut, phone);
+}
+
+async function assertPublicAppointmentRateLimit(
+  action: keyof typeof PUBLIC_APPOINTMENT_RATE_LIMITS,
+  centerId: string,
+  rut: string,
+  phone: string
+) {
+  const { maxAttempts, windowMinutes } = PUBLIC_APPOINTMENT_RATE_LIMITS[action];
+  const key = buildPublicAppointmentRateLimitKey(action, centerId, rut, phone);
+  const ref = db.collection("_publicRateLimits").doc(key);
+  const now = admin.firestore.Timestamp.now();
+  const windowMs = windowMinutes * 60 * 1000;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() as Record<string, any> | undefined;
+    const windowStartedAt = data?.windowStartedAt as admin.firestore.Timestamp | undefined;
+    const attempts = typeof data?.attempts === "number" ? data.attempts : 0;
+    const blockUntil = data?.blockUntil as admin.firestore.Timestamp | undefined;
+
+    if (blockUntil && blockUntil.toMillis() > now.toMillis()) {
+      throw new functions.https.HttpsError(
+        "resource-exhausted",
+        "Demasiados intentos. Intenta nuevamente en unos minutos."
+      );
+    }
+
+    const windowExpired =
+      !windowStartedAt || now.toMillis() - windowStartedAt.toMillis() >= windowMs;
+
+    if (windowExpired) {
+      tx.set(
+        ref,
+        {
+          action,
+          centerId,
+          attempts: 1,
+          windowStartedAt: now,
+          lastAttemptAt: now,
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    if (attempts >= maxAttempts) {
+      const nextBlockUntil = admin.firestore.Timestamp.fromMillis(now.toMillis() + windowMs);
+      tx.set(
+        ref,
+        {
+          action,
+          centerId,
+          attempts: attempts + 1,
+          lastAttemptAt: now,
+          blockUntil: nextBlockUntil,
+        },
+        { merge: true }
+      );
+      throw new functions.https.HttpsError(
+        "resource-exhausted",
+        "Demasiados intentos. Intenta nuevamente en unos minutos."
+      );
+    }
+
+    tx.set(
+      ref,
+      {
+        action,
+        centerId,
+        attempts: attempts + 1,
+        lastAttemptAt: now,
+      },
+      { merge: true }
+    );
+  });
+}
+
+async function consumePublicAppointmentChallenge(params: {
+  centerId: string;
+  action: PublicAppointmentAction;
+  rut: string;
+  phone: string;
+  challengeId: string;
+  challengeToken: string;
+}) {
+  const challengeRef = db.collection("_publicAppointmentChallenges").doc(params.challengeId);
+  const subjectHash = buildPublicAppointmentSubjectHash(
+    params.action,
+    params.centerId,
+    params.rut,
+    params.phone
+  );
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(challengeRef);
+    if (!snap.exists) {
+      throw new functions.https.HttpsError("permission-denied", "Challenge no valido.");
+    }
+
+    const data = snap.data() as Record<string, any> | undefined;
+    const expiresAt = data?.expiresAt as admin.firestore.Timestamp | undefined;
+    const usedAt = data?.usedAt as admin.firestore.Timestamp | undefined;
+
+    if (!data || data.centerId !== params.centerId || data.action !== params.action) {
+      throw new functions.https.HttpsError("permission-denied", "Challenge fuera de contexto.");
+    }
+    if (data.subjectHash !== subjectHash) {
+      throw new functions.https.HttpsError("permission-denied", "Challenge no corresponde a los datos enviados.");
+    }
+    if (!verifyPublicAppointmentChallengeToken(params.challengeToken, data.challengeHash)) {
+      throw new functions.https.HttpsError("permission-denied", "Challenge no valido.");
+    }
+    if (usedAt) {
+      throw new functions.https.HttpsError("permission-denied", "Challenge ya utilizado.");
+    }
+    if (!expiresAt || expiresAt.toMillis() <= Date.now()) {
+      throw new functions.https.HttpsError("deadline-exceeded", "Challenge expirado.");
+    }
+
+    tx.update(challengeRef, {
+      usedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
 }
 
 type PosterFormat = "feed" | "story" | "whatsapp" | "internal";
@@ -598,23 +812,27 @@ export const upsertCenter = (functions.https.onCall as any)(
       });
     }
 
-    if (isActiveChanged) {
-      await centerRef.collection("auditLogs").add({
-        type: "ACTION",
-        action: "CENTER_STATUS_CHANGED",
-        entityType: "centerSettings",
-        entityId: centerId,
-        actorUid: context.auth?.uid ?? "unknown",
-        actorEmail: lowerEmailFromContext(context) || "unknown",
-        actorName: context.auth?.token?.name || context.auth?.token?.email || "Superadmin",
-        actorRole: "super_admin",
-        resourceType: "patient",
-        resourcePath: `/centers/${centerId}`,
-        timestamp: serverTimestamp(),
-        details: auditReason || null,
-        metadata: { from: isActivePrev ?? null, to: isActiveNext ?? null },
-      });
-    }
+      if (isActiveChanged) {
+        const actor = buildActorFromContext(context, {
+          uid: "unknown",
+          email: "unknown",
+          name: "Superadmin",
+          role: "super_admin",
+        });
+        await writeAuditLog({
+          centerId,
+          type: "ACTION",
+          action: "CENTER_STATUS_CHANGED",
+          entityType: "centerSettings",
+          entityId: centerId,
+          ...actor,
+          actorRole: "super_admin",
+          resourceType: "centerSettings",
+          resourcePath: `/centers/${centerId}`,
+          details: auditReason || null,
+          metadata: { from: isActivePrev ?? null, to: isActiveNext ?? null },
+        });
+      }
 
     return { ok: true, centerId };
   }
@@ -631,22 +849,31 @@ export const deleteCenter = (functions.https.onCall as any)(
     const centerId = validated.centerId;
     const reason = validated.reason;
 
-    await db.collection("auditLogs").add({
-      action: "decommission_center",
-      actorUid: context.auth?.uid ?? "unknown",
-      actorEmail: lowerEmailFromContext(context) || null,
-      targetUid: centerId,
-      reason: reason || null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      await db.collection("centers").doc(centerId).update({
+        active: false,
+        isActive: false,
+        decommissionedAt: admin.firestore.FieldValue.serverTimestamp(),
+        decommissionReason: reason || "No especificado",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-    await db.collection("centers").doc(centerId).update({
-      active: false,
-      isActive: false,
-      decommissionedAt: admin.firestore.FieldValue.serverTimestamp(),
-      decommissionReason: reason || "No especificado",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      const actor = buildActorFromContext(context, {
+        uid: "unknown",
+        role: "super_admin",
+      });
+      await writeAuditLog({
+        centerId,
+        type: "ACTION",
+        action: "DECOMMISSION_CENTER",
+        entityType: "centerSettings",
+        entityId: centerId,
+        ...actor,
+        actorRole: "super_admin",
+        resourceType: "centerSettings",
+        resourcePath: `/centers/${centerId}`,
+        details: reason || null,
+        metadata: { decommissioned: true },
+      });
 
     return { ok: true, centerId };
   }
@@ -679,13 +906,18 @@ export const setSuperAdmin = (functions.https.onCall as any)(
       super_admin: action === "set",
     });
 
-    await db.collection("auditLogs").add({
-      action: "set_super_admin",
-      actorUid: callerUid,
-      actorEmail: callerEmail || null,
-      targetUid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      await writeAuditLog({
+        type: "ACTION",
+        action: action === "set" ? "SET_SUPER_ADMIN" : "UNSET_SUPER_ADMIN",
+        entityType: "user",
+        entityId: targetUid,
+        actorUid: callerUid,
+        actorEmail: callerEmail || null,
+        actorRole: "super_admin",
+        resourceType: "user",
+        resourcePath: `/users/${targetUid}`,
+        details: `Super admin claim ${action}.`,
+      });
 
     return { ok: true, targetUid };
   }
@@ -743,14 +975,14 @@ export const acceptInvite = (functions.https.onCall as any)(
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
 
     await db.runTransaction(async (tx) => {
-      tx.set(
-        userRef,
-        {
-          uid,
-          email: emailLower,
-          activo: true,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          centros: admin.firestore.FieldValue.arrayUnion(centerId),
+        tx.set(
+          userRef,
+          {
+            uid,
+            email: emailLower,
+            ...canonicalizeActiveFields({ active: true }),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            centros: admin.firestore.FieldValue.arrayUnion(centerId),
           centers: admin.firestore.FieldValue.arrayUnion(centerId),
           roles: admin.firestore.FieldValue.arrayUnion(role),
         },
@@ -759,17 +991,16 @@ export const acceptInvite = (functions.https.onCall as any)(
 
       tx.set(
         staffRef,
-        {
-          uid,
-          emailLower,
-          role,
-          accessRole: role,
-          roles: [role],
-          clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
-          active: true,
-          activo: true,
-          visibleInBooking: profileData.visibleInBooking === true,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          {
+            uid,
+            emailLower,
+            role,
+            accessRole: role,
+            roles: [role],
+            clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+            ...canonicalizeActiveFields({ active: true }),
+            visibleInBooking: profileData.visibleInBooking === true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           inviteToken: token,
           // Include profile data from invite
@@ -797,15 +1028,23 @@ export const acceptInvite = (functions.https.onCall as any)(
 );
 
 export const listPatientAppointments = (functions.https.onCall as any)(
-  async (data: any, _context: CallableContext) => {
-    const centerId = String(data?.centerId || "").trim();
-    const patientRut = String(data?.rut || "").trim();
-    const phone = formatChileanPhone(String(data?.phone || ""));
+  async (data: any, context: CallableContext) => {
+    assertPublicAppointmentAppCheck(context);
+    const validated = validateOrThrow(ListAppointmentsInputSchema, data);
+    const centerId = validated.centerId;
+    const patientRut = validated.rut;
+    const phone = formatChileanPhone(validated.phone);
 
-    if (!centerId)
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
-    if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+    await assertCenterAvailableForPublicOperations(centerId);
+    await assertPublicAppointmentRateLimit("lookup", centerId, patientRut, phone);
+    await consumePublicAppointmentChallenge({
+      centerId,
+      action: "lookup",
+      rut: patientRut,
+      phone,
+      challengeId: validated.challengeId,
+      challengeToken: validated.challengeToken,
+    });
 
     const snap = await db
       .collection("centers")
@@ -826,12 +1065,24 @@ export const listPatientAppointments = (functions.https.onCall as any)(
 );
 
 export const cancelPatientAppointment = (functions.https.onCall as any)(
-  async (data: any, _context: CallableContext) => {
+  async (data: any, context: CallableContext) => {
+    assertPublicAppointmentAppCheck(context);
     const validated = validateOrThrow(CancelAppointmentInputSchema, data);
     const centerId = validated.centerId;
     const appointmentId = validated.appointmentId;
     const patientRut = validated.rut;
     const phone = formatChileanPhone(validated.phone);
+
+    await assertCenterAvailableForPublicOperations(centerId);
+    await assertPublicAppointmentRateLimit("cancel", centerId, patientRut, phone);
+    await consumePublicAppointmentChallenge({
+      centerId,
+      action: "cancel",
+      rut: patientRut,
+      phone,
+      challengeId: validated.challengeId,
+      challengeToken: validated.challengeToken,
+    });
 
     const ref = db
       .collection("centers")
@@ -865,6 +1116,199 @@ export const cancelPatientAppointment = (functions.https.onCall as any)(
     });
 
     return { ok: true };
+  }
+);
+
+export const bookPublicAppointment = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    assertPublicAppointmentAppCheck(context);
+    const validated = validateOrThrow(BookPublicAppointmentInputSchema, data);
+    const centerId = validated.centerId;
+    const appointmentId = validated.appointmentId;
+    const doctorId = validated.doctorId;
+    const patientName = validated.patientName.trim();
+    const normalizedRut = normalizeRut(validated.rut);
+    const formattedRut = formatRUT(normalizedRut);
+    const phone = formatChileanPhone(validated.phone);
+    const email = String(validated.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!validateRUT(normalizedRut)) {
+      throw new functions.https.HttpsError("invalid-argument", "RUT inválido.");
+    }
+
+    await assertCenterAvailableForPublicOperations(centerId);
+    await assertPublicAppointmentRateLimit("book", centerId, formattedRut, phone);
+    await consumePublicAppointmentChallenge({
+      centerId,
+      action: "book",
+      rut: formattedRut,
+      phone,
+      challengeId: validated.challengeId,
+      challengeToken: validated.challengeToken,
+    });
+
+    const patientId = getPatientIdByRut(normalizedRut);
+    const appointmentRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .doc(appointmentId);
+    const patientRef = db.collection("patients").doc(patientId);
+
+    const result = await db.runTransaction(async (tx) => {
+      const appointmentSnap = await tx.get(appointmentRef);
+      if (!appointmentSnap.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "El horario ya no existe. El profesional puede haberlo cerrado recientemente."
+        );
+      }
+
+      const appointmentData = appointmentSnap.data() as Record<string, any>;
+      if (appointmentData.status !== "available") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Este horario acaba de ser reservado por otro paciente. Por favor, selecciona otro bloque."
+        );
+      }
+      if (appointmentData.centerId !== centerId) {
+        throw new functions.https.HttpsError("permission-denied", "El horario no pertenece al centro.");
+      }
+      if (
+        appointmentData.doctorId !== doctorId &&
+        String(appointmentData.doctorUid || "") !== doctorId
+      ) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "El horario ya no coincide con el profesional seleccionado."
+        );
+      }
+      if (appointmentData.date !== validated.date) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "La fecha seleccionada ya no coincide con el horario disponible."
+        );
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      if (String(appointmentData.date || "") < today) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "No se puede reservar una hora en una fecha pasada."
+        );
+      }
+
+      tx.update(appointmentRef, {
+        status: "booked",
+        patientName,
+        patientRut: formattedRut,
+        patientId,
+        patientPhone: phone,
+        patientEmail: email || null,
+        serviceId: validated.serviceId || null,
+        serviceName: validated.serviceName || null,
+        bookedAt: admin.firestore.FieldValue.serverTimestamp(),
+        bookedVia: "patient_portal_callable",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      const patientSnap = await tx.get(patientRef);
+      if (!patientSnap.exists) {
+        const ownerUid = String(appointmentData.doctorUid || appointmentData.doctorId || doctorId);
+        tx.set(patientRef, {
+          id: patientId,
+          ownerUid,
+          accessControl: {
+            allowedUids: ownerUid ? [ownerUid] : [],
+            centerIds: [centerId],
+          },
+          centerId,
+          rut: formattedRut,
+          fullName: patientName,
+          birthDate: "",
+          gender: "Otro",
+          phone,
+          email: email || undefined,
+          medicalHistory: [],
+          surgicalHistory: [],
+          smokingStatus: "No fumador",
+          alcoholStatus: "No consumo",
+          medications: [],
+          allergies: [],
+          consultations: [],
+          attachments: [],
+          lastUpdated: new Date().toISOString(),
+          active: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        tx.update(patientRef, {
+          centerId,
+          phone,
+          email: email || patientSnap.get("email") || null,
+          fullName: patientName,
+          active: true,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          "accessControl.centerIds": admin.firestore.FieldValue.arrayUnion(centerId),
+        });
+      }
+
+      return {
+        id: appointmentId,
+        ...(appointmentData as any),
+        status: "booked",
+        patientName,
+        patientRut: formattedRut,
+        patientId,
+        patientPhone: phone,
+        patientEmail: email || undefined,
+        serviceId: validated.serviceId || undefined,
+        serviceName: validated.serviceName || undefined,
+        bookedVia: "patient_portal_callable",
+        bookedAt: new Date().toISOString(),
+      };
+    });
+
+    return { ok: true, appointment: result };
+  }
+);
+
+export const issuePublicAppointmentChallenge = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    assertPublicAppointmentAppCheck(context);
+    const validated = validateOrThrow(IssuePublicAppointmentChallengeInputSchema, data);
+    const centerId = validated.centerId;
+    const action = validated.action;
+    const rut = validated.rut;
+    const phone = formatChileanPhone(validated.phone);
+
+    await assertCenterAvailableForPublicOperations(centerId);
+    await assertPublicAppointmentRateLimit("challenge", centerId, rut, phone);
+
+    const challengeId = randToken(16);
+    const challengeToken = randToken(24);
+    const now = Date.now();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(now + PUBLIC_APPOINTMENT_CHALLENGE_TTL_MS);
+
+    await db.collection("_publicAppointmentChallenges").doc(challengeId).set({
+      id: challengeId,
+      centerId,
+      action,
+      subjectHash: buildPublicAppointmentSubjectHash(action, centerId, rut, phone),
+      challengeHash: hashPublicAppointmentChallengeToken(challengeToken),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt,
+      usedAt: null,
+      appId: context.app?.appId ?? null,
+    });
+
+    return {
+      challengeId,
+      challengeToken,
+      expiresAt: expiresAt.toMillis(),
+    };
   }
 );
 
@@ -940,7 +1384,7 @@ export const backfillPublicStaffFromStaff = (functions.https.onCall as any)(
     for (const centerDoc of centersDocs) {
       const centerId = centerDoc.id;
       const centerData = centerDoc.data() as Record<string, any> | undefined;
-      if (!requestedCenterId && centerData?.isActive === false) {
+      if (!requestedCenterId && !resolveActiveFlag(centerData)) {
         continue;
       }
 
@@ -1147,8 +1591,8 @@ export const logAccess = (functions.https.onCall as any)(
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
     const staffSnap = await staffRef.get();
 
-    const isStaffMember =
-      staffSnap.exists && (staffSnap.get("active") === true || staffSnap.get("activo") === true);
+      const isStaffMember =
+        staffSnap.exists && resolveActiveFlag(staffSnap.data() as Record<string, any> | undefined);
 
     if (!isSuperAdmin(context) && !isStaffMember) {
       throw new functions.https.HttpsError(
@@ -1199,39 +1643,30 @@ export const logAccess = (functions.https.onCall as any)(
         }
 
         // Crear el log de auditoría
-        const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
-        const resourceSegments = resourcePath.split("/").filter(Boolean);
-        const entityId = resourceSegments[resourceSegments.length - 1] || "";
-        const auditLogData: AuditLogData = {
-          type: "ACCESS",
-          action: "ACCESS",
-          entityType: resourceType as any,
-          entityId,
-          actorUid: uid,
-          actorEmail: emailLower,
-          actorName,
-          actorRole: role,
-          resourceType: resourceType as any,
-          resourcePath,
-          timestamp: serverTimestamp(),
-        };
+          const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+          const resourceSegments = resourcePath.split("/").filter(Boolean);
+          const entityId = resourceSegments[resourceSegments.length - 1] || "";
+          await appendAuditLogInTransaction(transaction, {
+            centerId,
+            type: "ACCESS",
+            action: "ACCESS",
+            entityType: resourceType,
+            entityId,
+            actorUid: uid,
+            actorEmail: emailLower,
+            actorName,
+            actorRole: role,
+            resourceType,
+            resourcePath,
+            patientId: data.patientId ? String(data.patientId).trim() : null,
+            ip: data.ip ? String(data.ip).trim() : null,
+            userAgent: data.userAgent ? String(data.userAgent).trim() : null,
+          }, auditLogRef);
 
-        // Añadir campos opcionales si están presentes
-        if (data.patientId) {
-          auditLogData.patientId = String(data.patientId).trim();
-        }
-        if (data.ip) {
-          auditLogData.ip = String(data.ip).trim();
-        }
-        if (data.userAgent) {
-          auditLogData.userAgent = String(data.userAgent).trim();
-        }
-
-        // Escribir el log y actualizar el documento de deduplicación
-        transaction.set(auditLogRef, auditLogData);
-        transaction.set(
-          dedupeDocRef,
-          {
+          // Escribir el log y actualizar el documento de deduplicación
+          transaction.set(
+            dedupeDocRef,
+            {
             timestamp: serverTimestamp(),
             resourcePath,
             actorUid: uid,
@@ -1286,8 +1721,8 @@ export const logAuditEvent = (functions.https.onCall as any)(
 
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
     const staffSnap = await staffRef.get();
-    const isStaffMember =
-      staffSnap.exists && (staffSnap.get("active") === true || staffSnap.get("activo") === true);
+      const isStaffMember =
+        staffSnap.exists && resolveActiveFlag(staffSnap.data() as Record<string, any> | undefined);
 
     if (!isSuperAdmin(context) && !isStaffMember) {
       throw new functions.https.HttpsError(
@@ -1305,37 +1740,33 @@ export const logAuditEvent = (functions.https.onCall as any)(
       context.auth?.token?.email ||
       "Usuario";
 
-    const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
-    const isClinicalEntity = ["patient", "consultation", "appointment"].includes(entityType);
-    const resourceType = isClinicalEntity ? (entityType as any) : "patient";
-    const resourcePath = isClinicalEntity
-      ? `/centers/${centerId}/${entityType}s/${entityId}`
-      : `/centers/${centerId}`;
-    const auditLogData: AuditLogData = {
-      type: "ACTION",
-      action,
-      entityType: entityType as any,
-      entityId,
-      actorUid: uid,
-      actorEmail: emailLower,
-      actorName,
-      actorRole,
-      resourceType,
-      resourcePath,
-      timestamp: serverTimestamp(),
-    };
-
-    if (data.patientId) {
-      auditLogData.patientId = String(data.patientId).trim();
-    }
-    if (typeof data.details === "string" && data.details.trim()) {
-      auditLogData.details = data.details.trim();
-    }
-    if (data.metadata && typeof data.metadata === "object") {
-      auditLogData.metadata = data.metadata;
-    }
-
-    await auditLogRef.set(auditLogData);
+      const isClinicalEntity = ["patient", "consultation", "appointment"].includes(entityType);
+      const resourceType = isClinicalEntity ? entityType : "centerSettings";
+      const resourcePath = isClinicalEntity
+        ? entityType === "patient"
+          ? `/patients/${entityId}`
+          : entityType === "consultation"
+            ? data.patientId
+              ? `/patients/${String(data.patientId).trim()}/consultations/${entityId}`
+              : `/consultations/${entityId}`
+            : `/centers/${centerId}/appointments/${entityId}`
+        : `/centers/${centerId}`;
+      await writeAuditLog({
+        centerId,
+        type: "ACTION",
+        action,
+        entityType,
+        entityId,
+        actorUid: uid,
+        actorEmail: emailLower,
+        actorName,
+        actorRole,
+        resourceType,
+        resourcePath,
+        patientId: data.patientId ? String(data.patientId).trim() : null,
+        details: typeof data.details === "string" && data.details.trim() ? data.details.trim() : null,
+        metadata: data.metadata && typeof data.metadata === "object" ? data.metadata : null,
+      });
 
     functions.logger.info("logAuditEvent created", {
       centerId,
@@ -1720,6 +2151,109 @@ export const migratePatients = functions
     return { ...summary, log };
   });
 
+export const assessPatientMigrationConsistency = functions
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .https.onCall(async (data, context) => {
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo SuperAdmins pueden evaluar consistencia de migración."
+      );
+    }
+
+    const validated = validateOrThrow(AssessPatientMigrationConsistencyInputSchema, data);
+    const requestedCenterId = String(validated.centerId || "").trim();
+    const requestedPatientId = String(validated.patientId || "").trim();
+    const includeMatching = validated.includeMatching;
+    const perCenterLimit = validated.limit;
+
+    const centersDocs = requestedCenterId
+      ? [await db.collection("centers").doc(requestedCenterId).get()].filter((docSnap) => docSnap.exists)
+      : (await db.collection("centers").get()).docs;
+
+    const report: Array<Record<string, any>> = [];
+    let comparedPatients = 0;
+    let okPatients = 0;
+    let warningPatients = 0;
+    let criticalPatients = 0;
+
+    for (const centerDoc of centersDocs) {
+      const centerId = centerDoc.id;
+      const legacyPatientsRef = db.collection("centers").doc(centerId).collection("patients");
+      const legacyPatientsDocs = requestedPatientId
+        ? [await legacyPatientsRef.doc(requestedPatientId).get()].filter((docSnap) => docSnap.exists)
+        : (await legacyPatientsRef.limit(perCenterLimit).get()).docs;
+
+      if (legacyPatientsDocs.length === 0) {
+        continue;
+      }
+
+      const legacyConsultationsSnap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("consultations")
+        .get();
+
+      const legacyConsultationsByPatient = new Map<string, Array<Record<string, any>>>();
+      legacyConsultationsSnap.forEach((consultationDoc) => {
+        const consultation: Record<string, any> = {
+          id: consultationDoc.id,
+          ...consultationDoc.data(),
+        };
+        const patientId = String(consultation.patientId || "").trim();
+        if (!patientId) return;
+        const current = legacyConsultationsByPatient.get(patientId) ?? [];
+        current.push(consultation);
+        legacyConsultationsByPatient.set(patientId, current);
+      });
+
+      for (const legacyPatientDoc of legacyPatientsDocs) {
+        const patientId = legacyPatientDoc.id;
+        const legacyPatient = legacyPatientDoc.data() as Record<string, any>;
+        const rootPatientDoc = await db.collection("patients").doc(patientId).get();
+        const rootPatient = rootPatientDoc.exists ? (rootPatientDoc.data() as Record<string, any>) : null;
+
+        const rootConsultationsSnap = rootPatientDoc.exists
+          ? await db.collection("patients").doc(patientId).collection("consultations").get()
+          : null;
+
+        const result = comparePatientConsistency({
+          patientId,
+          centerId,
+          rootPatient,
+          legacyPatient,
+          rootConsultations: rootConsultationsSnap?.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          })) ?? [],
+          legacyConsultations: legacyConsultationsByPatient.get(patientId) ?? [],
+        });
+
+        comparedPatients += 1;
+        if (result.status === "ok") okPatients += 1;
+        if (result.status === "warning") warningPatients += 1;
+        if (result.status === "critical") criticalPatients += 1;
+
+        if (includeMatching || result.status !== "ok") {
+          report.push({
+            centerId,
+            ...result,
+          });
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      comparedPatients,
+      okPatients,
+      warningPatients,
+      criticalPatients,
+      report,
+    };
+  });
+
 // ============================================================================
 // AGGREGATED METRICS
 // ============================================================================
@@ -1738,8 +2272,8 @@ export const aggregateStaff = functions.firestore
     const before = change.before.data();
     const after = change.after.data();
 
-    const wasActive = before ? before.active !== false && before.activo !== false : false;
-    const isActive = after ? after.active !== false && after.activo !== false : false;
+    const wasActive = before ? resolveActiveFlag(before) : false;
+    const isActive = after ? resolveActiveFlag(after) : false;
 
     if (!before && isActive) {
       increment = 1; // Created and active
@@ -1914,7 +2448,7 @@ export const recalcCenterStats = functions
         const staffSnap = await ref.collection("staff").get();
         const staffCount = staffSnap.docs.filter((d) => {
           const data = d.data();
-          return data.active !== false && data.activo !== false;
+          return resolveActiveFlag(data);
         }).length;
 
         // 2. Count Booked Appointments
@@ -1980,7 +2514,7 @@ export const scheduledRecalcStats = functions.pubsub.schedule("every 24 hours").
     const staffSnap = await ref.collection("staff").get();
     const staffCount = staffSnap.docs.filter((d: any) => {
       const data = d.data();
-      return data.active !== false && data.activo !== false;
+      return resolveActiveFlag(data);
     }).length;
 
     // Count Appointments
@@ -2043,7 +2577,7 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
       .doc(uid)
       .get();
     const isStaffMember = staffDoc.exists;
-    const isActive = resolveActive(staffDoc.data());
+    const isActive = resolveActiveFlag(staffDoc.data() as Record<string, any> | undefined);
 
     if (!isActive && !isSuperAdmin(context)) {
       throw new functions.https.HttpsError(
@@ -2186,19 +2720,19 @@ export const updateWhatsappConfig = (functions.https.onCall as any)(
     await centerRef.update(updates);
 
     // Registro de auditoría
-    await centerRef.collection("auditLogs").add({
-      type: "ACTION",
-      action: "WHATSAPP_CONFIG_UPDATED",
-      entityType: "centerSettings",
-      entityId: centerId,
-      actorUid: uid,
-      actorEmail: lowerEmailFromContext(context) || "unknown",
-      actorRole: isAdmin ? "center_admin" : "super_admin",
-      resourceType: "whatsappConfig",
-      resourcePath: `/centers/${centerId}`,
-      timestamp: serverTimestamp(),
-      details: "Configuración de WhatsApp actualizada con token cifrado.",
-    });
+      await writeAuditLog({
+        centerId,
+        type: "ACTION",
+        action: "WHATSAPP_CONFIG_UPDATED",
+        entityType: "centerSettings",
+        entityId: centerId,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: isAdmin ? "center_admin" : "super_admin",
+        resourceType: "centerSettings",
+        resourcePath: `/centers/${centerId}`,
+        details: "Configuración de WhatsApp actualizada con token cifrado.",
+      });
 
     console.log(`[updateWhatsappConfig] Centro ${centerId} actualizado por ${uid}. Token cifrado: ${!!rawAccessToken && rawAccessToken !== "********"}`);
     return { ok: true, tokenEncrypted: !!rawAccessToken && rawAccessToken !== "********" };

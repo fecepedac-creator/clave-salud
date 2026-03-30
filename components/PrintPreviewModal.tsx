@@ -248,8 +248,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                         <span className="font-bold text-slate-700">Fecha de Emisión:</span> {today}
                       </p>
                       <p className="mt-2 text-[9px] text-slate-400 italic leading-tight">
-                        Este documento cuenta con firma digital simple y puede ser validado escaneando
-                        el código QR o ingresando el código en clavesalud.cl/verify
+                        Este documento cuenta con firma digital simple y puede ser validado
+                        escaneando el código QR o ingresando el código en clavesalud.cl/verify
                       </p>
                     </div>
                   </div>

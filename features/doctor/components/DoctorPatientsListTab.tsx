@@ -12,6 +12,7 @@ import { Patient, Doctor } from "../../../types";
 import { formatPersonName, generateId, calculateAge } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 import DrivePicker from "../../../components/DrivePicker";
+import OperationalState from "../../../components/ui/OperationalState";
 
 interface DoctorPatientsListTabProps {
   searchTerm: string;
@@ -40,6 +41,9 @@ interface DoctorPatientsListTabProps {
   sortBy: "alphabetical" | "recent";
   setSortBy: (s: "alphabetical" | "recent") => void;
   totalCount: number;
+  patientsLoading?: boolean;
+  patientsError?: string;
+  onRetryPatients?: () => void;
 }
 
 export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
@@ -69,6 +73,9 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   sortBy,
   setSortBy,
   totalCount,
+  patientsLoading = false,
+  patientsError = "",
+  onRetryPatients,
 }) => {
   const { showToast } = useToast();
 
@@ -199,7 +206,24 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
       {/* Table */}
       {/* Desktop Table View */}
       <div className="hidden md:block flex-1 overflow-y-auto">
-        {filteredPatients.length === 0 ? (
+        {patientsLoading ? (
+          <div className="p-6">
+            <OperationalState
+              kind="loading"
+              title="Cargando pacientes..."
+              description="Estamos sincronizando el panel clínico."
+            />
+          </div>
+        ) : patientsError ? (
+          <div className="p-6">
+            <OperationalState
+              kind="error"
+              title="No pudimos cargar pacientes"
+              description={patientsError}
+              onAction={onRetryPatients}
+            />
+          </div>
+        ) : filteredPatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
             <UsersRound className="w-16 h-16 mb-4 opacity-20" />
             <p className="font-medium">No se encontraron pacientes</p>
@@ -358,7 +382,16 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
 
       {/* Mobile Card View */}
       <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4">
-        {filteredPatients.length === 0 ? (
+        {patientsLoading ? (
+          <OperationalState kind="loading" title="Cargando pacientes..." compact />
+        ) : patientsError ? (
+          <OperationalState
+            kind="error"
+            title="No pudimos cargar pacientes"
+            description={patientsError}
+            onAction={onRetryPatients}
+          />
+        ) : filteredPatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <p>No se encontraron pacientes</p>
           </div>

@@ -11,6 +11,8 @@ import {
 import { Doctor, Appointment, MedicalCenter, ViewMode, MedicalService } from "../types";
 import LogoHeader from "./LogoHeader";
 import { formatRUT, getDaysInMonth } from "../utils";
+import { resolveActiveState } from "../utils/activeState";
+import OperationalState from "./ui/OperationalState";
 
 interface BookingPortalProps {
   activeCenterId: string;
@@ -18,6 +20,13 @@ interface BookingPortalProps {
   doctors: Doctor[];
   appointments: Appointment[];
   services: MedicalService[];
+  isLoadingDoctors?: boolean;
+  doctorsError?: string;
+  isLoadingAppointments?: boolean;
+  appointmentsError?: string;
+  isLoadingServices?: boolean;
+  servicesError?: string;
+  onRetryData?: () => void;
   bookingState: any; // Return value from useBooking
   renderCenterBackdrop: (children: React.ReactNode) => React.ReactNode;
 }
@@ -28,6 +37,13 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
   doctors,
   appointments,
   services,
+  isLoadingDoctors = false,
+  doctorsError = "",
+  isLoadingAppointments = false,
+  appointmentsError = "",
+  isLoadingServices = false,
+  servicesError = "",
+  onRetryData,
   bookingState,
   renderCenterBackdrop,
 }) => {
@@ -64,7 +80,7 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
     () =>
       doctors.filter((d) => {
         const isVisible = d.visibleInBooking === true;
-        const isActive = d.active !== false;
+        const isActive = resolveActiveState(d as any);
         const roleName = String(d.clinicalRole || d.role || "").toLowerCase();
         const isInternalRole = NON_BOOKABLE_ROLES.includes(roleName);
         return isVisible && isActive && !isInternalRole;
@@ -106,6 +122,9 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
   );
 
   if (!activeCenterId || !activeCenter) return null;
+
+  const bookingFeedLoading = isLoadingDoctors || isLoadingAppointments || isLoadingServices;
+  const bookingFeedError = doctorsError || appointmentsError || servicesError;
 
   const dateStr = bookingDate.toISOString().split("T")[0];
   const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
@@ -183,22 +202,42 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
               </h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {uniqueRoles.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => {
-                    setSelectedRole(r);
-                    setSelectedDoctorForBooking(null);
-                    setSelectedMedicalService(null);
-                    setSelectedSlot(null);
-                    setBookingStep(2);
-                  }}
-                  className="p-8 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left bg-white shadow-sm hover:shadow-md"
-                >
-                  <span className="font-bold text-xl text-slate-700">{r}</span>
-                </button>
-              ))}
-              {uniqueRoles.length === 0 && (
+              {bookingFeedLoading ? (
+                <div className="col-span-2">
+                  <OperationalState
+                    kind="loading"
+                    title="Cargando especialistas y horarios..."
+                    description="Estamos preparando la oferta disponible del centro."
+                    compact
+                  />
+                </div>
+              ) : bookingFeedError ? (
+                <div className="col-span-2">
+                  <OperationalState
+                    kind="error"
+                    title="No pudimos cargar las especialidades"
+                    description={bookingFeedError}
+                    onAction={onRetryData}
+                  />
+                </div>
+              ) : (
+                uniqueRoles.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => {
+                      setSelectedRole(r);
+                      setSelectedDoctorForBooking(null);
+                      setSelectedMedicalService(null);
+                      setSelectedSlot(null);
+                      setBookingStep(2);
+                    }}
+                    className="p-8 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left bg-white shadow-sm hover:shadow-md"
+                  >
+                    <span className="font-bold text-xl text-slate-700">{r}</span>
+                  </button>
+                ))
+              )}
+              {!bookingFeedLoading && !bookingFeedError && uniqueRoles.length === 0 && (
                 <p className="text-center text-slate-400 col-span-2">
                   No hay especialistas disponibles.
                 </p>

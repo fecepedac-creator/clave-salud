@@ -232,6 +232,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
         isOpen={isClinicalReportOpen}
         onClose={() => setIsClinicalReportOpen(false)}
         patient={selectedPatient}
+        consultations={selectedPatientConsultations}
         centerName={activeCenter?.name || "Clave Salud"}
         centerLogoUrl={activeCenter?.logoUrl}
         professionalName={doctorName}

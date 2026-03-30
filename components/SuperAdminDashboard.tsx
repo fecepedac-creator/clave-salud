@@ -35,6 +35,7 @@ import { SuperAdminFinance } from "../features/superadmin/components/SuperAdminF
 import { SuperAdminCommunications } from "../features/superadmin/components/SuperAdminCommunications";
 import { SuperAdminUsers } from "../features/superadmin/components/SuperAdminUsers";
 import { SuperAdminMetrics } from "../features/superadmin/components/SuperAdminMetrics";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
@@ -58,7 +59,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 /**
  * SuperAdminDashboard (ClaveSalud)
- * Mejora: Invitación admin abre correo prellenado (mailto) + opción "Abrir en Gmail"
+ * Mejora: InvitaciÃƒÆ’Ã‚Â³n admin abre correo prellenado (mailto) + opciÃƒÆ’Ã‚Â³n "Abrir en Gmail"
  */
 
 type Tab = "general" | "centers" | "finanzas" | "metrics" | "comunicacion" | "users";
@@ -151,7 +152,7 @@ function uidShort() {
 }
 
 function buildGmailComposeUrl(to: string, subject: string, body: string) {
-  // Gmail web "compose" (sin API). Requiere que el usuario esté logueado en Gmail.
+  // Gmail web "compose" (sin API). Requiere que el usuario estÃƒÆ’Ã‚Â© logueado en Gmail.
   const params = new URLSearchParams();
   params.set("view", "cm");
   params.set("fs", "1");
@@ -169,23 +170,23 @@ function buildCopyEmailText(to: string, subject: string, body: string) {
 const MESSAGE_TEMPLATES = {
   cobranza: {
     title: "Recordatorio de Pago Pendiente",
-    body: "Estimado/a administrador/a,\n\nLe recordamos que tiene un pago pendiente correspondiente al servicio de ClaveSalud. Le solicitamos regularizar su situación a la brevedad para mantener la continuidad del servicio.\n\nPara más información o coordinación de pago, puede contactarnos respondiendo este mensaje.\n\nAtentamente,\nEquipo ClaveSalud",
+    body: "Estimado/a administrador/a,\n\nLe recordamos que tiene un pago pendiente correspondiente al servicio de ClaveSalud. Le solicitamos regularizar su situaciÃƒÆ’Ã‚Â³n a la brevedad para mantener la continuidad del servicio.\n\nPara mÃƒÆ’Ã‚Â¡s informaciÃƒÆ’Ã‚Â³n o coordinaciÃƒÆ’Ã‚Â³n de pago, puede contactarnos respondiendo este mensaje.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   info: {
     title: "Comunicado Informativo",
-    body: "Estimado/a administrador/a,\n\nLe informamos que [descripción de la información importante].\n\n[Detalles adicionales si es necesario]\n\nPara cualquier consulta, estamos disponibles.\n\nAtentamente,\nEquipo ClaveSalud",
+    body: "Estimado/a administrador/a,\n\nLe informamos que [descripciÃƒÆ’Ã‚Â³n de la informaciÃƒÆ’Ã‚Â³n importante].\n\n[Detalles adicionales si es necesario]\n\nPara cualquier consulta, estamos disponibles.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   fiesta: {
-    title: "¡Felices Fiestas!",
-    body: "Estimado/a administrador/a,\n\nEn estas fechas especiales, queremos extenderles nuestros mejores deseos. ¡Felices fiestas para usted y todo su equipo!\n\nAgradecemos su confianza en ClaveSalud.\n\nCon los mejores deseos,\nEquipo ClaveSalud",
+    title: "Ãƒâ€šÃ‚Â¡Felices Fiestas!",
+    body: "Estimado/a administrador/a,\n\nEn estas fechas especiales, queremos extenderles nuestros mejores deseos. Ãƒâ€šÃ‚Â¡Felices fiestas para usted y todo su equipo!\n\nAgradecemos su confianza en ClaveSalud.\n\nCon los mejores deseos,\nEquipo ClaveSalud",
   },
   bienvenida: {
-    title: "¡Bienvenido a ClaveSalud!",
-    body: "Estimado/a administrador/a,\n\n¡Bienvenido/a a ClaveSalud! Estamos muy contentos de que su centro forme parte de nuestra plataforma.\n\nEn los próximos días, nuestro equipo estará disponible para ayudarle con cualquier consulta o necesidad durante la configuración inicial.\n\nAtentamente,\nEquipo ClaveSalud",
+    title: "Ãƒâ€šÃ‚Â¡Bienvenido a ClaveSalud!",
+    body: "Estimado/a administrador/a,\n\nÃƒâ€šÃ‚Â¡Bienvenido/a a ClaveSalud! Estamos muy contentos de que su centro forme parte de nuestra plataforma.\n\nEn los prÃƒÆ’Ã‚Â³ximos dÃƒÆ’Ã‚Â­as, nuestro equipo estarÃƒÆ’Ã‚Â¡ disponible para ayudarle con cualquier consulta o necesidad durante la configuraciÃƒÆ’Ã‚Â³n inicial.\n\nAtentamente,\nEquipo ClaveSalud",
   },
   mantenimiento: {
     title: "Aviso de Mantenimiento Programado",
-    body: "Estimado/a administrador/a,\n\nLe informamos que realizaremos un mantenimiento programado en la plataforma ClaveSalud el día [fecha] entre las [hora inicio] y [hora fin].\n\nDurante este período, el sistema podría presentar interrupciones temporales. Agradecemos su comprensión.\n\nAtentamente,\nEquipo ClaveSalud",
+    body: "Estimado/a administrador/a,\n\nLe informamos que realizaremos un mantenimiento programado en la plataforma ClaveSalud el dÃƒÆ’Ã‚Â­a [fecha] entre las [hora inicio] y [hora fin].\n\nDurante este perÃƒÆ’Ã‚Â­odo, el sistema podrÃƒÆ’Ã‚Â­a presentar interrupciones temporales. Agradecemos su comprensiÃƒÆ’Ã‚Â³n.\n\nAtentamente,\nEquipo ClaveSalud",
   },
 } as const;
 
@@ -255,7 +256,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [isInvitingAdmin, setIsInvitingAdmin] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
 
-  // ✅ NUEVO: guardar la última invitación (para botón Gmail/copy robustos)
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ NUEVO: guardar la ÃƒÆ’Ã‚Âºltima invitaciÃƒÆ’Ã‚Â³n (para botÃƒÆ’Ã‚Â³n Gmail/copy robustos)
   const [lastInviteTo, setLastInviteTo] = useState<string>("");
   const [lastInviteSubject, setLastInviteSubject] = useState<string>("");
   const [lastInviteBody, setLastInviteBody] = useState<string>("");
@@ -269,17 +270,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   };
 
   const buildInviteEmailParts = (centerName: string, link: string) => {
-    const subject = `Invitación a ClaveSalud — Administración del centro (${centerName})`;
+    const subject = `InvitaciÃƒÆ’Ã‚Â³n a ClaveSalud ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â AdministraciÃƒÆ’Ã‚Â³n del centro (${centerName})`;
     const body = [
       `Hola,`,
       ``,
       `Has sido invitado(a) como Administrador(a) del centro:`,
       `Centro: ${centerName}`,
       ``,
-      `Para crear tu cuenta y definir tu contraseña, usa este enlace:`,
+      `Para crear tu cuenta y definir tu contraseÃƒÆ’Ã‚Â±a, usa este enlace:`,
       `${link}`,
       ``,
-      `Este enlace es personal y expira en 7 días.`,
+      `Este enlace es personal y expira en 7 dÃƒÆ’Ã‚Â­as.`,
       ``,
       `Saludos,`,
       `Equipo ClaveSalud`,
@@ -299,7 +300,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     return c ? (c as CenterExt) : null;
   }, [centers, financeCenterId]);
 
-  // Comunicación
+  // ComunicaciÃƒÆ’Ã‚Â³n
   const [commCenterId, setCommCenterId] = useState<string>(centers?.[0]?.id || "");
   const commCenter = useMemo(() => {
     const c = centers.find((x) => x.id === commCenterId);
@@ -348,7 +349,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       setSavingExamCatalog(true);
       const parsed = JSON.parse(examOrderCatalogDraft);
       if (!Array.isArray(parsed?.categories)) {
-        showToast("Catálogo inválido: falta categories[]", "error");
+        showToast("CatÃƒÆ’Ã‚Â¡logo invÃƒÆ’Ã‚Â¡lido: falta categories[]", "error");
         return;
       }
       await setDoc(
@@ -360,10 +361,10 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         },
         { merge: true }
       );
-      showToast("Plantilla principal de órdenes guardada.", "success");
+      showToast("Plantilla principal de ÃƒÆ’Ã‚Â³rdenes guardada.", "success");
     } catch (error) {
       console.error("saveExamOrderCatalog", error);
-      showToast("No se pudo guardar el catálogo de órdenes.", "error");
+      showToast("No se pudo guardar el catÃƒÆ’Ã‚Â¡logo de ÃƒÆ’Ã‚Â³rdenes.", "error");
     } finally {
       setSavingExamCatalog(false);
     }
@@ -407,15 +408,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setCommCenterId(centerContextId);
   }, [centerContextId]);
 
-  const promptChangeReason = (label: string) => {
-    const reason = window.prompt(`Indica el motivo para ${label}:`);
+  const promptChangeReason = async (label: string) => {
+    const response = await requestCriticalAction({
+      title: `Confirmar ${label}`,
+      message: "Esta accion quedara registrada en auditoria de superadmin.",
+      confirmLabel: "Continuar",
+      reasonRequired: true,
+      reasonLabel: "Motivo",
+      reasonPlaceholder: "Indica el motivo operativo o de cumplimiento",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo continuar con esta accion.",
+    });
+    const reason = response?.confirmed ? response.reason : null;
     if (!reason || !reason.trim()) {
       showToast("Debes indicar un motivo para continuar.", "warning");
       return null;
     }
     return reason.trim();
   };
-
   const fetchCommHistory = async (centerId: string) => {
     if (demoMode) {
       setCommHistory([]);
@@ -518,13 +528,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
 
     if (!db) {
-      setMetricsError("Firestore no disponible para métricas.");
+      setMetricsError("Firestore no disponible para mÃƒÆ’Ã‚Â©tricas.");
       return;
     }
     setMetricsLoading(true);
     setMetricsError("");
     try {
-      // Intentamos obtener conteos uno por uno para mejor diagnóstico
+      // Intentamos obtener conteos uno por uno para mejor diagnÃƒÆ’Ã‚Â³stico
       const patientsSnap = await getCountFromServer(collection(db, "patients"));
       const staffSnap = await getCountFromServer(collectionGroup(db, "staff"));
 
@@ -536,8 +546,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     } catch (error: any) {
       console.error("load metrics error", error);
       const errorMsg = error?.message || String(error);
-      setMetricsError(`Error al cargar métricas: ${errorMsg}`);
-      showToast(`Métricas: ${errorMsg}`, "error");
+      setMetricsError(`Error al cargar mÃƒÆ’Ã‚Â©tricas: ${errorMsg}`);
+      showToast(`MÃƒÆ’Ã‚Â©tricas: ${errorMsg}`, "error");
     } finally {
       setMetricsLoading(false);
     }
@@ -549,18 +559,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const functions = getFunctions();
       const recalc = httpsCallable(functions, "recalcCenterStats");
       const result = await recalc({ centerId });
-      showToast("Estadísticas recalculadas con éxito. Actualizando vista...", "success");
+      showToast("EstadÃƒÆ’Ã‚Â­sticas recalculadas con ÃƒÆ’Ã‚Â©xito. Actualizando vista...", "success");
 
       // After recalculating on backend, refresh the global counters too
       await loadMetrics();
     } catch (error: any) {
       console.error("handleRecalcStats error", error);
-      const msg = error?.message || "Error al recalcular estadísticas.";
+      const msg = error?.message || "Error al recalcular estadÃƒÆ’Ã‚Â­sticas.";
 
-      // Si el error contiene una URL de Firebase (índice faltante), intentamos mostrarla mejor
+      // Si el error contiene una URL de Firebase (ÃƒÆ’Ã‚Â­ndice faltante), intentamos mostrarla mejor
       if (msg.includes("https://console.firebase.google.com")) {
         showToast(
-          "Falta un índice de base de datos. Revisa la consola para el link de creación.",
+          "Falta un ÃƒÆ’Ã‚Â­ndice de base de datos. Revisa la consola para el link de creaciÃƒÆ’Ã‚Â³n.",
           "error"
         );
       } else {
@@ -700,7 +710,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     try {
       const userRef = doc(db, "users", user.id);
       await setDoc(userRef, user, { merge: true });
-      showToast("Usuario actualizado con éxito.", "success");
+      showToast("Usuario actualizado con ÃƒÆ’Ã‚Â©xito.", "success");
       setEditingUser(null);
       void fetchGlobalUsers();
     } catch (e: any) {
@@ -721,7 +731,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const nextDueDate = (center as any).nextBillingDate;
     const isNearLimit = (center as any).patientCount >= (center as any).patientLimit * 0.9;
 
-    const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "Atención" : "OK";
+    const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "AtenciÃƒÆ’Ã‚Â³n" : "OK";
     const cls = !isActive
       ? "bg-slate-200 text-slate-700"
       : isOverdue
@@ -762,7 +772,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setNewCenterSlug("");
     setNewCenterAdminEmail("");
 
-    // limpiar última invitación
+    // limpiar ÃƒÆ’Ã‚Âºltima invitaciÃƒÆ’Ã‚Â³n
     setLastInviteLink("");
     setLastInviteTo("");
     setLastInviteSubject("");
@@ -796,7 +806,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       if (logoFile) {
         if (isWorkspacePreview) {
           showToast(
-            "En Firebase Studio (preview) la subida de logos a Storage suele bloquearse por CORS. Guardaré el centro sin subir logo.",
+            "En Firebase Studio (preview) la subida de logos a Storage suele bloquearse por CORS. GuardarÃƒÆ’Ã‚Â© el centro sin subir logo.",
             "warning"
           );
         } else {
@@ -853,7 +863,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           billingPrev?.monthlyUF !== billingNext?.monthlyUF ||
           billingPrev?.billingStatus !== billingNext?.billingStatus;
         if (isActiveChanged || billingChanged) {
-          const reason = promptChangeReason("modificar estado o facturación del centro");
+          const reason = await promptChangeReason("modificar estado o facturacion del centro");
           if (!reason) return;
           (finalCenter as any).auditReason = reason;
         }
@@ -861,7 +871,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
       await onUpdateCenters([finalCenter as any]);
 
-      showToast(isCreating ? "Centro creado con éxito" : "Centro actualizado con éxito", "success");
+      showToast(isCreating ? "Centro creado con ÃƒÆ’Ã‚Â©xito" : "Centro actualizado con ÃƒÆ’Ã‚Â©xito", "success");
 
       setEditingCenter(null);
       setIsCreating(false);
@@ -873,7 +883,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
     } catch (e: any) {
       console.error("SAVE CENTER ERROR", e);
-      // Detailed error logging for internal diagnostics
       if (e?.code || e?.message) {
         console.error("DEBUG INFO:", {
           code: e.code,
@@ -882,23 +891,25 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           payload: editingCenter,
         });
       }
-      showToast(e?.message || "Error guardando centro", "error");
-    } finally {
-      setIsUploadingLogo(false);
+      showToast(e?.message || "Error al guardar centro", "error");
     }
   };
 
   const handleDeleteCenter = async (id: string) => {
     if (!id) return;
-    if (
-      !window.confirm(
-        "¿DAR DE BAJA ESTE CENTRO? Esta acción es ATÓMICA e IRREVERSIBLE desde el panel. " +
-          "Se desactivarán todos los usuarios y servicios del centro. Los datos se conservarán " +
-          "únicamente por motivos legales. ¿Confirmar baja formal?"
-      )
-    )
-      return;
-    const reason = promptChangeReason("dar de baja el centro");
+    const decommissionConfirm = await requestCriticalAction({
+      title: "Dar de baja centro",
+      message: "Se desactivaran usuarios y servicios del centro, manteniendo los datos solo por razones legales.",
+      warning: "Esta accion es atomica y no debe ejecutarse sin validacion previa.",
+      confirmLabel: "Dar de baja",
+      reasonRequired: true,
+      reasonLabel: "Motivo formal de baja",
+      reasonPlaceholder: "Indica el motivo legal, comercial u operativo",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo dar de baja formal este centro.",
+    });
+    if (!decommissionConfirm?.confirmed) return;
+    const reason = decommissionConfirm.reason?.trim();
     if (!reason) return;
     try {
       await onDeleteCenter(id, reason);
@@ -969,7 +980,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     );
     let auditReason: string | null = null;
     if (requiresReason) {
-      auditReason = promptChangeReason("cambiar información de facturación");
+      auditReason = await promptChangeReason("cambiar informacion de facturacion");
       if (!auditReason) return;
     }
     const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
@@ -985,7 +996,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const body = commBody.trim();
 
     if (!title || !body) {
-      showToast("Título y mensaje son obligatorios", "error");
+      showToast("TÃƒÆ’Ã‚Â­tulo y mensaje son obligatorios", "error");
       return;
     }
 
@@ -1034,7 +1045,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const renderBadge = (status?: BillingStatus) => {
     const st: BillingStatus = status || "due";
     const map: Record<BillingStatus, { label: string; cls: string; icon: any }> = {
-      paid: { label: "Al día", cls: "bg-green-100 text-green-700", icon: CheckCircle },
+      paid: { label: "Al dÃƒÆ’Ã‚Â­a", cls: "bg-green-100 text-green-700", icon: CheckCircle },
       grace: { label: "Gracia", cls: "bg-yellow-100 text-yellow-800", icon: CheckCircle },
       due: { label: "Por vencer", cls: "bg-amber-100 text-amber-800", icon: CheckCircle },
       overdue: { label: "Atrasado", cls: "bg-red-100 text-red-700", icon: XCircle },
@@ -1056,12 +1067,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const centerName = commCenter.name || "Centro";
     const subject =
       commType === "billing"
-        ? `ClaveSalud — Aviso de facturación (${centerName})`
+        ? `ClaveSalud ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Aviso de facturaciÃƒÆ’Ã‚Â³n (${centerName})`
         : commType === "incident"
-          ? `ClaveSalud — Incidencia operativa (${centerName})`
+          ? `ClaveSalud ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Incidencia operativa (${centerName})`
           : commType === "security"
-            ? `ClaveSalud — Aviso de seguridad (${centerName})`
-            : `ClaveSalud — Información (${centerName})`;
+            ? `ClaveSalud ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Aviso de seguridad (${centerName})`
+            : `ClaveSalud ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â InformaciÃƒÆ’Ã‚Â³n (${centerName})`;
 
     const body = [
       `Para: ${adminEmail}`,
@@ -1069,14 +1080,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       ``,
       `Hola,`,
       ``,
-      `${commTitle || "[Título del aviso]"}`,
+      `${commTitle || "[TÃƒÆ’Ã‚Â­tulo del aviso]"}`,
       ``,
       `${commBody || "[Detalle del mensaje]"}`,
       ``,
       `Centro: ${centerName} (${commCenter.slug})`,
       `Fecha: ${todayISO()}`,
       ``,
-      `— Equipo ClaveSalud`,
+      `ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Equipo ClaveSalud`,
     ].join("\n");
 
     return body;
@@ -1118,7 +1129,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         await updateDoc(d.ref, { status: "revoked", revokedAt: serverTimestamp() }).catch(() => {});
       }
 
-      // 2) Crear invitación nueva
+      // 2) Crear invitaciÃƒÆ’Ã‚Â³n nueva
       let token = generateSecureToken(24);
       const baseUrl = window.location.origin;
       let link = `${baseUrl}/invite?token=${encodeURIComponent(token)}`;
@@ -1147,12 +1158,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       await navigator.clipboard.writeText(copyText);
 
       showToast(
-        "Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.",
+        "InvitaciÃƒÆ’Ã‚Â³n generada. CopiÃƒÆ’Ã‚Â© el correo al portapapeles. Usa los botones para abrir Gmail o mailto.",
         "success"
       );
     } catch (e: any) {
       console.error("INVITE ERROR", e);
-      showToast(e?.message || "Error generando invitación", "error");
+      showToast(e?.message || "Error generando invitaciÃƒÆ’Ã‚Â³n", "error");
     } finally {
       setIsInvitingAdmin(false);
     }
@@ -1172,7 +1183,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
             data-testid="superadmin-drawer-toggle"
-            title={isSidebarOpen ? "Cerrar menú" : "Abrir menú"}
+            title={isSidebarOpen ? "Cerrar menÃƒÆ’Ã‚Âº" : "Abrir menÃƒÆ’Ã‚Âº"}
           >
             {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -1182,13 +1193,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             </span>
             <span className="text-sm font-bold truncate" data-testid="superadmin-active-tab-label">
               {activeTab === "general"
-                ? "Visión General"
+                ? "VisiÃƒÆ’Ã‚Â³n General"
                 : activeTab === "centers"
-                  ? "Gestión de Centros"
+                  ? "GestiÃƒÆ’Ã‚Â³n de Centros"
                   : activeTab === "finanzas"
                     ? "Finanzas"
                     : activeTab === "comunicacion"
-                      ? "Comunicación"
+                      ? "ComunicaciÃƒÆ’Ã‚Â³n"
                       : activeTab === "metrics"
                         ? "Uso Plataforma"
                         : "Usuarios"}
@@ -1239,7 +1250,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         </div>
 
         <div className="lg:hidden p-6 border-b border-white/5 flex items-center justify-between">
-          <div className="font-bold text-white tracking-wider">MENÚ PRINCIPAL</div>
+          <div className="font-bold text-white tracking-wider">MENÃƒÆ’Ã…Â¡ PRINCIPAL</div>
           <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500">
             <X className="w-5 h-5" />
           </button>
@@ -1263,12 +1274,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             );
             return (
               <>
-                {btn("general", "Visión General", <Megaphone className="w-4 h-4" />)}
-                {btn("centers", "Centros Médicos", <Building2 className="w-4 h-4" />)}
+                {btn("general", "VisiÃƒÆ’Ã‚Â³n General", <Megaphone className="w-4 h-4" />)}
+                {btn("centers", "Centros MÃƒÆ’Ã‚Â©dicos", <Building2 className="w-4 h-4" />)}
                 {btn("finanzas", "Finanzas & Billing", <CreditCard className="w-4 h-4" />)}
-                {btn("comunicacion", "Comunicación", <Mail className="w-4 h-4" />)}
+                {btn("comunicacion", "ComunicaciÃƒÆ’Ã‚Â³n", <Mail className="w-4 h-4" />)}
                 {btn("metrics", "Uso de Plataforma", <BarChart3 className="w-4 h-4" />)}
-                {btn("users", "Gestión de Usuarios", <Users className="w-4 h-4" />)}
+                {btn("users", "GestiÃƒÆ’Ã‚Â³n de Usuarios", <Users className="w-4 h-4" />)}
               </>
             );
           })()}
@@ -1305,7 +1316,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors mt-2"
           >
             <LogOut className="w-4 h-4" />
-            <span className="font-bold text-sm">Cerrar Sesión</span>
+            <span className="font-bold text-sm">Cerrar SesiÃƒÆ’Ã‚Â³n</span>
           </button>
         </div>
       </aside>
@@ -1333,7 +1344,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             ))}
           </select>
           <div className="text-xs text-slate-400 mt-1">
-            Se sincroniza con Finanzas y Comunicación.
+            Se sincroniza con Finanzas y ComunicaciÃƒÆ’Ã‚Â³n.
           </div>
         </div>
 
@@ -1429,7 +1440,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           />
         )}
 
-        {/* COMUNICACIÓN */}
+        {/* COMUNICACIÃƒÆ’Ã¢â‚¬Å“N */}
         {activeTab === "comunicacion" && (
           <SuperAdminCommunications
             centers={centers}
@@ -1485,17 +1496,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-700/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
+              <h4 className="text-xl font-bold mb-2">AnÃƒÆ’Ã‚Â¡lisis de RetenciÃƒÆ’Ã‚Â³n Proactiva</h4>
               <p className="text-indigo-200 text-sm max-w-md">
-                Hemos detectado centros con una caída en actividad. Activa una campaña de
-                comunicación para recuperar su interés.
+                Hemos detectado centros con una caÃƒÆ’Ã‚Â­da en actividad. Activa una campaÃƒÆ’Ã‚Â±a de
+                comunicaciÃƒÆ’Ã‚Â³n para recuperar su interÃƒÆ’Ã‚Â©s.
               </p>
             </div>
             <button
               onClick={() => setActiveTab("comunicacion")}
               className="px-8 py-3 bg-white text-indigo-900 font-bold rounded-2xl hover:bg-slate-100 transition-all shadow-lg active:scale-95"
             >
-              Ir a comunicación
+              Ir a comunicaciÃƒÆ’Ã‚Â³n
             </button>
           </div>
         </div>

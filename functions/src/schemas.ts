@@ -111,6 +111,41 @@ export const CancelAppointmentInputSchema = z.object({
   appointmentId: z.string().min(1, "appointmentId es requerido"),
   rut: z.string().min(1, "RUT es requerido"),
   phone: z.string().min(1, "phone es requerido"),
+  challengeId: z.string().min(1, "challengeId es requerido"),
+  challengeToken: z.string().min(1, "challengeToken es requerido"),
+});
+
+/**
+ * Esquema para listar citas desde el portal del paciente
+ */
+export const ListAppointmentsInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  rut: z.string().min(1, "RUT es requerido"),
+  phone: z.string().min(1, "phone es requerido"),
+  challengeId: z.string().min(1, "challengeId es requerido"),
+  challengeToken: z.string().min(1, "challengeToken es requerido"),
+});
+
+export const IssuePublicAppointmentChallengeInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  action: z.enum(["lookup", "cancel", "book"]),
+  rut: z.string().min(1, "RUT es requerido"),
+  phone: z.string().min(1, "phone es requerido"),
+});
+
+export const BookPublicAppointmentInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  appointmentId: z.string().min(1, "appointmentId es requerido"),
+  doctorId: z.string().min(1, "doctorId es requerido"),
+  date: z.string().min(1, "date es requerido"),
+  patientName: z.string().min(3, "Nombre debe tener al menos 3 caracteres"),
+  rut: z.string().min(1, "RUT es requerido"),
+  phone: z.string().min(1, "phone es requerido"),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  serviceId: z.string().optional().or(z.literal("")),
+  serviceName: z.string().optional().or(z.literal("")),
+  challengeId: z.string().min(1, "challengeId es requerido"),
+  challengeToken: z.string().min(1, "challengeToken es requerido"),
 });
 
 /**
@@ -154,6 +189,13 @@ export const GenerateMarketingPosterInputSchema = z.object({
 export const LinkPatientInputSchema = z.object({
   centerId: z.string().min(1, "centerId es requerido"),
   patientId: z.string().min(1, "patientId es requerido"),
+});
+
+export const AssessPatientMigrationConsistencyInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido").optional(),
+  patientId: z.string().min(1, "patientId debe tener contenido").optional(),
+  limit: z.number().int().positive().max(500).default(200),
+  includeMatching: z.boolean().default(false),
 });
 
 /**
