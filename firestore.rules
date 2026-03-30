@@ -710,8 +710,9 @@ service cloud.firestore {
       // Update: owner, allowed professional, or superadmin
       allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
 
-      // Delete: only owner or superadmin
-      allow delete: if (signedIn() && resource.data.ownerUid == uid()) || isSuperAdmin();
+      // Delete físico prohibido para cumplir conservación clínica.
+      // El archivado debe realizarse por soft-delete (active=false + metadata).
+      allow delete: if false;
 
       // Consultations as subcollection of patient
       match /consultations/{consultationId} {
@@ -729,10 +730,9 @@ service cloud.firestore {
               uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
           || isSuperAdmin()
         );
-        allow delete: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || isSuperAdmin()
-        );
+        // Delete físico prohibido para mantener trazabilidad clínica.
+        // Usar archivado lógico y retención.
+        allow delete: if false;
       }
     }
   }
