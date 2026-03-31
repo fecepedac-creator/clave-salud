@@ -263,6 +263,18 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                       </p>
                     </div>
 
+                    {c.physicalExam && (
+                      <div>
+                        <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">
+                          Examen Físico
+                        </p>
+                        <p className="text-slate-600 text-lg leading-relaxed whitespace-pre-wrap">
+                          {c.physicalExam}
+                        </p>
+                      </div>
+                    )}
+
+
                     {/* Saved Prescriptions View */}
                     {c.prescriptions && c.prescriptions.length > 0 && (
                       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
