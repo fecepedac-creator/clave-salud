@@ -304,35 +304,53 @@ export const useConsultationLogic = ({
         createdAt: serverTimestamp(),
       });
       await setDoc(consultationRef, persistedConsultation);
-      await setDoc(
-        doc(db, "patients", selectedPatient.id, "consultations", consultation.id, "versions", generateId()),
-        {
-          ...buildClinicalVersionRecord({
-            entityType: "consultation",
-            entityId: consultation.id,
-            patientId: selectedPatient.id,
-            centerId: activeCenterId || undefined,
-            version: 1,
-            actorUid: currentUid,
-            actorName: doctorName || "Profesional",
-            summary: "Creacion de atencion clinica",
-            snapshot: sanitizeForFirestore({
-              ...consultation,
-              centerId: activeCenterId,
+
+      try {
+        await setDoc(
+          doc(
+            db,
+            "patients",
+            selectedPatient.id,
+            "consultations",
+            consultation.id,
+            "versions",
+            generateId()
+          ),
+          {
+            ...buildClinicalVersionRecord({
+              entityType: "consultation",
+              entityId: consultation.id,
               patientId: selectedPatient.id,
-              createdByUid: currentUid,
-              createdAt: consultation.date,
+              centerId: activeCenterId || undefined,
+              version: 1,
+              actorUid: currentUid,
+              actorName: doctorName || "Profesional",
+              summary: "Creación de atención clínica",
+              snapshot: sanitizeForFirestore({
+                ...consultation,
+                centerId: activeCenterId,
+                patientId: selectedPatient.id,
+                createdByUid: currentUid,
+                createdAt: consultation.date,
+              }),
             }),
-          }),
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      console.log("✅ Consultation saved to Firestore");
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (versionError) {
+        console.error("Error saving consultation version:", versionError);
+        showToast(
+          "La atención se guardó, pero el historial de versiones no pudo registrarse.",
+          "warning"
+        );
+      }
+
+      console.log("Consultation saved to Firestore");
       showToast("Atención guardada correctamente en la nube", "success");
     } catch (error) {
       console.error(error);
-      showToast("Error al guardar en la nube (se guardó localmente)", "error");
+      showToast("Error al guardar en la nube (solo se mantuvo el borrador local)", "error");
     }
 
     // 2) Actualizar estado local (lista de pacientes)
