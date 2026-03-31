@@ -15,6 +15,8 @@ import { Search, Plus, User } from "lucide-react";
 import { Patient } from "../types";
 import { db, auth } from "../firebase";
 import { CenterContext } from "../CenterContext";
+import { resolveActiveState } from "../utils/activeState";
+import SensitiveField from "./clinical/SensitiveField";
 
 type Props = {
   /** Si lo pasas, se usa en vez de leer desde Firestore */
@@ -117,7 +119,7 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
   };
 
   const data = patients ?? remotePatients;
-  const isActiveRecord = (p: Patient) => p?.active !== false && (p as any).activo !== false;
+  const isActiveRecord = (p: Patient) => resolveActiveState(p as any);
   const activeData = data.filter(isActiveRecord);
 
   const filtered = useMemo(() => {
@@ -186,7 +188,17 @@ const PatientList: React.FC<Props> = ({ patients, onSelect, onCreateNew, classNa
                   >
                     <div>
                       <div className="font-bold text-slate-800">{p.fullName || "Sin nombre"}</div>
-                      <div className="text-sm text-slate-500">{p.rut || "Sin RUT"}</div>
+                      <div className="text-sm text-slate-500">
+                        <SensitiveField
+                          value={p.rut}
+                          kind="rut"
+                          centerId={activeCenterId || undefined}
+                          entityType="patient"
+                          entityId={p.id}
+                          patientId={p.id}
+                          auditLabel="Revelacion de RUT desde listado de pacientes."
+                        />
+                      </div>
                     </div>
                     <div className="text-sm text-slate-500">
                       {p.commune ? `Comuna: ${p.commune}` : ""}

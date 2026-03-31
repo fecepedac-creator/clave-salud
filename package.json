@@ -20,7 +20,9 @@
     "audit:all": "node scripts/audit/run-audit.cjs --all",
     "audit:all:smoke": "node scripts/audit/run-audit.cjs --all --profile smoke",
     "audit:all:deep": "node scripts/audit/run-audit.cjs --all --profile deep",
-    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean"
+    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/rules/firestore.rules.test.ts --pool forks\"",
+    "test:booking-security": "vitest run src/hooks/__tests__/booking.test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -38,6 +40,7 @@
     "react-google-drive-picker": "^1.2.2"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
@@ -55,6 +58,7 @@
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "firebase-tools": "^15.12.0",
     "jsdom": "^28.1.0",
     "prettier": "^3.2.5",
     "tailwindcss": "^4.1.18",

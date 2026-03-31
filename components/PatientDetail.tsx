@@ -5,6 +5,9 @@ import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAudit
 import { ChevronDown, FileText, Users } from "lucide-react";
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
+import { rootPatientPath } from "../utils/clinicalPaths";
+import { resolveActiveState } from "../utils/activeState";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface GeneratedByInfo {
   name: string;
@@ -43,7 +46,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     logAccessSafe(logAccess, {
       centerId,
       resourceType: "patient",
-      resourcePath: `/centers/${centerId}/patients/${patient.id}`,
+      resourcePath: rootPatientPath(patient.id),
       patientId: patient.id,
       actorUid: auth.currentUser?.uid ?? undefined,
     });
@@ -59,9 +62,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       try {
         const snap = await getDocs(collection(db, "centers", centerId, "staff"));
         const list = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as Doctor);
-        const activeList = list.filter(
-          (member) => (member as any).active !== false && (member as any).activo !== false
-        );
+        const activeList = list.filter((member) => resolveActiveState(member as any));
         setStaffMembers(activeList);
       } catch (error) {
         console.error("load staff for care team", error);
@@ -100,18 +101,39 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     return activeOnly.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [consultations]);
 
-  const handleDownload = () => {
+  const handleDownloadWithGuardrails = async () => {
     if (!patient) return;
     const total = filteredConsultations.length;
     let toExport = filteredConsultations;
     if (total > 50) {
-      const exportAll = window.confirm(
-        "Este paciente tiene muchas atenciones. ¿Deseas exportar todo? (puede tardar)\n\nAceptar: Exportar TODO\nCancelar: Exportar últimas 20"
-      );
-      toExport = exportAll ? filteredConsultations : filteredConsultations.slice(0, 20);
+      const response = await requestCriticalAction({
+        title: "Exportar ficha clinica",
+        message:
+          "Este paciente tiene muchas atenciones. Puedes exportar todo o limitar la descarga para agilizar el proceso.",
+        warning: "La exportacion puede demorar y contiene informacion sensible.",
+        confirmLabel: "Exportar todo",
+        cancelLabel: "Solo ultimas 20",
+        requireFinalConfirmation: true,
+        confirmationLabel: "Confirmo que tengo base legitima para exportar esta ficha.",
+      });
+      toExport = response?.confirmed ? filteredConsultations : filteredConsultations.slice(0, 20);
     }
     setSelectedConsultations(toExport);
     setIsPrintOpen(true);
+    if (centerId) {
+      await logAuditEventSafe({
+        centerId,
+        action: "PATIENT_EXPORT",
+        entityType: "patient",
+        entityId: patient.id,
+        patientId: patient.id,
+        details: "Exportacion de ficha clinica a PDF.",
+        metadata: {
+          consultationCount: toExport.length,
+          exportScope: total > 50 ? (toExport.length === total ? "full" : "recent_20") : "full",
+        },
+      });
+    }
   };
 
   if (!patient) return null;
@@ -129,7 +151,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     if (!centerId || !patient) return;
     setSavingCareTeam(true);
     try {
-      await updateDoc(doc(db, "centers", centerId, "patients", patient.id), {
+      await updateDoc(doc(db, "patients", patient.id), {
         careTeamUids,
         careTeamUpdatedAt: serverTimestamp(),
         careTeamUpdatedBy: auth.currentUser?.uid ?? "unknown",
@@ -141,7 +163,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         entityType: "patient",
         entityId: patient.id,
         patientId: patient.id,
-        details: "Actualización de equipo tratante.",
+        details: "ActualizaciÃ³n de equipo tratante.",
         metadata: { careTeamCount: careTeamUids.length },
       });
     } catch (error) {
@@ -155,7 +177,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     <div className="flex items-center gap-3">
       <button
         type="button"
-        onClick={handleDownload}
+        onClick={handleDownloadWithGuardrails}
         className="flex items-center gap-2 bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200 whitespace-nowrap"
       >
         <FileText className="w-4 h-4" />
@@ -169,17 +191,17 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
             Identidad
           </p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
-            {patient.genderIdentity && patient.genderIdentity !== "Identidad de género no declarada"
+            {patient.genderIdentity && patient.genderIdentity !== "Identidad de gÃ©nero no declarada"
               ? patient.genderIdentity
               : "Identidad no declarada"}
           </p>
         </div>
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">
-            Previsión
+            PrevisiÃ³n
           </p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
-            {patient.insurance || "Sin previsión"}
+            {patient.insurance || "Sin previsiÃ³n"}
             {patient.insurance === "FONASA" &&
               patient.insuranceLevel &&
               ` (${patient.insuranceLevel})`}
@@ -277,7 +299,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
                   </button>
                   {accessMode === "CARE_TEAM" && (
                     <p className="text-[9px] text-amber-600 font-bold text-center mt-2 leading-tight">
-                      * Solo los seleccionados podrán ver esta ficha.
+                      * Solo los seleccionados podrÃ¡n ver esta ficha.
                     </p>
                   )}
                 </div>

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { MiniTrendChart, HistoryPoint } from "./MiniTrendChart";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ExamSheetsSectionProps {
   examSheets: ExamSheet[];
@@ -44,12 +45,17 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
     setIsExpanded(true);
   };
 
-  const handleRemoveSheet = (id: string) => {
-    if (window.confirm("¿Eliminar esta planilla de exámenes?")) {
-      onChange(examSheets.filter((s) => s.id !== id));
-    }
+  const handleRemoveSheet = async (id: string) => {
+    const response = await requestCriticalAction({
+      title: "Eliminar planilla de examenes",
+      message: "La planilla y sus resultados se quitaran del registro actual.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar esta planilla.",
+    });
+    if (!response?.confirmed) return;
+    onChange(examSheets.filter((s) => s.id !== id));
   };
-
   const handleUpdateSheet = (id: string, updates: Partial<ExamSheet>) => {
     onChange(examSheets.map((s) => (s.id === id ? { ...s, ...updates } : s)));
   };
@@ -140,7 +146,7 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
         <div className="flex items-center gap-3">
           <FileSpreadsheet className="w-6 h-6 text-indigo-600" />
           <div>
-            <h4 className="font-bold text-slate-800 text-lg">Exámenes de Seguimiento</h4>
+            <h4 className="font-bold text-slate-800 text-lg">ExÃƒÂ¡menes de Seguimiento</h4>
             <p className="text-sm text-slate-500">
               {examSheets.length} planilla{examSheets.length !== 1 ? "s" : ""} registrada
               {examSheets.length !== 1 ? "s" : ""}
@@ -169,7 +175,7 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
         <div className="p-6 bg-white border-t border-slate-100 space-y-6">
           {examSheets.length === 0 && (
             <div className="text-center py-8 text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
-              No hay planillas de exámenes registradas para esta atención.
+              No hay planillas de exÃƒÂ¡menes registradas para esta atenciÃƒÂ³n.
               <br />
               <button
                 onClick={handleAddSheet}
@@ -207,7 +213,7 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
 
                 <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                   <span className="text-sm font-medium text-slate-600 mr-2">
-                    {Object.keys(sheet.exams).length} exámenes
+                    {Object.keys(sheet.exams).length} exÃƒÂ¡menes
                   </span>
                   <button
                     onClick={(e) => {
@@ -333,7 +339,7 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
                   {Object.keys(sheet.exams).length === 0 && (
                     <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm">
                       <Plus className="w-5 h-5 mx-auto mb-1 opacity-50" />
-                      Agrega exámenes o perfiles para comenzar
+                      Agrega exÃƒÂ¡menes o perfiles para comenzar
                     </div>
                   )}
                 </div>

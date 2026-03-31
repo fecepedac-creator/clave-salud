@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Prescription } from "../types";
 import { generateId } from "../utils";
 import { Sparkles, Trash2 } from "lucide-react";
+import { requestCriticalAction } from "../utils/criticalActions";
 import {
   DEFAULT_EXAM_ORDER_CATALOG,
   ExamOrderCatalog,
@@ -159,16 +160,16 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
     const docs: Prescription[] = Array.from(selectedByCategory.entries()).map(
       ([category, items]) => {
         const content = [
-          `Orden de Exámenes - ${getCategoryLabel(category)}`,
+          `Orden de ExÃ¡menes - ${getCategoryLabel(category)}`,
           "",
           ...items.map((item) => {
             const contrast =
               item.modality === "TC" || item.modality === "RM"
                 ? ` (${item.contrast === "con" ? "con contraste" : "sin contraste"})`
                 : "";
-            return `• ${item.label}${item.modality ? ` [${item.modality}]` : ""}${contrast}`;
+            return `â€¢ ${item.label}${item.modality ? ` [${item.modality}]` : ""}${contrast}`;
           }),
-          notes ? `\nIndicaciones clínicas: ${notes}` : "",
+          notes ? `\nIndicaciones clÃ­nicas: ${notes}` : "",
         ]
           .filter(Boolean)
           .join("\n");
@@ -207,7 +208,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
       <div className="w-full max-w-6xl h-[95vh] flex flex-col bg-slate-50 rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="p-5 border-b border-slate-200 bg-white flex items-center justify-between flex-shrink-0 shadow-sm z-10">
-          <h3 className="text-xl font-bold text-slate-900">Solicitud de exámenes</h3>
+          <h3 className="text-xl font-bold text-slate-900">Solicitud de exÃ¡menes</h3>
           <button
             onClick={onClose}
             className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg font-bold transition-colors"
@@ -226,7 +227,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
                   <p className="text-xs font-black text-indigo-900 uppercase tracking-widest">
-                    Perfiles Rápidos (Packs)
+                    Perfiles RÃ¡pidos (Packs)
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -247,10 +248,16 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                         </button>
                         {isCustom && onDeleteProfile && (
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm(`¿Eliminar el pack "${profile.label}"?`)) {
-                                onDeleteProfile(profile.id);
+                              const response = await requestCriticalAction({
+                                title: `Eliminar pack ${profile.label}`,
+                                message: "Este pack dejara de estar disponible dentro de tus perfiles guardados.",
+                                confirmLabel: "Eliminar",
+                                requireFinalConfirmation: true,
+                                confirmationLabel: "Confirmo que deseo eliminar este pack.",
+                              });
+                              if (response?.confirmed) {
                               }
                             }}
                             className="absolute right-2 p-1.5 text-amber-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -352,7 +359,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
               {!(active as any)?.groups && (active as any)?.exams && (
                 <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                   <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                    <p className="text-sm font-bold text-slate-700">Exámenes</p>
+                    <p className="text-sm font-bold text-slate-700">ExÃ¡menes</p>
                   </div>
                   <div className="grid md:grid-cols-2 gap-2 p-3">
                     {(active as any).exams.map((item: any) => {
@@ -389,7 +396,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                     value={otherText}
                     onChange={(e) => setOtherText(e.target.value)}
                     className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
-                    placeholder="Agregar examen no listado (Ej: Perfil bioquímico...)"
+                    placeholder="Agregar examen no listado (Ej: Perfil bioquÃ­mico...)"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") addOther();
                     }}
@@ -420,9 +427,9 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
               <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar relative">
                 {selected.length === 0 && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center opacity-50">
-                    <p className="text-sm font-bold text-slate-600 mb-1">Lista vacía</p>
+                    <p className="text-sm font-bold text-slate-600 mb-1">Lista vacÃ­a</p>
                     <p className="text-xs text-slate-500">
-                      Selecciona exámenes a la izquierda para agregarlos a la orden.
+                      Selecciona exÃ¡menes a la izquierda para agregarlos a la orden.
                     </p>
                   </div>
                 )}
@@ -459,7 +466,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                       }
                       className="text-slate-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors font-bold text-lg leading-none"
                     >
-                      ×
+                      Ã—
                     </button>
                   </div>
                 ))}
@@ -512,7 +519,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
             {/* Notes */}
             <div className="flex-shrink-0 border-t border-slate-100 pt-4 mt-2">
               <div className="flex justify-between items-end mb-2">
-                <p className="font-bold text-slate-800 text-sm">Indicaciones / Sospecha Clínica</p>
+                <p className="font-bold text-slate-800 text-sm">Indicaciones / Sospecha ClÃ­nica</p>
               </div>
               <textarea
                 className="w-full border border-slate-300 rounded-xl px-4 py-3 h-28 text-sm outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 resize-none text-slate-700 font-medium"
@@ -528,7 +535,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
             disabled={selected.length === 0}
             className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 shadow-xl shadow-emerald-200 flex-shrink-0 text-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border border-emerald-500"
           >
-            Guardar {selected.length} órdenes
+            Guardar {selected.length} Ã³rdenes
           </button>
         </div>
       </div>

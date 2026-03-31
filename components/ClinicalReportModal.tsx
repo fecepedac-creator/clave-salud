@@ -8,6 +8,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   patient: Patient | null;
+  consultations?: Consultation[];
   centerName: string;
   centerLogoUrl?: string;
   professionalName: string;
@@ -507,6 +508,7 @@ const ClinicalReportModal: React.FC<Props> = ({
   isOpen,
   onClose,
   patient,
+  consultations = [],
   centerName,
   centerLogoUrl,
   professionalName,
@@ -515,27 +517,27 @@ const ClinicalReportModal: React.FC<Props> = ({
   professionalRegistry,
   examDefinitions,
 }) => {
-  const consultations = (patient?.consultations || []).filter((c) => c.active !== false);
+  const activeConsultations = consultations.filter((c) => c.active !== false);
 
   const examLabelMap = useMemo(() => buildExamLabelMap(examDefinitions), [examDefinitions]);
 
   const minDate = useMemo(() => {
-    if (consultations.length === 0) return "";
-    const min = consultations.reduce((acc, c) => {
+    if (activeConsultations.length === 0) return "";
+    const min = activeConsultations.reduce((acc, c) => {
       const d = new Date(c.date).getTime();
       return d < acc ? d : acc;
     }, Number.POSITIVE_INFINITY);
     return new Date(min).toISOString().split("T")[0];
-  }, [consultations]);
+  }, [activeConsultations]);
 
   const maxDate = useMemo(() => {
-    if (consultations.length === 0) return "";
-    const max = consultations.reduce((acc, c) => {
+    if (activeConsultations.length === 0) return "";
+    const max = activeConsultations.reduce((acc, c) => {
       const d = new Date(c.date).getTime();
       return d > acc ? d : acc;
     }, 0);
     return new Date(max).toISOString().split("T")[0];
-  }, [consultations]);
+  }, [activeConsultations]);
 
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
@@ -559,12 +561,12 @@ const ClinicalReportModal: React.FC<Props> = ({
     const fTime = f ? new Date(f + "T00:00:00").getTime() : Number.NEGATIVE_INFINITY;
     const tTime = t ? new Date(t + "T23:59:59").getTime() : Number.POSITIVE_INFINITY;
 
-    return (patient.consultations || []).filter((c) => {
+    return activeConsultations.filter((c) => {
       if (c.active === false) return false;
       const time = new Date(c.date).getTime();
       return time >= fTime && time <= tTime;
     });
-  }, [patient, from, to, minDate, maxDate]);
+  }, [activeConsultations, patient, from, to, minDate, maxDate]);
 
   const canPrint = Boolean(patient) && draft.trim().length > 0;
 

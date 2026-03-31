@@ -18,6 +18,9 @@ interface DoctorAgendaTabProps {
   effectiveAgendaConfig?: AgendaConfig;
   isSyncingAppointments: boolean;
   isReadOnly: boolean;
+  appointmentsLoading?: boolean;
+  appointmentsError?: string;
+  onRetryAppointments?: () => void;
   hasActiveCenter: boolean;
   currentUser: Doctor | undefined;
   activeCenterId: string | undefined;
@@ -40,6 +43,9 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
   effectiveAgendaConfig,
   isSyncingAppointments,
   isReadOnly,
+  appointmentsLoading = false,
+  appointmentsError = "",
+  onRetryAppointments,
   hasActiveCenter,
   currentUser,
   activeCenterId,
@@ -94,9 +100,13 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
           currentMonth={currentMonth}
           selectedAgendaDate={selectedAgendaDate}
           appointments={appointments}
+          centerId={activeCenterId}
           doctorId={effectiveDoctorId}
           agendaConfig={effectiveAgendaConfig}
           isSyncingAppointments={isSyncingAppointments}
+          isLoadingAppointments={appointmentsLoading}
+          appointmentsError={appointmentsError}
+          onRetryAppointments={onRetryAppointments}
           onMonthChange={(inc) => {
             const newDate = new Date(currentMonth);
             newDate.setMonth(newDate.getMonth() + inc);

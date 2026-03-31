@@ -2,11 +2,15 @@ import React, { useEffect, useRef } from "react";
 import { Appointment, AgendaConfig } from "../types";
 import { getStandardSlots, getDaysInMonth } from "../utils";
 import { ChevronLeft, ChevronRight, Calendar, Zap, Info } from "lucide-react";
+import { resolveActiveState } from "../utils/activeState";
+import SensitiveField from "./clinical/SensitiveField";
+import OperationalState from "./ui/OperationalState";
 
 interface AgendaViewProps {
   currentMonth: Date;
   selectedAgendaDate: string;
   appointments: Appointment[];
+  centerId?: string;
   doctorId: string;
   agendaConfig?: AgendaConfig;
   onMonthChange: (increment: number) => void;
@@ -16,12 +20,16 @@ interface AgendaViewProps {
   onToggleAttendance?: (app: Appointment, status: "completed" | "no-show" | "cancelled") => void;
   readOnly?: boolean;
   isSyncingAppointments?: boolean;
+  isLoadingAppointments?: boolean;
+  appointmentsError?: string;
+  onRetryAppointments?: () => void;
 }
 
 const AgendaView: React.FC<AgendaViewProps> = ({
   currentMonth,
   selectedAgendaDate,
   appointments,
+  centerId,
   doctorId,
   agendaConfig,
   onMonthChange,
@@ -31,6 +39,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   onToggleAttendance,
   readOnly = false,
   isSyncingAppointments = false,
+  isLoadingAppointments = false,
+  appointmentsError = "",
+  onRetryAppointments,
 }) => {
   const [mobileView, setMobileView] = React.useState<"calendar" | "slots">("calendar");
   const slotsSectionRef = useRef<HTMLDivElement>(null);
@@ -53,9 +64,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   }, [selectedAgendaDate]);
 
   const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-  const activeAppointments = appointments.filter(
-    (a) => a?.active !== false && (a as any).activo !== false
-  );
+  const activeAppointments = appointments.filter((a) => resolveActiveState(a as any));
   const standardSlots = getStandardSlots(selectedAgendaDate, doctorId, agendaConfig);
 
   const today = new Date();
@@ -77,7 +86,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
           onClick={() => setMobileView("slots")}
           className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${mobileView === "slots" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
         >
-          <Zap className="w-4 h-4" /> Horas y Gestión
+          <Zap className="w-4 h-4" /> Horas y GestiÃ³n
         </button>
       </div>
 
@@ -99,7 +108,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                 <span className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
                   2
                 </span>
-                Selecciona un día
+                Selecciona un dÃ­a
               </p>
             </div>
 
@@ -205,11 +214,11 @@ const AgendaView: React.FC<AgendaViewProps> = ({
             {!selectedAgendaDate ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 py-12">
                 <Calendar className="w-16 h-16 mb-4 opacity-20" />
-                <p className="font-bold">Selecciona un día en el calendario.</p>
+                <p className="font-bold">Selecciona un dÃ­a en el calendario.</p>
               </div>
             ) : (
               <div className="space-y-8 pb-10">
-                {/* Grid de Bloques (Gestión) */}
+                {/* Grid de Bloques (GestiÃ³n) */}
                 <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                   {standardSlots.map((templateSlot) => {
                     const realSlot = activeAppointments.find(
@@ -260,7 +269,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                   ).length === 0 ? (
                     <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <p className="text-slate-400 italic text-sm">
-                        No hay pacientes agendados para este día.
+                        No hay pacientes agendados para este dÃ­a.
                       </p>
                     </div>
                   ) : (
@@ -292,7 +301,25 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                   )}
                                 </h4>
                                 <p className="text-sm text-slate-500 font-medium">
-                                  {apt.patientRut} • {apt.patientPhone}
+                                  <SensitiveField
+                                    value={apt.patientRut}
+                                    kind="rut"
+                                    centerId={centerId}
+                                    entityType="appointment"
+                                    entityId={apt.id}
+                                    patientId={apt.patientId}
+                                    auditLabel="Revelacion de RUT desde agenda."
+                                  />
+                                  {" • "}
+                                  <SensitiveField
+                                    value={apt.patientPhone}
+                                    kind="phone"
+                                    centerId={centerId}
+                                    entityType="appointment"
+                                    entityId={apt.id}
+                                    patientId={apt.patientId}
+                                    auditLabel="Revelacion de telefono desde agenda."
+                                  />
                                 </p>
                               </div>
                             </div>
@@ -311,7 +338,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                         className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-50 text-slate-500"}`}
                                         title="Atendido"
                                       >
-                                        ✓
+                                        âœ“
                                       </button>
                                       <button
                                         type="button"
@@ -319,7 +346,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                         className={`px-3 py-1.5 text-xs font-bold transition-colors border-l border-r border-slate-200 ${apt.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-50 text-slate-500"}`}
                                         title="No Show"
                                       >
-                                        ✕
+                                        âœ•
                                       </button>
                                       <button
                                         type="button"
@@ -356,3 +383,4 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 };
 
 export default AgendaView;
+

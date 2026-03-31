@@ -15,6 +15,7 @@ import {
 import { db, auth } from "../firebase";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import LogoHeader from "./LogoHeader";
+import { canonicalizeActiveState } from "../utils/activeState";
 
 type InviteData = {
   emailLower?: string;
@@ -264,7 +265,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         {
           uid: user.uid,
           email: lower(user.email || ""),
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           updatedAt: serverTimestamp(),
           roles: [accessRole],
           centers: [centerId],
@@ -295,8 +296,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
           photoUrl: profileData.photoUrl ?? user.photoURL ?? "",
           agendaConfig: profileData.agendaConfig ?? null,
           isAdmin: profileData.isAdmin ?? false,
-          active: true,
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           visibleInBooking: false,
           isTemp: false,
           createdAt: serverTimestamp(),
@@ -327,7 +327,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
           photoUrl: profileData.photoUrl ?? (invite as any).photoUrl ?? user.photoURL ?? "",
           agendaConfig: profileData.agendaConfig ?? null,
           visibleInBooking: false,
-          active: true,
+          ...canonicalizeActiveState({ active: true }),
           isTemp: false,
           updatedAt: serverTimestamp(),
         },

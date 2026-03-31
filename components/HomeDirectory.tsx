@@ -2,6 +2,7 @@ import React from "react";
 import { Building2, Lock, Stethoscope, Activity, Check, ArrowRight } from "lucide-react";
 import { MedicalCenter, ViewMode } from "../types";
 import LegalLinks from "./LegalLinks";
+import { resolveActiveState } from "../utils/activeState";
 
 interface HomeDirectoryProps {
   centers: MedicalCenter[];
@@ -148,7 +149,7 @@ const HomeDirectory: React.FC<HomeDirectoryProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {centers.map((c) => {
-              const isActive = (c as any).isActive !== false;
+              const isActive = resolveActiveState(c as any);
               if (!isSuperAdminClaim && !isActive) return null;
 
               return (

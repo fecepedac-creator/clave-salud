@@ -34,6 +34,7 @@ import {
   Clock,
   Mail,
   AlertTriangle,
+  Send,
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { db, auth } from "../firebase";
@@ -49,12 +50,16 @@ import {
   Timestamp,
   updateDoc,
   query,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import WhatsappTemplatesManager from "./WhatsappTemplatesManager";
+import CampaignManager from "./CampaignManager";
 import auditLogPolicy from "../docs/politicas/POLITICA_CONSERVACION_FICHA_CLINICA.md?raw";
 import AuditLogViewer from "./AuditLogViewer";
+import SensitiveField from "./clinical/SensitiveField";
 import MarketingPosterModule from "./MarketingPosterModule";
 import MarketingFlyerModal from "./MarketingFlyerModal";
 import { MigrationModal } from "./MigrationModal";
@@ -66,12 +71,16 @@ import AdminCommandCenter from "../features/admin/components/AdminCommandCenter"
 import { WhatsappSettings } from "../features/admin/components/WhatsappSettings";
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
 import { AdminAgenda } from "../features/admin/components/AdminAgenda";
+import { canonicalizeActiveState, resolveActiveState } from "../utils/activeState";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
   doctors: Doctor[];
   onUpdateDoctors: (doctors: Doctor[]) => void;
   appointments: Appointment[];
+  appointmentsLoading?: boolean;
+  appointmentsError?: string;
+  onRetryAppointments?: () => void;
   onUpdateAppointments: (appointments: Appointment[]) => void;
   onUpdateAppointment?: (appointment: Appointment) => Promise<void>; // Individual upsert
   onDeleteAppointment?: (id: string) => Promise<void>; // Individual delete
@@ -93,12 +102,14 @@ export const ROLE_LABELS: Record<string, string> = Object.fromEntries(
   ROLE_CATALOG.map((r) => [r.id, r.label])
 );
 
-
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   centerId,
   doctors,
   onUpdateDoctors,
   appointments,
+  appointmentsLoading: _appointmentsLoading,
+  appointmentsError: _appointmentsError,
+  onRetryAppointments: _onRetryAppointments,
   onUpdateAppointments,
   onLogout,
   onOpenLegal,
@@ -120,7 +131,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     | "audit"
     | "preadmissions"
     | "services"
-    | "performance";
+    | "performance"
+    | "campaigns";
+  type AdminTabGroup = "operation" | "team" | "governance" | "growth";
+
+  const getTabGroup = (tab: AdminTab): AdminTabGroup => {
+    if (tab === "audit") return "governance";
+    if (tab === "marketing" || tab === "campaigns") return "growth";
+    if (tab === "doctors" || tab === "whatsapp" || tab === "services") return "team";
+    return "operation";
+  };
 
   const userRoles = currentUser?.roles || [];
   const isSecretary = userRoles.some((r) => {
@@ -129,6 +149,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [activeTab, setActiveTab] = useState<AdminTab>(isSecretary ? "agenda" : "doctors");
+  const [activeGroup, setActiveGroup] = useState<AdminTabGroup>(
+    getTabGroup(isSecretary ? "agenda" : "doctors")
+  );
 
   const { showToast } = useToast();
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
@@ -148,6 +171,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     setAccessMode(activeCenter?.accessMode ?? "CENTER_WIDE");
   }, [activeCenter?.accessMode]);
+
+  useEffect(() => {
+    setActiveGroup(getTabGroup(activeTab));
+  }, [activeTab]);
 
   // Marketing Flyer
   const [showMarketingModal, setShowMarketingModal] = useState(false);
@@ -271,8 +298,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await upsertStaffAndPublic(tempStaffId, {
       ...doctor,
       isTemp: true,
-      active: true,
-      activo: true,
+      ...canonicalizeActiveState({ active: true }),
     } as any);
 
     // 2) Crear invitación con tempStaffId para migración posterior
@@ -340,8 +366,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       accessRole: doctor.isAdmin ? "center_admin" : "doctor",
       clinicalRole: doctor.clinicalRole || doctor.role || "",
       visibleInBooking: doctor.visibleInBooking === true,
-      active: doctor.active ?? true,
-      activo: doctor.active ?? true,
+      ...canonicalizeActiveState({ active: doctor.active ?? true }),
       isTemp,
       updatedAt: serverTimestamp(),
     } as any;
@@ -361,7 +386,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         agendaConfig: payload.agendaConfig,
         visibleInBooking: payload.visibleInBooking,
         active: payload.active,
-        activo: payload.active,
+        activo: payload.activo,
         isTemp,
         updatedAt: serverTimestamp(),
       },
@@ -408,11 +433,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setIsSyncingPublic(true);
     try {
-      let count = 0;
-      for (const d of doctors) {
-        if (d.active !== false && d.visibleInBooking === true) {
-          await upsertStaffAndPublic(d.id, d);
-          count++;
+        let count = 0;
+        for (const d of doctors) {
+          if (resolveActiveState(d as any) && d.visibleInBooking === true) {
+            await upsertStaffAndPublic(d.id, d);
+            count++;
         }
       }
       showToast(`Sincronizados ${count} profesionales con el portal.`, "success");
@@ -607,6 +632,27 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            { id: "operation", label: "Operacion" },
+            { id: "team", label: "Equipo" },
+            { id: "governance", label: "Gobernanza" },
+            { id: "growth", label: "Growth" },
+          ].map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => setActiveGroup(group.id as AdminTabGroup)}
+              className={`px-4 py-2 rounded-full text-sm font-bold transition-colors ${
+                activeGroup === group.id
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {group.label}
+            </button>
+          ))}
+        </div>
         {/* Tabs */}
         <div
           data-testid="admin-tab-bar"
@@ -682,6 +728,14 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             <Share2 className="w-4 h-4" /> Afiche RRSS
           </button>
           <button
+            onClick={() => setActiveTab("campaigns")}
+            disabled={!hasActiveCenter}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "campaigns" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Campañas Masivas WhatsApp" : "Selecciona un centro activo"}
+          >
+            <Send className="w-4 h-4" /> Campañas IA
+          </button>
+          <button
             data-testid="admin-tab-performance"
             onClick={() => setActiveTab("performance")}
             disabled={!hasActiveCenter}
@@ -701,10 +755,13 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               totalPatients: activeCenter?.stats?.patientCount || patients.length,
               todayAppointments:
                 activeCenter?.stats?.appointmentCount ||
-                appointments.filter((a) => a.date === new Date().toISOString().split("T")[0]).length,
-              pendingPreadmissions: sortedPreadmissions.length,
-              activeDoctors: activeCenter?.stats?.staffCount || doctors.filter((d) => d.active !== false).length,
-            }}
+                appointments.filter((a) => a.date === new Date().toISOString().split("T")[0])
+                  .length,
+                pendingPreadmissions: sortedPreadmissions.length,
+                activeDoctors:
+                  activeCenter?.stats?.staffCount ||
+                  doctors.filter((d) => resolveActiveState(d as any)).length,
+              }}
             appointments={appointments}
             doctors={doctors}
             preadmissions={sortedPreadmissions}
@@ -818,6 +875,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* AUDIT LOGS */}
+      {activeTab === "campaigns" && <CampaignManager />}
       {activeTab === "audit" && (
         <div className="animate-fadeIn">
           <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
@@ -874,7 +932,18 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
                       <div>
                         <h4 className="text-lg font-bold text-white">{contactName}</h4>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mt-1">
-                          {contactRut && <span className="font-mono">{contactRut}</span>}
+                          {contactRut && (
+                            <span className="font-mono">
+                              <SensitiveField
+                                value={contactRut}
+                                kind="rut"
+                                centerId={resolvedCenterId}
+                                entityType="patient"
+                                entityId={item.id}
+                                auditLabel="Revelacion de RUT desde preingresos."
+                              />
+                            </span>
+                          )}
                           {date && (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" /> {date.toLocaleString("es-CL")}
@@ -897,11 +966,33 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                       <div className="flex items-center gap-2 text-slate-300">
                         <Phone className="w-4 h-4 text-emerald-400" />
-                        {contactPhone || "Sin teléfono"}
+                        {contactPhone ? (
+                          <SensitiveField
+                            value={contactPhone}
+                            kind="phone"
+                            centerId={resolvedCenterId}
+                            entityType="patient"
+                            entityId={item.id}
+                            auditLabel="Revelacion de telefono desde preingresos."
+                          />
+                        ) : (
+                          "Sin teléfono"
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-slate-300">
                         <Mail className="w-4 h-4 text-indigo-400" />
-                        {contactEmail || "Sin email"}
+                        {contactEmail ? (
+                          <SensitiveField
+                            value={contactEmail}
+                            kind="email"
+                            centerId={resolvedCenterId}
+                            entityType="patient"
+                            entityId={item.id}
+                            auditLabel="Revelacion de email desde preingresos."
+                          />
+                        ) : (
+                          "Sin email"
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-slate-300">
                         <Calendar className="w-4 h-4 text-blue-400" />
@@ -949,16 +1040,18 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             <div className="space-y-3">
               <button
                 onClick={() => {
-                   onUpdateAppointments(appointments.filter(a => a.id !== cancelModal.appointment?.id));
-                   onLogActivity({
+                  onUpdateAppointments(
+                    appointments.filter((a) => a.id !== cancelModal.appointment?.id)
+                  );
+                  onLogActivity({
                     action: "APPOINTMENT_CANCEL",
                     entityType: "appointment",
                     entityId: cancelModal.appointment!.id,
                     patientId: cancelModal.appointment!.patientId,
                     details: `Canceló cita desde Command Center: ${cancelModal.appointment!.patientName}`,
-                   });
-                   setCancelModal({ isOpen: false, appointment: null });
-                   showToast("Cita cancelada correctamente.", "info");
+                  });
+                  setCancelModal({ isOpen: false, appointment: null });
+                  showToast("Cita cancelada correctamente.", "info");
                 }}
                 className="w-full bg-rose-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-rose-700 transition-colors"
               >
@@ -974,7 +1067,6 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           </div>
         </div>
       )}
-
 
       {/* MARKETING FLYER */}
       {showMarketingModal && activeCenter && (
@@ -1026,3 +1118,4 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
 };
 
 export default AdminDashboard;
+

@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { generateId } from "../utils";
 import { useToast } from "./Toast";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ServiceAgendasManagerProps {
   centerId: string;
@@ -93,10 +94,14 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (
-      !window.confirm("¿Eliminar este perfil de servicio? Se perderá su configuración de agenda.")
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: "Eliminar perfil de servicio",
+      message: "Se perdera su configuracion de agenda asociada.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar este perfil de servicio.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       await deleteDoc(doc(db, "centers", centerId, "staff", id));
@@ -115,7 +120,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
             <LayoutDashboard className="w-8 h-8 text-amber-400" /> Agendas de Servicios
           </h3>
           <p className="text-slate-400 mt-2">
-            Crea perfiles para gestionar cupos de Laboratorio, Imagenología, etc.
+            Crea perfiles para gestionar cupos de Laboratorio, ImagenologÃƒÂ­a, etc.
           </p>
         </div>
         {!isEditing && (
@@ -132,7 +137,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
         <div className="lg:col-span-2 space-y-4">
           {serviceProfiles.length === 0 ? (
             <div className="p-8 text-center text-slate-500 bg-slate-900/30 rounded-2xl border border-dashed border-slate-700">
-              No hay perfiles de servicio creados aún.
+              No hay perfiles de servicio creados aÃƒÂºn.
             </div>
           ) : (
             serviceProfiles.map((svc) => (
@@ -148,7 +153,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
                     <h4 className="font-bold text-white text-lg">{svc.fullName}</h4>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
                       <span className="font-bold text-amber-500/80">AGENDA HABILITADA</span>
-                      <span>•</span>
+                      <span>Ã¢â‚¬Â¢</span>
                       <span>{svc.agendaConfig?.slotDuration} min / cita</span>
                     </p>
                   </div>
@@ -211,7 +216,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
 
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase">
-                  Descripción / Especialidad
+                  DescripciÃƒÂ³n / Especialidad
                 </label>
                 <input
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:border-amber-500"
@@ -226,7 +231,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase">
-                    Duración Bloque (min)
+                    DuraciÃƒÂ³n Bloque (min)
                   </label>
                   <input
                     type="number"
@@ -245,7 +250,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">
-                    Agendamiento Público
+                    Agendamiento PÃƒÂºblico
                   </span>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

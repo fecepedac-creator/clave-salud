@@ -12,6 +12,7 @@ import { Patient, Doctor } from "../../../types";
 import { formatPersonName, generateId, calculateAge } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 import DrivePicker from "../../../components/DrivePicker";
+import OperationalState from "../../../components/ui/OperationalState";
 
 interface DoctorPatientsListTabProps {
   searchTerm: string;
@@ -34,6 +35,15 @@ interface DoctorPatientsListTabProps {
   whatsAppMenuForPatientId: string | null;
   whatsAppTemplates: any[];
   openWhatsApp: (p: Patient, t: string) => void;
+  currentPage: number;
+  setCurrentPage: (p: number) => void;
+  totalPages: number;
+  sortBy: "alphabetical" | "recent";
+  setSortBy: (s: "alphabetical" | "recent") => void;
+  totalCount: number;
+  patientsLoading?: boolean;
+  patientsError?: string;
+  onRetryPatients?: () => void;
 }
 
 export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
@@ -57,6 +67,15 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   whatsAppMenuForPatientId,
   whatsAppTemplates,
   openWhatsApp,
+  currentPage,
+  setCurrentPage,
+  totalPages,
+  sortBy,
+  setSortBy,
+  totalCount,
+  patientsLoading = false,
+  patientsError = "",
+  onRetryPatients,
 }) => {
   const { showToast } = useToast();
 
@@ -94,6 +113,22 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "center" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
             >
               <History className="w-4 h-4" /> Este Centro
+            </button>
+          </div>
+
+          {/* Sorting Toggle */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+            <button
+              onClick={() => setSortBy("alphabetical")}
+              className={`px-4 py-2 rounded-xl text-[11px] uppercase tracking-wider font-black transition-all ${sortBy === "alphabetical" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Nombre (A-Z)
+            </button>
+            <button
+              onClick={() => setSortBy("recent")}
+              className={`px-4 py-2 rounded-xl text-[11px] uppercase tracking-wider font-black transition-all ${sortBy === "recent" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Recientes
             </button>
           </div>
           <div className="flex items-center gap-3">
@@ -171,7 +206,24 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
       {/* Table */}
       {/* Desktop Table View */}
       <div className="hidden md:block flex-1 overflow-y-auto">
-        {filteredPatients.length === 0 ? (
+        {patientsLoading ? (
+          <div className="p-6">
+            <OperationalState
+              kind="loading"
+              title="Cargando pacientes..."
+              description="Estamos sincronizando el panel clínico."
+            />
+          </div>
+        ) : patientsError ? (
+          <div className="p-6">
+            <OperationalState
+              kind="error"
+              title="No pudimos cargar pacientes"
+              description={patientsError}
+              onAction={onRetryPatients}
+            />
+          </div>
+        ) : filteredPatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
             <UsersRound className="w-16 h-16 mb-4 opacity-20" />
             <p className="font-medium">No se encontraron pacientes</p>
@@ -300,9 +352,46 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
         )}
       </div>
 
+      {filteredPatients.length > 0 && (
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+          <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+            Mostrando {filteredPatients.length} de {totalCount} pacientes
+            {searchTerm && ` (Busca: "${searchTerm}")`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest border border-slate-200 bg-white text-slate-600 disabled:opacity-30 transition-all hover:bg-slate-50 active:scale-95 shadow-sm"
+            >
+              Anterior
+            </button>
+            <span className="text-xs font-black text-slate-600 px-4 bg-white/50 py-2.5 rounded-xl border border-slate-200 uppercase tracking-widest">
+              Pag {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest border border-slate-200 bg-white text-slate-600 disabled:opacity-30 transition-all hover:bg-slate-50 active:scale-95 shadow-sm"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Card View */}
       <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4">
-        {filteredPatients.length === 0 ? (
+        {patientsLoading ? (
+          <OperationalState kind="loading" title="Cargando pacientes..." compact />
+        ) : patientsError ? (
+          <OperationalState
+            kind="error"
+            title="No pudimos cargar pacientes"
+            description={patientsError}
+            onAction={onRetryPatients}
+          />
+        ) : filteredPatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <p>No se encontraron pacientes</p>
           </div>

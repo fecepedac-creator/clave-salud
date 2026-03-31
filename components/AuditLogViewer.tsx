@@ -13,6 +13,7 @@ import {
 import { db } from "../firebase";
 import { AuditLogEntry, AuditAction, Doctor, Patient } from "../types";
 import { Download, Filter, RefreshCw } from "lucide-react";
+import { resolveActiveState } from "../utils/activeState";
 
 const RANGE_OPTIONS = [
   { label: "7 días", days: 7 },
@@ -76,7 +77,7 @@ const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ centerId, staff, patien
   const actorOptions = useMemo(
     () =>
       staff
-        .filter((s) => s.active !== false && s.activo !== false)
+        .filter((s) => resolveActiveState(s as any))
         .map((s) => ({ value: s.id, label: s.fullName || s.email || s.id })),
     [staff]
   );

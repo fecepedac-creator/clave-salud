@@ -23,6 +23,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { ViewMode, UserProfile, AnyRole } from "../types";
+import { canonicalizeActiveState, resolveActiveState } from "../utils/activeState";
 
 const SUPERADMIN_ALLOWED_EMAILS = new Set(["fecepedac@gmail.com", "dr.felipecepeda@gmail.com"]);
 
@@ -153,7 +154,7 @@ export function useAuth() {
             roles: roles,
             centros: ["c_eji2qv61"],
             centers: ["c_eji2qv61"],
-            activo: true,
+            ...canonicalizeActiveState({ active: true }),
             createdAt: serverTimestamp(),
             role: isDoc ? "MEDICO" : "center_admin",
           };
@@ -163,7 +164,7 @@ export function useAuth() {
           profile = snap.data();
         }
 
-        if (profile.activo === false)
+        if (!resolveActiveState(profile))
           throw new Error("Su cuenta ha sido desactivada por el administrador.");
         if (profile.billing?.status === "suspended")
           throw new Error("Su acceso ha sido suspendido por falta de pago.");
@@ -311,7 +312,7 @@ export function useAuth() {
         const existingSnap = await getDoc(doc(db, "users", uid));
         if (existingSnap.exists()) {
           const profile: any = existingSnap.data();
-          if (profile.activo === false)
+          if (!resolveActiveState(profile))
             throw new Error("Su cuenta ha sido desactivada por el administrador.");
           if (profile.billing?.status === "suspended")
             throw new Error("Su acceso ha sido suspendido por falta de pago.");
@@ -387,8 +388,7 @@ export function useAuth() {
                       emailLower: emailUser,
                       role: rId,
                       roles: [rId],
-                      active: true,
-                      activo: true,
+                      ...canonicalizeActiveState({ active: true }),
                       createdAt: serverTimestamp(),
                       updatedAt: serverTimestamp(),
                       inviteToken: inv.id,
@@ -500,7 +500,7 @@ export function useAuth() {
             roles: finalRoles,
             centers: centersFromInvites,
             centros: centersFromInvites,
-            activo: true,
+            ...canonicalizeActiveState({ active: true }),
             createdAt: serverTimestamp(),
             activeCenterId: centersFromInvites?.[0] ?? null,
           },
@@ -530,8 +530,7 @@ export function useAuth() {
                   emailLower: eLower,
                   role: rId,
                   roles: [rId],
-                  active: true,
-                  activo: true,
+                  ...canonicalizeActiveState({ active: true }),
                   createdAt: serverTimestamp(),
                   updatedAt: serverTimestamp(),
                   inviteToken: inv.id,

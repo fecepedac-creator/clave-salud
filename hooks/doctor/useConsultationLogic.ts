@@ -3,7 +3,8 @@ import { Consultation, Patient, MedicalCenter, ProfessionalRole, SnomedConcept }
 import { generateId, sanitizeForFirestore } from "../../utils";
 import { useToast } from "../../components/Toast";
 import { db, auth } from "../../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { buildClinicalVersionRecord } from "../../utils/clinicalVersioning";
 
 interface UseConsultationLogicProps {
   selectedPatient: Patient | null;
@@ -180,11 +181,13 @@ export const useConsultationLogic = ({
 
   const removeDiagnosis = (diag: SnomedConcept) => {
     setNewConsultation((prev) => {
-      const updated = (prev.diagnoses || []).filter((d) => d.code !== diag.code || d.display !== diag.display);
+      const updated = (prev.diagnoses || []).filter(
+        (d) => d.code !== diag.code || d.display !== diag.display
+      );
       return {
         ...prev,
         diagnoses: updated,
-        diagnosis: updated.map(d => d.display).join(" • "), // Sync with legacy string
+        diagnosis: updated.map((d) => d.display).join(" • "), // Sync with legacy string
       };
     });
   };
@@ -219,6 +222,22 @@ export const useConsultationLogic = ({
     );
   };
 
+  const toggleChronicDiagnosis = (diag: SnomedConcept) => {
+    setNewConsultation((prev) => {
+      const currentDiagnoses = prev.diagnoses || [];
+      const updated = currentDiagnoses.map((d) => {
+        if (d.code === diag.code && d.display === diag.display) {
+          return { ...d, isChronic: !d.isChronic };
+        }
+        return d;
+      });
+      return {
+        ...prev,
+        diagnoses: updated,
+      };
+    });
+  };
+
   const handleCreateConsultation = async () => {
     console.log("💾 handleCreateConsultation called...");
     if (!selectedPatient) return;
@@ -233,6 +252,7 @@ export const useConsultationLogic = ({
     const consultation: Consultation = {
       id: generateId(),
       date: new Date().toISOString(),
+      version: 1 as any,
       consultationType: newConsultation.consultationType || "morbidity",
       // Vitals & Anthropometry
       weight: newConsultation.weight || "",
@@ -275,15 +295,38 @@ export const useConsultationLogic = ({
     // 1) Guardar en Firestore (colección "consultations")
     try {
       if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
-      await addDoc(
-        collection(db, "patients", selectedPatient.id, "consultations"),
-        sanitizeForFirestore({
-          ...consultation,
-          centerId: activeCenterId,
-          patientId: selectedPatient?.id ?? null,
-          createdByUid: currentUid,
+      const consultationRef = doc(db, "patients", selectedPatient.id, "consultations", consultation.id);
+      const persistedConsultation = sanitizeForFirestore({
+        ...consultation,
+        centerId: activeCenterId,
+        patientId: selectedPatient?.id ?? null,
+        createdByUid: currentUid,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(consultationRef, persistedConsultation);
+      await setDoc(
+        doc(db, "patients", selectedPatient.id, "consultations", consultation.id, "versions", generateId()),
+        {
+          ...buildClinicalVersionRecord({
+            entityType: "consultation",
+            entityId: consultation.id,
+            patientId: selectedPatient.id,
+            centerId: activeCenterId || undefined,
+            version: 1,
+            actorUid: currentUid,
+            actorName: doctorName || "Profesional",
+            summary: "Creacion de atencion clinica",
+            snapshot: sanitizeForFirestore({
+              ...consultation,
+              centerId: activeCenterId,
+              patientId: selectedPatient.id,
+              createdByUid: currentUid,
+              createdAt: consultation.date,
+            }),
+          }),
           createdAt: serverTimestamp(),
-        })
+        },
+        { merge: true }
       );
       console.log("✅ Consultation saved to Firestore");
       showToast("Atención guardada correctamente en la nube", "success");
@@ -310,7 +353,10 @@ export const useConsultationLogic = ({
         allowedUids,
         centerIds,
       },
-      consultations: [consultation, ...(selectedPatient.consultations || [])],
+      lastConsultationAt: consultation.date,
+      lastConsultationReason: consultation.reason || "",
+      nextControlDate: consultation.nextControlDate || "",
+      nextControlReason: consultation.nextControlReason || "",
       lastUpdated: new Date().toISOString(),
     });
 
@@ -348,6 +394,7 @@ export const useConsultationLogic = ({
     addDiagnosis,
     removeDiagnosis,
     pinDiagnosis,
+    toggleChronicDiagnosis,
     handleCreateConsultation,
     getEmptyConsultation,
     clearDraft,

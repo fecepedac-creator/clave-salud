@@ -34,7 +34,8 @@ export interface MedicalCenter {
   createdAt: string;
 
   // --- SaaS Configuration ---
-  isActive: boolean; // If false, access is blocked
+  active: boolean; // If false, access is blocked
+  isActive?: boolean; // @deprecated use active
   isPinned?: boolean; // To pin important centers to top
   maxUsers: number; // Limit number of doctors
   allowedRoles: AnyRole[]; // Only these roles can be created
@@ -84,7 +85,8 @@ export type AuditEntityType =
   | "consultation"
   | "appointment"
   | "document"
-  | "centerSettings";
+  | "centerSettings"
+  | "staff";
 
 export type AuditAction =
   | "ACCESS"
@@ -115,6 +117,7 @@ export interface AuditLogEntry {
   id: string;
   centerId: string;
   timestamp: FirestoreDateLike;
+  signedAt?: string;
   actorUid?: string;
   actorName?: string; // Who did it
   actorRole?: string;
@@ -125,7 +128,26 @@ export interface AuditLogEntry {
   patientId?: string;
   metadata?: Record<string, string | number | boolean | null | undefined>;
   details?: string;
+  chainScope?: string;
+  chainIndex?: number;
+  chainPrevHash?: string | null;
+  chainHash?: string;
   targetId?: string; // legacy compatibility
+}
+
+export interface ClinicalVersionRecord {
+  id: string;
+  entityType: "patient" | "consultation";
+  entityId: string;
+  patientId: string;
+  centerId?: string | null;
+  version: number;
+  actorUid?: string | null;
+  actorName?: string | null;
+  summary: string;
+  snapshot: Record<string, any>;
+  diff?: Record<string, any> | null;
+  createdAt: FirestoreDateLike;
 }
 
 export type AuditLogEvent = {
@@ -156,6 +178,7 @@ export interface SnomedConcept {
   display: string; // The human-readable term (e.g., "HTA")
   system?: string; // terminology system, defaults to "http://snomed.info/sct"
   id?: string; // Optional local UI ID
+  isChronic?: boolean; // NEW: Flag to indicate chronic condition
 }
 
 export interface Allergy {
@@ -171,6 +194,15 @@ export interface Attachment {
   type: "image" | "pdf" | "other";
   date: string;
   url: string;
+  driveId?: string; // Optativo: ID del archivo en Google Drive
+}
+
+export interface SignatureData {
+  hash: string;
+  signedAt: string;
+  professionalName: string;
+  professionalRut: string;
+  verificationCode: string; // 8-char short code
 }
 
 export interface Prescription {
@@ -199,6 +231,7 @@ export interface Prescription {
   metadata?: {
     selectedExams?: string[];
   } & JsonMap;
+  signature?: SignatureData;
 }
 
 export interface ClinicalTemplate {
@@ -228,7 +261,8 @@ export interface MedicalService extends SoftDeletable {
   description: string;
   preparationInstructions: string;
   durationMinutes: number;
-  isActive: boolean;
+  active: boolean;
+  isActive?: boolean; // @deprecated use active
   createdAt?: FirestoreDateLike;
   updatedAt?: FirestoreDateLike;
 
@@ -283,9 +317,11 @@ export interface Consultation extends SoftDeletable {
   id: string;
   date: string;
   createdAt?: FirestoreDateLike;
+  version?: number;
   patientId?: string;
   centerId?: string;
   createdBy?: string;
+  createdByUid?: string;
   consultationType?: "morbidity" | "pscv"; // New field to distinguish visit types
 
   weight?: string;
@@ -342,6 +378,9 @@ export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
   createdAt?: FirestoreDateLike;
+  version?: number;
+  updatedByUid?: string;
+  updatedByName?: string;
   ownerUid?: string; // UID of the professional who owns this patient
   accessControl?: {
     allowedUids: string[]; // Professional UIDs who can view/edit
@@ -366,6 +405,7 @@ export interface Patient extends SoftDeletable {
 
   occupation?: string;
   livingWith?: string[];
+  pets?: string; // NEW: Mascotas
 
   // --- FHIR R4 / Core-CL Alignment ---
   fhirMetadata?: {
@@ -390,15 +430,18 @@ export interface Patient extends SoftDeletable {
   surgicalHistoryDetails?: string;
   herniaDetails?: string;
 
-  smokingStatus: "No fumador" | "Ex fumador" | "Fumador actual";
+  smokingStatus: "No" | "Si" | "Suspendido" | string;
+  smokingDetails?: string;
+  ipa?: number | string;
   cigarettesPerDay?: number;
   yearsSmoking?: number;
   packYearsIndex?: number;
 
-  alcoholStatus: "No consumo" | "Ocasional" | "Frecuente";
-  alcoholFrequency?: "1-2 veces/sem" | "3-5 veces/sem" | "Todos los días";
+  alcoholStatus: "No" | "Si" | "Suspendido" | string;
+  alcoholDetails?: string;
+  alcoholFrequency?: string;
 
-  drugUse?: "No" | "Si";
+  drugUse?: "No" | "Si" | "Suspendido" | string;
   drugDetails?: string;
 
   medications: Medication[];
@@ -408,6 +451,10 @@ export interface Patient extends SoftDeletable {
   kinePrograms?: KinesiologyProgram[];
   whatsAppTemplates?: WhatsappTemplate[];
   attachments: Attachment[];
+  lastConsultationAt?: string;
+  lastConsultationReason?: string;
+  nextControlDate?: string;
+  nextControlReason?: string;
 
   lastUpdated: string;
   consent?: boolean;

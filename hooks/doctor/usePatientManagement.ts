@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { Patient, Appointment, Consultation } from "../../types";
-import { normalizeRut, formatPersonName, getPatientIdByRut, normalizePhone } from "../../utils";
+import { normalizeRut, getPatientIdByRut } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, getDoc, collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
+import { resolveActiveState } from "../../utils/activeState";
 
 interface UsePatientManagementProps {
   patients: Patient[];
@@ -31,11 +32,37 @@ export const usePatientManagement = ({
   const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
   const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
 
-  const getActiveConsultations = (p: Patient) =>
-    (p.consultations || []).filter((consultation) => consultation.active !== false);
+  // Pagination and Sorting State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"alphabetical" | "recent">("alphabetical");
+  const pageSize = 20;
 
-  // Filter Patients
-  const filteredPatients = useMemo(() => {
+  const getActiveConsultations = (p: Patient) =>
+    (p.consultations || []).filter((consultation) => resolveActiveState(consultation as any));
+
+  const getNextControlDate = (patient: Patient): Date | null => {
+    if (patient.nextControlDate) {
+      const summaryDate = new Date(`${patient.nextControlDate}T12:00:00`);
+      if (!Number.isNaN(summaryDate.getTime())) return summaryDate;
+    }
+
+    const activeConsults = getActiveConsultations(patient);
+    const lastConsult = activeConsults[0]
+      ? [...activeConsults].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      : null;
+
+    if (!lastConsult?.nextControlDate) return null;
+    const nextDate = new Date(`${lastConsult.nextControlDate}T12:00:00`);
+    return Number.isNaN(nextDate.getTime()) ? null : nextDate;
+  };
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy, filterNextControl]);
+
+  // Total filtered patients (before pagination)
+  const allFilteredPatients = useMemo(() => {
     let result = patients;
 
     // 1. Next Control Filter
@@ -46,24 +73,42 @@ export const usePatientManagement = ({
       else if (filterNextControl === "month") horizon.setDate(now.getDate() + 30);
 
       result = result.filter((p) => {
-        const activeConsults = getActiveConsultations(p);
-        const lastConsult = activeConsults[0];
-        if (!lastConsult?.nextControlDate) return false;
-        const nextDate = new Date(lastConsult.nextControlDate + "T12:00:00");
+        const nextDate = getNextControlDate(p);
+        if (!nextDate) return false;
         return nextDate >= now && nextDate <= horizon;
       });
     }
 
     // 2. Search Filter
-    if (!searchTerm) return result;
-    const lower = searchTerm.toLowerCase();
-    return result.filter(
-      (p) =>
-        (p.fullName?.toLowerCase() || "").includes(lower) ||
-        (p.rut?.toLowerCase() || "").includes(lower) ||
-        (p.email?.toLowerCase() || "").includes(lower)
-    );
-  }, [patients, searchTerm, filterNextControl]);
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.fullName?.toLowerCase() || "").includes(lower) ||
+          (p.rut?.toLowerCase() || "").includes(lower) ||
+          (p.email?.toLowerCase() || "").includes(lower)
+      );
+    }
+
+    // 3. Sorting
+    return [...result].sort((a, b) => {
+      if (sortBy === "recent") {
+        const dA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+        const dB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+        return dB - dA;
+      }
+      // Alphabetical default (A-Z)
+      return (a.fullName || "").localeCompare(b.fullName || "");
+    });
+  }, [patients, searchTerm, filterNextControl, sortBy]);
+
+  // Paginated patients
+  const filteredPatients = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return allFilteredPatients.slice(start, start + pageSize);
+  }, [allFilteredPatients, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(allFilteredPatients.length / pageSize) || 1;
 
   // Handle Patient Selection with Audit Log
   const handleSelectPatient = async (patient: Patient) => {
@@ -158,20 +203,13 @@ export const usePatientManagement = ({
 
   // --- Sync Consultations ---
   useEffect(() => {
-    if (!activeCenterId || !selectedPatient?.id) {
+    if (!selectedPatient?.id) {
       setConsultationsFromDb([]);
       setIsUsingLegacyConsultations(false);
       return;
     }
 
-    const consultationsRef = collection(
-      db,
-      "centers",
-      activeCenterId,
-      "patients",
-      selectedPatient.id,
-      "consultations"
-    );
+    const consultationsRef = collection(db, "patients", selectedPatient.id, "consultations");
 
     const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
 
@@ -182,7 +220,11 @@ export const usePatientManagement = ({
           id: d.id,
           ...(d.data() as any),
         })) as Consultation[];
-        const filtered = docs.filter((c) => c.active !== false);
+        const filtered = docs.filter(
+          (c) =>
+            resolveActiveState(c as any) &&
+            (!activeCenterId || !c.centerId || c.centerId === activeCenterId)
+        );
         setConsultationsFromDb(filtered);
 
         const legacyCount = getActiveConsultations(selectedPatient).length;
@@ -196,7 +238,7 @@ export const usePatientManagement = ({
     );
 
     return () => unsubscribe();
-  }, [activeCenterId, selectedPatient?.id]);
+  }, [activeCenterId, selectedPatient?.id, selectedPatient?.consultations]);
 
   return {
     selectedPatient,
@@ -206,6 +248,12 @@ export const usePatientManagement = ({
     isEditingPatient,
     setIsEditingPatient,
     filteredPatients,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    sortBy,
+    setSortBy,
+    totalCount: allFilteredPatients.length,
     handleSelectPatient,
     handleSavePatient,
     handleOpenPatientFromAppointment,
