@@ -15,6 +15,7 @@ import {
 import { db, auth } from "../firebase";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import LogoHeader from "./LogoHeader";
+import { canonicalizeActiveState } from "../utils/activeState";
 
 type InviteData = {
   emailLower?: string;
@@ -237,24 +238,30 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         String((invite as any).clinicalRole || (invite as any).professionalRole || "").trim() ||
         (accessRole === "doctor" ? "Medico" : accessRole);
 
+      const normalizedAccessRole = accessRole.toLowerCase();
+      const shouldAttemptTempStaffMigration =
+        Boolean(invite.tempStaffId) || normalizedAccessRole === "doctor";
+
       // --- MIGRATE TEMP STAFF ---
       let migratedCount = 0;
       const tempStaffId = invite.tempStaffId;
 
-      if (tempStaffId) {
-        migratedCount = await migrateTempStaff(centerId, tempStaffId, user.uid);
-        // log de migración de turnos removido
-      } else {
-        // Fallback: search by emailLower for any temp staff doc
-        const tempQuery = query(
-          collection(db, "centers", centerId, "staff"),
-          where("emailLower", "==", inviteEmailLower),
-          where("isTemp", "==", true)
-        );
-        const tempSnap = await getDocs(tempQuery);
-        for (const tempDoc of tempSnap.docs) {
-          const count = await migrateTempStaff(centerId, tempDoc.id, user.uid);
-          migratedCount += count;
+      if (shouldAttemptTempStaffMigration) {
+        if (tempStaffId) {
+          migratedCount = await migrateTempStaff(centerId, tempStaffId, user.uid);
+          // log de migración de turnos removido
+        } else {
+          // Fallback: search by emailLower for any temp staff doc
+          const tempQuery = query(
+            collection(db, "centers", centerId, "staff"),
+            where("emailLower", "==", inviteEmailLower),
+            where("isTemp", "==", true)
+          );
+          const tempSnap = await getDocs(tempQuery);
+          for (const tempDoc of tempSnap.docs) {
+            const count = await migrateTempStaff(centerId, tempDoc.id, user.uid);
+            migratedCount += count;
+          }
         }
       }
 
@@ -264,7 +271,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         {
           uid: user.uid,
           email: lower(user.email || ""),
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           updatedAt: serverTimestamp(),
           roles: [accessRole],
           centers: [centerId],
@@ -295,8 +302,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
           photoUrl: profileData.photoUrl ?? user.photoURL ?? "",
           agendaConfig: profileData.agendaConfig ?? null,
           isAdmin: profileData.isAdmin ?? false,
-          active: true,
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           visibleInBooking: false,
           isTemp: false,
           createdAt: serverTimestamp(),
@@ -308,33 +314,7 @@ export default function InvitePage({ token: tokenProp, onDone }: Props) {
         { merge: true }
       );
 
-      // 3) publicStaff (final, with real UID)
-      await setDoc(
-        doc(db, "centers", centerId, "publicStaff", user.uid),
-        {
-          id: user.uid,
-          centerId,
-          fullName:
-            profileData.fullName ??
-            (invite as any).fullName ??
-            user.displayName ??
-            user.email ??
-            "Profesional",
-          accessRole,
-          clinicalRole: professionalRole,
-          role: professionalRole,
-          specialty: profileData.specialty ?? (invite as any).specialty ?? "",
-          photoUrl: profileData.photoUrl ?? (invite as any).photoUrl ?? user.photoURL ?? "",
-          agendaConfig: profileData.agendaConfig ?? null,
-          visibleInBooking: false,
-          active: true,
-          isTemp: false,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // 4) mark invite accepted
+      // 3) mark invite accepted
       await updateDoc(doc(db, "invites", token), {
         status: "accepted",
         acceptedAt: serverTimestamp(),

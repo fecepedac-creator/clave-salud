@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Prescription } from "../types";
 import { generateId } from "../utils";
 import { Sparkles, Trash2 } from "lucide-react";
+import { requestCriticalAction } from "../utils/criticalActions";
 import {
   DEFAULT_EXAM_ORDER_CATALOG,
   ExamOrderCatalog,
@@ -247,10 +248,16 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                         </button>
                         {isCustom && onDeleteProfile && (
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm(`¿Eliminar el pack "${profile.label}"?`)) {
-                                onDeleteProfile(profile.id);
+                              const response = await requestCriticalAction({
+                                title: `Eliminar pack ${profile.label}`,
+                                message: "Este pack dejara de estar disponible dentro de tus perfiles guardados.",
+                                confirmLabel: "Eliminar",
+                                requireFinalConfirmation: true,
+                                confirmationLabel: "Confirmo que deseo eliminar este pack.",
+                              });
+                              if (response?.confirmed) {
                               }
                             }}
                             className="absolute right-2 p-1.5 text-amber-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -459,7 +466,7 @@ const ExamOrderModal: React.FC<ExamOrderModalProps> = ({
                       }
                       className="text-slate-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors font-bold text-lg leading-none"
                     >
-                      ×
+                          ×
                     </button>
                   </div>
                 ))}

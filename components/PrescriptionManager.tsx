@@ -15,6 +15,7 @@ import {
 import { COMMON_MEDICATIONS } from "../constants";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
 import AutocompleteInput from "./AutocompleteInput";
+import { signDocument } from "../utils/signature";
 
 interface PrescriptionManagerProps {
   prescriptions: Prescription[];
@@ -26,6 +27,8 @@ interface PrescriptionManagerProps {
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
   currentDiagnosis?: string;
+  professionalName?: string;
+  professionalRut?: string;
 }
 
 const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
@@ -38,6 +41,8 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   templates,
   role: roleRaw,
   currentDiagnosis,
+  professionalName,
+  professionalRut,
 }) => {
   const role: ProfessionalRole = String(roleRaw || "").toUpperCase() as any;
 
@@ -154,14 +159,21 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
     }
   }, [currentPrescriptionType, currentDiagnosis]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!currentPrescriptionText.trim()) return;
+
+    const signature = await signDocument(
+      currentPrescriptionText,
+      professionalName || "Profesional de Salud",
+      professionalRut || "RUT No Registrado"
+    );
 
     const newDoc: Prescription = {
       id: generateId(),
       type: currentPrescriptionType,
       content: currentPrescriptionText,
       createdAt: new Date().toISOString(),
+      signature,
       metadata:
         pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined,
     };

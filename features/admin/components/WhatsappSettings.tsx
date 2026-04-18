@@ -2,7 +2,17 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { functions as firebaseFunctions } from "../../../firebase";
-import { MessageCircle, Plus, Save, Phone, Check, Shield, Copy, Lock } from "lucide-react";
+import {
+  MessageCircle,
+  Plus,
+  Save,
+  Phone,
+  Check,
+  Shield,
+  Copy,
+  Lock,
+  Send,
+} from "lucide-react";
 import { Auth } from "firebase/auth";
 import { Firestore } from "firebase/firestore";
 import WhatsappTemplatesManager from "../../../components/WhatsappTemplatesManager";
@@ -52,6 +62,7 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
   const [botSecretaryPhone, setBotSecretaryPhone] = useState("");
   const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [botConfigSaving, setBotConfigSaving] = useState(false);
+  const [sendingTestMessage, setSendingTestMessage] = useState(false);
   const [botPhoneNumberId, setBotPhoneNumberId] = useState("");
   const [botAccessToken, setBotAccessToken] = useState("");
   const [botApiSaving, setBotApiSaving] = useState(false);
@@ -196,6 +207,27 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
     }
   };
 
+  const sendTestMessage = async () => {
+    if (!resolvedCenterId) return;
+    setSendingTestMessage(true);
+    try {
+      const sendTest = httpsCallable(firebaseFunctions, "sendWhatsappTestMessage");
+      const result = await sendTest({ centerId: resolvedCenterId });
+      const to = (result.data as any)?.to;
+      showToast(
+        to
+          ? `Mensaje de prueba enviado a +${to}.`
+          : "Mensaje de prueba enviado correctamente.",
+        "success"
+      );
+    } catch (e: any) {
+      console.error("send whatsapp test", e);
+      showToast(e?.message || "No se pudo enviar el mensaje de prueba.", "error");
+    } finally {
+      setSendingTestMessage(false);
+    }
+  };
+
   return (
     <div className="animate-fadeIn">
       <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
@@ -266,9 +298,7 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
                   <input
                     type="tel"
                     value={botSecretaryPhone}
-                    onChange={(e) =>
-                      setBotSecretaryPhone(e.target.value.replace(/[^0-9]/g, ""))
-                    }
+                    onChange={(e) => setBotSecretaryPhone(e.target.value.replace(/[^0-9]/g, ""))}
                     placeholder="56912345678"
                     className="w-full bg-slate-900 border border-slate-600 rounded-xl pl-7 pr-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all"
                   />
@@ -317,21 +347,40 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
 
         {/* Step-by-step instructions */}
         <div className="bg-slate-900/60 border border-slate-700 rounded-2xl p-5 mb-6 mt-4 space-y-3">
-          <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-3">📋 Pasos para conectar tu número</p>
+          <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-3">
+            📋 Pasos para conectar tu número
+          </p>
           <div className="flex gap-3 items-start">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
-            <p className="text-sm text-slate-300">Ve a <span className="font-mono text-indigo-300">developers.facebook.com</span>, crea una App y añade el producto <strong>WhatsApp</strong>.</p>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+              1
+            </span>
+            <p className="text-sm text-slate-300">
+              Ve a <span className="font-mono text-indigo-300">developers.facebook.com</span>, crea
+              una App y añade el producto <strong>WhatsApp</strong>.
+            </p>
           </div>
           <div className="flex gap-3 items-start">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
-            <p className="text-sm text-slate-300">En <strong>WhatsApp → Configuración</strong>, pega esta URL en el campo <em>Callback URL</em> y usa el Verify Token indicado abajo.</p>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+              2
+            </span>
+            <p className="text-sm text-slate-300">
+              En <strong>WhatsApp → Configuración</strong>, pega esta URL en el campo{" "}
+              <em>Callback URL</em> y usa el Verify Token indicado abajo.
+            </p>
           </div>
           <div className="bg-slate-950 border border-slate-600 rounded-xl p-3 ml-9">
             <p className="text-xs text-slate-500 font-mono mb-1">Callback URL (Webhook):</p>
             <div className="flex items-center gap-2">
-              <code className="text-indigo-300 text-xs break-all flex-1">https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook</code>
+              <code className="text-indigo-300 text-xs break-all flex-1">
+                https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook
+              </code>
               <button
-                onClick={() => { navigator.clipboard.writeText("https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook"); showToast("URL copiada", "info"); }}
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    "https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook"
+                  );
+                  showToast("URL copiada", "info");
+                }}
                 className="p-1.5 bg-slate-700 rounded-lg hover:bg-indigo-600 text-slate-400 hover:text-white transition-colors shrink-0"
                 title="Copiar URL"
               >
@@ -342,7 +391,10 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
             <div className="flex items-center gap-2">
               <code className="text-emerald-300 text-xs">CLAVE_SALUD_WHATSAPP_2026</code>
               <button
-                onClick={() => { navigator.clipboard.writeText("CLAVE_SALUD_WHATSAPP_2026"); showToast("Verify Token copiado", "info"); }}
+                onClick={() => {
+                  navigator.clipboard.writeText("CLAVE_SALUD_WHATSAPP_2026");
+                  showToast("Verify Token copiado", "info");
+                }}
                 className="p-1.5 bg-slate-700 rounded-lg hover:bg-indigo-600 text-slate-400 hover:text-white transition-colors shrink-0"
                 title="Copiar Verify Token"
               >
@@ -351,8 +403,14 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
             </div>
           </div>
           <div className="flex gap-3 items-start">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
-            <p className="text-sm text-slate-300">Suscribe el campo <strong>"messages"</strong> en el administrador del webhook. Luego copia el <strong>Phone Number ID</strong> y <strong>Access Token</strong> de larga duración y pégalos abajo.</p>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+              3
+            </span>
+            <p className="text-sm text-slate-300">
+              Suscribe el campo <strong>"messages"</strong> en el administrador del webhook. Luego
+              copia el <strong>Phone Number ID</strong> y <strong>Access Token</strong> de larga
+              duración y pégalos abajo.
+            </p>
           </div>
         </div>
 
@@ -362,7 +420,9 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
         ) : (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">🔢 Phone Number ID</label>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">
+                🔢 Phone Number ID
+              </label>
               <input
                 type="text"
                 value={botPhoneNumberId}
@@ -370,38 +430,59 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
                 placeholder="Ej: 108079568510615"
                 className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
               />
-              <p className="text-xs text-slate-500 mt-1.5">Lo encuentras en el panel de tu App de Meta, bajo <em>WhatsApp → Inicio</em>.</p>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Lo encuentras en el panel de tu App de Meta, bajo <em>WhatsApp → Inicio</em>.
+              </p>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">🔐 Access Token (Token de Acceso)</label>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">
+                🔐 Access Token (Token de Acceso)
+              </label>
               <input
                 type="password"
                 value={botAccessToken}
                 onChange={(e) => setBotAccessToken(e.target.value)}
-                placeholder={botAccessToken === "********" ? "Token guardado (borrar para reemplazar)" : "Pega aquí el token de larga duración"}
+                placeholder={
+                  botAccessToken === "********"
+                    ? "Token guardado (borrar para reemplazar)"
+                    : "Pega aquí el token de larga duración"
+                }
                 className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
               />
               <p className="text-xs text-slate-500 mt-1.5">
-                Genera un token de larga duración en tu App de Meta. <span className="text-amber-400 font-semibold">Nunca lo compartas.</span> Se almacena de forma segura y encriptada.
+                Genera un token de larga duración en tu App de Meta.{" "}
+                <span className="text-amber-400 font-semibold">Nunca lo compartas.</span> Se
+                almacena de forma segura y encriptada.
               </p>
             </div>
             {botPhoneNumberId && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
                 <Check className="w-4 h-4 text-indigo-400 shrink-0" />
                 <span className="text-sm text-indigo-300">
-                  Phone Number ID configurado: <span className="font-mono font-bold">{botPhoneNumberId}</span>
+                  Phone Number ID configurado:{" "}
+                  <span className="font-mono font-bold">{botPhoneNumberId}</span>
                 </span>
               </div>
             )}
             <div className="flex justify-end pt-2">
-              <button
-                onClick={saveBotApiCredentials}
-                disabled={botApiSaving || !botPhoneNumberId.trim()}
-                className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Lock className="w-4 h-4" />
-                {botApiSaving ? "Guardando..." : "Guardar Credenciales"}
-              </button>
+              <div className="flex flex-wrap justify-end gap-3">
+                <button
+                  onClick={sendTestMessage}
+                  disabled={sendingTestMessage || !botPhoneNumberId.trim() || !botSecretaryPhone.trim()}
+                  className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-4 h-4" />
+                  {sendingTestMessage ? "Enviando prueba..." : "Enviar prueba"}
+                </button>
+                <button
+                  onClick={saveBotApiCredentials}
+                  disabled={botApiSaving || !botPhoneNumberId.trim()}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Lock className="w-4 h-4" />
+                  {botApiSaving ? "Guardando..." : "Guardar Credenciales"}
+                </button>
+              </div>
             </div>
           </div>
         )}

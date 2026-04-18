@@ -12,6 +12,7 @@ import { Patient, Doctor } from "../../../types";
 import { formatPersonName, generateId, calculateAge } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 import DrivePicker from "../../../components/DrivePicker";
+import OperationalState from "../../../components/ui/OperationalState";
 
 interface DoctorPatientsListTabProps {
   searchTerm: string;
@@ -34,6 +35,15 @@ interface DoctorPatientsListTabProps {
   whatsAppMenuForPatientId: string | null;
   whatsAppTemplates: any[];
   openWhatsApp: (p: Patient, t: string) => void;
+  currentPage: number;
+  setCurrentPage: (p: number) => void;
+  totalPages: number;
+  sortBy: "alphabetical" | "recent";
+  setSortBy: (s: "alphabetical" | "recent") => void;
+  totalCount: number;
+  patientsLoading?: boolean;
+  patientsError?: string;
+  onRetryPatients?: () => void;
 }
 
 export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
@@ -57,6 +67,15 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   whatsAppMenuForPatientId,
   whatsAppTemplates,
   openWhatsApp,
+  currentPage,
+  setCurrentPage,
+  totalPages,
+  sortBy,
+  setSortBy,
+  totalCount,
+  patientsLoading = false,
+  patientsError = "",
+  onRetryPatients,
 }) => {
   const { showToast } = useToast();
 
@@ -67,56 +86,123 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   };
 
   return (
-    <div className="h-full bg-white/80 backdrop-blur-md rounded-3xl border border-white/50 shadow-xl overflow-hidden flex flex-col animate-fadeIn">
-      {/* Toolbar */}
-      <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-white/50 flex-shrink-0">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre o RUT..."
-            data-testid="patient-search-input"
-            className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all font-medium text-slate-700 bg-white"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3 w-full justify-between">
-          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-            <button
-              onClick={() => onSetPortfolioMode?.("global")}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "global" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-            >
-              <Layers className="w-4 h-4" /> Global
-            </button>
-            <button
-              onClick={() => onSetPortfolioMode?.("center")}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${portfolioMode === "center" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-            >
-              <History className="w-4 h-4" /> Este Centro
-            </button>
+    <div className="h-full rounded-3xl border border-white/50 bg-white/80 shadow-xl backdrop-blur-md overflow-hidden flex flex-col animate-fadeIn">
+      <div className="border-b border-slate-100 bg-white/70 p-6 flex flex-col gap-5 flex-shrink-0">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="inline-flex items-center rounded-full border border-health-100 bg-health-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-health-700">
+              Pacientes
+            </div>
+            <h2 className="mt-3 text-2xl font-black text-slate-900">Cartera clínica activa</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Busca, prioriza próximos controles y entra rápido a la ficha del paciente.
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                Pacientes visibles
+              </p>
+              <p className="mt-1 text-xl font-black text-slate-800">{totalCount}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                Cartera activa
+              </p>
+              <p className="mt-1 text-sm font-bold text-slate-700">
+                {portfolioMode === "global" ? "Global" : "Este centro"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative w-full xl:max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o RUT..."
+              data-testid="patient-search-input"
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-12 pr-4 font-medium text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+              <button
+                onClick={() => onSetPortfolioMode?.("global")}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
+                  portfolioMode === "global"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Layers className="h-4 w-4" /> Global
+              </button>
+              <button
+                onClick={() => onSetPortfolioMode?.("center")}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
+                  portfolioMode === "center"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <History className="h-4 w-4" /> Este centro
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+              <button
+                onClick={() => setSortBy("alphabetical")}
+                className={`rounded-xl px-4 py-2 text-[11px] font-black uppercase tracking-wider transition-all ${
+                  sortBy === "alphabetical"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Nombre (A-Z)
+              </button>
+              <button
+                onClick={() => setSortBy("recent")}
+                className={`rounded-xl px-4 py-2 text-[11px] font-black uppercase tracking-wider transition-all ${
+                  sortBy === "recent"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Recientes
+              </button>
+            </div>
+
+            <div className="flex rounded-lg border border-slate-200 bg-white p-1">
               <button
                 onClick={() => setFilterNextControl("all")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400"}`}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold ${
+                  filterNextControl === "all" ? "bg-slate-100 text-slate-700" : "text-slate-400"
+                }`}
               >
                 Todos
               </button>
               <button
                 onClick={() => setFilterNextControl("week")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400"}`}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold ${
+                  filterNextControl === "week" ? "bg-slate-100 text-slate-700" : "text-slate-400"
+                }`}
               >
                 7d
               </button>
               <button
                 onClick={() => setFilterNextControl("month")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md ${filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400"}`}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold ${
+                  filterNextControl === "month" ? "bg-slate-100 text-slate-700" : "text-slate-400"
+                }`}
               >
                 30d
               </button>
             </div>
+
             {!isReadOnly && (
               <>
                 <DrivePicker
@@ -129,7 +215,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                       showToast("Selecciona un centro activo.", "warning");
                       return;
                     }
-                    const newP: Patient = {
+                    const newPatient: Patient = {
                       id: generateId(),
                       centerId: activeCenterId || "",
                       ownerUid: currentUser?.uid || "",
@@ -146,21 +232,20 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                       medications: [],
                       allergies: [],
                       consultations: [],
-                      attachments: [],
                       livingWith: [],
                       smokingStatus: "No fumador",
                       alcoholStatus: "No consumo",
                       lastUpdated: new Date().toISOString(),
                       active: true,
                     };
-                    setSelectedPatient(newP);
+                    setSelectedPatient(newPatient);
                     setIsEditingPatient(true);
                   }}
                   disabled={!hasActiveCenter}
                   data-testid="btn-new-patient"
-                  className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 active:scale-95"
+                  className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-bold text-white active:scale-95"
                 >
-                  <Plus className="w-5 h-5" /> Nuevo Paciente
+                  <Plus className="h-5 w-5" /> Nuevo Paciente
                 </button>
               </>
             )}
@@ -168,117 +253,137 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
         </div>
       </div>
 
-      {/* Table */}
-      {/* Desktop Table View */}
-      <div className="hidden md:block flex-1 overflow-y-auto">
-        {filteredPatients.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-            <UsersRound className="w-16 h-16 mb-4 opacity-20" />
+      <div className="hidden flex-1 overflow-auto md:block">
+        {patientsLoading ? (
+          <div className="p-6">
+            <OperationalState
+              kind="loading"
+              title="Cargando pacientes..."
+              description="Estamos sincronizando el panel clínico."
+            />
+          </div>
+        ) : patientsError ? (
+          <div className="p-6">
+            <OperationalState
+              kind="error"
+              title="No pudimos cargar pacientes"
+              description={patientsError}
+              onAction={onRetryPatients}
+            />
+          </div>
+        ) : filteredPatients.length === 0 ? (
+          <div className="flex h-64 flex-col items-center justify-center text-slate-400">
+            <UsersRound className="mb-4 h-16 w-16 opacity-20" />
             <p className="font-medium">No se encontraron pacientes</p>
           </div>
         ) : (
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50/80 sticky top-0 z-10 text-slate-500 text-xs uppercase font-bold tracking-wider">
+          <table className="w-full border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="p-5 border-b border-slate-200">Paciente</th>
-                <th className="p-5 border-b border-slate-200">Edad / RUT</th>
-                <th className="p-5 border-b border-slate-200">Última Atención</th>
-                <th className="p-5 border-b border-slate-200">Próximo Control</th>
-                <th className="p-5 border-b border-slate-200 text-right">Acción</th>
+                <th className="border-b border-slate-200 p-5">Paciente</th>
+                <th className="border-b border-slate-200 p-5">Edad / RUT</th>
+                <th className="border-b border-slate-200 p-5">Última atención</th>
+                <th className="border-b border-slate-200 p-5">Próximo control</th>
+                <th className="border-b border-slate-200 p-5 text-right">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredPatients.map((p) => {
-                const patientConsultations = getActiveConsultations(p);
-                const lastConsult =
+              {filteredPatients.map((patient) => {
+                const patientConsultations = getActiveConsultations(patient);
+                const lastConsultation =
                   patientConsultations.length > 0 ? patientConsultations[0] : null;
-                const nextCtrl = lastConsult?.nextControlDate
-                  ? new Date(lastConsult.nextControlDate + "T12:00:00")
-                  : null;
+                const nextControl = getNextControlDateFromPatient(patient);
                 const isControlNear =
-                  nextCtrl && nextCtrl <= new Date(new Date().setDate(new Date().getDate() + 7));
+                  nextControl &&
+                  nextControl <= new Date(new Date().setDate(new Date().getDate() + 7));
 
                 return (
                   <tr
-                    key={p.id}
-                    data-testid={`patient-row-${p.rut}`}
-                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                    onClick={() => handleSelectPatient(p)}
+                    key={patient.id}
+                    data-testid={`patient-row-${patient.rut}`}
+                    className="group cursor-pointer transition-colors hover:bg-slate-50/80"
+                    onClick={() => handleSelectPatient(patient)}
                   >
                     <td className="p-5">
-                      <div className="font-bold text-slate-800 text-base">
-                        {formatPersonName(p.fullName)}
+                      <div className="text-base font-bold text-slate-800">
+                        {formatPersonName(patient.fullName)}
                       </div>
                     </td>
                     <td className="p-5">
-                      <div className="text-slate-600 font-medium">{safeAgeLabel(p.birthDate)}</div>
-                      <div className="text-xs text-slate-400 font-mono">{p.rut}</div>
+                      <div className="font-medium text-slate-600">
+                        {safeAgeLabel(patient.birthDate)}
+                      </div>
+                      <div className="font-mono text-xs text-slate-400">{patient.rut}</div>
                     </td>
                     <td className="p-5">
-                      {lastConsult ? (
+                      {lastConsultation ? (
                         <div>
-                          <span className="text-slate-700 font-medium">
-                            {new Date(lastConsult.date).toLocaleDateString()}
+                          <span className="font-medium text-slate-700">
+                            {new Date(lastConsultation.date).toLocaleDateString()}
                           </span>
-                          <p className="text-xs text-slate-400 truncate max-w-[150px]">
-                            {lastConsult.reason}
+                          <p className="max-w-[150px] truncate text-xs text-slate-400">
+                            {lastConsultation.reason}
                           </p>
                         </div>
                       ) : (
-                        <span className="text-slate-300 italic text-sm">Sin historial</span>
+                        <span className="text-sm italic text-slate-300">Sin historial</span>
                       )}
                     </td>
                     <td className="p-5">
-                      {nextCtrl ? (
+                      {nextControl ? (
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold ${isControlNear ? "bg-orange-100 text-orange-700" : "bg-green-50 text-green-700"}`}
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            isControlNear
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-green-50 text-green-700"
+                          }`}
                         >
-                          {nextCtrl.toLocaleDateString()}
+                          {nextControl.toLocaleDateString()}
                         </span>
                       ) : (
                         <span className="text-slate-300">-</span>
                       )}
                     </td>
-                    <td className="p-5 text-right relative">
+                    <td className="relative p-5 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {(() => {
-                          const ctrl = getNextControlDateFromPatient(p);
-                          const canWhatsapp = Boolean(ctrl) && Boolean(p.phone);
+                          const nextControlDate = getNextControlDateFromPatient(patient);
+                          const canWhatsapp = Boolean(nextControlDate) && Boolean(patient.phone);
                           if (!canWhatsapp) return null;
                           return (
                             <div className="relative">
                               <button
-                                className="text-green-700 hover:bg-green-50 p-2 rounded-lg transition-colors"
+                                className="rounded-lg p-2 text-green-700 transition-colors hover:bg-green-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setWhatsAppMenuForPatientId(
-                                    whatsAppMenuForPatientId === p.id ? null : p.id
+                                    whatsAppMenuForPatientId === patient.id ? null : patient.id
                                   );
                                 }}
                               >
-                                <MessageCircle className="w-5 h-5" />
+                                <MessageCircle className="h-5 w-5" />
                               </button>
-                              {whatsAppMenuForPatientId === p.id && (
+                              {whatsAppMenuForPatientId === patient.id && (
                                 <div
-                                  className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden"
+                                  className="absolute right-0 mt-2 z-50 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <div className="px-3 py-2 text-xs font-bold bg-slate-50">
+                                  <div className="bg-slate-50 px-3 py-2 text-xs font-bold">
                                     Plantillas WhatsApp
                                   </div>
                                   <div className="p-1">
                                     {whatsAppTemplates
-                                      .filter((t: any) => t.enabled)
-                                      .map((t: any) => (
+                                      .filter((template: any) => template.enabled)
+                                      .map((template: any) => (
                                         <button
-                                          key={t.id}
-                                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                          key={template.id}
+                                          className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                                           onClick={() => {
-                                            openWhatsApp(p, t.body);
+                                            openWhatsApp(patient, template.body);
                                             setWhatsAppMenuForPatientId(null);
                                           }}
                                         >
-                                          {t.title}
+                                          {template.title}
                                         </button>
                                       ))}
                                   </div>
@@ -287,8 +392,8 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                             </div>
                           );
                         })()}
-                        <button className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors">
-                          <ChevronRight className="w-5 h-5" />
+                        <button className="rounded-lg p-2 text-blue-600 transition-colors hover:bg-blue-50">
+                          <ChevronRight className="h-5 w-5" />
                         </button>
                       </div>
                     </td>
@@ -300,51 +405,91 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
         )}
       </div>
 
-      {/* Mobile Card View */}
-      <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4">
-        {filteredPatients.length === 0 ? (
+      {filteredPatients.length > 0 && (
+        <div className="hidden flex-shrink-0 items-center justify-between gap-4 border-t border-slate-100 bg-slate-50 px-6 py-4 md:flex">
+          <div className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+            Mostrando {filteredPatients.length} de {totalCount} pacientes
+            {searchTerm && ` (Busca: "${searchTerm}")`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-slate-600 shadow-sm transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-30"
+            >
+              Anterior
+            </button>
+            <span className="rounded-xl border border-slate-200 bg-white/50 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-slate-600">
+              Pág {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-slate-600 shadow-sm transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-30"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4 md:hidden">
+        {patientsLoading ? (
+          <OperationalState kind="loading" title="Cargando pacientes..." compact />
+        ) : patientsError ? (
+          <OperationalState
+            kind="error"
+            title="No pudimos cargar pacientes"
+            description={patientsError}
+            onAction={onRetryPatients}
+          />
+        ) : filteredPatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <p>No se encontraron pacientes</p>
           </div>
         ) : (
-          filteredPatients.map((p) => {
-            const patientConsultations = getActiveConsultations(p);
-            const lastConsult = patientConsultations.length > 0 ? patientConsultations[0] : null;
-            const nextCtrl = lastConsult?.nextControlDate
-              ? new Date(lastConsult.nextControlDate + "T12:00:00")
-              : null;
+          filteredPatients.map((patient) => {
+            const patientConsultations = getActiveConsultations(patient);
+            const lastConsultation =
+              patientConsultations.length > 0 ? patientConsultations[0] : null;
+            const nextControl = getNextControlDateFromPatient(patient);
             const isControlNear =
-              nextCtrl && nextCtrl <= new Date(new Date().setDate(new Date().getDate() + 7));
+              nextControl &&
+              nextControl <= new Date(new Date().setDate(new Date().getDate() + 7));
 
             return (
               <div
-                key={p.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm active:bg-slate-50 active:scale-[0.98] transition-all"
-                onClick={() => handleSelectPatient(p)}
+                key={patient.id}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all active:scale-[0.98] active:bg-slate-50"
+                onClick={() => handleSelectPatient(patient)}
               >
-                <div className="flex justify-between items-start mb-3">
+                <div className="mb-3 flex items-start justify-between">
                   <div>
-                    <h4 className="font-bold text-slate-800 text-lg">
-                      {formatPersonName(p.fullName)}
+                    <h4 className="text-lg font-bold text-slate-800">
+                      {formatPersonName(patient.fullName)}
                     </h4>
-                    <p className="text-xs text-slate-400 font-mono">
-                      {p.rut} • {safeAgeLabel(p.birthDate)}
+                    <p className="font-mono text-xs text-slate-400">
+                      {patient.rut} • {safeAgeLabel(patient.birthDate)}
                     </p>
                   </div>
-                  <ChevronRight className="text-slate-300 w-5 h-5" />
+                  <ChevronRight className="h-5 w-5 text-slate-300" />
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {nextCtrl && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {nextControl && (
                     <div
-                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${isControlNear ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}
+                      className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
+                        isControlNear
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-green-100 text-green-700"
+                      }`}
                     >
-                      Control: {nextCtrl.toLocaleDateString()}
+                      Control: {nextControl.toLocaleDateString()}
                     </div>
                   )}
-                  {lastConsult && (
-                    <div className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600">
-                      Última: {new Date(lastConsult.date).toLocaleDateString()}
+                  {lastConsultation && (
+                    <div className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-blue-600">
+                      Última: {new Date(lastConsultation.date).toLocaleDateString()}
                     </div>
                   )}
                 </div>

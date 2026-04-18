@@ -10,6 +10,10 @@ import {
   Calendar,
   Save,
   ExternalLink,
+  ClipboardList,
+  Stethoscope,
+  Timer,
+  Sparkles,
 } from "lucide-react";
 import {
   Consultation,
@@ -28,6 +32,7 @@ import Podogram from "../../../components/Podogram";
 import { ExamSheetsSection } from "../../../components/ExamSheetsSection";
 import AutocompleteInput from "../../../components/AutocompleteInput";
 import PrescriptionManager from "../../../components/PrescriptionManager";
+import { summarizeAnamnesis } from "../../../utils/gemini";
 
 interface ProfessionalConsultationFormProps {
   newConsultation: Partial<Consultation>;
@@ -44,6 +49,7 @@ interface ProfessionalConsultationFormProps {
   addDiagnosis?: (d: string | SnomedConcept) => void;
   removeDiagnosis?: (d: SnomedConcept) => void;
   pinDiagnosis?: (d: SnomedConcept) => void;
+  toggleChronicDiagnosis?: (d: SnomedConcept) => void;
   handleVitalsChange: (field: string, value: any) => void;
   handleExamChange: (field: string, value: any) => void;
   handleCreateConsultation: () => Promise<Patient | null>;
@@ -72,6 +78,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
   addDiagnosis,
   removeDiagnosis,
   pinDiagnosis,
+  toggleChronicDiagnosis,
   handleVitalsChange,
   handleExamChange,
   handleCreateConsultation,
@@ -84,6 +91,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
 }) => {
   const [expandedSection, setExpandedSection] = useState<string>("anamnesis");
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   const toggleSection = (section: string) =>
     setExpandedSection((prev) => (prev === section ? prev : section));
@@ -210,7 +218,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
 
       <div className="p-0 overflow-hidden">
         {newConsultation.consultationType === "pscv" ? (
-          <div className="p-8 md:p-10 space-y-10 border-b border-slate-100">
+          <div className="p-6 md:p-8 space-y-8 border-b border-slate-100">
             <PSCVForm
               newConsultation={newConsultation}
               onChange={handleVitalsChange}
@@ -223,7 +231,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
             />
           </div>
         ) : (
-          <div className="p-8 md:p-10 space-y-10 border-b border-slate-100">
+          <div className="p-6 md:p-8 space-y-8 border-b border-slate-100">
             {/* 1. Motivo y Anamnesis */}
             <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-fadeIn">
               <button
@@ -239,9 +247,10 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                 />
               </button>
               {expandedSection === "anamnesis" && (
-                <div className="p-5 md:p-8 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
-                  <div className="col-span-full">
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                <div className="p-5 md:p-8 border-t border-slate-100 flex flex-col gap-8 bg-white">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-indigo-400" />
                       {labels.reason}
                     </label>
                     <input
@@ -256,10 +265,27 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                       placeholder="¿Cuál es el motivo principal de la consulta?"
                     />
                   </div>
-                  <div className={isPsych ? "col-span-full" : ""}>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                      {labels.anamnesis}
-                    </label>
+                  <div className={isPsych ? "" : ""}>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                        <ClipboardList className="w-4 h-4 text-indigo-400" />
+                        {labels.anamnesis}
+                      </label>
+                      <button
+                        onClick={async () => {
+                          if (!newConsultation.anamnesis || isSummarizing) return;
+                          setIsSummarizing(true);
+                          const summary = await summarizeAnamnesis(newConsultation.anamnesis);
+                          setNewConsultation((prev) => ({ ...prev, anamnesis: summary }));
+                          setIsSummarizing(false);
+                        }}
+                        disabled={isSummarizing || !newConsultation.anamnesis}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition-all disabled:opacity-50"
+                      >
+                        <Sparkles className={`w-3 h-3 ${isSummarizing ? "animate-spin" : ""}`} />
+                        {isSummarizing ? "Procesando..." : "Resumir con IA"}
+                      </button>
+                    </div>
                     <textarea
                       value={newConsultation.anamnesis || ""}
                       onChange={(e) =>
@@ -269,13 +295,14 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                         }))
                       }
                       spellCheck={true}
-                      className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700"
+                      className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-y min-h-[16rem] h-72 text-base leading-relaxed text-slate-700"
                       placeholder="Detalle clínico e historial de la enfermedad actual..."
                     />
                   </div>
                   {labels.physical && (
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
+                      <label className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                        <Stethoscope className="w-4 h-4 text-indigo-400" />
                         {labels.physical}
                       </label>
                       <textarea
@@ -287,7 +314,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                           }))
                         }
                         spellCheck={true}
-                        className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700"
+                        className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-y min-h-[16rem] h-72 text-base leading-relaxed text-slate-700"
                         placeholder="Hallazgos físicos..."
                       />
                     </div>
@@ -429,19 +456,53 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                         {diagnoses.map((d, idx) => (
                           <div
                             key={d.code + idx}
-                            className="flex items-center gap-2 bg-slate-100 pl-4 pr-2 py-2 rounded-full border border-slate-200 group hover:border-emerald-200 hover:bg-emerald-50 transition-all"
+                            className={`flex items-center gap-2 pl-4 pr-2 py-2 rounded-full border group transition-all ${
+                              d.isChronic
+                                ? "bg-amber-50 border-amber-200 hover:border-amber-300 hover:bg-amber-100"
+                                : "bg-slate-100 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50"
+                            }`}
                           >
                             <div className="flex flex-col">
-                              <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-700 leading-tight">
-                                {d.display}
+                              <span
+                                className={`text-sm font-bold leading-tight ${
+                                  d.isChronic
+                                    ? "text-amber-800"
+                                    : "text-slate-700 group-hover:text-emerald-700"
+                                }`}
+                              >
+                                {d.display}{" "}
+                                {d.isChronic && (
+                                  <span className="font-normal text-xs uppercase tracking-tight text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded ml-1">
+                                    Crónica
+                                  </span>
+                                )}
                               </span>
                               {d.code && d.code !== "free-text" && (
-                                <span className="text-[10px] text-slate-400 font-mono">
+                                <span
+                                  className={`text-[10px] font-mono ${
+                                    d.isChronic ? "text-amber-600" : "text-slate-400"
+                                  }`}
+                                >
                                   SCT: {d.code}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 pl-2">
+                              <button
+                                onClick={() => toggleChronicDiagnosis?.(d)}
+                                className={`p-1.5 rounded-full transition-colors ${
+                                  d.isChronic
+                                    ? "text-amber-600 bg-amber-100 hover:bg-amber-200"
+                                    : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                                }`}
+                                title={
+                                  d.isChronic
+                                    ? "Desmarcar Patología Crónica"
+                                    : "Marcar como Patología Crónica"
+                                }
+                              >
+                                <Timer className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={() => pinDiagnosis?.(d)}
                                 className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors"
@@ -497,6 +558,8 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                           templates={myTemplates}
                           role={role}
                           currentDiagnosis={newConsultation.diagnosis}
+                          professionalName={currentUser?.fullName}
+                          professionalRut={currentUser?.rut}
                         />
                         {!canPrescribeDrugs && (
                           <p className="text-xs text-slate-400 mt-2 italic">

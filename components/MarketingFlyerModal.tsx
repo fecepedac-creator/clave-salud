@@ -10,7 +10,6 @@ import {
   Palette,
   PlusCircle,
 } from "lucide-react";
-import html2canvas from "html2canvas";
 import FlyerCanvas from "./FlyerCanvas";
 import {
   FlyerFormat,
@@ -247,6 +246,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
         throw new Error("Canvas not found");
       }
 
+      const html2canvas = (await import("html2canvas")).default;
       const { width, height } = (canvas as HTMLElement).style;
       const original = await html2canvas(canvas as HTMLElement, {
         scale: 2, // Alta resolución

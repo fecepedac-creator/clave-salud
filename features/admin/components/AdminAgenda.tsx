@@ -7,12 +7,7 @@ import {
   AuditLogEvent,
   MedicalService,
 } from "../../../types";
-import {
-  generateId,
-  generateSlotId,
-  getStandardSlots,
-  getPatientIdByRut,
-} from "../../../utils";
+import { generateId, generateSlotId, getStandardSlots, getPatientIdByRut } from "../../../utils";
 import {
   Calendar,
   Save,
@@ -80,7 +75,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   const [bookingRut, setBookingRut] = useState("");
   const [bookingName, setBookingName] = useState("");
   const [bookingPhone, setBookingPhone] = useState("");
-  
+
   const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">(
     "CONSULTATION"
   );
@@ -377,7 +372,25 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       window.open(url, "_blank");
     }
 
-    onUpdateAppointments(appointments.filter((a) => a.id !== cancelModal.appointment?.id));
+    onUpdateAppointments(
+      appointments.map((appointment) =>
+        appointment.id !== cancelModal.appointment?.id
+          ? appointment
+          : {
+              ...appointment,
+              status: "available",
+              patientName: "",
+              patientRut: "",
+              patientId: undefined,
+              patientPhone: "",
+              patientEmail: "",
+              bookedAt: undefined,
+              cancelledAt: new Date().toISOString(),
+              attendanceStatus: "cancelled",
+              billable: false,
+            }
+      )
+    );
     setCancelModal({ isOpen: false, appointment: null });
     showToast("Cita cancelada y horario bloqueado.", "info");
   };
@@ -536,9 +549,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                 />
               </div>
               <div className="flex-1">
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                  Fin
-                </label>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Fin</label>
                 <input
                   type="time"
                   className="w-full bg-slate-900 text-white border border-slate-700 p-2 rounded-lg outline-none"
@@ -663,7 +674,9 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  {hasPendingSlotChanges ? `Guardar (${pendingAdds.size + pendingDeletes.size})` : "Guardado"}
+                  {hasPendingSlotChanges
+                    ? `Guardar (${pendingAdds.size + pendingDeletes.size})`
+                    : "Guardado"}
                 </button>
               </div>
             </div>
@@ -676,30 +689,70 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Desde</label>
-                    <input type="date" className="w-full bg-slate-800 text-white border border-slate-700 p-2 rounded-lg outline-none" value={genFrom} onChange={(e) => setGenFrom(e.target.value)} />
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                      Desde
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-800 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                      value={genFrom}
+                      onChange={(e) => setGenFrom(e.target.value)}
+                    />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Hasta</label>
-                    <input type="date" className="w-full bg-slate-800 text-white border border-slate-700 p-2 rounded-lg outline-none" value={genTo} onChange={(e) => setGenTo(e.target.value)} />
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                      Hasta
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-800 text-white border border-slate-700 p-2 rounded-lg outline-none"
+                      value={genTo}
+                      onChange={(e) => setGenTo(e.target.value)}
+                    />
                   </div>
                   <div className="flex gap-4 mb-2">
                     <label className="flex items-center gap-2 cursor-pointer group">
-                      <input type="checkbox" className="hidden" checked={genIncludeSat} onChange={(e) => setGenIncludeSat(e.target.checked)} />
-                      <div className={`w-10 h-6 rounded-full transition-colors relative ${genIncludeSat ? "bg-health-400" : "bg-slate-700"}`}>
-                        <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${genIncludeSat ? "translate-x-4" : ""}`}></div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={genIncludeSat}
+                        onChange={(e) => setGenIncludeSat(e.target.checked)}
+                      />
+                      <div
+                        className={`w-10 h-6 rounded-full transition-colors relative ${genIncludeSat ? "bg-health-400" : "bg-slate-700"}`}
+                      >
+                        <div
+                          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${genIncludeSat ? "translate-x-4" : ""}`}
+                        ></div>
                       </div>
-                      <span className="text-sm font-bold text-slate-400 group-hover:text-white">Sáb</span>
+                      <span className="text-sm font-bold text-slate-400 group-hover:text-white">
+                        Sáb
+                      </span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer group">
-                      <input type="checkbox" className="hidden" checked={genIncludeSun} onChange={(e) => setGenIncludeSun(e.target.checked)} />
-                      <div className={`w-10 h-6 rounded-full transition-colors relative ${genIncludeSun ? "bg-health-400" : "bg-slate-700"}`}>
-                        <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${genIncludeSun ? "translate-x-4" : ""}`}></div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={genIncludeSun}
+                        onChange={(e) => setGenIncludeSun(e.target.checked)}
+                      />
+                      <div
+                        className={`w-10 h-6 rounded-full transition-colors relative ${genIncludeSun ? "bg-health-400" : "bg-slate-700"}`}
+                      >
+                        <div
+                          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${genIncludeSun ? "translate-x-4" : ""}`}
+                        ></div>
                       </div>
-                      <span className="text-sm font-bold text-slate-400 group-hover:text-white">Dom</span>
+                      <span className="text-sm font-bold text-slate-400 group-hover:text-white">
+                        Dom
+                      </span>
                     </label>
                   </div>
-                  <button onClick={handleGenerateSlots} disabled={isGenerating} className="bg-health-400 text-slate-900 font-bold py-2 rounded-lg hover:bg-health-300 w-full disabled:opacity-50 h-[42px]">
+                  <button
+                    onClick={handleGenerateSlots}
+                    disabled={isGenerating}
+                    className="bg-health-400 text-slate-900 font-bold py-2 rounded-lg hover:bg-health-300 w-full disabled:opacity-50 h-[42px]"
+                  >
                     {isGenerating ? "Generando..." : "Abrir Bloques"}
                   </button>
                 </div>
@@ -707,31 +760,56 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
-              {getStandardSlots(selectedDate, selectedDoctorId, resolvedCenterId, savedConfig ?? tempConfig).map((slot) => {
+              {getStandardSlots(
+                selectedDate,
+                selectedDoctorId,
+                resolvedCenterId,
+                savedConfig ?? tempConfig
+              ).map((slot) => {
                 const appointmentDoctorUid = (a: Appointment) => (a as any).doctorUid ?? a.doctorId;
-                const realSlot = appointments.find((a) => appointmentDoctorUid(a) === selectedDoctorId && a.date === selectedDate && a.time === slot.time);
-                
+                const realSlot = appointments.find(
+                  (a) =>
+                    appointmentDoctorUid(a) === selectedDoctorId &&
+                    a.date === selectedDate &&
+                    a.time === slot.time
+                );
+
                 const isPendingAdd = pendingAdds.has(slot.time);
                 const isPendingDelete = realSlot ? pendingDeletes.has(realSlot.id) : false;
                 const isBooked = realSlot?.status === "booked";
-                
-                let bgColor = "bg-slate-900/50 border-slate-700 text-slate-500 hover:border-health-400 hover:text-white";
+
+                let bgColor =
+                  "bg-slate-900/50 border-slate-700 text-slate-500 hover:border-health-400 hover:text-white";
                 if (realSlot && !isPendingDelete) {
-                  bgColor = isBooked ? "bg-blue-600/20 border-blue-500 text-blue-100" : "bg-emerald-600/20 border-emerald-500 text-emerald-100";
+                  bgColor = isBooked
+                    ? "bg-blue-600/20 border-blue-500 text-blue-100"
+                    : "bg-emerald-600/20 border-emerald-500 text-emerald-100";
                 }
-                if (isPendingAdd) bgColor = "bg-health-400 text-slate-900 animate-pulse border-health-300";
-                if (isPendingDelete) bgColor = "bg-red-600/20 border-red-500 text-red-100 line-through opacity-50";
+                if (isPendingAdd)
+                  bgColor = "bg-health-400 text-slate-900 animate-pulse border-health-300";
+                if (isPendingDelete)
+                  bgColor = "bg-red-600/20 border-red-500 text-red-100 line-through opacity-50";
 
                 return (
-                  <button key={slot.time} onClick={() => toggleSlot(slot.time)} className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all relative ${bgColor}`}>
+                  <button
+                    key={slot.time}
+                    onClick={() => toggleSlot(slot.time)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all relative ${bgColor}`}
+                  >
                     <span className="text-lg font-black">{slot.time}</span>
                     <span className="text-[10px] uppercase font-bold opacity-60">
-                      {isBooked ? "Ocupado" : realSlot ? "Abierto" : isPendingAdd ? "Por Abrir" : "Cerrado"}
+                      {isBooked
+                        ? "Ocupado"
+                        : realSlot
+                          ? "Abierto"
+                          : isPendingAdd
+                            ? "Por Abrir"
+                            : "Cerrado"}
                     </span>
                     {isBooked && (
                       <div className="mt-1 flex items-center gap-1 overflow-hidden w-full justify-center">
-                         <User className="w-2 h-2 shrink-0" />
-                         <span className="text-[8px] truncate">{realSlot.patientName}</span>
+                        <User className="w-2 h-2 shrink-0" />
+                        <span className="text-[8px] truncate">{realSlot.patientName}</span>
                       </div>
                     )}
                   </button>
@@ -752,16 +830,27 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
             <h3 className="text-xl font-bold text-center mb-2">¿Cancelar Cita?</h3>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center">
               <p className="font-bold text-lg">{cancelModal.appointment.patientName}</p>
-              <p className="text-slate-500">{cancelModal.appointment.date} - {cancelModal.appointment.time}</p>
+              <p className="text-slate-500">
+                {cancelModal.appointment.date} - {cancelModal.appointment.time}
+              </p>
             </div>
             <div className="space-y-3">
-              <button onClick={() => handleConfirmCancellation(true)} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200">
+              <button
+                onClick={() => handleConfirmCancellation(true)}
+                className="w-full bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+              >
                 <MessageCircle className="w-5 h-5" /> Cancelar y Notificar WhatsApp
               </button>
-              <button onClick={() => handleConfirmCancellation(false)} className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300">
+              <button
+                onClick={() => handleConfirmCancellation(false)}
+                className="w-full bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300"
+              >
                 Solo Cancelar
               </button>
-              <button onClick={() => setCancelModal({ isOpen: false, appointment: null })} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600">
+              <button
+                onClick={() => setCancelModal({ isOpen: false, appointment: null })}
+                className="w-full text-slate-400 font-bold py-2 hover:text-slate-600"
+              >
                 Volver Atrás
               </button>
             </div>
@@ -775,23 +864,55 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 max-w-lg w-full">
             <h3 className="text-2xl font-black text-white mb-6">Agendamiento Manual</h3>
             <div className="space-y-4">
-               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Nombre Completo</label>
-                <input type="text" autoFocus className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl" value={bookingName} onChange={(e) => setBookingName(e.target.value)} />
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                  Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
+                  value={bookingName}
+                  onChange={(e) => setBookingName(e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">RUT</label>
-                  <input type="text" className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl" value={bookingRut} onChange={(e) => setBookingRut(e.target.value)} />
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                    RUT
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
+                    value={bookingRut}
+                    onChange={(e) => setBookingRut(e.target.value)}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Teléfono</label>
-                  <input type="tel" className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl" value={bookingPhone} onChange={(e) => setBookingPhone(e.target.value)} />
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
+                    Teléfono
+                  </label>
+                  <input
+                    type="tel"
+                    className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
+                    value={bookingPhone}
+                    onChange={(e) => setBookingPhone(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="flex gap-4 mt-6">
-                <button onClick={() => setBookingSlotId(null)} className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl">Cancelar</button>
-                <button onClick={handleManualBooking} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700">Confirmar</button>
+                <button
+                  onClick={() => setBookingSlotId(null)}
+                  className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleManualBooking}
+                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700"
+                >
+                  Confirmar
+                </button>
               </div>
             </div>
           </div>

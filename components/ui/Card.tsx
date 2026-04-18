@@ -14,7 +14,7 @@ const Card: React.FC<CardProps> = ({
   noPadding = false,
 }) => {
   const baseStyles = "rounded-3xl transition-all duration-300";
-  
+
   const variants = {
     default: "bg-slate-800 border border-slate-700 shadow-premium",
     glass: "bg-slate-900/40 backdrop-blur-md border border-white/10 shadow-premium",

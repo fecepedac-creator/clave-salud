@@ -35,13 +35,13 @@ import { SuperAdminFinance } from "../features/superadmin/components/SuperAdminF
 import { SuperAdminCommunications } from "../features/superadmin/components/SuperAdminCommunications";
 import { SuperAdminUsers } from "../features/superadmin/components/SuperAdminUsers";
 import { SuperAdminMetrics } from "../features/superadmin/components/SuperAdminMetrics";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 // Firebase
 import { db, auth, storage } from "../firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import {
   collection,
-  collectionGroup,
   doc,
   getCountFromServer,
   getDoc,
@@ -255,7 +255,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [isInvitingAdmin, setIsInvitingAdmin] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
 
-  // ✅ NUEVO: guardar la última invitación (para botón Gmail/copy robustos)
+  // NUEVO: guardar la última invitación (para botón Gmail/copy robustos)
   const [lastInviteTo, setLastInviteTo] = useState<string>("");
   const [lastInviteSubject, setLastInviteSubject] = useState<string>("");
   const [lastInviteBody, setLastInviteBody] = useState<string>("");
@@ -269,7 +269,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   };
 
   const buildInviteEmailParts = (centerName: string, link: string) => {
-    const subject = `Invitación a ClaveSalud — Administración del centro (${centerName})`;
+    const subject = `Invitación a ClaveSalud - Administración del centro (${centerName})`;
     const body = [
       `Hola,`,
       ``,
@@ -282,7 +282,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       `Este enlace es personal y expira en 7 días.`,
       ``,
       `Saludos,`,
-      `Equipo ClaveSalud`,
+      `- Equipo ClaveSalud`,
       ``,
     ].join("\n");
     return { subject, body };
@@ -407,15 +407,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setCommCenterId(centerContextId);
   }, [centerContextId]);
 
-  const promptChangeReason = (label: string) => {
-    const reason = window.prompt(`Indica el motivo para ${label}:`);
+  const promptChangeReason = async (label: string) => {
+    const response = await requestCriticalAction({
+      title: `Confirmar ${label}`,
+      message: "Esta accion quedara registrada en auditoria de superadmin.",
+      confirmLabel: "Continuar",
+      reasonRequired: true,
+      reasonLabel: "Motivo",
+      reasonPlaceholder: "Indica el motivo operativo o de cumplimiento",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo continuar con esta accion.",
+    });
+    const reason = response?.confirmed ? response.reason : null;
     if (!reason || !reason.trim()) {
       showToast("Debes indicar un motivo para continuar.", "warning");
       return null;
     }
     return reason.trim();
   };
-
   const fetchCommHistory = async (centerId: string) => {
     if (demoMode) {
       setCommHistory([]);
@@ -526,11 +535,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     try {
       // Intentamos obtener conteos uno por uno para mejor diagnóstico
       const patientsSnap = await getCountFromServer(collection(db, "patients"));
-      const staffSnap = await getCountFromServer(collectionGroup(db, "staff"));
+      const centersSnap = await getDocs(collection(db, "centers"));
+      const activeProfessionals = centersSnap.docs.reduce((acc, centerDoc) => {
+        const stats = (centerDoc.data() as any)?.stats || {};
+        return acc + Number(stats.staffCount || 0);
+      }, 0);
 
       setMetrics({
         patients: Number(patientsSnap.data().count ?? 0),
-        professionals: Number(staffSnap.data().count ?? 0),
+        professionals: activeProfessionals,
       });
       setMetricsUpdatedAt(new Date().toISOString());
     } catch (error: any) {
@@ -627,7 +640,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   const totals = useMemo(() => {
     const total = centers.length;
-    const active = centers.filter((c) => !!(c as any).isActive).length;
+    const activeCount = centers.filter((c) => !!(c as any).active).length;
+    const inactiveCount = centers.length - activeCount;
     const maxUsers = centers.reduce((acc, c) => acc + (Number((c as any).maxUsers) || 0), 0);
 
     const billingStats = centers.reduce(
@@ -641,18 +655,18 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     );
 
     const atRisk = centers.filter((c) => {
-      const seed = c.id.charCodeAt(0) + c.id.length;
-      const mockAttentions = (seed % 300) + 10;
-      return mockAttentions < 60;
+      const stats = (c as any).stats || {};
+      const consultationCount = Number(stats.consultationCount || 0);
+      const staffCount = Number(stats.staffCount || 0);
+      return (c as any).active !== false && staffCount > 0 && consultationCount < 10;
     }).length;
 
-    return { total, active, maxUsers, billingStats, atRisk };
+    return { total, active: activeCount, inactive: inactiveCount, maxUsers, billingStats, atRisk };
   }, [centers]);
 
   useEffect(() => {
     if (!commCenterId) return;
     void fetchCommHistory(commCenterId);
-    void fetchCenterInvites(commCenterId);
   }, [commCenterId]);
 
   useEffect(() => {
@@ -715,12 +729,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   }, [editingCenter?.id]);
 
   const renderHealthBadge = (center: CenterExt) => {
-    const isActive = !!(center as any).isActive;
-    const billingStatus = (center as any).billing?.billingStatus as BillingStatus | undefined;
-    const nextDueDate = (center as any).billing?.nextDueDate as string | undefined;
-    const isOverdue = billingStatus === "overdue";
-    const isRisk =
-      !isActive || isOverdue || (nextDueDate ? new Date(nextDueDate) < new Date() : false);
+    const isActive = !!(center as any).active;
+    const isOverdue = (center as any).billingStatus === "overdue";
+    const isRisk = (center as any).billingStatus === "risk";
+    const nextDueDate = (center as any).nextBillingDate;
+    const isNearLimit = (center as any).patientCount >= (center as any).patientLimit * 0.9;
+
     const label = !isActive ? "Suspendido" : isOverdue ? "Riesgo alto" : isRisk ? "Atención" : "OK";
     const cls = !isActive
       ? "bg-slate-200 text-slate-700"
@@ -742,7 +756,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       name: "",
       slug: "",
       primaryColor: "teal",
-      isActive: true,
+      active: true,
       maxUsers: 10,
       allowedRoles: ["MEDICO", "ENFERMERA"],
       modules: { dental: false, prescriptions: true, agenda: true },
@@ -824,6 +838,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         id: centerId,
         name,
         slug,
+        active: (editingCenter as any).active ?? true,
         logoUrl: finalLogoUrl,
         createdAt: isCreating ? new Date().toISOString() : editingCenter.createdAt,
         adminEmail: isCreating
@@ -844,7 +859,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       if (!isCreating) {
         const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
         const isActiveChanged =
-          previous && !!(previous as any).isActive !== !!(finalCenter as any).isActive;
+          previous && !!(previous as any).active !== !!(finalCenter as any).active;
         const billingPrev = (previous as any)?.billing || {};
         const billingNext = (finalCenter as any)?.billing || {};
         const billingChanged =
@@ -852,7 +867,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           billingPrev?.monthlyUF !== billingNext?.monthlyUF ||
           billingPrev?.billingStatus !== billingNext?.billingStatus;
         if (isActiveChanged || billingChanged) {
-          const reason = promptChangeReason("modificar estado o facturación del centro");
+          const reason = await promptChangeReason("modificar estado o facturacion del centro");
           if (!reason) return;
           (finalCenter as any).auditReason = reason;
         }
@@ -872,7 +887,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
     } catch (e: any) {
       console.error("SAVE CENTER ERROR", e);
-      // Detailed error logging for internal diagnostics
       if (e?.code || e?.message) {
         console.error("DEBUG INFO:", {
           code: e.code,
@@ -881,16 +895,25 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           payload: editingCenter,
         });
       }
-      showToast(e?.message || "Error guardando centro", "error");
-    } finally {
-      setIsUploadingLogo(false);
+      showToast(e?.message || "Error al guardar centro", "error");
     }
   };
 
   const handleDeleteCenter = async (id: string) => {
     if (!id) return;
-    if (!window.confirm("¿Eliminar este centro? (no se puede deshacer)")) return;
-    const reason = promptChangeReason("eliminar el centro");
+    const decommissionConfirm = await requestCriticalAction({
+      title: "Dar de baja centro",
+      message: "Se desactivaran usuarios y servicios del centro, manteniendo los datos solo por razones legales.",
+      warning: "Esta accion es atomica y no debe ejecutarse sin validacion previa.",
+      confirmLabel: "Dar de baja",
+      reasonRequired: true,
+      reasonLabel: "Motivo formal de baja",
+      reasonPlaceholder: "Indica el motivo legal, comercial u operativo",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo dar de baja formal este centro.",
+    });
+    if (!decommissionConfirm?.confirmed) return;
+    const reason = decommissionConfirm.reason?.trim();
     if (!reason) return;
     try {
       await onDeleteCenter(id, reason);
@@ -961,7 +984,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     );
     let auditReason: string | null = null;
     if (requiresReason) {
-      auditReason = promptChangeReason("cambiar información de facturación");
+      auditReason = await promptChangeReason("cambiar informacion de facturacion");
       if (!auditReason) return;
     }
     const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
@@ -981,29 +1004,37 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       return;
     }
 
-    const adminEmail = (commCenter as any).adminEmail?.trim() || "";
-    try {
-      const fn = httpsCallable(getFunctions(), "createCenterNotification");
-      await fn({
-        centerId: commCenter.id,
-        title,
-        body,
+      try {
+        const fn = httpsCallable(getFunctions(), "createCenterNotification");
+        const result: any = await fn({
+          centerId: commCenter.id,
+          title,
+          body,
         type: commType,
-        severity: commSeverity,
-        sendEmail: commSendEmail,
-      });
-      await fetchCommHistory(commCenter.id);
-    } catch (e: any) {
-      console.error("COMM NOTIFICATION ERROR", e);
-      showToast(e?.message || "Error enviando aviso", "error");
-      return;
-    }
+          severity: commSeverity,
+          sendEmail: commSendEmail,
+        });
+        await fetchCommHistory(commCenter.id);
 
-    if (commSendEmail && !adminEmail) {
-      showToast("Aviso guardado. Falta adminEmail para enviar por correo.", "warning");
-    } else {
-      showToast("Aviso enviado (registrado)", "success");
-    }
+        const payload = result?.data || {};
+        const emailSent = Boolean(payload.emailSent);
+        const emailError = String(payload.emailError || "");
+        if (commSendEmail) {
+          if (emailSent) {
+            showToast("Aviso enviado y correo despachado.", "success");
+          } else if (emailError === "missing-admin-email") {
+            showToast("Aviso registrado. El centro no tiene adminEmail configurado.", "warning");
+          } else {
+            showToast("Aviso registrado, pero el correo no pudo enviarse.", "warning");
+          }
+        } else {
+          showToast("Aviso registrado.", "success");
+        }
+      } catch (e: any) {
+        console.error("COMM NOTIFICATION ERROR", e);
+        showToast(e?.message || "Error enviando aviso", "error");
+        return;
+      }
 
     setCommTitle("");
     setCommBody("");
@@ -1048,12 +1079,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const centerName = commCenter.name || "Centro";
     const subject =
       commType === "billing"
-        ? `ClaveSalud — Aviso de facturación (${centerName})`
+        ? `ClaveSalud - Aviso de facturación (${centerName})`
         : commType === "incident"
-          ? `ClaveSalud — Incidencia operativa (${centerName})`
+          ? `ClaveSalud - Incidencia operativa (${centerName})`
           : commType === "security"
-            ? `ClaveSalud — Aviso de seguridad (${centerName})`
-            : `ClaveSalud — Información (${centerName})`;
+            ? `ClaveSalud - Aviso de facturación (${centerName})`
+            : `ClaveSalud - Información (${centerName})`;
 
     const body = [
       `Para: ${adminEmail}`,
@@ -1068,7 +1099,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       `Centro: ${centerName} (${commCenter.slug})`,
       `Fecha: ${todayISO()}`,
       ``,
-      `— Equipo ClaveSalud`,
+      `- Equipo ClaveSalud`,
     ].join("\n");
 
     return body;
@@ -1134,14 +1165,19 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       setLastInviteTo(emailLower);
       setLastInviteSubject(subject);
       setLastInviteBody(body);
+      await fetchCenterInvites(centerId);
 
       const copyText = buildCopyEmailText(emailLower, subject, body);
       await navigator.clipboard.writeText(copyText);
 
-      showToast(
-        "Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.",
-        "success"
-      );
+      if (data?.emailSent) {
+        showToast("Invitación generada y enviada por correo.", "success");
+      } else {
+        showToast(
+          "Invitación generada. Se copió el correo al portapapeles para envío manual.",
+          "warning"
+        );
+      }
     } catch (e: any) {
       console.error("INVITE ERROR", e);
       showToast(e?.message || "Error generando invitación", "error");
@@ -1188,6 +1224,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={onLogout}
+            className="inline-flex items-center gap-2 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-bold text-rose-100 transition-colors hover:bg-rose-500/20"
+            title="Cerrar sesión"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Salir</span>
+          </button>
           <div className="hidden sm:block">
             <LogoHeader size="sm" showText={true} />
           </div>
@@ -1356,54 +1400,54 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
         {/* CENTERS */}
         {activeTab === "centers" && (
-            <SuperAdminCenters
-              centers={centers}
-              editingCenter={editingCenter}
-              setEditingCenter={setEditingCenter}
-              isCreating={isCreating}
-              setIsCreating={setIsCreating}
-              handleStartCreate={handleStartCreate}
-              handleSaveCenter={handleSaveCenter}
-              handleDeleteCenter={handleDeleteCenter}
-              isUploadingLogo={isUploadingLogo}
-              logoPreview={logoPreview}
-              setLogoPreview={setLogoPreview}
-              logoFile={logoFile}
-              setLogoFile={setLogoFile}
-              resetLogoState={resetLogoState}
-              marketingSettings={marketingSettings}
-              setMarketingSettings={setMarketingSettings}
-              marketingSaving={marketingSaving}
-              handleSaveMarketingSettings={handleSaveMarketingSettings}
-              isInvitingAdmin={isInvitingAdmin}
-              setIsInvitingAdmin={setIsInvitingAdmin}
-              handleInviteCenterAdmin={handleInviteCenterAdmin}
-              lastInviteLink={lastInviteLink}
-              setLastInviteLink={setLastInviteLink}
-              lastInviteTo={lastInviteTo}
-              setLastInviteTo={setLastInviteTo}
-              lastInviteSubject={lastInviteSubject}
-              setLastInviteSubject={setLastInviteSubject}
-              lastInviteBody={lastInviteBody}
-              setLastInviteBody={setLastInviteBody}
-              invitesLoading={invitesLoading}
-              centerInvites={centerInvites}
-              hasMoreCenters={hasMoreCenters}
-              onLoadMoreCenters={onLoadMoreCenters}
-              isLoadingMoreCenters={isLoadingMoreCenters}
-              newCenterName={newCenterName}
-              setNewCenterName={setNewCenterName}
-              newCenterSlug={newCenterSlug}
-              setNewCenterSlug={setNewCenterSlug}
-              newCenterAdminEmail={newCenterAdminEmail}
-              setNewCenterAdminEmail={setNewCenterAdminEmail}
-              renderBadge={renderBadge}
-              renderHealthBadge={renderHealthBadge}
-              buildGmailComposeUrl={buildGmailComposeUrl}
-              buildCopyEmailText={buildCopyEmailText}
-              showToast={showToast}
-              fetchCenterInvites={fetchCenterInvites}
-            />
+          <SuperAdminCenters
+            centers={centers}
+            editingCenter={editingCenter}
+            setEditingCenter={setEditingCenter}
+            isCreating={isCreating}
+            setIsCreating={setIsCreating}
+            handleStartCreate={handleStartCreate}
+            handleSaveCenter={handleSaveCenter}
+            handleDeleteCenter={handleDeleteCenter}
+            isUploadingLogo={isUploadingLogo}
+            logoPreview={logoPreview}
+            setLogoPreview={setLogoPreview}
+            logoFile={logoFile}
+            setLogoFile={setLogoFile}
+            resetLogoState={resetLogoState}
+            marketingSettings={marketingSettings}
+            setMarketingSettings={setMarketingSettings}
+            marketingSaving={marketingSaving}
+            handleSaveMarketingSettings={handleSaveMarketingSettings}
+            isInvitingAdmin={isInvitingAdmin}
+            setIsInvitingAdmin={setIsInvitingAdmin}
+            handleInviteCenterAdmin={handleInviteCenterAdmin}
+            lastInviteLink={lastInviteLink}
+            setLastInviteLink={setLastInviteLink}
+            lastInviteTo={lastInviteTo}
+            setLastInviteTo={setLastInviteTo}
+            lastInviteSubject={lastInviteSubject}
+            setLastInviteSubject={setLastInviteSubject}
+            lastInviteBody={lastInviteBody}
+            setLastInviteBody={setLastInviteBody}
+            invitesLoading={invitesLoading}
+            centerInvites={centerInvites}
+            hasMoreCenters={hasMoreCenters}
+            onLoadMoreCenters={onLoadMoreCenters}
+            isLoadingMoreCenters={isLoadingMoreCenters}
+            newCenterName={newCenterName}
+            setNewCenterName={setNewCenterName}
+            newCenterSlug={newCenterSlug}
+            setNewCenterSlug={setNewCenterSlug}
+            newCenterAdminEmail={newCenterAdminEmail}
+            setNewCenterAdminEmail={setNewCenterAdminEmail}
+            renderBadge={renderBadge}
+            renderHealthBadge={renderHealthBadge}
+            buildGmailComposeUrl={buildGmailComposeUrl}
+            buildCopyEmailText={buildCopyEmailText}
+            showToast={showToast}
+            fetchCenterInvites={fetchCenterInvites}
+          />
         )}
 
         {/* FINANZAS */}
@@ -1479,8 +1523,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             <div>
               <h4 className="text-xl font-bold mb-2">Análisis de Retención Proactiva</h4>
               <p className="text-indigo-200 text-sm max-w-md">
-                Hemos detectado centros con una caída en actividad. Activa una campaña de
-                comunicación para recuperar su interés.
+                Hemos detectado centros con una caída en actividad. Activa una campaña de comunicación para recuperar su interés.
               </p>
             </div>
             <button

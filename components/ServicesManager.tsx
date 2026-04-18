@@ -30,6 +30,7 @@ import {
 import { MedicalService } from "../types";
 import { generateId, fileToBase64 } from "../utils";
 import { useToast } from "./Toast";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ServicesManagerProps {
   centerId: string;
@@ -125,7 +126,6 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
     description: "",
     preparationInstructions: "",
     durationMinutes: 20,
-    isActive: true,
     active: true,
     isAgendable: true,
   });
@@ -195,7 +195,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
       const payload: any = {
         ...currentService,
         id,
-        active: currentService.isActive ?? true,
+        active: currentService.active ?? true,
         updatedAt: serverTimestamp(),
         createdAt: currentService.id ? currentService.createdAt : serverTimestamp(),
       };
@@ -218,7 +218,6 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
         description: "",
         preparationInstructions: "",
         durationMinutes: 20,
-        isActive: true,
         active: true,
         isAgendable: true,
       });
@@ -229,12 +228,14 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
   };
 
   const handleActivateBundle = async (bundle: (typeof PREDEFINED_BUNDLES)[0]) => {
-    if (
-      !window.confirm(
-        `¿Desea cargar automáticamente el ${bundle.title}? Se añadirán ${bundle.services.length} prestaciones base.`
-      )
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: `Activar ${bundle.title}`,
+      message: `Se añadirán automáticamente ${bundle.services.length} prestaciones base.`,
+      confirmLabel: "Cargar bundle",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo cargar este bundle de prestaciones.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       setLoading(true);
@@ -251,10 +252,9 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           price: s.price,
           durationMinutes: s.duration,
           active: true,
-          isActive: true,
           isAgendable: true,
           preparationInstructions: "",
-          description: `Carga automática de ${bundle.title}`,
+          description: `Carga automatica de ${bundle.title}`,
           createdAt: serverTimestamp() as any,
           updatedAt: serverTimestamp() as any,
         };
@@ -272,16 +272,24 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Está seguro de eliminar esta prestación?")) return;
+    const response = await requestCriticalAction({
+      title: "Eliminar prestacion",
+      message: "La prestacion dejara de estar disponible para agenda y catalogo publico.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar esta prestacion.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       await deleteDoc(doc(db, "centers", centerId, "services", id));
-      showToast("Prestación eliminada.", "success");
+      showToast("Prestacion eliminada.", "success");
     } catch (error) {
       console.error("Error deleting service:", error);
-      showToast("Error al eliminar la prestación.", "error");
+      showToast("Error al eliminar la prestacion.", "error");
     }
   };
+
 
   const filteredServices = services.filter(
     (s) =>
@@ -310,7 +318,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
                 description: "",
                 preparationInstructions: "",
                 durationMinutes: 20,
-                isActive: true,
+                active: true,
               });
               setIsEditing(true);
             }}
@@ -324,7 +332,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
           <input
             type="text"
-            placeholder="Buscar por nombre o categoría..."
+            placeholder="Buscar por nombre o categor?a..."
             className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-12 pr-4 text-white outline-none focus:border-indigo-500 transition-colors"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -341,7 +349,7 @@ const ServicesManager: React.FC<ServicesManagerProps> = ({ centerId }) => {
               <Plus
                 className={`w-4 h-4 transition-transform ${showQuickStart ? "rotate-45" : ""}`}
               />
-              {showQuickStart ? "Ocultar Módulos Rápidos" : "Cargar Módulos Predefinidos (Packs)"}
+              {showQuickStart ? "Ocultar módulos rápidos" : "Cargar módulos predefinidos (packs)"}
             </button>
           </div>
         )}

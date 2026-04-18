@@ -8,13 +8,17 @@
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "deploy": "npm run build && firebase deploy --only functions",
-    "test:agent": "jest src/__tests__/whatsapp-agent.test.ts --runInBand"
+    "test:agent": "jest src/__tests__/whatsapp-agent.test.ts --runInBand",
+    "test:audit-chain": "jest src/__tests__/immutable-audit.test.ts --runInBand",
+    "test:public-security": "jest src/__tests__/public-appointment-security.test.ts --runInBand",
+    "test:patient-migration": "jest src/__tests__/patient-migration-consistency.test.ts --runInBand"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "date-fns": "^4.1.0",
     "firebase-admin": "^13.6.0",
-    "firebase-functions": "^7.0.2"
+    "firebase-functions": "^7.0.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

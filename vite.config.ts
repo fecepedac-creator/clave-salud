@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 5175,
+      port: 5173,
       strictPort: true,
     },
     define: {
@@ -24,16 +24,33 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ["react", "react-dom"],
-            firebase: [
-              "firebase/app",
-              "firebase/auth",
-              "firebase/firestore",
-              "firebase/storage",
-              "firebase/functions",
-            ],
-            ui: ["lucide-react"],
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+
+            if (
+              id.includes("firebase/") ||
+              id.includes("@firebase/")
+            ) {
+              return "firebase";
+            }
+
+            if (id.includes("lucide-react")) return "icons";
+            if (id.includes("react-google-drive-picker")) return "drive-picker";
+            if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf-export";
+            if (id.includes("qrcode")) return "qrcode";
+            if (id.includes("mammoth")) return "doc-import";
+            if (id.includes("@google/generative-ai")) return "gemini-sdk";
+
+            if (
+              id.includes("/react/") ||
+              id.includes("\\react\\") ||
+              id.includes("/react-dom/") ||
+              id.includes("\\react-dom\\")
+            ) {
+              return "vendor";
+            }
+
+            return undefined;
           },
         },
       },

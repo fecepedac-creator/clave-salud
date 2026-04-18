@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { MiniTrendChart, HistoryPoint } from "./MiniTrendChart";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ExamSheetsSectionProps {
   examSheets: ExamSheet[];
@@ -44,12 +45,17 @@ export const ExamSheetsSection: React.FC<ExamSheetsSectionProps> = ({
     setIsExpanded(true);
   };
 
-  const handleRemoveSheet = (id: string) => {
-    if (window.confirm("¿Eliminar esta planilla de exámenes?")) {
-      onChange(examSheets.filter((s) => s.id !== id));
-    }
+  const handleRemoveSheet = async (id: string) => {
+    const response = await requestCriticalAction({
+      title: "Eliminar planilla de examenes",
+      message: "La planilla y sus resultados se quitaran del registro actual.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar esta planilla.",
+    });
+    if (!response?.confirmed) return;
+    onChange(examSheets.filter((s) => s.id !== id));
   };
-
   const handleUpdateSheet = (id: string, updates: Partial<ExamSheet>) => {
     onChange(examSheets.map((s) => (s.id === id ? { ...s, ...updates } : s)));
   };

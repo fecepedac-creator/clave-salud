@@ -244,9 +244,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
         return opt
           ? {
               id,
-              snomedCode: opt.snomedCode as string,
+              code: opt.code as string,
               system: opt.system as string,
-              label: opt.label,
+              display: opt.display,
             }
           : id;
       }),
@@ -257,9 +257,9 @@ const PatientForm: React.FC<PatientFormProps> = ({
         return opt
           ? {
               id,
-              snomedCode: opt.snomedCode as string,
+              code: opt.code as string,
               system: opt.system as string,
-              label: opt.label,
+              display: opt.display,
             }
           : id;
       }),
@@ -581,7 +581,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
                   {MEDICAL_HISTORY_OPTIONS.map((item) => (
                     <SelectionCard
                       key={item.id}
-                      label={item.label}
+                      label={item.display}
                       selected={medicalHistory.includes(item.id)}
                       onClick={() => toggleSelection(medicalHistory, setMedicalHistory, item.id)}
                     />
@@ -625,7 +625,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
                   {SURGICAL_HISTORY_OPTIONS.map((item) => (
                     <SelectionCard
                       key={item.id}
-                      label={item.label}
+                      label={item.display}
                       selected={surgicalHistory.includes(item.id)}
                       onClick={() => toggleSelection(surgicalHistory, setSurgicalHistory, item.id)}
                     />

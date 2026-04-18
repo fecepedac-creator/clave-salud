@@ -1,6 +1,7 @@
 import React from "react";
 import { Appointment, AgendaConfig, Doctor, Patient } from "../../../types";
 import AgendaView from "../../../components/AgendaView";
+import OperationalState from "../../../components/ui/OperationalState";
 import { useToast } from "../../../components/Toast";
 import { generateSlotId } from "../../../utils";
 
@@ -18,6 +19,9 @@ interface DoctorAgendaTabProps {
   effectiveAgendaConfig?: AgendaConfig;
   isSyncingAppointments: boolean;
   isReadOnly: boolean;
+  appointmentsLoading?: boolean;
+  appointmentsError?: string;
+  onRetryAppointments?: () => void;
   hasActiveCenter: boolean;
   currentUser: Doctor | undefined;
   activeCenterId: string | undefined;
@@ -40,6 +44,9 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
   effectiveAgendaConfig,
   isSyncingAppointments,
   isReadOnly,
+  appointmentsLoading = false,
+  appointmentsError = "",
+  onRetryAppointments,
   hasActiveCenter,
   currentUser,
   activeCenterId,
@@ -86,17 +93,25 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
       )}
 
       {isAdministrativo && !viewingDoctorId ? (
-        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-          <p className="text-lg">Selecciona un profesional para gestionar su agenda.</p>
+        <div className="rounded-3xl border border-white/50 bg-white/80 p-6 shadow-sm">
+          <OperationalState
+            kind="empty"
+            title="Selecciona un profesional"
+            description="Elige un médico o agenda de servicio para ver horarios, pacientes y gestión diaria."
+          />
         </div>
       ) : (
         <AgendaView
           currentMonth={currentMonth}
           selectedAgendaDate={selectedAgendaDate}
           appointments={appointments}
+          centerId={activeCenterId}
           doctorId={effectiveDoctorId}
           agendaConfig={effectiveAgendaConfig}
           isSyncingAppointments={isSyncingAppointments}
+          isLoadingAppointments={appointmentsLoading}
+          appointmentsError={appointmentsError}
+          onRetryAppointments={onRetryAppointments}
           onMonthChange={(inc) => {
             const newDate = new Date(currentMonth);
             newDate.setMonth(newDate.getMonth() + inc);

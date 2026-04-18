@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { db, auth } from "../firebase";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { canonicalizeActiveState } from "../utils/activeState";
 
 export function useInvite() {
   const [inviteToken, setInviteToken] = useState<string>("");
@@ -146,7 +147,7 @@ export function useInvite() {
         {
           uid,
           email: emailUser,
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           centers: nextCenters,
           centros: nextCenters,
           roles: nextRoles,
@@ -167,8 +168,7 @@ export function useInvite() {
           emailLower,
           role,
           roles: [role],
-          active: true,
-          activo: true,
+          ...canonicalizeActiveState({ active: true }),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           inviteToken: token,

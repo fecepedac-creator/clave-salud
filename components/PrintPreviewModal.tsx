@@ -221,25 +221,35 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               {/* 4. Footer (Date & Signature) */}
               <footer className="mt-auto pt-8 flex justify-between items-end print:break-inside-avoid relative">
                 <div className="text-[11px] font-serif text-slate-600 flex flex-col gap-2">
-                  <div className="flex items-start gap-3">
-                    {/* QR Verification (Placeholder for real URL) */}
-                    <div className="bg-white p-1 border border-slate-200 rounded">
+                  <div className="flex items-start gap-4">
+                    {/* QR Verification */}
+                    <div className="bg-white p-1.5 border border-slate-200 rounded-lg shadow-sm">
                       <QRCodeComponent
-                        value={`https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
-                        size={64}
+                        value={
+                          doc.signature
+                            ? `https://clavesalud.cl/verify/${doc.signature.verificationCode}`
+                            : `https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`
+                        }
+                        size={80}
                       />
                     </div>
                     <div className="flex-1">
-                      <p>
-                        <span className="font-bold">Fecha de Emisión:</span> {today}
+                      <p className="text-[10px] text-slate-500 mb-1">
+                        <span className="font-bold text-slate-700">Sello de Veracidad:</span>{" "}
+                        {doc.signature?.hash || "Documento en validación..."}
                       </p>
-                      <p className="mt-0.5 text-[10px] text-slate-400">
-                        ID: <span className="font-mono">{doc.id}</span>
+                      <p className="text-[10px] text-slate-500 mb-1">
+                        <span className="font-bold text-slate-700">Cód. Verificación:</span>{" "}
+                        <span className="font-mono text-indigo-600 font-bold">
+                          {doc.signature?.verificationCode || "N/A"}
+                        </span>
                       </p>
-                      <p className="mt-1 text-[9px] text-slate-500 leading-tight">
-                        Escanee el QR para validar la
-                        <br />
-                        autenticidad de este documento.
+                      <p className="text-[10px] text-slate-500">
+                        <span className="font-bold text-slate-700">Fecha de Emisión:</span> {today}
+                      </p>
+                      <p className="mt-2 text-[9px] text-slate-400 italic leading-tight">
+                        Este documento cuenta con firma digital simple y puede ser validado
+                        escaneando el código QR o ingresando el código en clavesalud.cl/verify
                       </p>
                     </div>
                   </div>

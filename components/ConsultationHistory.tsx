@@ -14,6 +14,7 @@ import {
 import { auth } from "../firebase";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { getCategoryLabel } from "../utils/examOrderCatalog";
+import { rootPatientConsultationPath } from "../utils/clinicalPaths";
 
 interface ConsultationHistoryProps {
   consultations: Consultation[];
@@ -73,7 +74,7 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
       logAccessSafe(logAccess, {
         centerId,
         resourceType: "consultation",
-        resourcePath: `/centers/${centerId}/patients/${patientId}/consultations/${consultation.id}`,
+        resourcePath: rootPatientConsultationPath(patientId, consultation.id),
         patientId,
         actorUid: auth.currentUser?.uid ?? undefined,
       });
@@ -261,6 +262,18 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                         {c.anamnesis}
                       </p>
                     </div>
+
+                    {c.physicalExam && (
+                      <div>
+                        <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">
+                          Examen Físico
+                        </p>
+                        <p className="text-slate-600 text-lg leading-relaxed whitespace-pre-wrap">
+                          {c.physicalExam}
+                        </p>
+                      </div>
+                    )}
+
 
                     {/* Saved Prescriptions View */}
                     {c.prescriptions && c.prescriptions.length > 0 && (

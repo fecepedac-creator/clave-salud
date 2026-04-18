@@ -428,7 +428,7 @@ async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any, overr
   }
 }
 
-async function sendText(phoneNumberId: string, to: string, text: string) {
+export async function sendText(phoneNumberId: string, to: string, text: string) {
   await sendRawWhatsAppPayload(phoneNumberId, { to, type: "text", text: { body: text } });
 }
 

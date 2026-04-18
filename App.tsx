@@ -13,27 +13,35 @@ const PatientForm = React.lazy(() => import("./components/PatientForm"));
 const ProfessionalDashboard = React.lazy(() => import("./components/DoctorDashboard"));
 const AdminDashboard = React.lazy(() => import("./components/AdminDashboard"));
 const SuperAdminDashboard = React.lazy(() => import("./components/SuperAdminDashboard"));
-
-// Fallback Loading Component
-const PageLoader = () => (
-  <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
-    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 mb-4"></div>
-    <p className="text-slate-500 text-lg font-medium animate-pulse">Cargando...</p>
-  </div>
-);
 import LogoHeader from "./components/LogoHeader";
 import LegalLinks from "./components/LegalLinks";
 import LandingPage from "./components/LandingPage";
 import SupportWidget from "./components/SupportWidget";
+import CriticalActionHost from "./components/CriticalActionHost";
 import OnboardingTour, { OnboardingStep } from "./components/OnboardingTour";
 import BookingPortal from "./components/BookingPortal";
 import { PatientMenu, PatientCancel } from "./components/PatientPortal";
 import HomeDirectory from "./components/HomeDirectory";
+import InvitePage from "./components/InvitePage";
+import {
+  CenterBackdrop,
+  HomeBackdrop,
+  PageLoader,
+  ViewContainer,
+} from "./components/app/AppLayout";
+import {
+  CenterPortalView,
+  LegalPageView,
+  SelectCenterView,
+} from "./components/app/AppPortalViews";
+import {
+  LoginView,
+  SuperAdminLoginView,
+} from "./components/app/AppAuthViews";
 
 import { formatRUT, generateId, getDaysInMonth, generateSlotId, validateRUT } from "./utils";
 import VerifyDocument from "./components/VerifyDocument";
 import TestBanner from "./components/TestBanner";
-import Breadcrumbs from "./components/Breadcrumbs";
 import { hasRole } from "./utils/roles";
 import {
   AlertCircle,
@@ -52,7 +60,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { useToast } from "./components/Toast";
-import { CenterContext, CenterModules } from "./CenterContext";
+import { CenterModules } from "./CenterContext";
 import { auth } from "./firebase";
 import {
   createUserWithEmailAndPassword,
@@ -86,8 +94,6 @@ const HOME_BG_SRC = `${ASSET_BASE}assets/fondo%20principal.webp`;
 const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
-const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
-
 const App: React.FC = () => {
   const { showToast } = useToast();
   const {
@@ -178,7 +184,8 @@ const App: React.FC = () => {
   // Combined superadmin check
   const effectiveIsSuperAdmin = useMemo(() => {
     const res = (demoMode && demoRole === "superadmin") || isSuperAdminClaim;
-    process.env.NODE_ENV === "development" && console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
+    process.env.NODE_ENV === "development" &&
+      console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
     return res;
   }, [demoMode, demoRole, isSuperAdminClaim]);
 
@@ -186,7 +193,7 @@ const App: React.FC = () => {
     const p = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
     const isAgentTest = params.has("agent_test") || params.has("master_access");
-    
+
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
     if (isAgentTest) return "c_eji2qv61";
@@ -199,11 +206,12 @@ const App: React.FC = () => {
     const isAgentTest = params.has("agent_test") || params.has("master_access");
 
     if (isAgentTest) {
-       if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
-       return "admin-dashboard" as ViewMode;
+      if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
+      return "admin-dashboard" as ViewMode;
     }
     if (path.startsWith("/verify/")) return "verify-document" as ViewMode;
-    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) return "doctor-login" as ViewMode;
+    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro"))
+      return "doctor-login" as ViewMode;
     if (path.startsWith("/acceso-admin")) return "admin-login" as ViewMode;
     if (path.startsWith("/center/")) {
       const segments = path.split("/");
@@ -298,13 +306,23 @@ const App: React.FC = () => {
   const {
     patients,
     setPatients,
+    isLoadingPatients,
+    patientsError,
+    reloadPatients,
     doctors,
     setDoctors,
+    isLoadingDoctors,
+    doctorsError,
     appointments,
     setAppointments,
+    isLoadingAppointments,
+    appointmentsError,
     auditLogs,
     preadmissions,
     services,
+    isLoadingServices,
+    servicesError,
+    reloadCenterData,
   } = useFirestoreSync(
     activeCenterId,
     effectiveAuthUser,
@@ -811,7 +829,12 @@ const App: React.FC = () => {
   // AGGRESSIVE E2E FORCE: Isolate from main logic to avoid breaking login
   useEffect(() => {
     const isAgentTest = window.location.search.includes("agent_test=true");
-    if (isAgentTest && window.location.pathname.startsWith("/superadmin") && effectiveLocalCurrentUser && !isPreviewActive) {
+    if (
+      isAgentTest &&
+      window.location.pathname.startsWith("/superadmin") &&
+      effectiveLocalCurrentUser &&
+      !isPreviewActive
+    ) {
       if (view !== "superadmin-dashboard") {
         setView("superadmin-dashboard" as ViewMode);
       }
@@ -848,8 +871,7 @@ const App: React.FC = () => {
             setView("superadmin-dashboard" as ViewMode);
             return;
           }
-        }
-        else if (isPublicView || isExplicitLoginView) {
+        } else if (isPublicView || isExplicitLoginView) {
           const targetView = resolveDashboardView(effectiveLocalCurrentUser);
           if (view !== targetView) {
             setView(targetView);
@@ -901,7 +923,7 @@ const App: React.FC = () => {
         }
       }
     }
-/*
+    /*
     if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
       console.log("[DEBUG] Auth Redirect Check:", {
         view,
@@ -911,122 +933,44 @@ const App: React.FC = () => {
       });
     }
 */
-
-  }, [effectiveLocalCurrentUser, activeCenterId, view, centers.length, resolveDashboardView, effectiveIsSuperAdmin]);
+  }, [
+    effectiveLocalCurrentUser,
+    activeCenterId,
+    view,
+    centers.length,
+    resolveDashboardView,
+    effectiveIsSuperAdmin,
+  ]);
 
   const renderCenterPortal = () => {
-    if (isLoadingCenters && activeCenterId) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600 mb-4"></div>
-          <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-xs">
-            Sincronizando Centro Médico...
-          </p>
-        </div>
-      );
-    }
+    const isAgentTest = window.location.search.includes("agent_test=true");
+    const resolvedCenter = isValidCenter(activeCenter) ? activeCenter : null;
 
-    if (!activeCenterId || (!isValidCenter(activeCenter) && !window.location.search.includes("agent_test=true"))) {
-      if (activeCenterId && !isLoadingCenters) {
-        return (
-          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
-            <div className="bg-red-50 p-6 rounded-[2.5rem] border border-red-100 shadow-xl max-w-md">
-              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-black text-slate-800 mb-2">Centro No Encontrado</h2>
-              <p className="text-slate-500 mb-8 font-medium">
-                No hemos podido localizar el centro médico solicitado o no posees los permisos
-                necesarios para visualizarlo.
-              </p>
-              <button
-                onClick={() => {
-                  setActiveCenterId("");
-                  setView("home" as ViewMode);
-                }}
-                className="w-full bg-slate-800 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-900 transition-all shadow-lg"
-              >
-                Volver al Directorio
-              </button>
-            </div>
-          </div>
-        );
-      }
+    if (!activeCenterId && !resolvedCenter) {
       return renderHomeDirectory();
     }
 
-    return renderCenterBackdrop(
-      <div className="flex flex-col items-center justify-center p-4 min-h-[calc(100vh-80px)]">
-        <div className="w-full max-w-4xl mb-6 flex justify-start">
-          <button
-            onClick={() => {
-              setActiveCenterId("");
-              setView("home" as ViewMode);
-            }}
-            className="px-4 py-2 rounded-xl bg-white/80 hover:bg-white shadow border border-white text-slate-700 font-bold"
-          >
-            ← Volver a ClaveSalud
-          </button>
-        </div>
-
-        <div className="text-center mb-10">
-          <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg overflow-hidden">
-            {(activeCenter as any).logoUrl ? (
-              <img
-                src={(activeCenter as any).logoUrl}
-                alt={`Logo de ${activeCenter.name}`}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <Building2 className="w-12 h-12 text-blue-600" />
-            )}
-          </div>
-          <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
-            {activeCenter.name}
-          </h1>
-          <p className="text-slate-500 mt-3 text-xl font-medium">Plataforma Integral de Salud</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-4xl">
-          <button
-            onClick={() => setView("patient-menu" as ViewMode)}
-            className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-blue-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-          >
-            <div className="w-24 h-24 bg-blue-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-              <UserRound className="w-12 h-12 text-blue-600" />
-            </div>
-            <h3 className="font-bold text-3xl text-slate-800">Soy Paciente</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">
-              Reserva de horas y ficha clínica
-            </p>
-          </button>
-
-          <button
-            onClick={() => {
-              setLoginViewPreference("doctor-dashboard" as ViewMode);
-              setView("doctor-login" as ViewMode);
-            }}
-            className="bg-white/80 backdrop-blur-sm p-10 rounded-[2.5rem] shadow-xl border border-white hover:border-emerald-300 hover:shadow-2xl hover:-translate-y-1 transition-all group text-center flex flex-col items-center"
-          >
-            <div className="w-24 h-24 bg-emerald-50/80 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-              <Stethoscope className="w-12 h-12 text-emerald-600" />
-            </div>
-            <h3 className="font-bold text-3xl text-slate-800">Soy Profesional</h3>
-            <p className="text-slate-500 mt-2 font-medium text-lg">Acceso para equipos de salud</p>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setLoginViewPreference("admin-dashboard" as ViewMode);
-            setView("admin-login" as ViewMode);
-          }}
-          className="fixed top-4 right-4 p-3 rounded-full bg-slate-900/80 text-white shadow-xl hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
-          title="Acceso Administrador"
-          aria-label="Acceso Administrador"
-        >
-          <Lock className="w-5 h-5" />
-        </button>
-      </div>
+    return (
+      <CenterPortalView
+        activeCenterId={activeCenterId}
+        activeCenter={resolvedCenter}
+        isLoadingCenters={isLoadingCenters}
+        isAgentTest={isAgentTest}
+        onBackHome={() => {
+          setActiveCenterId("");
+          setView("home" as ViewMode);
+        }}
+        onPatientMenu={() => setView("patient-menu" as ViewMode)}
+        onDoctorLogin={() => {
+          setLoginViewPreference("doctor-dashboard" as ViewMode);
+          setView("doctor-login" as ViewMode);
+        }}
+        onAdminLogin={() => {
+          setLoginViewPreference("admin-dashboard" as ViewMode);
+          setView("admin-login" as ViewMode);
+        }}
+        renderCenterBackdrop={renderCenterBackdrop}
+      />
     );
   };
 
@@ -1106,24 +1050,72 @@ const App: React.FC = () => {
       doctors={doctors}
       appointments={appointments}
       services={services || []}
+      isLoadingDoctors={isLoadingDoctors}
+      doctorsError={doctorsError}
+      isLoadingAppointments={isLoadingAppointments}
+      appointmentsError={appointmentsError}
+      isLoadingServices={isLoadingServices}
+      servicesError={servicesError}
+      onRetryData={reloadCenterData}
       bookingState={booking}
       renderCenterBackdrop={renderCenterBackdrop}
     />
   );
 
   const renderHomeBackdrop = (children: React.ReactNode) => (
-    <div
-      className="home-hero relative min-h-dvh w-full overflow-hidden"
-      style={
-        {
-          "--home-hero-image": `image-set(url("${HOME_BG_SRC}") type("image/webp"), url("${HOME_BG_FALLBACK_SRC}") type("image/png"))`,
-        } as React.CSSProperties
+    <HomeBackdrop homeBgSrc={HOME_BG_SRC} homeBgFallbackSrc={HOME_BG_FALLBACK_SRC}>
+      {children}
+    </HomeBackdrop>
+  );
+
+  const renderAuthLogin = (isDoc: boolean) => (
+    <LoginView
+      isDoc={isDoc}
+      email={email}
+      password={password}
+      error={error}
+      masterAccess={masterAccess}
+      activeCenterId={activeCenterId}
+      onEmailChange={setEmail}
+      onPasswordChange={setPassword}
+      onBack={() => setView("center-portal" as ViewMode)}
+      onLogin={() =>
+        handleSuperAdminLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)
       }
-    >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/8 via-white/2 to-white/8 pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.04),_transparent_55%)] pointer-events-none" />
-      <div className="relative z-10 min-h-dvh w-full">{children}</div>
-    </div>
+      onMasterAccess={() => {
+        setLocalCurrentUser(mockMasterUser);
+        setView((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode);
+        if (!activeCenterId) setActiveCenterId("c_eji2qv61");
+        showToast("Ingreso rapido (Modo Maestro) exitoso.", "success");
+      }}
+      onGoogleLogin={() =>
+        handleGoogleLogin((isDoc ? "doctor-dashboard" : "admin-dashboard") as ViewMode)
+      }
+      onOpenTerms={() => openLegal("terms")}
+      onOpenPrivacy={() => openLegal("privacy")}
+      renderHomeBackdrop={renderHomeBackdrop}
+      renderCenterBackdrop={renderCenterBackdrop}
+    />
+  );
+
+  const renderAuthSuperAdminLogin = () => (
+    <SuperAdminLoginView
+      error={error}
+      onBack={() => setView("center-portal" as ViewMode)}
+      onGoogleLogin={handleSuperAdminGoogleLogin}
+      onOpenTerms={() => openLegal("terms")}
+      onOpenPrivacy={() => openLegal("privacy")}
+      renderHomeBackdrop={renderHomeBackdrop}
+    />
+  );
+
+  const renderAuthInviteRegister = () => (
+    <InvitePage
+      onDone={() => {
+        showToast("Invitación aceptada", "success");
+        setView("home" as any);
+      }}
+    />
   );
 
   const renderLogin = (isDoc: boolean) => {
@@ -1282,74 +1274,19 @@ const App: React.FC = () => {
       ? localCurrentUser.centros
       : Array.isArray(localCurrentUser?.centers)
         ? localCurrentUser.centers
-        : [];
+          : [];
     const available = centers.filter((c) => allowed.includes(c.id));
 
     return (
-      <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-sky-200 rounded-full blur-[120px]" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-200 rounded-full blur-[120px]" />
-        </div>
-
-        <div className="w-full max-w-3xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.08)] border border-white p-8 sm:p-12 relative z-10">
-          <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-4">
-            <div>
-              <h2 className="text-3xl font-black text-slate-800 tracking-tight">
-                Selecciona un centro
-              </h2>
-              <p className="text-slate-500 font-medium">Elige el lugar de trabajo para comenzar</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-500 hover:text-rose-600 hover:border-rose-100 hover:bg-rose-50 transition-all flex items-center gap-2"
-            >
-              <LogOut className="w-4 h-4" /> Cerrar sesión
-            </button>
-          </div>
-
-          {available.length === 0 ? (
-            <div className="bg-amber-50 border border-amber-100 text-amber-800 rounded-xl p-4 text-sm">
-              Tu usuario no tiene centros asignados. Pide a SuperAdmin que te asigne un centro.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {available.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    setActiveCenterId(c.id);
-                    const targetView = resolveDashboardView(localCurrentUser);
-                    setView(targetView);
-                  }}
-                  className="p-5 rounded-2xl border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all text-left bg-white"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden flex items-center justify-center">
-                      {(c as any).logoUrl ? (
-                        <img
-                          src={(c as any).logoUrl}
-                          alt={`Logo de ${c.name}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Building2 className="w-6 h-6 text-slate-700" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-extrabold text-slate-900">{c.name}</div>
-                      <div className="text-slate-500 text-sm">
-                        {c.commune ?? c.region ?? "Chile"}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <SelectCenterView
+        centers={available}
+        onLogout={handleLogout}
+        onSelect={(centerId) => {
+          setActiveCenterId(centerId);
+          const targetView = resolveDashboardView(localCurrentUser);
+          setView(targetView);
+        }}
+      />
     );
   };
 
@@ -1553,47 +1490,21 @@ const App: React.FC = () => {
     window.scrollTo(0, 0);
   };
 
-  const renderLegalPage = (title: string, body: string) =>
-    renderHomeBackdrop(
-      <div className="min-h-dvh flex items-center justify-center p-6">
-        <div className="w-full max-w-3xl bg-white/95 backdrop-blur-md rounded-3xl shadow-xl border border-white p-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl md:text-3xl font-extrabold text-slate-800">{title}</h2>
-            <button
-              type="button"
-              onClick={() => setView(legalReturnView)}
-              className="text-sm font-semibold text-slate-500 hover:text-slate-800"
-            >
-              Volver
-            </button>
-          </div>
-          <div className="prose prose-slate max-w-none text-sm md:text-base whitespace-pre-wrap">
-            {body}
-          </div>
-          <div className="pt-4 border-t border-slate-200">
-            <LegalLinks
-              onOpenTerms={() => openLegal("terms")}
-              onOpenPrivacy={() => openLegal("privacy")}
-            />
-          </div>
-        </div>
-      </div>
-    );
+  const renderLegalPage = (title: string, body: string) => (
+    <LegalPageView
+      title={title}
+      body={body}
+      onBack={() => setView(legalReturnView)}
+      onOpenTerms={() => openLegal("terms")}
+      onOpenPrivacy={() => openLegal("privacy")}
+      renderHomeBackdrop={renderHomeBackdrop}
+    />
+  );
 
   const renderCenterBackdrop = (children: React.ReactNode) => (
-    <div
-      className="center-hero relative min-h-dvh w-full overflow-hidden"
-      style={
-        {
-          "--center-hero-image": `image-set(url("${CENTER_BG_SRC}") type("image/webp"), url("${CENTER_BG_FALLBACK_SRC}") type("image/png"))`,
-        } as React.CSSProperties
-      }
-    >
-      <div className="absolute inset-0 bg-white/20 pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(14,116,144,0.08),_transparent_45%)] pointer-events-none" />
-      <div className="relative z-10 min-h-dvh w-full">{children}</div>
-    </div>
+    <CenterBackdrop centerBgSrc={CENTER_BG_SRC} centerBgFallbackSrc={CENTER_BG_FALLBACK_SRC}>
+      {children}
+    </CenterBackdrop>
   );
 
   const renderHomeDirectory = () => (
@@ -1634,36 +1545,27 @@ const App: React.FC = () => {
     };
 
     const wrapView = (content: React.ReactNode, showBreadcrumbs = true) => (
-      <CenterContext.Provider value={centerCtxValue}>
-        <div
-          key={view}
-          className="animate-fadeIn min-h-screen w-full relative"
-          data-testid={`view-container-${view}`}
-        >
-          {showBreadcrumbs && view !== "home" && (
-            <div className="fixed top-2 left-4 z-50 pointer-events-auto">
-              <Breadcrumbs
-                view={view}
-                centerName={activeCenterName}
-                onNavigate={(v) => setView(v as ViewMode)}
-              />
-            </div>
-          )}
-          {content}
-        </div>
-      </CenterContext.Provider>
+      <ViewContainer
+        view={view}
+        centerCtxValue={centerCtxValue}
+        activeCenterName={activeCenterName}
+        onNavigate={setView}
+        showBreadcrumbs={showBreadcrumbs}
+      >
+        {content}
+      </ViewContainer>
     );
 
     const mainContent = (() => {
-      if (view === ("invite" as any)) return wrapView(renderInviteRegister(), false);
+      if (view === ("invite" as any)) return wrapView(renderAuthInviteRegister(), false);
       if (view === ("center-portal" as ViewMode)) return wrapView(renderCenterPortal(), true);
       if (view === ("patient-menu" as ViewMode)) return wrapView(renderPatientMenu(), true);
       if (view === ("patient-cancel" as ViewMode)) return wrapView(renderPatientCancel(), true);
       if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
       if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
-      if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
+      if (view === ("doctor-login" as ViewMode)) return wrapView(renderAuthLogin(true), false);
       if (view === ("superadmin-login" as ViewMode))
-        return wrapView(renderSuperAdminLogin(), false);
+        return wrapView(renderAuthSuperAdminLogin(), false);
 
       if (view === ("superadmin-dashboard" as ViewMode)) {
         return wrapView(
@@ -1709,7 +1611,7 @@ const App: React.FC = () => {
         );
       }
 
-      if (view === ("admin-login" as ViewMode)) return wrapView(renderLogin(false), false);
+      if (view === ("admin-login" as ViewMode)) return wrapView(renderAuthLogin(false), false);
       if (view === ("landing" as ViewMode))
         return <LandingPage onBack={() => setView("home" as ViewMode)} onOpenLegal={openLegal} />;
       if (view === ("terms" as ViewMode))
@@ -1733,7 +1635,8 @@ const App: React.FC = () => {
           }
         : null;
 
-      const userForView = effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
+      const userForView =
+        effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
 
       if (view === ("doctor-dashboard" as ViewMode) && userForView) {
         const currentUid = userForView.uid ?? userForView.id;
@@ -1784,6 +1687,9 @@ const App: React.FC = () => {
         return wrapView(
           <ProfessionalDashboard
             patients={patients}
+            patientsLoading={isLoadingPatients}
+            patientsError={patientsError}
+            onRetryPatients={reloadPatients}
             doctorName={resolvedDoctorName}
             doctorId={resolvedDoctorId}
             role={effectiveRole}
@@ -1812,6 +1718,9 @@ const App: React.FC = () => {
             }}
             onLogout={handleLogout}
             appointments={appointments}
+            appointmentsLoading={isLoadingAppointments}
+            appointmentsError={appointmentsError}
+            onRetryAppointments={reloadCenterData}
             onUpdateAppointments={(newAppts: Appointment[]) => {
               setAppointments(newAppts);
               syncAppointments(newAppts);
@@ -1862,6 +1771,9 @@ const App: React.FC = () => {
               newDocs.forEach((d) => updateStaff(d));
             }}
             appointments={appointments}
+            appointmentsLoading={isLoadingAppointments}
+            appointmentsError={appointmentsError}
+            onRetryAppointments={reloadCenterData}
             onUpdateAppointments={(newAppts: Appointment[]) => {
               if (isPreviewActive) return;
               setAppointments(newAppts);
@@ -1972,6 +1884,7 @@ const App: React.FC = () => {
         onSkip={skipOnboarding}
         onFinish={finishOnboarding}
       />
+      <CriticalActionHost />
       <SupportWidget />
     </>
   );

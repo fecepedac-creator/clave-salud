@@ -14,6 +14,7 @@ import {
   UsersRound,
   Unlock,
 } from "lucide-react";
+import { requestCriticalAction } from "../../../utils/criticalActions";
 
 interface AdminPerformanceTabProps {
   centerId: string;
@@ -98,12 +99,15 @@ export const AdminPerformanceTab: React.FC<AdminPerformanceTabProps> = ({
   }, [centerId, yearMonth]);
 
   const handleCloseMonth = async () => {
-    if (
-      !window.confirm(
-        `¿Estás seguro de cerrar el mes de ${yearMonth}? Esto bloqueará ediciones a los montos y asistencia de las recuadaciones registradas este mes.`
-      )
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: `Cerrar mes ${yearMonth}`,
+      message:
+        "Se bloquearán las ediciones de montos y asistencia para las recaudaciones de este mes.",
+      confirmLabel: "Cerrar mes",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo cerrar este mes contable.",
+    });
+    if (!response?.confirmed) return;
 
     setIsClosingMonth(true);
     try {
@@ -119,12 +123,16 @@ export const AdminPerformanceTab: React.FC<AdminPerformanceTabProps> = ({
   };
 
   const handleReopenMonth = async () => {
-    if (
-      !window.confirm(
-        `¿ESTÁS ABSOLUTAMENTE SEGURO de reabrir el mes de ${yearMonth}?\n\nEsto permitirá la modificación de totales contables históricos y afectará la integridad de facturaciones pasadas. Procede solo si sabes lo que haces.`
-      )
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: `Reabrir mes ${yearMonth}`,
+      message:
+        "Esto permitirá modificar totales contables históricos y afecta la integridad de facturaciones pasadas.",
+      warning: "Procede solo si sabes exactamente por qué necesitas reabrirlo.",
+      confirmLabel: "Reabrir mes",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo reabrir este mes.",
+    });
+    if (!response?.confirmed) return;
 
     setIsReopeningMonth(true);
     try {
@@ -146,7 +154,7 @@ export const AdminPerformanceTab: React.FC<AdminPerformanceTabProps> = ({
 
   const exportCenterCSV = () => {
     const esc = (v: string | number | null | undefined) =>
-      `"${String(v ?? "").replaceAll('"', '""')}"`;
+      `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = [
       "Profesional",
       "Citas Agendadas",

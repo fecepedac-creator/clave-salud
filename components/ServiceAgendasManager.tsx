@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { generateId } from "../utils";
 import { useToast } from "./Toast";
+import { requestCriticalAction } from "../utils/criticalActions";
 
 interface ServiceAgendasManagerProps {
   centerId: string;
@@ -93,10 +94,14 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (
-      !window.confirm("¿Eliminar este perfil de servicio? Se perderá su configuración de agenda.")
-    )
-      return;
+    const response = await requestCriticalAction({
+      title: "Eliminar perfil de servicio",
+      message: "Se perdera su configuracion de agenda asociada.",
+      confirmLabel: "Eliminar",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que deseo eliminar este perfil de servicio.",
+    });
+    if (!response?.confirmed) return;
 
     try {
       await deleteDoc(doc(db, "centers", centerId, "staff", id));
