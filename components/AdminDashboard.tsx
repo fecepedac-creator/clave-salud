@@ -8,6 +8,7 @@ import {
   Patient,
   Preadmission,
   MedicalService,
+  WhatsappTemplate,
 } from "../types";
 import { downloadJSON } from "../utils";
 import {
@@ -72,6 +73,8 @@ import { WhatsappSettings } from "../features/admin/components/WhatsappSettings"
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
 import { AdminAgenda } from "../features/admin/components/AdminAgenda";
 import { canonicalizeActiveState, resolveActiveState } from "../utils/activeState";
+import { requestCriticalAction } from "../utils/criticalActions";
+import QRCode from "qrcode";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -184,6 +187,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSyncingPublic, setIsSyncingPublic] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [shareQrDataUrl, setShareQrDataUrl] = useState("");
   const [cancelModal, setCancelModal] = useState<{
     isOpen: boolean;
     appointment: Appointment | null;
@@ -216,6 +220,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const [medicalServices, setMedicalServices] = useState<MedicalService[]>([]);
+  const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsappTemplate[]>([]);
 
   useEffect(() => {
     if (!db || !resolvedCenterId) return;
@@ -223,6 +228,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return onSnapshot(q, (snap) => {
       const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MedicalService);
       setMedicalServices(raw.toSorted((a, b) => (a.name || "").localeCompare(b.name || "")));
+    });
+  }, [resolvedCenterId]);
+
+  useEffect(() => {
+    if (!db || !resolvedCenterId) return;
+    const settingsRef = doc(db, "centers", resolvedCenterId, "settings", "whatsapp");
+    return onSnapshot(settingsRef, (snapshot) => {
+      const templates = Array.isArray(snapshot.data()?.templates)
+        ? (snapshot.data()?.templates as WhatsappTemplate[])
+        : [];
+      setWhatsappTemplates(templates);
     });
   }, [resolvedCenterId]);
 
@@ -284,7 +300,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Profesionales se crean inmediatamente con un ID temporal (tempStaffId).
   // También se crea una invitación pendiente. Al aceptar, InvitePage migra
   // el tempStaffId al UID real del usuario autenticado.
-  const persistDoctorToFirestore = async (doctor: Doctor) => {
+  const persistDoctorToFirestore = async (
+    doctor: Doctor
+  ): Promise<{ token: string; inviteUrl: string; wasExisting: boolean } | undefined> => {
     if (!db) return;
 
     const emailLower = (doctor.email || "").toLowerCase();
@@ -317,14 +335,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           tempStaffId,
           updatedAt: serverTimestamp(),
         });
+        return {
+          token: invDoc.id,
+          inviteUrl: `${window.location.origin}/invite?token=${invDoc.id}`,
+          wasExisting: true,
+        };
       }
-      return;
     }
 
     const accessRole = doctor.isAdmin ? "center_admin" : "doctor";
     const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
 
-    await setDoc(doc(collection(db, "invites")), {
+    const inviteRef = doc(collection(db, "invites"));
+    const token = inviteRef.id;
+
+    await setDoc(inviteRef, {
+      token,
       emailLower,
       email: doctor.email,
       centerId,
@@ -349,6 +375,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         isAdmin: doctor.isAdmin || false,
       },
     });
+
+    return {
+      token,
+      inviteUrl: `${window.location.origin}/invite?token=${token}`,
+      wasExisting: false,
+    };
   };
 
   const upsertStaffAndPublic = async (staffId: string, doctor: Partial<Doctor>) => {
@@ -394,36 +426,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   };
 
-  // --- BACKUP & RESTORE FUNCTIONS ---
-  const handleRestoreBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const json = e.target?.result as string;
-        const data = JSON.parse(json);
-
-        if (data.patients && Array.isArray(data.patients)) {
-          onUpdatePatients(data.patients);
-        }
-        if (data.doctors && Array.isArray(data.doctors)) {
-          onUpdateDoctors(data.doctors);
-        }
-        if (data.appointments && Array.isArray(data.appointments)) {
-          onUpdateAppointments(data.appointments);
-        }
-
-        showToast("Base de datos restaurada correctamente.", "success");
-      } catch (error) {
-        console.error(error);
-        showToast("Error al leer el archivo de respaldo.", "error");
-      }
-    };
-    reader.readAsText(file);
-    // Reset input
-    event.target.value = "";
+  // --- BACKUP / IMPORT ---
+  const handleImportBackup = async () => {
+    const response = await requestCriticalAction({
+      title: "Importar respaldo clínico",
+      message:
+        "La restauración directa desde el navegador fue deshabilitada para evitar sobreescrituras parciales. Usa la importación guiada del centro.",
+      confirmLabel: "Abrir importador",
+      requireFinalConfirmation: true,
+      confirmationLabel: "Confirmo que usaré la importación guiada.",
+    });
+    if (!response?.confirmed) return;
+    setShowMigrationModal(true);
   };
 
   const handleSyncPublicStaff = async () => {
@@ -462,6 +476,27 @@ Responsabilidades:
 
 En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla con la trazabilidad exigida por el Ministerio de Salud (MINSAL) y la Superintendencia de Salud.`;
 
+  const shareUrl = `${window.location.origin}/center/${resolvedCenterId}/agendar`;
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(shareUrl, {
+      width: 320,
+      margin: 1,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((dataUrl) => {
+        if (!cancelled) setShareQrDataUrl(dataUrl);
+      })
+      .catch((error) => {
+        console.error("share qr", error);
+        if (!cancelled) setShareQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shareUrl]);
+
   // --- CALENDAR & AGENDA FUNCTIONS ---
 
   // Agenda functions moved to AdminAgenda component
@@ -473,42 +508,59 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
       {!hasActiveCenter && (
         <div className="bg-amber-500/20 text-amber-200 border-b border-amber-500/40 px-6 py-3 text-sm">
-          Selecciona un centro activo para habilitar la gestión de profesionales, agenda y
+          Selecciona un centro activo para habilitar la gestión de profesionales, agenda y preingresos.
           preingresos.
         </div>
       )}
       {/* Share Modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-sm w-full relative text-center">
+          <div className="bg-white text-slate-900 rounded-[2rem] p-8 max-w-md w-full relative text-center shadow-2xl">
             <button
               onClick={() => setShowShareModal(false)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600"
             >
               <X className="w-6 h-6" />
             </button>
-            <h3 className="text-2xl font-bold mb-4">Compartir App</h3>
+            <h3 className="text-2xl font-bold mb-4">Compartir portal del centro</h3>
             <p className="text-slate-500 mb-6">
-              Escanea este código con tu celular para abrir la versión móvil.
+              Comparte este enlace para abrir directamente el agendamiento del centro.
             </p>
 
-            <div className="bg-slate-100 p-4 rounded-xl mb-6 mx-auto w-48 h-48 flex items-center justify-center border-2 border-slate-200">
-              {/* Placeholder for QR Code, in a real app use a library */}
-              <QrCode className="w-32 h-32 text-slate-800" />
+            <div className="bg-slate-50 p-4 rounded-2xl mb-6 mx-auto w-56 h-56 flex items-center justify-center border border-slate-200 shadow-inner">
+              {shareQrDataUrl ? (
+                <img
+                  src={shareQrDataUrl}
+                  alt="QR del portal del centro"
+                  className="w-full h-full object-contain rounded-xl"
+                />
+              ) : (
+                <QrCode className="w-32 h-32 text-slate-300" />
+              )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-left mb-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Acceso directo
+              </p>
+              <p className="text-sm text-slate-700">
+                Usa este enlace para que los pacientes lleguen al agendamiento de{" "}
+                <span className="font-bold">{activeCenter?.name || "tu centro"}</span>.
+              </p>
+            </div>
+
+            <div className="flex gap-2 items-stretch">
               <input
-                className="w-full bg-slate-100 border border-slate-200 p-3 rounded-lg text-sm text-slate-600"
-                value={window.location.origin}
+                className="w-full bg-slate-100 border border-slate-200 p-3 rounded-xl text-sm text-slate-600"
+                value={shareUrl}
                 readOnly
               />
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(window.location.origin);
-                  showToast("Enlace copiado", "info");
+                  navigator.clipboard.writeText(shareUrl);
+                  showToast("Enlace de agendamiento copiado", "info");
                 }}
-                className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700"
+                className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700"
               >
                 <Copy className="w-5 h-5" />
               </button>
@@ -537,126 +589,165 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* Header */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30 pt-16">
-        <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
-          <LogoHeader size="md" showText={true} />
-          <div className="h-8 w-px bg-slate-700 hidden md:block mx-1" />
-          <div className="hidden md:block">
-            <h1 className="text-health-400 font-black text-lg uppercase tracking-tight leading-none">
-              {isSecretary ? "Panel Administrativo" : "Administración"}
-            </h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-              Portal de Gestión
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          {activeCenter?.logoUrl && (
-            <div className="hidden md:flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
-              <span className="text-slate-400 text-xs font-medium">Centro:</span>
-              {!centerLogoError ? (
-                <img
-                  src={typeof activeCenter?.logoUrl === "string" ? activeCenter.logoUrl : ""}
-                  alt={`Logo ${activeCenter.name}`}
-                  className="h-8 w-auto max-w-[120px] object-contain rounded"
-                  onError={() => setCenterLogoError(true)}
-                />
-              ) : (
-                <span className="text-slate-300 text-sm font-bold">{activeCenter.name}</span>
-              )}
+      <nav className="bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 md:px-8 py-5 sticky top-0 z-30 pt-16">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="pt-1">
+                <LogoHeader size="md" showText={true} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-300 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em]">
+                    {isSecretary ? "Operación administrativa" : "Panel de gestión"}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-800 text-slate-300 px-3 py-1 text-[11px] font-semibold">
+                    {activeCenter?.name || "Sin centro activo"}
+                  </span>
+                </div>
+                <h1 className="text-2xl md:text-3xl font-black text-white leading-tight">
+                  {isSecretary ? "Panel administrativo del centro" : "Administración del centro"}
+                </h1>
+                <p className="text-sm text-slate-400 mt-1 max-w-2xl">
+                  Controla agenda, equipo, comunicación y operación clínica desde una sola capa.
+                </p>
+              </div>
             </div>
-          )}
-          <button
-            onClick={() => setShowShareModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-health-400 hover:text-health-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
-          >
-            <Share2 className="w-4 h-4" /> Compartir App
-          </button>
-          <button
-            onClick={() => setShowPolicyModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-emerald-300 hover:text-emerald-200 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
-          >
-            <ShieldCheck className="w-4 h-4" /> Política de conservación (15 años)
-          </button>
 
-          <div className="flex gap-2 w-full md:w-auto justify-center">
-            {!isSecretary && (
-              <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
-                <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={handleRestoreBackup}
-                />
-              </label>
-            )}
-            {!isSecretary && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 min-w-0">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 min-w-[180px]">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 font-bold">
+                  Centro activo
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  {activeCenter?.logoUrl && !centerLogoError ? (
+                    <img
+                      src={typeof activeCenter?.logoUrl === "string" ? activeCenter.logoUrl : ""}
+                      alt={`Logo ${activeCenter?.name || "centro"}`}
+                      className="h-10 w-10 rounded-xl object-contain bg-white/90 p-1"
+                      onError={() => setCenterLogoError(true)}
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+                      <Shield className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white truncate">
+                      {activeCenter?.name || "Selecciona un centro"}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {accessMode === "CARE_TEAM" ? "Acceso por equipo tratante" : "Acceso amplio del centro"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <button
-                onClick={() => {
-                  downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
-                  showToast("Descargando backup...", "info");
-                }}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+                onClick={() => setShowShareModal(true)}
+                className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-left hover:bg-sky-500/15 transition-colors"
               >
-                <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
+                <div className="flex items-center gap-2 text-sky-300 font-bold text-sm">
+                  <Share2 className="w-4 h-4" /> Compartir
+                </div>
+                <p className="text-xs text-sky-100/80 mt-2">Entrega el acceso directo al agendamiento del centro.</p>
               </button>
-            )}
-            {onClosePanel && (
+
               <button
-                onClick={onClosePanel}
-                className="flex-none flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white transition-colors bg-slate-700 px-4 py-2 rounded-lg border border-slate-600 shadow-sm"
-                title="Cerrar Panel y Volver"
+                onClick={() => setShowPolicyModal(true)}
+                className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left hover:bg-emerald-500/15 transition-colors"
               >
-                <X className="w-4 h-4" /> <span className="hidden sm:inline">Cerrar Panel</span>
+                <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                  <ShieldCheck className="w-4 h-4" /> Cumplimiento
+                </div>
+                <p className="text-xs text-emerald-100/80 mt-2">Revisa la política de conservación y respaldo clínico.</p>
               </button>
-            )}
-            <button
-              onClick={onLogout}
-              className="flex-none flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-red-400 transition-colors px-3"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-4 h-4" />{" "}
-              <span className="hidden sm:inline text-[x-small] uppercase tracking-widest font-black opacity-60">
-                Salir
-              </span>
-            </button>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 font-bold mb-2">
+                  Acciones rápidas
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {!isSecretary && (
+                    <button
+                      onClick={handleImportBackup}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-blue-300 hover:bg-slate-700 transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" /> Importar
+                    </button>
+                  )}
+                  {!isSecretary && (
+                    <button
+                      onClick={() => {
+                        downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
+                        showToast("Descargando backup...", "info");
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-slate-700 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Backup
+                    </button>
+                  )}
+                  {onClosePanel && (
+                    <button
+                      onClick={onClosePanel}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 transition-colors"
+                      title="Cerrar panel y volver"
+                    >
+                      <X className="w-3.5 h-3.5" /> Cerrar
+                    </button>
+                  )}
+                  <button
+                    onClick={onLogout}
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-slate-700 transition-colors"
+                      title="Cerrar sesión"
+                  >
+                    <LogOut className="w-3.5 h-3.5" /> Salir
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <LegalLinks
-            onOpenTerms={() => onOpenLegal("terms")}
-            onOpenPrivacy={() => onOpenLegal("privacy")}
-            className="flex"
-            buttonClassName="text-slate-400 hover:text-white"
-          />
+
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "operation", label: "Operación", hint: "Agenda, pacientes y actividad diaria" },
+                { id: "team", label: "Equipo", hint: "Profesionales, WhatsApp y servicios" },
+                { id: "governance", label: "Gobernanza", hint: "Seguridad, auditoría y cumplimiento" },
+                { id: "growth", label: "Growth", hint: "Marketing y campañas del centro" },
+              ].map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => setActiveGroup(group.id as AdminTabGroup)}
+                  className={`rounded-2xl border px-4 py-3 text-left min-w-[180px] transition-colors ${
+                    activeGroup === group.id
+                      ? "bg-white text-slate-900 border-white shadow-lg"
+                      : "bg-slate-950/70 text-slate-300 border-slate-800 hover:bg-slate-900"
+                  }`}
+                >
+                  <p className="text-sm font-bold">{group.label}</p>
+                  <p className={`text-xs mt-1 ${activeGroup === group.id ? "text-slate-600" : "text-slate-500"}`}>
+                    {group.hint}
+                  </p>
+                </button>
+              ))}
+            </div>
+            <LegalLinks
+              onOpenTerms={() => onOpenLegal("terms")}
+              onOpenPrivacy={() => onOpenLegal("privacy")}
+              className="flex"
+              buttonClassName="text-slate-400 hover:text-white"
+            />
+          </div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-8">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {[
-            { id: "operation", label: "Operacion" },
-            { id: "team", label: "Equipo" },
-            { id: "governance", label: "Gobernanza" },
-            { id: "growth", label: "Growth" },
-          ].map((group) => (
-            <button
-              key={group.id}
-              type="button"
-              onClick={() => setActiveGroup(group.id as AdminTabGroup)}
-              className={`px-4 py-2 rounded-full text-sm font-bold transition-colors ${
-                activeGroup === group.id
-                  ? "bg-slate-900 text-white"
-                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {group.label}
-            </button>
-          ))}
-        </div>
         {/* Tabs */}
         <div
           data-testid="admin-tab-bar"
-          className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto"
+          className="flex gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-2xl w-full mb-8 overflow-x-auto shadow-xl"
         >
           <button
             onClick={() => setActiveTab("command_center")}
@@ -875,7 +966,14 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* AUDIT LOGS */}
-      {activeTab === "campaigns" && <CampaignManager />}
+      {activeTab === "campaigns" && (
+        <CampaignManager
+          centerId={resolvedCenterId}
+          centerName={String(activeCenter?.name || "Centro")}
+          patients={patients}
+          templates={whatsappTemplates}
+        />
+      )}
       {activeTab === "audit" && (
         <div className="animate-fadeIn">
           <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
@@ -1041,7 +1139,23 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               <button
                 onClick={() => {
                   onUpdateAppointments(
-                    appointments.filter((a) => a.id !== cancelModal.appointment?.id)
+                    appointments.map((appointment) =>
+                      appointment.id !== cancelModal.appointment?.id
+                        ? appointment
+                        : {
+                            ...appointment,
+                            status: "available",
+                            patientName: "",
+                            patientRut: "",
+                            patientId: undefined,
+                            patientPhone: "",
+                            patientEmail: "",
+                            bookedAt: undefined,
+                            cancelledAt: new Date().toISOString(),
+                            attendanceStatus: "cancelled",
+                            billable: false,
+                          }
+                    )
                   );
                   onLogActivity({
                     action: "APPOINTMENT_CANCEL",

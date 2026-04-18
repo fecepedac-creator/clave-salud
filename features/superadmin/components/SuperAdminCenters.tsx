@@ -617,8 +617,31 @@ export const SuperAdminCenters: React.FC<SuperAdminCentersProps> = ({
                                     getFunctions(),
                                     "resendCenterAdminInvite"
                                   );
-                                  await fn({ token: inv.id });
-                                  showToast("Invitación reenviada.", "success");
+                                  const res: any = await fn({ token: inv.id });
+                                  const data = res?.data || {};
+                                  if (data?.inviteUrl) {
+                                    const centerName = String(inv.centerName || "Centro");
+                                    const subject = `Invitación a ClaveSalud - Administración del centro (${centerName})`;
+                                    const body = [
+                                      "Hola,",
+                                      "",
+                                      `Te reenviamos tu invitación para administrar ${centerName}.`,
+                                      "",
+                                      `Enlace: ${String(data.inviteUrl)}`,
+                                      "",
+                                      "Equipo ClaveSalud",
+                                    ].join("\n");
+                                    setLastInviteLink(String(data.inviteUrl));
+                                    setLastInviteTo(String(inv.emailLower || ""));
+                                    setLastInviteSubject(subject);
+                                    setLastInviteBody(body);
+                                  }
+                                  showToast(
+                                    data?.emailSent
+                                      ? "Invitación reenviada por correo."
+                                      : "Invitación regenerada. Comparte el nuevo enlace manualmente.",
+                                    data?.emailSent ? "success" : "warning"
+                                  );
                                   await fetchCenterInvites(inv.centerId);
                                 }}
                               >

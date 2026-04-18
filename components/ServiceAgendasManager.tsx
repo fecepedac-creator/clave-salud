@@ -120,7 +120,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
             <LayoutDashboard className="w-8 h-8 text-amber-400" /> Agendas de Servicios
           </h3>
           <p className="text-slate-400 mt-2">
-            Crea perfiles para gestionar cupos de Laboratorio, ImagenologÃƒÂ­a, etc.
+            Crea perfiles para gestionar cupos de Laboratorio, Imagenología, etc.
           </p>
         </div>
         {!isEditing && (
@@ -137,7 +137,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
         <div className="lg:col-span-2 space-y-4">
           {serviceProfiles.length === 0 ? (
             <div className="p-8 text-center text-slate-500 bg-slate-900/30 rounded-2xl border border-dashed border-slate-700">
-              No hay perfiles de servicio creados aÃƒÂºn.
+              No hay perfiles de servicio creados aún.
             </div>
           ) : (
             serviceProfiles.map((svc) => (
@@ -153,7 +153,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
                     <h4 className="font-bold text-white text-lg">{svc.fullName}</h4>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
                       <span className="font-bold text-amber-500/80">AGENDA HABILITADA</span>
-                      <span>Ã¢â‚¬Â¢</span>
+                      <span>•</span>
                       <span>{svc.agendaConfig?.slotDuration} min / cita</span>
                     </p>
                   </div>
@@ -216,7 +216,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
 
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase">
-                  DescripciÃƒÂ³n / Especialidad
+                  Descripción / Especialidad
                 </label>
                 <input
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white outline-none focus:border-amber-500"
@@ -231,7 +231,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase">
-                    DuraciÃƒÂ³n Bloque (min)
+                    Duración Bloque (min)
                   </label>
                   <input
                     type="number"
@@ -250,7 +250,7 @@ const ServiceAgendasManager: React.FC<ServiceAgendasManagerProps> = ({
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">
-                    Agendamiento PÃƒÂºblico
+                    Agendamiento Público
                   </span>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

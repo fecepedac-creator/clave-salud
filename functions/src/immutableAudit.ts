@@ -269,3 +269,86 @@ export const onPatientWriteAudit = functions.firestore.onDocumentWritten(
     });
   }
 );
+
+export const onRootConsultationWriteAudit = functions.firestore.onDocumentWritten(
+  "patients/{patientId}/consultations/{consultationId}",
+  async (event) => {
+    const { patientId, consultationId } = event.params;
+    const before = event.data?.before.data() || {};
+    const after = event.data?.after.data() || {};
+    const centerId = String(after?.centerId || before?.centerId || "").trim() || undefined;
+    const resourcePath = `/patients/${patientId}/consultations/${consultationId}`;
+
+    if (!event.data?.after.exists) {
+      await writeAuditLog({
+        centerId,
+        type: "ACTION",
+        action: "DELETE",
+        entityType: "consultation",
+        entityId: consultationId,
+        patientId,
+        resourceType: "consultation",
+        resourcePath,
+        actorUid: after?.updatedByUid || before?.updatedByUid || after?.createdByUid || before?.createdByUid || "system_trigger",
+        actorEmail: "",
+        actorName:
+          after?.updatedByName ||
+          before?.updatedByName ||
+          after?.professionalName ||
+          before?.professionalName ||
+          "Trigger Automático",
+        actorRole: after?.professionalRole || before?.professionalRole || "system",
+        metadata: { source: "cloud_function_trigger" },
+      });
+      return;
+    }
+
+    if (!event.data?.before.exists) {
+      await writeAuditLog({
+        centerId,
+        type: "ACTION",
+        action: "CREATE",
+        entityType: "consultation",
+        entityId: consultationId,
+        patientId,
+        resourceType: "consultation",
+        resourcePath,
+        actorUid: after?.updatedByUid || after?.createdByUid || "system_trigger",
+        actorEmail: "",
+        actorName: after?.updatedByName || after?.professionalName || "Trigger Automático",
+        actorRole: after?.professionalRole || "system",
+        metadata: { source: "cloud_function_trigger" },
+      });
+      return;
+    }
+
+    await writeAuditLog({
+      centerId,
+      type: "ACTION",
+      action: "UPDATE",
+      entityType: "consultation",
+      entityId: consultationId,
+      patientId,
+      resourceType: "consultation",
+      resourcePath,
+      actorUid:
+        after?.updatedByUid ||
+        before?.updatedByUid ||
+        after?.createdByUid ||
+        before?.createdByUid ||
+        "system_trigger",
+      actorEmail: "",
+      actorName:
+        after?.updatedByName ||
+        before?.updatedByName ||
+        after?.professionalName ||
+        before?.professionalName ||
+        "Trigger Automático",
+      actorRole: after?.professionalRole || before?.professionalRole || "system",
+      metadata: {
+        source: "cloud_function_trigger",
+        changes: getDifference(before, after),
+      },
+    });
+  }
+);

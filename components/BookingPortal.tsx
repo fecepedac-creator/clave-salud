@@ -71,8 +71,38 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
     error,
   } = bookingState;
 
-  const getPublicCategory = (doctor: Doctor) =>
-    String(doctor.clinicalRole || doctor.specialty || "").trim() || "Otros";
+  const normalizeDisplayLabel = (value: string) =>
+    value
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase("es-CL")
+      .replace(/\b\p{L}/gu, (char) => char.toLocaleUpperCase("es-CL"));
+
+  const getPublicCategory = (doctor: Doctor) => {
+    const raw = String(doctor.clinicalRole || doctor.specialty || "").trim();
+    if (!raw) return "Otros";
+    return normalizeDisplayLabel(raw);
+  };
+
+  const getDoctorDedupKey = (doctor: Doctor) => {
+    const email = String(doctor.email || "")
+      .trim()
+      .toLocaleLowerCase("es-CL");
+    if (email) return `email:${email}`;
+
+    const rut = String((doctor as any).rut || "")
+      .trim()
+      .toLocaleLowerCase("es-CL");
+    if (rut) return `rut:${rut}`;
+
+    const fullName = String(doctor.fullName || "")
+      .trim()
+      .toLocaleLowerCase("es-CL");
+    const specialty = String(doctor.specialty || doctor.clinicalRole || "")
+      .trim()
+      .toLocaleLowerCase("es-CL");
+    return `name:${doctor.centerId}:${fullName}:${specialty}`;
+  };
 
   const NON_BOOKABLE_ROLES = ["super_admin", "superadmin", "secretaria"];
 
@@ -91,16 +121,14 @@ const BookingPortal: React.FC<BookingPortalProps> = ({
   const uniqueBookableDoctors = useMemo(() => {
     const map = new Map<string, Doctor>();
     bookableDoctors.forEach((d) => {
-      const email = String(d.email || "")
-        .toLowerCase()
-        .trim();
-      if (!email) {
-        map.set(d.id, d);
-        return;
-      }
-      const existing = map.get(email);
-      if (!existing || (d.clinicalRole && !existing.clinicalRole)) {
-        map.set(email, d);
+      const dedupKey = getDoctorDedupKey(d);
+      const existing = map.get(dedupKey);
+      if (
+        !existing ||
+        (d.clinicalRole && !existing.clinicalRole) ||
+        (d.specialty && !existing.specialty)
+      ) {
+        map.set(dedupKey, d);
       }
     });
     return Array.from(map.values());

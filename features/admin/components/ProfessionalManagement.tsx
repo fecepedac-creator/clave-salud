@@ -24,6 +24,7 @@ import {
   where,
   getDocs,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../../../firebase";
 import { Doctor, ProfessionalRole, RoleId } from "../../../types";
 import {
@@ -51,7 +52,9 @@ interface ProfessionalManagementProps {
   setShowMarketingModal: (show: boolean) => void;
   setMarketingFlyerType: (type: "center" | "professional") => void;
   setShowMigrationModal: (show: boolean) => void;
-  persistDoctorToFirestore: (doctor: Doctor) => Promise<void>;
+  persistDoctorToFirestore: (
+    doctor: Doctor
+  ) => Promise<{ token: string; inviteUrl: string; wasExisting: boolean } | undefined>;
 }
 
 export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
@@ -74,6 +77,12 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
 }) => {
   const { showToast } = useToast();
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
+  const [lastInvite, setLastInvite] = useState<{
+    professionalName: string;
+    email: string;
+    inviteUrl: string;
+    emailSent: boolean;
+  } | null>(null);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: "MEDICO" as ProfessionalRole,
     clinicalRole: "MEDICO",
@@ -175,11 +184,39 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
       };
 
       try {
-        await persistDoctorToFirestore(newDoc);
+        const invite = await persistDoctorToFirestore(newDoc);
         onUpdateDoctors([...doctors, newDoc]);
+
+        let emailSent = false;
+        if (invite?.token && centerId) {
+          try {
+            const sendInviteEmail = httpsCallable<
+              { centerId: string; token: string },
+              { ok: boolean; inviteUrl: string }
+            >(getFunctions(), "sendCenterStaffInviteEmail");
+            await sendInviteEmail({ centerId, token: invite.token });
+            emailSent = true;
+          } catch (emailError) {
+            console.error("sendCenterStaffInviteEmail", emailError);
+          }
+        }
+
+        if (invite?.inviteUrl) {
+          setLastInvite({
+            professionalName: newDoc.fullName,
+            email: newDoc.email,
+            inviteUrl: invite.inviteUrl,
+            emailSent,
+          });
+        } else {
+          setLastInvite(null);
+        }
+
         showToast(
-          `Profesional ${newDoc.fullName} agregado. Se envió invitación a ${newDoc.email}.`,
-          "success"
+          emailSent
+            ? `Profesional ${newDoc.fullName} agregado. Se envió invitación a ${newDoc.email}.`
+            : `Profesional ${newDoc.fullName} agregado. Comparte manualmente el enlace de invitación.`,
+          emailSent ? "success" : "warning"
         );
         onLogActivity({
           action: "STAFF_CREATE",
@@ -315,8 +352,67 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
     return doc.visibleInBooking ? "Publicado" : "Oculto";
   };
 
+  const handleCopyInviteLink = async () => {
+    if (!lastInvite?.inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(lastInvite.inviteUrl);
+      showToast("Enlace de invitación copiado.", "success");
+    } catch (error) {
+      console.error("copy invite link", error);
+      showToast("No se pudo copiar el enlace.", "error");
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
+      {lastInvite && (
+        <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-sky-900">
+                Invitación lista para {lastInvite.professionalName}
+              </h3>
+              <p className="text-sm text-sky-800">
+                {lastInvite.emailSent
+                  ? `Se envió un email a ${lastInvite.email}. Si no le llega, comparte este enlace manualmente.`
+                  : `No se pudo confirmar el envío automático a ${lastInvite.email}. Comparte este enlace manualmente.`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLastInvite(null)}
+              className="text-xs font-semibold text-sky-700 hover:text-sky-900"
+            >
+              Cerrar
+            </button>
+          </div>
+          <div className="rounded-xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-700 break-all">
+            {lastInvite.inviteUrl}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleCopyInviteLink}
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 text-white px-4 py-2 font-semibold hover:bg-sky-700 transition-colors"
+            >
+              <Check className="w-4 h-4" />
+              Copiar enlace
+            </button>
+            <a
+                href={`mailto:${encodeURIComponent(lastInvite.email)}?subject=${encodeURIComponent("Invitación a ClaveSalud")}&body=${encodeURIComponent(`Hola ${lastInvite.professionalName},
+
+Te compartimos tu enlace de acceso a ClaveSalud:
+${lastInvite.inviteUrl}
+
+Ingresa con el correo invitado para activar tu perfil.`)}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-white text-sky-800 px-4 py-2 font-semibold hover:bg-sky-100 transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              Abrir correo
+            </a>
+          </div>
+        </div>
+      )}
       {/* Configuración del Centro */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4">

@@ -1,5 +1,11 @@
 import React from "react";
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword as updateFirebasePassword,
+} from "firebase/auth";
 import { Doctor, ExamProfile, ExamDefinition, ClinicalTemplate } from "../../../types";
+import { auth } from "../../../firebase";
 import { useToast } from "../../../components/Toast";
 import { generateId } from "../../../utils";
 import {
@@ -29,8 +35,6 @@ interface DoctorSettingsTabProps {
   isReadOnly: boolean;
   onUpdateDoctor: (doc: any) => void;
   onLogActivity: (log: any) => void;
-
-  // Perfiles
   myExamProfiles: ExamProfile[];
   setMyExamProfiles: (p: ExamProfile[]) => void;
   tempProfile: ExamProfile;
@@ -38,12 +42,8 @@ interface DoctorSettingsTabProps {
   isEditingProfileId: string | null;
   setIsEditingProfileId: (id: string | null) => void;
   allExamOptions: ExamDefinition[];
-
-  // Custom Exams
   newCustomExam: { label: string; unit: string; category: string };
   setNewCustomExam: (e: any) => void;
-
-  // Templates
   myTemplates: ClinicalTemplate[];
   setMyTemplates: (t: ClinicalTemplate[]) => void;
   tempTemplate: { id: string; title: string; content: string };
@@ -54,8 +54,6 @@ interface DoctorSettingsTabProps {
   setIsCatalogOpen: (op: boolean) => void;
   catalogSearch: string;
   setCatalogSearch: (search: string) => void;
-
-  // Password
   pwdState: { current: string; new: string; confirm: string };
   setPwdState: (state: any) => void;
 }
@@ -92,7 +90,6 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
 }) => {
   const { showToast } = useToast();
 
-  // Handlers para Perfiles
   const toggleExamInTempProfile = (examId: string) => {
     if (tempProfile.exams.includes(examId)) {
       setTempProfile({ ...tempProfile, exams: tempProfile.exams.filter((id) => id !== examId) });
@@ -108,8 +105,8 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
     }
     let updatedProfiles: ExamProfile[];
     if (isEditingProfileId) {
-      updatedProfiles = myExamProfiles.map((p) =>
-        p.id === isEditingProfileId ? { ...tempProfile, id: isEditingProfileId } : p
+      updatedProfiles = myExamProfiles.map((profile) =>
+        profile.id === isEditingProfileId ? { ...tempProfile, id: isEditingProfileId } : profile
       );
       showToast("Perfil actualizado", "success");
     } else {
@@ -122,14 +119,19 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
     onUpdateDoctor({ id: doctorId, savedExamProfiles: updatedProfiles });
   };
 
-  const handleEditProfile = (p: ExamProfile) => {
-    setTempProfile({ label: p.label, exams: p.exams, description: p.description, id: p.id });
-    setIsEditingProfileId(p.id);
+  const handleEditProfile = (profile: ExamProfile) => {
+    setTempProfile({
+      label: profile.label,
+      exams: profile.exams,
+      description: profile.description,
+      id: profile.id,
+    });
+    setIsEditingProfileId(profile.id);
   };
 
   const handleDeleteProfile = (id: string) => {
     if (globalThis.confirm("¿Eliminar perfil de exámenes?")) {
-      const updated = myExamProfiles.filter((p) => p.id !== id);
+      const updated = myExamProfiles.filter((profile) => profile.id !== id);
       setMyExamProfiles(updated);
       onUpdateDoctor({ id: doctorId, savedExamProfiles: updated });
     }
@@ -143,19 +145,18 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
     }
   };
 
-  // Custom Exams
   const handleCreateCustomExam = () => {
     if (!newCustomExam.label || !newCustomExam.unit || !newCustomExam.category) {
-      showToast("Complete todos los campos del nuevo examen.", "error");
+      showToast("Completa todos los campos del nuevo examen.", "error");
       return;
     }
-    const newDef: ExamDefinition = {
+    const newDefinition: ExamDefinition = {
       id: `custom_${generateId()}`,
       label: newCustomExam.label,
       unit: newCustomExam.unit,
       category: newCustomExam.category,
     };
-    const updatedCustoms = [...(currentUser?.customExams || []), newDef];
+    const updatedCustoms = [...(currentUser?.customExams || []), newDefinition];
     onUpdateDoctor({ id: doctorId, customExams: updatedCustoms });
     setNewCustomExam({ label: "", unit: "", category: "" });
     showToast("Nuevo examen creado exitosamente.", "success");
@@ -163,10 +164,10 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
 
   const handleDeleteCustomExam = (examId: string) => {
     if (globalThis.confirm("¿Eliminar este examen personalizado?")) {
-      const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
-      const updatedProfiles = myExamProfiles.map((p) => ({
-        ...p,
-        exams: p.exams.filter((eid) => eid !== examId),
+      const updatedCustoms = (currentUser?.customExams || []).filter((exam) => exam.id !== examId);
+      const updatedProfiles = myExamProfiles.map((profile) => ({
+        ...profile,
+        exams: profile.exams.filter((id) => id !== examId),
       }));
       setMyExamProfiles(updatedProfiles);
       onUpdateDoctor({
@@ -177,15 +178,18 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
     }
   };
 
-  // Plantillas
   const handleSaveTemplate = () => {
     if (!tempTemplate.title || !tempTemplate.content) return;
     let updatedTemplates: ClinicalTemplate[];
     if (isEditingTemplateId) {
-      updatedTemplates = myTemplates.map((t) =>
-        t.id === isEditingTemplateId
-          ? ({ ...tempTemplate, id: isEditingTemplateId, category: t.category } as ClinicalTemplate)
-          : t
+      updatedTemplates = myTemplates.map((template) =>
+        template.id === isEditingTemplateId
+          ? ({
+              ...tempTemplate,
+              id: isEditingTemplateId,
+              category: template.category,
+            } as ClinicalTemplate)
+          : template
       );
       showToast("Plantilla actualizada", "success");
     } else {
@@ -201,14 +205,14 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
     onUpdateDoctor({ id: doctorId, savedTemplates: updatedTemplates });
   };
 
-  const handleEditTemplate = (t: ClinicalTemplate) => {
-    setTempTemplate({ title: t.title, content: t.content, id: t.id });
-    setIsEditingTemplateId(t.id);
+  const handleEditTemplate = (template: ClinicalTemplate) => {
+    setTempTemplate({ title: template.title, content: template.content, id: template.id });
+    setIsEditingTemplateId(template.id);
   };
 
   const handleDeleteTemplate = (id: string) => {
     if (globalThis.confirm("¿Eliminar plantilla?")) {
-      const updated = myTemplates.filter((t) => t.id !== id);
+      const updated = myTemplates.filter((template) => template.id !== id);
       setMyTemplates(updated);
       onUpdateDoctor({ id: doctorId, savedTemplates: updated });
     }
@@ -216,7 +220,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
 
   const handleImportTemplate = (template: ClinicalTemplate) => {
     if (!currentUser || !currentUser.id) return;
-    const newT: ClinicalTemplate = {
+    const newTemplate: ClinicalTemplate = {
       id: generateId(),
       userId: currentUser.id,
       title: template.title,
@@ -224,103 +228,231 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
       category: template.category,
       createdAt: new Date().toISOString(),
     };
-    const updatedTemplates = [...(currentUser.savedTemplates || []), newT];
+    const updatedTemplates = [...(currentUser.savedTemplates || []), newTemplate];
     onUpdateDoctor({ ...currentUser, savedTemplates: updatedTemplates });
     setMyTemplates(updatedTemplates);
     showToast("Plantilla importada", "success");
     setIsCatalogOpen(false);
   };
 
-  const handleChangePassword = () => {
-    if (!currentUser) return;
-    if (!pwdState.current || !pwdState.new || !pwdState.confirm) {
-      showToast("Complete todos los campos.", "error");
+  const handleChangePassword = async () => {
+    const authUser = auth.currentUser;
+    const authEmail = authUser?.email || currentUser?.email || "";
+    if (!currentUser || !authUser || !authEmail) {
+      showToast("No pudimos validar la sesión actual. Vuelve a iniciar sesión.", "error");
       return;
     }
-    if (pwdState.current !== currentUser.password) {
-      showToast("La contraseña actual no es correcta.", "error");
+    if (!pwdState.current || !pwdState.new || !pwdState.confirm) {
+      showToast("Completa todos los campos.", "error");
       return;
     }
     if (pwdState.new !== pwdState.confirm) {
       showToast("Las nuevas contraseñas no coinciden.", "error");
       return;
     }
-    if (pwdState.new.length < 4) {
-      showToast("La nueva contraseña es muy corta.", "warning");
+    if (pwdState.new.length < 6) {
+      showToast("La nueva contraseña debe tener al menos 6 caracteres.", "warning");
+      return;
+    }
+    if (pwdState.current === pwdState.new) {
+      showToast("La nueva contraseña debe ser distinta a la actual.", "warning");
       return;
     }
 
-    onUpdateDoctor({ id: doctorId, password: pwdState.new });
-    showToast("Contraseña actualizada correctamente.", "success");
-    setPwdState({ current: "", new: "", confirm: "" });
-    onLogActivity({
-      action: "update",
-      details: "Usuario cambió su contraseña.",
-      metadata: { scope: "password" },
-    });
+    try {
+      const credential = EmailAuthProvider.credential(authEmail, pwdState.current);
+      await reauthenticateWithCredential(authUser, credential);
+      await updateFirebasePassword(authUser, pwdState.new);
+
+      showToast("Contraseña actualizada correctamente.", "success");
+      setPwdState({ current: "", new: "", confirm: "" });
+      onLogActivity({
+        action: "update",
+        details: "Usuario cambió su contraseña.",
+        metadata: { scope: "password", provider: "firebase-auth" },
+      });
+    } catch (error: any) {
+      const code = String(error?.code || "");
+      if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        showToast("La contraseña actual no es correcta.", "error");
+        return;
+      }
+      if (code === "auth/too-many-requests") {
+        showToast("Demasiados intentos. Espera un momento e inténtalo de nuevo.", "warning");
+        return;
+      }
+      if (code === "auth/requires-recent-login") {
+        showToast("Por seguridad, vuelve a iniciar sesión antes de cambiar la contraseña.", "warning");
+        return;
+      }
+      console.error("Error updating professional password:", error);
+      showToast("No pudimos actualizar tu contraseña. Intenta nuevamente.", "error");
+    }
   };
 
   return (
-    <div className="w-full animate-fadeIn flex flex-col gap-8 pb-20 max-w-6xl mx-auto">
-      {/* Vitals Toggle */}
-      <Card
-        variant="glass"
-        className="flex flex-col md:flex-row justify-between items-center gap-6 border-emerald-500/20"
-      >
-        <div className="flex items-center gap-4">
-          <div className="bg-emerald-500/10 text-emerald-500 p-4 rounded-2xl border border-emerald-500/20">
-            <Activity className="w-6 h-6" />
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pb-20 animate-fadeIn">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card variant="glass" className="border-emerald-500/20">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-emerald-500">
+                <Activity className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-400">
+                  Preferencias clínicas
+                </p>
+                <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
+                  Configuración del trabajo diario
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
+                  Ajusta cómo quieres trabajar tu ficha, tus plantillas y tus herramientas
+                  personales. La idea es mantener lo clínico al frente y lo técnico ordenado.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Signos vitales
+                </p>
+                <p className="mt-2 text-sm font-bold text-white">
+                  {moduleGuards.vitals ? "Activos" : "Desactivados"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Perfiles guardados
+                </p>
+                <p className="mt-2 text-sm font-bold text-white">{myExamProfiles.length}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Plantillas propias
+                </p>
+                <p className="mt-2 text-sm font-bold text-white">{myTemplates.length}</p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-bold text-white tracking-tight">
-              Módulo de Signos Vitales
-            </h3>
-            <p className="text-sm text-slate-400 max-w-xl">
-              Habilita la sección de antropometría y parámetros clínicos.{" "}
-              <span className="font-bold text-emerald-400 ml-1">
-                (Esta preferencia anula la configuración global del centro)
-              </span>
-            </p>
+        </Card>
+
+        <Card variant="glass" className="border-indigo-500/20">
+          <div className="flex h-full flex-col justify-between gap-5">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-3 text-indigo-400">
+                  <Shield className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-indigo-400">
+                    Seguridad personal
+                  </p>
+                  <h3 className="mt-1 text-xl font-black text-white">Cuenta y acceso</h3>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-slate-400">
+                Mantén tus credenciales al día y revisa tus preferencias personales sin mezclar
+                esta zona con tus herramientas clínicas.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                Recomendación
+              </p>
+              <p className="mt-2 text-sm text-slate-300">
+                Usa esta sección para ajustes personales. Deja los perfiles y plantillas en las
+                áreas clínicas para encontrarlos más rápido.
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-700">
-          <Button
-            variant={moduleGuards.vitals ? "primary" : "ghost"}
-            size="sm"
-            onClick={() =>
-              onUpdateDoctor({
-                ...currentUser,
-                preferences: { ...currentUser?.preferences, vitalsEnabled: true },
-              })
-            }
-            className={`rounded-xl px-6 ${moduleGuards.vitals ? "shadow-emerald-900/40" : ""}`}
-          >
-            Activado
-          </Button>
-          <Button
-            variant={!moduleGuards.vitals ? "danger" : "ghost"}
-            size="sm"
-            onClick={() =>
-              onUpdateDoctor({
-                ...currentUser,
-                preferences: { ...currentUser?.preferences, vitalsEnabled: false },
-              })
-            }
-            className={`rounded-xl px-6 ${!moduleGuards.vitals ? "shadow-red-900/40" : ""}`}
-          >
-            Desactivado
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      </div>
+
+      <div className="grid gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card variant="glass" className="border-emerald-500/20">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-400">
+                <Activity className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Preferencia personal
+                </p>
+                <h3 className="text-lg font-bold uppercase tracking-wider text-white">
+                  Signos vitales
+                </h3>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/50 p-1.5">
+              <Button
+                variant={moduleGuards.vitals ? "primary" : "ghost"}
+                size="sm"
+                onClick={() =>
+                  onUpdateDoctor({
+                    ...currentUser,
+                    preferences: { ...currentUser?.preferences, vitalsEnabled: true },
+                  })
+                }
+                className={`rounded-xl px-6 ${moduleGuards.vitals ? "shadow-emerald-900/40" : ""}`}
+              >
+                Activado
+              </Button>
+              <Button
+                variant={!moduleGuards.vitals ? "danger" : "ghost"}
+                size="sm"
+                onClick={() =>
+                  onUpdateDoctor({
+                    ...currentUser,
+                    preferences: { ...currentUser?.preferences, vitalsEnabled: false },
+                  })
+                }
+                className={`rounded-xl px-6 ${!moduleGuards.vitals ? "shadow-red-900/40" : ""}`}
+              >
+                Desactivado
+              </Button>
+            </div>
+          </div>
+          <p className="text-sm leading-relaxed text-slate-400">
+            Habilita o deshabilita la sección de antropometría y parámetros clínicos para tu flujo
+            personal. Esta preferencia anula la configuración global del centro.
+          </p>
+        </Card>
+
+        <Card variant="glass" className="border-slate-700/60">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/50 p-3 text-slate-300">
+              <Layers className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Orden sugerido
+              </p>
+              <h3 className="text-lg font-bold text-white">Cómo usar esta pantalla</h3>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3 text-sm text-slate-400">
+            <p>1. Ajusta tus herramientas clínicas primero.</p>
+            <p>2. Mantén tus plantillas y catálogos listos para consulta rápida.</p>
+            <p>3. Deja seguridad y acceso como una tarea separada.</p>
+          </div>
+        </Card>
+      </div>
 
       {role === "MEDICO" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-2">
-              <Layers className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-lg font-bold text-white uppercase tracking-wider">
-                Perfiles y Packs
-              </h3>
+              <Layers className="h-5 w-5 text-emerald-400" />
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Herramienta clínica
+                </p>
+                <h3 className="text-lg font-bold uppercase tracking-wider text-white">
+                  Perfiles y packs de exámenes
+                </h3>
+              </div>
             </div>
             <DoctorExamProfilesSection
               profiles={myExamProfiles}
@@ -339,13 +471,18 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
 
           <div className="space-y-4">
             <div className="flex items-center gap-2 px-2">
-              <TestTube className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-bold text-white uppercase tracking-wider">
-                Exámenes Personalizados
-              </h3>
+              <TestTube className="h-5 w-5 text-purple-400" />
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Catálogo personal
+                </p>
+                <h3 className="text-lg font-bold uppercase tracking-wider text-white">
+                  Exámenes personalizados
+                </h3>
+              </div>
             </div>
             <Card variant="glass" className="border-purple-500/20">
-              <p className="text-sm text-slate-400 mb-6">
+              <p className="mb-6 text-sm text-slate-400">
                 Define exámenes específicos que no estén en el catálogo nacional.
               </p>
               <div className="space-y-4">
@@ -363,11 +500,11 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                   />
                 </div>
                 <select
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all font-medium"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/50 px-4 py-2.5 font-medium text-white outline-none transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
                   value={newCustomExam.category}
                   onChange={(e) => setNewCustomExam({ ...newCustomExam, category: e.target.value })}
                 >
-                  <option value="">Seleccione Categoría</option>
+                  <option value="">Selecciona categoría</option>
                   <option value="Metabólico">Metabólico</option>
                   <option value="Hormonal">Hormonal</option>
                   <option value="Hematológico">Hematológico</option>
@@ -376,30 +513,30 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
                 </select>
                 <Button
                   variant="primary"
-                  className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-900/20"
+                  className="w-full bg-purple-600 shadow-purple-900/20 hover:bg-purple-700"
                   onClick={handleCreateCustomExam}
                 >
-                  Agregar a mi Lista
+                  Agregar a mi lista
                 </Button>
               </div>
 
               {currentUser?.customExams && currentUser.customExams.length > 0 && (
-                <div className="mt-8 pt-6 border-t border-white/5">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
-                    Mis Exámenes Personales
+                <div className="mt-8 border-t border-white/5 pt-6">
+                  <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">
+                    Mis exámenes personales
                   </h4>
                   <div className="flex flex-wrap gap-2">
-                    {currentUser.customExams.map((ex) => (
+                    {currentUser.customExams.map((exam) => (
                       <span
-                        key={ex.id}
-                        className="bg-purple-500/10 text-purple-400 text-xs font-bold px-3 py-1.5 rounded-full border border-purple-500/20 flex items-center gap-2 group"
+                        key={exam.id}
+                        className="group flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1.5 text-xs font-bold text-purple-400"
                       >
-                        {ex.label} ({ex.unit})
+                        {exam.label} ({exam.unit})
                         <button
-                          onClick={() => handleDeleteCustomExam(ex.id)}
-                          className="hover:text-red-400 transition-colors"
+                          onClick={() => handleDeleteCustomExam(exam.id)}
+                          className="transition-colors hover:text-red-400"
                         >
-                          <X className="w-3 h-3" />
+                          <X className="h-3 w-3" />
                         </button>
                       </span>
                     ))}
@@ -411,17 +548,21 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
         </div>
       )}
 
-      {/* Templates Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-bold text-white uppercase tracking-wider">
-              Plantillas Clínicas
-            </h3>
+            <FileText className="h-5 w-5 text-blue-400" />
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Herramienta clínica
+              </p>
+              <h3 className="text-lg font-bold uppercase tracking-wider text-white">
+                Plantillas clínicas
+              </h3>
+            </div>
           </div>
           <Button variant="glass" size="sm" onClick={() => setIsCatalogOpen(true)}>
-            <Book className="w-4 h-4 mr-2" /> Explorar Catálogo
+            <Book className="mr-2 h-4 w-4" /> Explorar catálogo
           </Button>
         </div>
         <DoctorTemplatesSection
@@ -432,7 +573,7 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           onSave={handleSaveTemplate}
           onEdit={handleEditTemplate}
           onDelete={handleDeleteTemplate}
-          onReset={() => {}} // Se puede implementar si se desea
+          onReset={() => {}}
           onCancel={() => {
             setIsEditingTemplateId(null);
             setTempTemplate({ id: "", title: "", content: "" });
@@ -440,37 +581,36 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
         />
       </div>
 
-      {/* Seguridad */}
       <Card variant="glass" className="border-indigo-500/20">
-        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-indigo-400" /> Seguridad de la Cuenta
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-indigo-500/5 p-6 rounded-2xl border border-indigo-500/10">
-            <KeyRound className="w-10 h-10 text-indigo-400 mb-4" />
-            <h4 className="font-bold text-lg text-white mb-2">Cambiar Contraseña</h4>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Actualice su contraseña periódicamente para mantener su cuenta protegida.
+        <div className="grid gap-8 md:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-2xl border border-indigo-500/10 bg-indigo-500/5 p-6">
+            <KeyRound className="mb-4 h-10 w-10 text-indigo-400" />
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-400">
+              Seguridad personal
+            </p>
+            <h4 className="mt-2 text-lg font-bold text-white">Cambiar contraseña</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              Actualiza tu contraseña periódicamente para mantener tu cuenta protegida.
             </p>
           </div>
-          <div className="md:col-span-2 space-y-4 max-w-md">
+          <div className="max-w-md space-y-4">
             <Input
               type="password"
-              label="Contraseña Actual"
+              label="Contraseña actual"
               value={pwdState.current}
               onChange={(e) => setPwdState({ ...pwdState, current: e.target.value })}
               readOnly={isReadOnly}
             />
             <Input
               type="password"
-              label="Nueva Contraseña"
+              label="Nueva contraseña"
               value={pwdState.new}
               onChange={(e) => setPwdState({ ...pwdState, new: e.target.value })}
               readOnly={isReadOnly}
             />
             <Input
               type="password"
-              label="Confirmar Nueva"
+              label="Confirmar nueva"
               value={pwdState.confirm}
               onChange={(e) => setPwdState({ ...pwdState, confirm: e.target.value })}
               readOnly={isReadOnly}
@@ -479,16 +619,15 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
               <Button
                 variant="primary"
                 onClick={handleChangePassword}
-                className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20"
+                className="w-full bg-indigo-600 shadow-indigo-900/20 hover:bg-indigo-700 md:w-auto"
               >
-                Actualizar Contraseña
+                Actualizar contraseña
               </Button>
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Catálogo Modal */}
       {isCatalogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -497,46 +636,48 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           />
           <Card
             variant="glass"
-            className="w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden relative border-emerald-500/30 shadow-2xl"
+            className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden border-emerald-500/30 shadow-2xl"
           >
-            <div className="p-6 border-b border-white/10 flex justify-between items-center">
-              <h3 className="font-bold text-xl text-white">Catálogo de Plantillas</h3>
+            <div className="flex items-center justify-between border-b border-white/10 p-6">
+              <h3 className="text-xl font-bold text-white">Catálogo de plantillas</h3>
               <button
                 onClick={() => setIsCatalogOpen(false)}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                className="rounded-full p-2 transition-colors hover:bg-white/10"
               >
-                <X className="w-6 h-6 text-slate-400" />
+                <X className="h-6 w-6 text-slate-400" />
               </button>
             </div>
-            <div className="p-6 space-y-4 flex-1 flex flex-col">
+            <div className="flex flex-1 flex-col space-y-4 p-6">
               <Input
-                icon={<Search className="w-4 h-4" />}
+                icon={<Search className="h-4 w-4" />}
                 placeholder="Buscar por título o contenido..."
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
               />
-              <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
-                {DEFAULT_CLINICAL_TEMPLATES.filter((t) => !t.roles || t.roles.includes(role))
+              <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto pr-2">
+                {DEFAULT_CLINICAL_TEMPLATES.filter((template) =>
+                  !template.roles || template.roles.includes(role)
+                )
                   .filter(
-                    (t) =>
-                      t.title.toLowerCase().includes(catalogSearch.toLowerCase()) ||
-                      t.content.toLowerCase().includes(catalogSearch.toLowerCase())
+                    (template) =>
+                      template.title.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+                      template.content.toLowerCase().includes(catalogSearch.toLowerCase())
                   )
-                  .map((t) => (
+                  .map((template) => (
                     <div
-                      key={t.id}
-                      className="bg-slate-900/40 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition-all group"
+                      key={template.id}
+                      className="group rounded-2xl border border-white/5 bg-slate-900/40 p-5 transition-all hover:border-emerald-500/30"
                     >
-                      <div className="flex justify-between items-start mb-3">
-                        <span className="font-bold text-white group-hover:text-emerald-400 transition-colors">
-                          {t.title}
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <span className="font-bold text-white transition-colors group-hover:text-emerald-400">
+                          {template.title}
                         </span>
-                        <Button variant="glass" size="sm" onClick={() => handleImportTemplate(t)}>
+                        <Button variant="glass" size="sm" onClick={() => handleImportTemplate(template)}>
                           Importar
                         </Button>
                       </div>
-                      <p className="text-xs text-slate-500 leading-relaxed italic line-clamp-2">
-                        "{t.content}"
+                      <p className="line-clamp-2 text-xs italic leading-relaxed text-slate-500">
+                        "{template.content}"
                       </p>
                     </div>
                   ))}

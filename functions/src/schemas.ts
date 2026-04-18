@@ -103,6 +103,29 @@ export const CreateInviteInputSchema = z.object({
   centerName: z.string().min(1, "centerName es requerido"),
 });
 
+
+export const SendStaffInviteEmailInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  token: z.string().min(1, "token es requerido"),
+});
+
+export const SendWhatsappCampaignInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  templateId: z.string().min(1, "templateId es requerido"),
+  templateTitle: z.string().min(1, "templateTitle es requerido"),
+  templateBody: z.string().min(1, "templateBody es requerido"),
+  patientIds: z.array(z.string().min(1)).min(1).max(200),
+});
+
+export const SendWhatsappTestInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+});
+
+export const SendConsultationSummaryEmailInputSchema = z.object({
+  centerId: z.string().min(1, "centerId es requerido"),
+  patientId: z.string().min(1, "patientId es requerido"),
+  consultationId: z.string().min(1, "consultationId es requerido"),
+});
 /**
  * Esquema para cancelar una cita desde el portal del paciente
  */

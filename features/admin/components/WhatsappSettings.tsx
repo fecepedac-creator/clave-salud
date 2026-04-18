@@ -2,7 +2,17 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { functions as firebaseFunctions } from "../../../firebase";
-import { MessageCircle, Plus, Save, Phone, Check, Shield, Copy, Lock } from "lucide-react";
+import {
+  MessageCircle,
+  Plus,
+  Save,
+  Phone,
+  Check,
+  Shield,
+  Copy,
+  Lock,
+  Send,
+} from "lucide-react";
 import { Auth } from "firebase/auth";
 import { Firestore } from "firebase/firestore";
 import WhatsappTemplatesManager from "../../../components/WhatsappTemplatesManager";
@@ -52,6 +62,7 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
   const [botSecretaryPhone, setBotSecretaryPhone] = useState("");
   const [botConfigLoading, setBotConfigLoading] = useState(false);
   const [botConfigSaving, setBotConfigSaving] = useState(false);
+  const [sendingTestMessage, setSendingTestMessage] = useState(false);
   const [botPhoneNumberId, setBotPhoneNumberId] = useState("");
   const [botAccessToken, setBotAccessToken] = useState("");
   const [botApiSaving, setBotApiSaving] = useState(false);
@@ -193,6 +204,27 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
       showToast(e?.message || "No se pudieron guardar las credenciales.", "error");
     } finally {
       setBotApiSaving(false);
+    }
+  };
+
+  const sendTestMessage = async () => {
+    if (!resolvedCenterId) return;
+    setSendingTestMessage(true);
+    try {
+      const sendTest = httpsCallable(firebaseFunctions, "sendWhatsappTestMessage");
+      const result = await sendTest({ centerId: resolvedCenterId });
+      const to = (result.data as any)?.to;
+      showToast(
+        to
+          ? `Mensaje de prueba enviado a +${to}.`
+          : "Mensaje de prueba enviado correctamente.",
+        "success"
+      );
+    } catch (e: any) {
+      console.error("send whatsapp test", e);
+      showToast(e?.message || "No se pudo enviar el mensaje de prueba.", "error");
+    } finally {
+      setSendingTestMessage(false);
     }
   };
 
@@ -433,14 +465,24 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
               </div>
             )}
             <div className="flex justify-end pt-2">
-              <button
-                onClick={saveBotApiCredentials}
-                disabled={botApiSaving || !botPhoneNumberId.trim()}
-                className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Lock className="w-4 h-4" />
-                {botApiSaving ? "Guardando..." : "Guardar Credenciales"}
-              </button>
+              <div className="flex flex-wrap justify-end gap-3">
+                <button
+                  onClick={sendTestMessage}
+                  disabled={sendingTestMessage || !botPhoneNumberId.trim() || !botSecretaryPhone.trim()}
+                  className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-4 h-4" />
+                  {sendingTestMessage ? "Enviando prueba..." : "Enviar prueba"}
+                </button>
+                <button
+                  onClick={saveBotApiCredentials}
+                  disabled={botApiSaving || !botPhoneNumberId.trim()}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Lock className="w-4 h-4" />
+                  {botApiSaving ? "Guardando..." : "Guardar Credenciales"}
+                </button>
+              </div>
             </div>
           </div>
         )}

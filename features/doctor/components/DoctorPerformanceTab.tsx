@@ -1,122 +1,161 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../../../firebase";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  getDoc,
-  query,
-  where,
-  orderBy,
-  getDocs,
-} from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Appointment, MonthlyProfessionalStats } from "../../../types";
 import {
   Activity,
-  Download,
-  FileText,
-  Search,
-  TrendingUp,
-  DollarSign,
-  XCircle,
   CheckCircle,
+  DollarSign,
+  Download,
+  TrendingUp,
+  XCircle,
 } from "lucide-react";
 
 interface DoctorPerformanceTabProps {
   centerId: string;
-  doctorId: string; // The professional's ID
+  doctorId: string;
 }
+
+type AppointmentWithLegacyProfessional = Appointment & {
+  professionalId?: string;
+};
+
+const PROFESSIONAL_KEYS = ["doctorId", "doctorUid", "professionalId"] as const;
+
+const sortAppointments = (items: Appointment[]) =>
+  [...items].sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    return b.time.localeCompare(a.time);
+  });
+
+const appointmentMatchesProfessional = (
+  appointment: AppointmentWithLegacyProfessional,
+  professionalId: string
+) => {
+  const candidateIds = new Set(
+    [appointment.doctorId, appointment.doctorUid, appointment.professionalId]
+      .filter(Boolean)
+      .map((value) => String(value))
+  );
+  return candidateIds.has(professionalId);
+};
+
+const buildMonthlyStats = (
+  items: Appointment[],
+  centerId: string,
+  doctorId: string,
+  yearMonth: string
+): MonthlyProfessionalStats => {
+  const totalAppointments = items.length;
+  const completed = items.filter((appointment) => appointment.attendanceStatus === "completed").length;
+  const noShow = items.filter((appointment) => appointment.attendanceStatus === "no-show").length;
+  const cancelled = items.filter((appointment) => appointment.attendanceStatus === "cancelled").length;
+  const billableAppointments = items.filter((appointment) => appointment.billable);
+  const billableCount = billableAppointments.length;
+  const totalAmountBillable = billableAppointments.reduce(
+    (total, appointment) => total + Number(appointment.amount || 0),
+    0
+  );
+
+  return {
+    id: `${doctorId}_${yearMonth}`,
+    centerId,
+    doctorId,
+    yearMonth,
+    totalAppointments,
+    completed,
+    noShow,
+    cancelled,
+    billableCount,
+    totalAmountBillable,
+    lastUpdated: new Date().toISOString(),
+  };
+};
 
 export const DoctorPerformanceTab: React.FC<DoctorPerformanceTabProps> = ({
   centerId,
   doctorId,
 }) => {
-  // Current month in YYYY-MM format by default
   const [yearMonth, setYearMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-
-  const [stats, setStats] = useState<MonthlyProfessionalStats | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loadingStats, setLoadingStats] = useState(false);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
 
-  // Load Aggregated Stats
-  useEffect(() => {
-    if (!centerId || !doctorId || !yearMonth) return;
-    setLoadingStats(true);
-
-    const profKey = `${doctorId}_${yearMonth}`;
-    const statsRef = doc(db, "centers", centerId, "stats_professional_month", profKey);
-
-    const unsubscribe = onSnapshot(
-      statsRef,
-      (snap) => {
-        if (snap.exists()) {
-          setStats(snap.data() as MonthlyProfessionalStats);
-        } else {
-          setStats(null); // No data yet for this month
-        }
-        setLoadingStats(false);
-      },
-      (error) => {
-        console.error("Error loading professional stats:", error);
-        setLoadingStats(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [centerId, doctorId, yearMonth]);
-
-  // Load Detailed Appointments for the selected month
   useEffect(() => {
     if (!centerId || !doctorId || !yearMonth) return;
     setLoadingAppointments(true);
 
-    // Calculate start and end strings for the month based on YYYY-MM
     const [year, month] = yearMonth.split("-");
     const startDateStr = `${yearMonth}-01`;
-    // Quick way to get last day of month in JS
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+    const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
     const endDateStr = `${yearMonth}-${String(lastDay).padStart(2, "0")}`;
-
     const apptsRef = collection(db, "centers", centerId, "appointments");
+    const snapshotCache = new Map<string, Appointment[]>();
+    const initialized = new Set<string>();
 
-    // As DoctorID fields have varied over time (doctorId, doctorUid, professionalId)
-    // the easiest safe query across all is equality on doctorId (or depending on how it's saved)
-    // Usually it's doctorId.
-    const q = query(
-      apptsRef,
-      where("doctorId", "==", doctorId),
-      where("date", ">=", startDateStr),
-      where("date", "<=", endDateStr),
-      orderBy("date", "desc"),
-      orderBy("time", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const list: Appointment[] = [];
-        snap.forEach((doc) => {
-          const data = doc.data() as Appointment;
-          // Double check it's not a soft deleted one entirely excluded from views if you want
-          list.push({ ...data, id: doc.id });
+    const mergeSnapshots = () => {
+      const merged = new Map<string, Appointment>();
+      snapshotCache.forEach((list) => {
+        list.forEach((appointment) => {
+          if (!appointmentMatchesProfessional(appointment as AppointmentWithLegacyProfessional, doctorId)) {
+            return;
+          }
+          merged.set(appointment.id, appointment);
         });
-        setAppointments(list);
-        setLoadingAppointments(false);
-      },
-      (error) => {
-        console.error("Error loading detailed appointments:", error);
-        setLoadingAppointments(false);
-      }
-    );
+      });
+      setAppointments(sortAppointments([...merged.values()]));
+    };
 
-    return () => unsubscribe();
+    const unsubscribeList = PROFESSIONAL_KEYS.map((field) => {
+      const q = query(
+        apptsRef,
+        where(field, "==", doctorId),
+        where("date", ">=", startDateStr),
+        where("date", "<=", endDateStr),
+        orderBy("date", "desc"),
+        orderBy("time", "desc")
+      );
+
+      return onSnapshot(
+        q,
+        (snap) => {
+          const list: Appointment[] = [];
+          snap.forEach((item) => {
+            const data = item.data() as Appointment;
+            list.push({ ...data, id: item.id });
+          });
+          snapshotCache.set(field, list);
+          initialized.add(field);
+          mergeSnapshots();
+          if (initialized.size === PROFESSIONAL_KEYS.length) {
+            setLoadingAppointments(false);
+          }
+        },
+        (error) => {
+          console.error(`Error loading professional performance for ${field}:`, error);
+          initialized.add(field);
+          snapshotCache.set(field, []);
+          mergeSnapshots();
+          if (initialized.size === PROFESSIONAL_KEYS.length) {
+            setLoadingAppointments(false);
+          }
+        }
+      );
+    });
+
+    return () => {
+      unsubscribeList.forEach((unsubscribe) => unsubscribe());
+    };
   }, [centerId, doctorId, yearMonth]);
 
-  // Export CSV
+  const stats = useMemo(
+    () => buildMonthlyStats(appointments, centerId, doctorId, yearMonth),
+    [appointments, centerId, doctorId, yearMonth]
+  );
+
   const exportCSV = () => {
     const headers = [
       "Fecha",
@@ -129,25 +168,24 @@ export const DoctorPerformanceTab: React.FC<DoctorPerformanceTabProps> = ({
       "Cobrado",
       "Monto",
     ];
-    const rows = appointments.map((a) => {
-      return [
-        a.date,
-        a.time,
-        a.patientName,
-        a.patientRut,
-        a.serviceName || "Consulta",
-        a.status,
-        a.attendanceStatus || "Pendiente",
-        a.billable ? "Sí" : "No",
-        a.amount ? a.amount.toString() : "0",
-      ];
-    });
+
+    const rows = appointments.map((appointment) => [
+      appointment.date,
+      appointment.time,
+      appointment.patientName,
+      appointment.patientRut,
+      appointment.serviceName || "Consulta médica",
+      appointment.status,
+      appointment.attendanceStatus || "Pendiente",
+      appointment.billable ? "Sí" : "No",
+      appointment.amount ? appointment.amount.toString() : "0",
+    ]);
 
     const csvContent =
       "data:text/csv;charset=utf-8," +
       headers.join(",") +
       "\n" +
-      rows.map((e) => e.join(",")).join("\n");
+      rows.map((row) => row.join(",")).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -160,105 +198,106 @@ export const DoctorPerformanceTab: React.FC<DoctorPerformanceTabProps> = ({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header and Filter */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-indigo-500" /> Mi Rendimiento
+          <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+            Rendimiento
+          </div>
+          <h2 className="mt-3 flex items-center gap-2 text-2xl font-black text-slate-900">
+            <TrendingUp className="h-6 w-6 text-indigo-500" /> Mi rendimiento
           </h2>
-          <p className="text-slate-500">
-            Consulta tus estadísticas mensuales y exporta el detalle de atenciones.
+          <p className="mt-1 text-sm text-slate-500">
+            Consulta tus estadísticas mensuales con datos unificados del profesional y exporta
+            el detalle de atenciones.
           </p>
         </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-xl items-center gap-2">
-          <label className="text-sm font-bold text-slate-600 px-3">Mes a consultar:</label>
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 p-1">
+          <label className="px-3 text-sm font-bold text-slate-600">Mes a consultar</label>
           <input
             type="month"
             value={yearMonth}
             onChange={(e) => setYearMonth(e.target.value)}
-            className="bg-white border-0 rounded-lg p-2 text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 shadow-sm"
+            className="rounded-lg border-0 bg-white p-2 font-bold text-slate-800 shadow-sm focus:ring-2 focus:ring-indigo-500"
           />
         </div>
       </div>
 
-      {/* KPI Cards */}
-      {loadingStats ? (
-        <div className="h-32 bg-slate-100 animate-pulse rounded-2xl"></div>
+      {loadingAppointments ? (
+        <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5">
-              <Activity className="w-24 h-24" />
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <div className="relative flex flex-col justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="absolute right-0 top-0 p-4 opacity-5">
+              <Activity className="h-24 w-24" />
             </div>
-            <h4 className="text-slate-500 font-bold text-sm mb-1 z-10">Total Citados</h4>
-            <p className="text-4xl font-extrabold text-slate-800 z-10">
-              {stats?.totalAppointments || 0}
+            <h4 className="z-10 mb-1 text-sm font-bold text-slate-500">Total citados</h4>
+            <p className="z-10 text-4xl font-extrabold text-slate-800">
+              {stats.totalAppointments}
             </p>
           </div>
 
           <div
             data-testid="doctor-kpi-completed"
-            className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100 shadow-sm flex flex-col justify-center relative overflow-hidden"
+            className="relative flex flex-col justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-emerald-50 p-6 shadow-sm"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <CheckCircle className="w-24 h-24 text-emerald-500" />
+            <div className="absolute right-0 top-0 p-4 opacity-10">
+              <CheckCircle className="h-24 w-24 text-emerald-500" />
             </div>
-            <h4 className="text-emerald-700 font-bold text-sm mb-1 z-10">Atendidos (Completado)</h4>
-            <p className="text-4xl font-extrabold text-emerald-700 z-10">{stats?.completed || 0}</p>
+            <h4 className="z-10 mb-1 text-sm font-bold text-emerald-700">Atendidos</h4>
+            <p className="z-10 text-4xl font-extrabold text-emerald-700">{stats.completed}</p>
           </div>
 
-          <div className="bg-rose-50 rounded-2xl p-6 border border-rose-100 shadow-sm flex flex-col justify-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <XCircle className="w-24 h-24 text-rose-500" />
+          <div className="relative flex flex-col justify-center overflow-hidden rounded-2xl border border-rose-100 bg-rose-50 p-6 shadow-sm">
+            <div className="absolute right-0 top-0 p-4 opacity-10">
+              <XCircle className="h-24 w-24 text-rose-500" />
             </div>
-            <h4 className="text-rose-700 font-bold text-sm mb-1 z-10">Anuladas / No-Show</h4>
-            <p className="text-4xl font-extrabold text-rose-700 z-10">
-              {(stats?.cancelled || 0) + (stats?.noShow || 0)}
+            <h4 className="z-10 mb-1 text-sm font-bold text-rose-700">Anuladas / no-show</h4>
+            <p className="z-10 text-4xl font-extrabold text-rose-700">
+              {stats.cancelled + stats.noShow}
             </p>
           </div>
 
           <div
             data-testid="doctor-kpi-revenue"
-            className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100 shadow-sm flex flex-col justify-center relative overflow-hidden"
+            className="relative flex flex-col justify-center overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50 p-6 shadow-sm"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <DollarSign className="w-24 h-24 text-indigo-500" />
+            <div className="absolute right-0 top-0 p-4 opacity-10">
+              <DollarSign className="h-24 w-24 text-indigo-500" />
             </div>
-            <h4 className="text-indigo-700 font-bold text-sm mb-1 z-10">Monto Facturable Est.</h4>
-            <p className="text-4xl font-extrabold text-indigo-700 z-10">
-              ${(stats?.totalAmountBillable || 0).toLocaleString("es-CL")}
+            <h4 className="z-10 mb-1 text-sm font-bold text-indigo-700">Monto facturable est.</h4>
+            <p className="z-10 text-4xl font-extrabold text-indigo-700">
+              ${stats.totalAmountBillable.toLocaleString("es-CL")}
             </p>
-            <span className="text-xs text-indigo-500/80 font-medium z-10 mt-1">
-              ({stats?.billableCount || 0} atenciones)
+            <span className="z-10 mt-1 text-xs font-medium text-indigo-500/80">
+              ({stats.billableCount} atenciones)
             </span>
           </div>
         </div>
       )}
 
-      {/* Detailed Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col flex-1">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-slate-800 text-lg">Detalle Mensual</h3>
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 p-6">
+          <h3 className="text-lg font-bold text-slate-800">Detalle mensual</h3>
           <button
             onClick={exportCSV}
             disabled={appointments.length === 0}
-            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-xl font-bold hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            className="flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Download className="w-4 h-4" /> Exportar CSV
+            <Download className="h-4 w-4" /> Exportar CSV
           </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="bg-slate-50/50 text-slate-500 text-sm border-b border-slate-100">
+              <tr className="border-b border-slate-100 bg-slate-50/50 text-sm text-slate-500">
                 <th className="p-4 font-bold">Fecha / Hora</th>
                 <th className="p-4 font-bold">Paciente</th>
                 <th className="p-4 font-bold">Concepto</th>
-                <th className="p-4 font-bold">Estado Agenda</th>
+                <th className="p-4 font-bold">Estado agenda</th>
                 <th className="p-4 font-bold">Asistencia</th>
-                <th className="p-4 font-bold text-right">Monto</th>
+                <th className="p-4 text-right font-bold">Monto</th>
               </tr>
             </thead>
             <tbody>
@@ -270,63 +309,67 @@ export const DoctorPerformanceTab: React.FC<DoctorPerformanceTabProps> = ({
                 </tr>
               ) : appointments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500 bg-slate-50/50">
+                  <td colSpan={6} className="bg-slate-50/50 p-8 text-center text-slate-500">
                     No hay citas agendadas para este mes.
                   </td>
                 </tr>
               ) : (
-                appointments.map((a) => (
+                appointments.map((appointment) => (
                   <tr
-                    key={a.id}
-                    className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors"
+                    key={appointment.id}
+                    className="border-b border-slate-100 transition-colors hover:bg-slate-50/50"
                   >
                     <td className="p-4">
-                      <div className="font-medium text-slate-800 whitespace-nowrap">{a.date}</div>
-                      <div className="text-xs text-slate-500">{a.time}</div>
+                      <div className="whitespace-nowrap font-medium text-slate-800">
+                        {appointment.date}
+                      </div>
+                      <div className="text-xs text-slate-500">{appointment.time}</div>
                     </td>
                     <td className="p-4">
-                      <div className="font-bold text-slate-800">{a.patientName}</div>
-                      <div className="text-xs text-slate-500">{a.patientRut}</div>
+                      <div className="font-bold text-slate-800">{appointment.patientName}</div>
+                      <div className="text-xs text-slate-500">{appointment.patientRut}</div>
                     </td>
                     <td className="p-4 text-sm text-slate-600">
-                      {a.serviceName || "Consulta Médica"}
+                      {appointment.serviceName || "Consulta médica"}
                     </td>
                     <td className="p-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          a.status === "booked"
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          appointment.status === "booked"
                             ? "bg-amber-100 text-amber-700"
                             : "bg-green-100 text-green-700"
                         }`}
                       >
-                        {a.status.toUpperCase()}
+                        {appointment.status.toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4">
-                      {a.attendanceStatus === "completed" ? (
-                        <span className="flex items-center gap-1 text-emerald-600 text-sm font-bold">
-                          <CheckCircle className="w-4 h-4" /> Atendido
+                      {appointment.attendanceStatus === "completed" ? (
+                        <span className="flex items-center gap-1 text-sm font-bold text-emerald-600">
+                          <CheckCircle className="h-4 w-4" /> Atendido
                         </span>
-                      ) : a.attendanceStatus === "no-show" ? (
-                        <span className="flex items-center gap-1 text-rose-600 text-sm font-bold">
-                          <XCircle className="w-4 h-4" /> No Asistió
+                      ) : appointment.attendanceStatus === "no-show" ? (
+                        <span className="flex items-center gap-1 text-sm font-bold text-rose-600">
+                          <XCircle className="h-4 w-4" /> No asistió
                         </span>
-                      ) : a.attendanceStatus === "cancelled" ? (
-                        <span className="flex items-center gap-1 text-slate-400 text-sm font-bold">
+                      ) : appointment.attendanceStatus === "cancelled" ? (
+                        <span className="flex items-center gap-1 text-sm font-bold text-slate-400">
                           Anulado
                         </span>
                       ) : (
-                        <span className="text-slate-400 text-sm">- Pendiente -</span>
+                        <span className="text-sm text-slate-400">- Pendiente -</span>
                       )}
                     </td>
                     <td className="p-4 text-right">
                       <div
-                        className={`font-bold ${a.billable ? "text-indigo-600" : "text-slate-400"}`}
+                        className={`font-bold ${
+                          appointment.billable ? "text-indigo-600" : "text-slate-400"
+                        }`}
                       >
-                        {a.amount ? `$${a.amount.toLocaleString("es-CL")}` : "$0"}
+                        {appointment.amount ? `$${appointment.amount.toLocaleString("es-CL")}` : "$0"}
                       </div>
                       <div className="text-xs text-slate-400">
-                        {a.billable ? "Facturable" : "No Facturable"}
+                        {appointment.billable ? "Facturable" : "No facturable"}
                       </div>
                     </td>
                   </tr>

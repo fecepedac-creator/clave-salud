@@ -163,7 +163,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         entityType: "patient",
         entityId: patient.id,
         patientId: patient.id,
-        details: "ActualizaciÃ³n de equipo tratante.",
+        details: "Actualización de equipo tratante.",
         metadata: { careTeamCount: careTeamUids.length },
       });
     } catch (error) {
@@ -191,17 +191,17 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
             Identidad
           </p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
-            {patient.genderIdentity && patient.genderIdentity !== "Identidad de gÃ©nero no declarada"
+            {patient.genderIdentity && patient.genderIdentity !== "Identidad de género no declarada"
               ? patient.genderIdentity
               : "Identidad no declarada"}
           </p>
         </div>
         <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all hover:bg-slate-50 cursor-default">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">
-            PrevisiÃ³n
+            Previsión
           </p>
           <p className="text-[11px] font-bold text-slate-700 leading-none">
-            {patient.insurance || "Sin previsiÃ³n"}
+            {patient.insurance || "Sin previsión"}
             {patient.insurance === "FONASA" &&
               patient.insuranceLevel &&
               ` (${patient.insuranceLevel})`}
@@ -299,7 +299,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
                   </button>
                   {accessMode === "CARE_TEAM" && (
                     <p className="text-[9px] text-amber-600 font-bold text-center mt-2 leading-tight">
-                      * Solo los seleccionados podrÃ¡n ver esta ficha.
+                      * Solo los seleccionados podrán ver esta ficha.
                     </p>
                   )}
                 </div>

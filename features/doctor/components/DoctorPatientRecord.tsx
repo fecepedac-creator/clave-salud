@@ -56,7 +56,7 @@ export interface DoctorPatientRecordProps {
   pinDiagnosis?: (d: SnomedConcept) => void;
   handleVitalsChange: (f: any, v: any) => void;
   handleExamChange: (f: any, v: any) => void;
-  handleCreateConsultation: () => Promise<Patient>;
+  handleCreateConsultation: () => Promise<Patient | null>;
   selectedPatientConsultations: Consultation[];
   isUsingLegacyConsultations: boolean;
 

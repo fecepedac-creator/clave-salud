@@ -1,6 +1,7 @@
 import React from "react";
 import { Appointment, AgendaConfig, Doctor, Patient } from "../../../types";
 import AgendaView from "../../../components/AgendaView";
+import OperationalState from "../../../components/ui/OperationalState";
 import { useToast } from "../../../components/Toast";
 import { generateSlotId } from "../../../utils";
 
@@ -92,8 +93,12 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
       )}
 
       {isAdministrativo && !viewingDoctorId ? (
-        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-          <p className="text-lg">Selecciona un profesional para gestionar su agenda.</p>
+        <div className="rounded-3xl border border-white/50 bg-white/80 p-6 shadow-sm">
+          <OperationalState
+            kind="empty"
+            title="Selecciona un profesional"
+            description="Elige un médico o agenda de servicio para ver horarios, pacientes y gestión diaria."
+          />
         </div>
       ) : (
         <AgendaView

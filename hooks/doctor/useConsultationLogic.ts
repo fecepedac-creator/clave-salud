@@ -238,7 +238,7 @@ export const useConsultationLogic = ({
     });
   };
 
-  const handleCreateConsultation = async () => {
+  const handleCreateConsultation = async (): Promise<Patient | null> => {
     console.log("💾 handleCreateConsultation called...");
     if (!selectedPatient) return;
 
@@ -350,7 +350,8 @@ export const useConsultationLogic = ({
       showToast("Atención guardada correctamente en la nube", "success");
     } catch (error) {
       console.error(error);
-      showToast("Error al guardar en la nube (solo se mantuvo el borrador local)", "error");
+      showToast("Error al guardar en la nube. El borrador se mantuvo para que puedas reintentar.", "error");
+      return null;
     }
 
     // 2) Actualizar estado local (lista de pacientes)

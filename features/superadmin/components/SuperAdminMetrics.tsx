@@ -27,7 +27,7 @@ type CenterExt = MedicalCenter & {
 
 interface SuperAdminMetricsProps {
   centers: CenterExt[];
-  doctors: any[]; // Or Professional if typed
+  doctors: any[];
   metricsLoading: boolean;
   handleRecalcStats: () => void;
 }
@@ -40,50 +40,57 @@ export const SuperAdminMetrics: React.FC<SuperAdminMetricsProps> = ({
 }) => {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-bold text-slate-800">Uso de Plataforma</h1>
-          <p className="text-slate-500">Monitoreo de actividad clínica y adopción por centro.</p>
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="inline-flex w-fit items-center rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-sky-700">
+              Analítica transversal
+            </div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">Uso de Plataforma</h1>
+            <p className="max-w-2xl text-sm leading-relaxed text-slate-500">
+              Monitorea actividad clínica, dotación y salud operativa por centro desde una misma capa de métricas.
+            </p>
+          </div>
+          <button
+            onClick={() => handleRecalcStats()}
+            disabled={metricsLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-100 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${metricsLoading ? "animate-spin" : ""}`} />
+            Actualizar todo
+          </button>
         </div>
-        <button
-          onClick={() => handleRecalcStats()}
-          disabled={metricsLoading}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${metricsLoading ? "animate-spin" : ""}`} />
-          Actualizar Todo
-        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <Activity className="w-6 h-6" />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <Activity className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase">Atenciones (Total)</div>
+            <div className="text-xs font-bold uppercase text-slate-400">Atenciones (total)</div>
             <div className="text-2xl font-bold text-slate-800">
               {centers.reduce((acc, c) => acc + ((c as any).stats?.consultationCount || 0), 0)}
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-            <Users className="w-6 h-6" />
+        <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <Users className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase">Profesionales (Total)</div>
+            <div className="text-xs font-bold uppercase text-slate-400">Profesionales (total)</div>
             <div className="text-2xl font-bold text-slate-800">
               {centers.reduce((acc, c) => acc + ((c as any).stats?.staffCount || 0), 0)}
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-            <TrendingUp className="w-6 h-6" />
+        <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+            <TrendingUp className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase">Pacientes Registrados</div>
+            <div className="text-xs font-bold uppercase text-slate-400">Pacientes Registrados</div>
             <div className="text-2xl font-bold text-slate-800">
               {centers.reduce((acc, c) => acc + ((c as any).stats?.patientCount || 0), 0)}
             </div>
@@ -91,17 +98,17 @@ export const SuperAdminMetrics: React.FC<SuperAdminMetricsProps> = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-50">
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className="border-b border-slate-50 p-6">
           <h3 className="font-bold text-slate-800">Ranking de Actividad por Centro</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400">
               <tr>
                 <th className="px-6 py-4">Centro Médico</th>
                 <th className="px-6 py-4">Profesionales</th>
-                <th className="px-6 py-4">Atenciones (30d)</th>
+                <th className="px-6 py-4">Consultas acumuladas</th>
                 <th className="px-6 py-4">Status Salud</th>
               </tr>
             </thead>
@@ -129,10 +136,10 @@ export const SuperAdminMetrics: React.FC<SuperAdminMetricsProps> = ({
                 }
 
                 return (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={c.id} className="transition-colors hover:bg-slate-50">
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-800">{c.name}</div>
-                      <div className="text-xs text-slate-400 font-mono">/{c.slug}</div>
+                      <div className="font-mono text-xs text-slate-400">/{c.slug}</div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -140,13 +147,9 @@ export const SuperAdminMetrics: React.FC<SuperAdminMetricsProps> = ({
                         <span className="text-xs text-slate-400">/{(c as any).maxUsers || 10}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-bold text-slate-800 text-lg">
-                      {consultationCount}
-                    </td>
+                    <td className="px-6 py-4 text-lg font-bold text-slate-800">{consultationCount}</td>
                     <td className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider">
-                      <span className={`px-3 py-1 rounded-full border ${healthColor}`}>
-                        {healthLabel}
-                      </span>
+                      <span className={`rounded-full border px-3 py-1 ${healthColor}`}>{healthLabel}</span>
                     </td>
                   </tr>
                 );

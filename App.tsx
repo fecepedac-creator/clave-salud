@@ -22,6 +22,7 @@ import OnboardingTour, { OnboardingStep } from "./components/OnboardingTour";
 import BookingPortal from "./components/BookingPortal";
 import { PatientMenu, PatientCancel } from "./components/PatientPortal";
 import HomeDirectory from "./components/HomeDirectory";
+import InvitePage from "./components/InvitePage";
 import {
   CenterBackdrop,
   HomeBackdrop,
@@ -34,7 +35,6 @@ import {
   SelectCenterView,
 } from "./components/app/AppPortalViews";
 import {
-  InviteRegisterView,
   LoginView,
   SuperAdminLoginView,
 } from "./components/app/AppAuthViews";
@@ -1110,26 +1110,11 @@ const App: React.FC = () => {
   );
 
   const renderAuthInviteRegister = () => (
-    <InviteRegisterView
-      inviteMode={inviteMode}
-      inviteCenterName={inviteCenterName}
-      inviteError={inviteError}
-      inviteDone={inviteDone}
-      inviteLoading={inviteLoading}
-      inviteToken={inviteToken}
-      inviteEmail={inviteEmail}
-      invitePassword={invitePassword}
-      invitePassword2={invitePassword2}
-      setInviteError={setInviteError}
-      setInviteLoading={setInviteLoading}
-      setInviteMode={setInviteMode}
-      setInviteEmail={setInviteEmail}
-      setInvitePassword={setInvitePassword}
-      setInvitePassword2={setInvitePassword2}
-      setInviteToken={setInviteToken}
-      acceptInviteForUser={acceptInviteForUser}
-      showToast={showToast}
-      onClose={() => setView("home" as any)}
+    <InvitePage
+      onDone={() => {
+        showToast("Invitación aceptada", "success");
+        setView("home" as any);
+      }}
     />
   );
 

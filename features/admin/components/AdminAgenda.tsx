@@ -372,7 +372,25 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       window.open(url, "_blank");
     }
 
-    onUpdateAppointments(appointments.filter((a) => a.id !== cancelModal.appointment?.id));
+    onUpdateAppointments(
+      appointments.map((appointment) =>
+        appointment.id !== cancelModal.appointment?.id
+          ? appointment
+          : {
+              ...appointment,
+              status: "available",
+              patientName: "",
+              patientRut: "",
+              patientId: undefined,
+              patientPhone: "",
+              patientEmail: "",
+              bookedAt: undefined,
+              cancelledAt: new Date().toISOString(),
+              attendanceStatus: "cancelled",
+              billable: false,
+            }
+      )
+    );
     setCancelModal({ isOpen: false, appointment: null });
     showToast("Cita cancelada y horario bloqueado.", "info");
   };

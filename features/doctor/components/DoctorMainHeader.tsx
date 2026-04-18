@@ -27,7 +27,6 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
 }) => {
   const [centerLogoError, setCenterLogoError] = useState(false);
 
-  // Count today's booked appointments for this doctor
   const todayCount = appointments.filter(
     (a) =>
       ((a as any).doctorUid ?? a.doctorId) === doctorId &&
@@ -36,42 +35,64 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
   ).length;
 
   return (
-    <header className="bg-white/80 backdrop-blur-md border-b border-health-100/50 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4 transition-all duration-300">
-      <div className="flex items-center gap-3 w-full md:w-auto">
-        <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-        <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
-      </div>
-
-      <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-center">
-        {activeCenter?.logoUrl && (
-          <div className="hidden sm:flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
-            <span className="text-slate-400 text-[9px] font-black uppercase tracking-wider">
-              Centro
-            </span>
-            {!centerLogoError ? (
-              <img
-                src={activeCenter.logoUrl}
-                alt={`Logo ${activeCenter.name}`}
-                className="h-6 w-auto max-w-[100px] object-contain rounded transition-opacity hover:opacity-80"
-                onError={() => setCenterLogoError(true)}
-              />
-            ) : (
-              <span className="text-health-700 text-[10px] font-bold">{activeCenter.name}</span>
-            )}
+    <header className="sticky top-0 z-20 flex-shrink-0 border-b border-health-100/60 bg-white/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <div className="inline-flex items-center rounded-full border border-health-100 bg-health-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-health-700">
+            Trabajo clínico
           </div>
-        )}
-
-        <div className="bg-health-50 text-health-700 px-4 py-2 rounded-xl font-bold text-[10px] sm:text-xs border border-health-100 flex items-center gap-2 whitespace-nowrap shadow-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-health-500 animate-pulse"></span>
-          {todayCount} Citas Hoy
+          <div className="mt-3">
+            <h1 className="truncate text-2xl font-black text-slate-900">Panel profesional</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Bienvenido, <span className="font-semibold text-slate-700">{doctorName}</span>.
+            </p>
+          </div>
         </div>
 
-        <div className="hidden xs:block border-l border-slate-100 pl-3">
-          <LegalLinks
-            onOpenTerms={() => onOpenLegal("terms")}
-            onOpenPrivacy={() => onOpenLegal("privacy")}
-            className="flex gap-2"
-          />
+        <div className="flex flex-wrap items-stretch gap-3 md:justify-end">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Centro activo
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+              {activeCenter?.logoUrl && !centerLogoError ? (
+                <img
+                  src={activeCenter.logoUrl}
+                  alt={`Logo ${activeCenter.name}`}
+                  className="h-8 w-auto max-w-[108px] rounded object-contain"
+                  onError={() => setCenterLogoError(true)}
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-xl bg-health-100" />
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-800">
+                  {activeCenter?.name || "Sin centro activo"}
+                </p>
+                <p className="text-xs text-slate-500">Agenda y ficha clínica del día</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-health-100 bg-health-50 px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-health-700">
+              Hoy
+            </p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-3xl font-black text-health-700">{todayCount}</span>
+              <span className="text-sm font-semibold text-health-700">
+                {todayCount === 1 ? "cita agendada" : "citas agendadas"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <LegalLinks
+              onOpenTerms={() => onOpenLegal("terms")}
+              onOpenPrivacy={() => onOpenLegal("privacy")}
+              className="flex gap-2"
+            />
+          </div>
         </div>
       </div>
     </header>

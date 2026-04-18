@@ -141,17 +141,28 @@ service cloud.firestore {
         && request.resource.data.retentionEnabled is bool
         && request.resource.data.updatedAt is timestamp;
     }
-    function isPublicAppointmentRead() {
+    function isPublicAppointmentRead(centerId) {
       return resource.data.status == "available"
-        && isActiveCenter(resource.data.centerId);
+        && isActiveCenter(centerId);
     }
 
     function isActiveCenter(centerId) {
       let centerPath = /databases/$(database)/documents/centers/$(centerId);
-      return exists(centerPath)
-        && (
-          get(centerPath).data.active == true
-          || get(centerPath).data.isActive == true
+      let publicCenterPath = /databases/$(database)/documents/publicCenters/$(centerId);
+      return signedIn()
+        ? (
+          exists(centerPath)
+            && (
+              get(centerPath).data.active == true
+              || get(centerPath).data.isActive == true
+            )
+        )
+        : (
+          exists(publicCenterPath)
+            && (
+              get(publicCenterPath).data.active == true
+              || get(publicCenterPath).data.isActive == true
+            )
         );
     }
 
@@ -159,15 +170,15 @@ service cloud.firestore {
       return duration.value(5475, "d");
     }
 
-    function isPublicAppointmentBooking() {
+    function isPublicAppointmentBooking(centerId) {
       return resource.data.status == "available"
         && request.resource.data.status == "booked"
-        && request.resource.data.centerId == resource.data.centerId
+        && request.resource.data.centerId == centerId
         && request.resource.data.doctorId == resource.data.doctorId
         && request.resource.data.doctorUid == resource.data.doctorUid
         && request.resource.data.date == resource.data.date
         && request.resource.data.time == resource.data.time
-        && isActiveCenter(resource.data.centerId)
+        && isActiveCenter(centerId)
         && request.resource.data.patientName is string
         && request.resource.data.patientRut is string
         && request.resource.data.patientPhone is string
@@ -301,9 +312,13 @@ service cloud.firestore {
         && inviteDoc(token).data.emailLower == emailLower();
     }
 
+    match /publicCenters/{centerId} {
+      allow read: if resource.data.active == true || resource.data.isActive == true;
+      allow create, update, delete: if false;
+    }
+
     match /centers/{centerId} {
-      allow read: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
-        || ((resource.data.active == true || resource.data.isActive == true) && request.auth == null); 
+      allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
       allow create: if signedIn() && isSuperAdmin();
       allow update: if isSuperAdmin()
         || canUpdateAnthropometryFeature(centerId)
@@ -576,7 +591,7 @@ service cloud.firestore {
       }
 
       match /appointments/{apptId} {
-        allow read: if isPublicAppointmentRead()
+        allow read: if isPublicAppointmentRead(centerId)
           || (
             signedIn()
             && (
@@ -757,6 +772,32 @@ service cloud.firestore {
         return ['active', 'deletedAt', 'deletedBy', 'deleteReason', 'retentionUntil'];
       }
 
+      function parentPatientExists() {
+        return exists(/databases/$(database)/documents/patients/$(patientId));
+      }
+
+      function parentPatientDoc() {
+        return get(/databases/$(database)/documents/patients/$(patientId));
+      }
+
+      function parentPatientAllowsUser() {
+        return signedIn()
+          && parentPatientExists()
+          && (
+            parentPatientDoc().data.ownerUid == uid()
+            || (
+              parentPatientDoc().data.accessControl is map
+              && parentPatientDoc().data.accessControl.allowedUids is list
+              && uid() in parentPatientDoc().data.accessControl.allowedUids
+            )
+            || (
+              parentPatientDoc().data.careTeamUids is list
+              && uid() in parentPatientDoc().data.careTeamUids
+            )
+            || isSuperAdmin()
+          );
+      }
+
       function rootSoftDeleteKeysChanged() {
         return request.resource.data.diff(resource.data).affectedKeys().hasAny(rootSoftDeleteKeys());
       }
@@ -827,32 +868,25 @@ service cloud.firestore {
       // El archivado debe realizarse por soft-delete (active=false + metadata).
       allow delete: if false;
 
+      match /versions/{versionId} {
+        allow read, create, update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+        allow delete: if false;
+      }
+
       // Consultations as subcollection of patient
       match /consultations/{consultationId} {
-        allow read: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        );
-        allow create, update: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        )
-        && (
-          !rootSoftDeleteKeysChanged()
-          || (
-            rootSoftDeleteValid()
-            && rootArchiveWithinRetentionWindow()
-          )
-        );
+        allow read: if parentPatientAllowsUser();
+        allow create: if parentPatientAllowsUser();
+        allow update: if parentPatientAllowsUser();
         // Delete físico prohibido para mantener trazabilidad clínica.
         // Usar archivado lógico y retención.
         allow delete: if false;
+
+        match /versions/{versionId} {
+          allow read: if parentPatientAllowsUser();
+          allow create, update: if parentPatientAllowsUser();
+          allow delete: if false;
+        }
       }
     }
   }

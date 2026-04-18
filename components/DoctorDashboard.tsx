@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useContext } from "react";
+import React, { Suspense, useState, useEffect, useMemo, useContext } from "react";
 import {
   Patient,
   Consultation,
@@ -26,7 +26,12 @@ import { MessageCircle } from "lucide-react";
 import { useToast } from "./Toast";
 import { CenterContext } from "../CenterContext";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase";
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword as updateFirebasePassword,
+} from "firebase/auth";
+import { functions, auth } from "../firebase";
 import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
 import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
 import { usePrescriptionLogic } from "../hooks/doctor/usePrescriptionLogic";
@@ -34,10 +39,26 @@ import { useDashboardData } from "../hooks/doctor/useDashboardData";
 
 import { KinesiologyProgram, KinesiologySession } from "../types";
 import { DoctorPatientsListTab } from "../features/doctor/components/DoctorPatientsListTab";
-import { DoctorAgendaTab } from "../features/doctor/components/DoctorAgendaTab";
-import { DoctorSettingsTab } from "../features/doctor/components/DoctorSettingsTab";
-import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatientRecord";
-import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
+const DoctorAgendaTab = React.lazy(() =>
+  import("../features/doctor/components/DoctorAgendaTab").then((module) => ({
+    default: module.DoctorAgendaTab,
+  }))
+);
+const DoctorSettingsTab = React.lazy(() =>
+  import("../features/doctor/components/DoctorSettingsTab").then((module) => ({
+    default: module.DoctorSettingsTab,
+  }))
+);
+const DoctorPatientRecord = React.lazy(() =>
+  import("../features/doctor/components/DoctorPatientRecord").then((module) => ({
+    default: module.DoctorPatientRecord,
+  }))
+);
+const DoctorPerformanceTab = React.lazy(() =>
+  import("../features/doctor/components/DoctorPerformanceTab").then((module) => ({
+    default: module.DoctorPerformanceTab,
+  }))
+);
 import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
 import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
 import { resolveActiveState } from "../utils/activeState";
@@ -151,6 +172,16 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   // --- Context ---
   const { activeCenterId, activeCenter, isModuleEnabled } = useContext(CenterContext);
   const hasActiveCenter = Boolean(activeCenterId);
+  const dashboardTabFallback = (
+    <div className="rounded-3xl border border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+        Cargando vista
+      </p>
+      <p className="mt-3 text-sm text-slate-500">
+        Estamos preparando el contenido clínico de esta sección.
+      </p>
+    </div>
+  );
 
   const { showToast } = useToast();
   const role = String(roleRaw || "").toUpperCase() as ProfessionalRole;
@@ -438,8 +469,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     }
   };
 
-  // --- Email (Gmail compose) ---
-  const sendConsultationByEmail = (consultation: Consultation) => {
+  // --- Email clínico con trazabilidad ---
+  const sendConsultationByEmail = async (consultation: Consultation) => {
     if (!selectedPatient) {
       showToast("Paciente no seleccionado.", "warning");
       return;
@@ -492,12 +523,55 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       lines.push("");
     }
 
-    const ok = openEmailCompose({
-      to: patientEmail,
-      subject,
-      body: lines.join("\n"),
-    });
-    if (!ok) showToast("No se pudo abrir el correo.", "error");
+    if (!activeCenterId || !consultation.id || !selectedPatient.id) {
+      showToast("Falta contexto del centro o de la consulta para enviar el correo.", "warning");
+      return;
+    }
+
+    showToast("Enviando resumen clínico...", "info");
+
+    try {
+      const sendConsultationSummaryEmail = httpsCallable(functions, "sendConsultationSummaryEmail");
+      const result = await sendConsultationSummaryEmail({
+        centerId: activeCenterId,
+        patientId: selectedPatient.id,
+        consultationId: consultation.id,
+      });
+
+      const payload = result.data as { to?: string; provider?: string; messageId?: string | null };
+      showToast(
+        `Resumen enviado a ${payload?.to || patientEmail} vía ${payload?.provider || "email"}.`,
+        "success"
+      );
+      onLogActivity({
+        action: "send",
+        entityType: "consultation",
+        entityId: consultation.id,
+        details: `Resumen clínico enviado a ${payload?.to || patientEmail}.`,
+        metadata: {
+          channel: "email",
+          provider: payload?.provider || null,
+          messageId: payload?.messageId || null,
+          patientId: selectedPatient.id,
+        },
+      });
+      return;
+    } catch (error) {
+      console.error("Error sending consultation summary email:", error);
+      const ok = openEmailCompose({
+        to: patientEmail,
+        subject,
+        body: lines.join("\n"),
+      });
+      if (ok) {
+        showToast(
+          "No pudimos enviarlo desde el servidor. Dejamos abierto tu cliente de correo como respaldo.",
+          "warning"
+        );
+      } else {
+        showToast("No pudimos enviar ni abrir el correo de respaldo.", "error");
+      }
+    }
   };
   // --- módulos del centro (SuperAdmin) ---
   const moduleGuards = useMemo(() => {
@@ -754,37 +828,59 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   };
 
   // --- PASSWORD CHANGE HANDLER ---
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (!currentUser) return;
     if (!pwdState.current || !pwdState.new || !pwdState.confirm) {
       showToast("Complete todos los campos de contraseña.", "error");
-      return;
-    }
-    if (pwdState.current !== currentUser.password) {
-      showToast("La contraseña actual no es correcta.", "error");
       return;
     }
     if (pwdState.new !== pwdState.confirm) {
       showToast("Las nuevas contraseñas no coinciden.", "error");
       return;
     }
-    if (pwdState.new.length < 4) {
-      showToast("La nueva contraseña es muy corta.", "warning");
+    if (pwdState.new.length < 6) {
+      showToast("La nueva contraseña debe tener al menos 6 caracteres.", "warning");
+      return;
+    }
+    if (pwdState.current === pwdState.new) {
+      showToast("La nueva contraseña debe ser distinta a la actual.", "warning");
       return;
     }
 
-    // Update
-    onUpdateDoctor({ id: doctorId, password: pwdState.new } as any);
-    showToast("Contraseña actualizada correctamente.", "success");
-    setPwdState({ current: "", new: "", confirm: "" });
-    // Log it
-    onLogActivity({
-      action: "update",
-      entityType: "centerSettings",
-      entityId: doctorId,
-      details: "Usuario cambió su contraseña.",
-      metadata: { scope: "password" },
-    });
+    const authUser = auth.currentUser;
+    const authEmail = authUser?.email || currentUser.email;
+
+    if (!authUser || !authEmail) {
+      showToast("No pudimos validar tu sesión actual. Vuelve a iniciar sesión.", "error");
+      return;
+    }
+
+    try {
+      const credential = EmailAuthProvider.credential(authEmail, pwdState.current);
+      await reauthenticateWithCredential(authUser, credential);
+      await updateFirebasePassword(authUser, pwdState.new);
+      showToast("Contraseña actualizada correctamente.", "success");
+      setPwdState({ current: "", new: "", confirm: "" });
+      onLogActivity({
+        action: "update",
+        entityType: "centerSettings",
+        entityId: doctorId,
+        details: "Usuario cambió su contraseña en Firebase Auth.",
+        metadata: { scope: "password", provider: "firebase-auth" },
+      });
+    } catch (error: any) {
+      const code = error?.code as string | undefined;
+      if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        showToast("La contraseña actual no es correcta.", "error");
+      } else if (code === "auth/too-many-requests") {
+        showToast("Demasiados intentos. Espera un momento antes de volver a intentarlo.", "error");
+      } else if (code === "auth/requires-recent-login") {
+        showToast("Por seguridad debes volver a iniciar sesión antes de cambiar la contraseña.", "warning");
+      } else {
+        console.error("Error updating professional password", error);
+        showToast("No pudimos actualizar la contraseña. Inténtalo nuevamente.", "error");
+      }
+    }
   };
 
   // --- KINESIOLOGY HANDLERS ---
@@ -1002,55 +1098,57 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
             {/* CONTENT AREA */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {selectedPatient ? (
-                <DoctorPatientRecord
-                  selectedPatient={selectedPatient}
-                  setSelectedPatient={setSelectedPatient}
-                  isEditingPatient={isEditingPatient}
-                  setIsEditingPatient={setIsEditingPatient}
-                  handleSavePatient={handleSavePatient}
-                  onUpdatePatient={onUpdatePatient}
-                  onLogActivity={onLogActivity}
-                  activeCenterId={activeCenterId ?? ""}
-                  activeCenter={activeCenter}
-                  hasActiveCenter={hasActiveCenter}
-                  moduleGuards={moduleGuards}
-                  doctorName={doctorName}
-                  doctorId={doctorId}
-                  role={role}
-                  currentUser={currentUser}
-                  isReadOnly={isReadOnly}
-                  newConsultation={newConsultation}
-                  setNewConsultation={setNewConsultation}
-                  isCreatingConsultation={isCreatingConsultation}
-                  setIsCreatingConsultation={setIsCreatingConsultation}
-                  handleVitalsChange={handleVitalsChange}
-                  handleExamChange={handleExamChange}
-                  addDiagnosis={addDiagnosis}
-                  removeDiagnosis={removeDiagnosis}
-                  pinDiagnosis={pinDiagnosis}
-                  handleCreateConsultation={handleCreateConsultation}
-                  selectedPatientConsultations={selectedPatientConsultations}
-                  isUsingLegacyConsultations={isUsingLegacyConsultations}
-                  docsToPrint={docsToPrint}
-                  setDocsToPrint={setDocsToPrint}
-                  isPrintModalOpen={isPrintModalOpen}
-                  setIsPrintModalOpen={setIsPrintModalOpen}
-                  isClinicalReportOpen={isClinicalReportOpen}
-                  setIsClinicalReportOpen={setIsClinicalReportOpen}
-                  selectedConsultationForModal={selectedConsultationForModal}
-                  setSelectedConsultationForModal={setSelectedConsultationForModal}
-                  isExamOrderModalOpen={isExamOrderModalOpen}
-                  setIsExamOrderModalOpen={setIsExamOrderModalOpen}
-                  examOrderCatalog={examOrderCatalog}
-                  myExamProfiles={myExamProfiles}
-                  allExamOptions={allExamOptions}
-                  myTemplates={myTemplates}
-                  sendConsultationByEmail={sendConsultationByEmail}
-                  safeAgeLabel={safeAgeLabel}
-                  onSaveExamOrderProfile={handleSaveExamOrderProfile}
-                  onDeleteExamOrderProfile={handleDeleteExamOrderProfile}
-                  savedExamOrderProfiles={currentUser?.savedExamOrderProfiles || []}
-                />
+                <Suspense fallback={dashboardTabFallback}>
+                  <DoctorPatientRecord
+                    selectedPatient={selectedPatient}
+                    setSelectedPatient={setSelectedPatient}
+                    isEditingPatient={isEditingPatient}
+                    setIsEditingPatient={setIsEditingPatient}
+                    handleSavePatient={handleSavePatient}
+                    onUpdatePatient={onUpdatePatient}
+                    onLogActivity={onLogActivity}
+                    activeCenterId={activeCenterId ?? ""}
+                    activeCenter={activeCenter}
+                    hasActiveCenter={hasActiveCenter}
+                    moduleGuards={moduleGuards}
+                    doctorName={doctorName}
+                    doctorId={doctorId}
+                    role={role}
+                    currentUser={currentUser}
+                    isReadOnly={isReadOnly}
+                    newConsultation={newConsultation}
+                    setNewConsultation={setNewConsultation}
+                    isCreatingConsultation={isCreatingConsultation}
+                    setIsCreatingConsultation={setIsCreatingConsultation}
+                    handleVitalsChange={handleVitalsChange}
+                    handleExamChange={handleExamChange}
+                    addDiagnosis={addDiagnosis}
+                    removeDiagnosis={removeDiagnosis}
+                    pinDiagnosis={pinDiagnosis}
+                    handleCreateConsultation={handleCreateConsultation}
+                    selectedPatientConsultations={selectedPatientConsultations}
+                    isUsingLegacyConsultations={isUsingLegacyConsultations}
+                    docsToPrint={docsToPrint}
+                    setDocsToPrint={setDocsToPrint}
+                    isPrintModalOpen={isPrintModalOpen}
+                    setIsPrintModalOpen={setIsPrintModalOpen}
+                    isClinicalReportOpen={isClinicalReportOpen}
+                    setIsClinicalReportOpen={setIsClinicalReportOpen}
+                    selectedConsultationForModal={selectedConsultationForModal}
+                    setSelectedConsultationForModal={setSelectedConsultationForModal}
+                    isExamOrderModalOpen={isExamOrderModalOpen}
+                    setIsExamOrderModalOpen={setIsExamOrderModalOpen}
+                    examOrderCatalog={examOrderCatalog}
+                    myExamProfiles={myExamProfiles}
+                    allExamOptions={allExamOptions}
+                    myTemplates={myTemplates}
+                    sendConsultationByEmail={sendConsultationByEmail}
+                    safeAgeLabel={safeAgeLabel}
+                    onSaveExamOrderProfile={handleSaveExamOrderProfile}
+                    onDeleteExamOrderProfile={handleDeleteExamOrderProfile}
+                    savedExamOrderProfiles={currentUser?.savedExamOrderProfiles || []}
+                  />
+                </Suspense>
               ) : (
                 <div
                   className={`flex-1 px-4 md:px-8 pb-8 ${activeTab === "settings" ? "overflow-y-auto" : "overflow-y-auto lg:overflow-hidden"}`}
@@ -1095,70 +1193,76 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
                   {/* CONTENT: AGENDA VIEW */}
                   {activeTab === "agenda" && moduleGuards.agenda && (
-                    <DoctorAgendaTab
-                      isAdministrativo={isAdministrativo}
-                      clinicalDoctors={clinicalDoctors}
-                      viewingDoctorId={viewingDoctorId}
-                      setViewingDoctorId={setViewingDoctorId}
-                      currentMonth={currentMonth}
-                      setCurrentMonth={setCurrentMonth}
-                      selectedAgendaDate={selectedAgendaDate}
-                      setSelectedAgendaDate={setSelectedAgendaDate}
-                      appointments={appointments}
-                      effectiveDoctorId={effectiveDoctorId}
-                      effectiveAgendaConfig={effectiveAgendaConfig}
-                      isSyncingAppointments={isSyncingAppointments}
-                      isReadOnly={isReadOnly}
-                      appointmentsLoading={appointmentsLoading}
-                      appointmentsError={appointmentsError}
-                      onRetryAppointments={onRetryAppointments}
-                      hasActiveCenter={hasActiveCenter}
-                      currentUser={currentUser}
-                      activeCenterId={activeCenterId}
-                      onUpdateAppointments={onUpdateAppointments}
-                      setSlotModal={setSlotModal}
-                      handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
-                      onToggleAttendance={handleToggleAttendance}
-                    />
+                    <Suspense fallback={dashboardTabFallback}>
+                      <DoctorAgendaTab
+                        isAdministrativo={isAdministrativo}
+                        clinicalDoctors={clinicalDoctors}
+                        viewingDoctorId={viewingDoctorId}
+                        setViewingDoctorId={setViewingDoctorId}
+                        currentMonth={currentMonth}
+                        setCurrentMonth={setCurrentMonth}
+                        selectedAgendaDate={selectedAgendaDate}
+                        setSelectedAgendaDate={setSelectedAgendaDate}
+                        appointments={appointments}
+                        effectiveDoctorId={effectiveDoctorId}
+                        effectiveAgendaConfig={effectiveAgendaConfig}
+                        isSyncingAppointments={isSyncingAppointments}
+                        isReadOnly={isReadOnly}
+                        appointmentsLoading={appointmentsLoading}
+                        appointmentsError={appointmentsError}
+                        onRetryAppointments={onRetryAppointments}
+                        hasActiveCenter={hasActiveCenter}
+                        currentUser={currentUser}
+                        activeCenterId={activeCenterId}
+                        onUpdateAppointments={onUpdateAppointments}
+                        setSlotModal={setSlotModal}
+                        handleOpenPatientFromAppointment={handleOpenPatientFromAppointment}
+                        onToggleAttendance={handleToggleAttendance}
+                      />
+                    </Suspense>
                   )}
 
                   {/* CONTENT: SETTINGS (TEMPLATES & PROFILES) */}
                   {activeTab === "settings" && (
-                    <DoctorSettingsTab
-                      currentUser={currentUser}
-                      doctorId={doctorId}
-                      role={role}
-                      moduleGuards={moduleGuards}
-                      isReadOnly={isReadOnly}
-                      onUpdateDoctor={onUpdateDoctor}
-                      onLogActivity={onLogActivity}
-                      myExamProfiles={myExamProfiles}
-                      setMyExamProfiles={setMyExamProfiles}
-                      tempProfile={tempProfile}
-                      setTempProfile={setTempProfile}
-                      isEditingProfileId={isEditingProfileId}
-                      setIsEditingProfileId={setIsEditingProfileId}
-                      allExamOptions={allExamOptions}
-                      newCustomExam={newCustomExam}
-                      setNewCustomExam={setNewCustomExam}
-                      myTemplates={myTemplates}
-                      setMyTemplates={setMyTemplates}
-                      tempTemplate={tempTemplate}
-                      setTempTemplate={setTempTemplate}
-                      isEditingTemplateId={isEditingTemplateId}
-                      setIsEditingTemplateId={setIsEditingTemplateId}
-                      isCatalogOpen={isCatalogOpen}
-                      setIsCatalogOpen={setIsCatalogOpen}
-                      catalogSearch={catalogSearch}
-                      setCatalogSearch={setCatalogSearch}
-                      pwdState={pwdState}
-                      setPwdState={setPwdState}
-                    />
+                    <Suspense fallback={dashboardTabFallback}>
+                      <DoctorSettingsTab
+                        currentUser={currentUser}
+                        doctorId={doctorId}
+                        role={role}
+                        moduleGuards={moduleGuards}
+                        isReadOnly={isReadOnly}
+                        onUpdateDoctor={onUpdateDoctor}
+                        onLogActivity={onLogActivity}
+                        myExamProfiles={myExamProfiles}
+                        setMyExamProfiles={setMyExamProfiles}
+                        tempProfile={tempProfile}
+                        setTempProfile={setTempProfile}
+                        isEditingProfileId={isEditingProfileId}
+                        setIsEditingProfileId={setIsEditingProfileId}
+                        allExamOptions={allExamOptions}
+                        newCustomExam={newCustomExam}
+                        setNewCustomExam={setNewCustomExam}
+                        myTemplates={myTemplates}
+                        setMyTemplates={setMyTemplates}
+                        tempTemplate={tempTemplate}
+                        setTempTemplate={setTempTemplate}
+                        isEditingTemplateId={isEditingTemplateId}
+                        setIsEditingTemplateId={setIsEditingTemplateId}
+                        isCatalogOpen={isCatalogOpen}
+                        setIsCatalogOpen={setIsCatalogOpen}
+                        catalogSearch={catalogSearch}
+                        setCatalogSearch={setCatalogSearch}
+                        pwdState={pwdState}
+                        setPwdState={setPwdState}
+                      />
+                    </Suspense>
                   )}
 
                   {/* CONTENT: PERFORMANCE */}
                   {activeTab === "performance" && activeCenterId && (
-                    <DoctorPerformanceTab centerId={activeCenterId} doctorId={doctorId} />
+                    <Suspense fallback={dashboardTabFallback}>
+                      <DoctorPerformanceTab centerId={activeCenterId} doctorId={doctorId} />
+                    </Suspense>
                   )}
                   {/* Slot Modal (For Agenda) */}
                   {slotModal.isOpen && slotModal.appointment && (
@@ -1179,7 +1283,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                               patientId={slotModal.appointment.patientId}
                               auditLabel="Revelacion de RUT desde modal de cita."
                             />
-                            {" � "}
+                            {" • "}
                             <SensitiveField
                               value={slotModal.appointment.patientPhone}
                               kind="phone"

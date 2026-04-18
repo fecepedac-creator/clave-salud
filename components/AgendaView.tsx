@@ -86,7 +86,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
           onClick={() => setMobileView("slots")}
           className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${mobileView === "slots" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
         >
-          <Zap className="w-4 h-4" /> Horas y GestiÃ³n
+          <Zap className="w-4 h-4" /> Horas y Gestión
         </button>
       </div>
 
@@ -108,7 +108,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                 <span className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
                   2
                 </span>
-                Selecciona un dÃ­a
+                Selecciona un d?a
               </p>
             </div>
 
@@ -212,13 +212,27 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 
           <div className="flex-1 overflow-auto">
             {!selectedAgendaDate ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 py-12">
-                <Calendar className="w-16 h-16 mb-4 opacity-20" />
-                <p className="font-bold">Selecciona un dÃ­a en el calendario.</p>
-              </div>
+              <OperationalState
+                kind="empty"
+                title="Selecciona una fecha"
+                description="Elige un d?a del calendario para ver bloques, pacientes agendados y gesti?n operativa."
+              />
+            ) : isLoadingAppointments ? (
+              <OperationalState
+                kind="loading"
+                title="Cargando agenda..."
+                description="Estamos sincronizando bloques, pacientes y estados de asistencia."
+              />
+            ) : appointmentsError ? (
+              <OperationalState
+                kind="error"
+                title="No pudimos cargar la agenda"
+                description={appointmentsError}
+                onAction={onRetryAppointments}
+              />
             ) : (
               <div className="space-y-8 pb-10">
-                {/* Grid de Bloques (GestiÃ³n) */}
+                {/* Grid de Bloques (Gesti?n) */}
                 <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                   {standardSlots.map((templateSlot) => {
                     const realSlot = activeAppointments.find(
@@ -269,7 +283,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                   ).length === 0 ? (
                     <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <p className="text-slate-400 italic text-sm">
-                        No hay pacientes agendados para este dÃ­a.
+                        No hay pacientes agendados para este día.
                       </p>
                     </div>
                   ) : (
@@ -308,9 +322,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                     entityType="appointment"
                                     entityId={apt.id}
                                     patientId={apt.patientId}
-                                    auditLabel="Revelacion de RUT desde agenda."
+                                    auditLabel="Revelaci?n de RUT desde agenda."
                                   />
-                                  {" • "}
+                                  {" | "}
                                   <SensitiveField
                                     value={apt.patientPhone}
                                     kind="phone"
@@ -318,7 +332,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                     entityType="appointment"
                                     entityId={apt.id}
                                     patientId={apt.patientId}
-                                    auditLabel="Revelacion de telefono desde agenda."
+                                    auditLabel="Revelaci?n de tel?fono desde agenda."
                                   />
                                 </p>
                               </div>
@@ -338,15 +352,15 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                         className={`px-3 py-1.5 text-xs font-bold transition-colors ${apt.attendanceStatus === "completed" ? "bg-emerald-500 text-white" : "hover:bg-emerald-50 text-slate-500"}`}
                                         title="Atendido"
                                       >
-                                        âœ“
+                                        OK
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => onToggleAttendance(apt, "no-show")}
                                         className={`px-3 py-1.5 text-xs font-bold transition-colors border-l border-r border-slate-200 ${apt.attendanceStatus === "no-show" ? "bg-rose-500 text-white" : "hover:bg-rose-50 text-slate-500"}`}
-                                        title="No Show"
+                                        title="No show"
                                       >
-                                        âœ•
+                                        NS
                                       </button>
                                       <button
                                         type="button"
@@ -383,4 +397,3 @@ const AgendaView: React.FC<AgendaViewProps> = ({
 };
 
 export default AgendaView;
-
