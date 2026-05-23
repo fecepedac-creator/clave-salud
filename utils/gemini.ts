@@ -54,3 +54,35 @@ Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook
     );
   }
 }
+
+/**
+ * Genera un resumen clínico estructurado a partir de una anamnesis extensa.
+ */
+export async function summarizeAnamnesis(rawText: string): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `
+Actúa como un Médico Especialista Senior. Tu tarea es resumir la siguiente anamnesis de un paciente para la ficha clínica.
+
+DIRECTRICES:
+1. Usa terminología médica profesional (ej: "cefalea" en lugar de "dolor de cabeza").
+2. Estructura el resumen en: Motivo de consulta, Síntomas principales, Evolución y Hallazgos relevantes.
+3. Sé conciso pero no omitas datos críticos (ej: alergias, antecedentes mencionados).
+4. El tono debe ser objetivo y clínico.
+5. No inventes información. Si algo no está claro, omítelo.
+
+TEXTO A RESUMIR:
+"${rawText}"
+
+Responde ÚNICAMENTE con el resumen estructurado listo para la ficha. No incluyas comentarios adicionales.
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    console.error("Error summarizing anamnesis:", error);
+    throw new Error("Error al procesar el resumen con IA.");
+  }
+}

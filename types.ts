@@ -84,7 +84,8 @@ export type AuditEntityType =
   | "consultation"
   | "appointment"
   | "document"
-  | "centerSettings";
+  | "centerSettings"
+  | "staff";
 
 export type AuditAction =
   | "ACCESS"
@@ -173,6 +174,14 @@ export interface Attachment {
   url: string;
 }
 
+export interface SignatureData {
+  hash: string;
+  signedAt: string;
+  professionalName: string;
+  professionalRut: string;
+  verificationCode: string; // 8-char short code
+}
+
 export interface Prescription {
   id: string;
   type:
@@ -199,6 +208,7 @@ export interface Prescription {
   metadata?: {
     selectedExams?: string[];
   } & JsonMap;
+  signature?: SignatureData;
 }
 
 export interface ClinicalTemplate {

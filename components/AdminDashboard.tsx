@@ -49,6 +49,8 @@ import {
   Timestamp,
   updateDoc,
   query,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
@@ -66,6 +68,7 @@ import AdminCommandCenter from "../features/admin/components/AdminCommandCenter"
 import { WhatsappSettings } from "../features/admin/components/WhatsappSettings";
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
 import { AdminAgenda } from "../features/admin/components/AdminAgenda";
+import CampaignManager from "./CampaignManager";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -120,7 +123,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     | "audit"
     | "preadmissions"
     | "services"
-    | "performance";
+    | "performance"
+    | "campaigns";
 
   const userRoles = currentUser?.roles || [];
   const isSecretary = userRoles.some((r) => {
@@ -193,9 +197,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (!db || !resolvedCenterId) return;
     const q = collection(db, "centers", resolvedCenterId, "services");
-    return onSnapshot(q, (snap) => {
-      const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MedicalService);
-      setMedicalServices(raw.toSorted((a, b) => (a.name || "").localeCompare(b.name || "")));
+    return onSnapshot(q, (snapshot) => {
+      const servicesData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as MedicalService));
+      const sortedServices = [...servicesData].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      setMedicalServices(sortedServices);
     });
   }, [resolvedCenterId]);
 
@@ -690,6 +695,14 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           >
             <TrendingUp className="w-4 h-4" /> Rendimiento
           </button>
+          <button
+            onClick={() => setActiveTab("campaigns")}
+            disabled={!hasActiveCenter}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "campaigns" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Campañas de Marketing" : "Selecciona un centro activo"}
+          >
+            <TrendingUp className="w-4 h-4" /> Campañas IA
+          </button>
         </div>
       </div>
 
@@ -927,6 +940,13 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             doctors={doctors}
             showToast={showToast}
           />
+        </div>
+      )}
+
+      {/* CAMPAIGNS IA */}
+      {activeTab === "campaigns" && (
+        <div className="animate-fadeIn min-h-[600px]">
+          <CampaignManager centerId={resolvedCenterId} />
         </div>
       )}
 

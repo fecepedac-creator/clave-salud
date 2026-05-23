@@ -14,7 +14,7 @@ import {
   SMOKING_STATUS_OPTIONS,
   ALCOHOL_STATUS_OPTIONS,
 } from "../constants";
-import { generateId } from "../utils";
+import { generateId, maskPhone } from "../utils";
 import {
   Users,
   Activity,
@@ -34,6 +34,7 @@ import AutocompleteInput from "./AutocompleteInput";
 
 interface PatientSidebarProps {
   selectedPatient: Patient;
+  isPiiMasked: boolean;
   isEditingPatient: boolean;
   toggleEditPatient: () => void;
   handleEditPatientField: (field: keyof Patient, value: any) => void;
@@ -46,6 +47,7 @@ interface PatientSidebarProps {
 
 const PatientSidebar: React.FC<PatientSidebarProps> = ({
   selectedPatient,
+  isPiiMasked,
   isEditingPatient,
   toggleEditPatient,
   handleEditPatientField,
@@ -849,7 +851,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                 onChange={(e) => handleEditPatientField("phone", e.target.value)}
               />
             ) : (
-              <span>{selectedPatient.phone || "-"}</span>
+              <span>{isPiiMasked ? maskPhone(selectedPatient.phone || "") : (selectedPatient.phone || "-")}</span>
             )}
           </div>
 

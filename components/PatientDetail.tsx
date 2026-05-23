@@ -5,6 +5,7 @@ import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAudit
 import { ChevronDown, FileText, Users } from "lucide-react";
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface GeneratedByInfo {
   name: string;
@@ -37,6 +38,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   const [savingCareTeam, setSavingCareTeam] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [isCareTeamExpanded, setIsCareTeamExpanded] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   useEffect(() => {
     if (!patient || !centerId) return;
@@ -103,15 +105,12 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   const handleDownload = () => {
     if (!patient) return;
     const total = filteredConsultations.length;
-    let toExport = filteredConsultations;
     if (total > 50) {
-      const exportAll = window.confirm(
-        "Este paciente tiene muchas atenciones. ¿Deseas exportar todo? (puede tardar)\n\nAceptar: Exportar TODO\nCancelar: Exportar últimas 20"
-      );
-      toExport = exportAll ? filteredConsultations : filteredConsultations.slice(0, 20);
+      setIsExportModalOpen(true);
+    } else {
+      setSelectedConsultations(filteredConsultations);
+      setIsPrintOpen(true);
     }
-    setSelectedConsultations(toExport);
-    setIsPrintOpen(true);
   };
 
   if (!patient) return null;
@@ -286,6 +285,20 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
           )}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="Exportar Ficha Clínica"
+        message={`Este paciente tiene un total de ${filteredConsultations.length} consultas registradas. ¿Deseas exportar el historial completo o solo las 20 más recientes para agilizar la descarga?`}
+        type="export-options"
+        onConfirm={(option) => {
+          setIsExportModalOpen(false);
+          const toExport = option === "all" ? filteredConsultations : filteredConsultations.slice(0, 20);
+          setSelectedConsultations(toExport);
+          setIsPrintOpen(true);
+        }}
+      />
     </div>
   );
 };

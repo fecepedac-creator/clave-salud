@@ -225,7 +225,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     {/* QR Verification (Placeholder for real URL) */}
                     <div className="bg-white p-1 border border-slate-200 rounded">
                       <QRCodeComponent
-                        value={`https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
+                        value={doc.signature 
+                          ? `https://clavesalud.cl/v/${doc.signature.hash}` 
+                          : `https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
                         size={64}
                       />
                     </div>
@@ -241,6 +243,12 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                         <br />
                         autenticidad de este documento.
                       </p>
+                      {doc.signature && (
+                        <div className="mt-2 pt-2 border-t border-slate-100 text-[7px] font-mono text-slate-400 max-w-[150px]">
+                          <p className="truncate">HASH: {doc.signature.hash}</p>
+                          <p>VERIFICACIÓN: {doc.signature.verificationCode}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -24,6 +24,7 @@ import {
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
+import { ConfirmModal } from "./ConfirmModal";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
@@ -210,6 +211,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const [saModalConfig, setSaModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "confirm" | "text-prompt";
+    warningText?: string;
+    onConfirm: (value?: any) => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "confirm",
+    onConfirm: () => {},
+  });
   const previewRoles = useMemo(
     () => ROLE_CATALOG, // NOW INCLUDES ALL ROLES (including ADMIN_CENTRO)
     []
@@ -407,14 +422,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setCommCenterId(centerContextId);
   }, [centerContextId]);
 
-  const promptChangeReason = (label: string) => {
-    const reason = window.prompt(`Indica el motivo para ${label}:`);
-    if (!reason || !reason.trim()) {
-      showToast("Debes indicar un motivo para continuar.", "warning");
-      return null;
-    }
-    return reason.trim();
-  };
+
 
   const fetchCommHistory = async (centerId: string) => {
     if (demoMode) {
@@ -769,10 +777,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setLastInviteBody("");
   };
 
-  const handleSaveCenter = async () => {
+  const handleSaveCenter = async (confirmedReason?: string) => {
     if (!editingCenter) return;
-
-    setIsUploadingLogo(true);
 
     try {
       const name = (isCreating ? newCenterName : editingCenter.name).trim();
@@ -784,6 +790,35 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
 
       const centerId = isCreating ? `c_${uidShort()}` : editingCenter.id;
+
+      // Check if reason is required
+      if (!isCreating && !confirmedReason) {
+        const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
+        const finalBilling = (editingCenter as any).billing || {};
+        const previousBilling = previous?.billing || {};
+        const isActiveChanged =
+          previous && !!(previous as any).isActive !== !!(editingCenter as any).isActive;
+        const billingChanged =
+          previousBilling?.plan !== finalBilling?.plan ||
+          previousBilling?.monthlyUF !== finalBilling?.monthlyUF ||
+          previousBilling?.billingStatus !== finalBilling?.billingStatus;
+
+        if (isActiveChanged || billingChanged) {
+          setSaModalConfig({
+            isOpen: true,
+            title: "Justificación de Modificación",
+            message: "Debe indicar el motivo para modificar el estado o facturación del centro.",
+            type: "text-prompt",
+            onConfirm: (reason: string) => {
+              setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+              void handleSaveCenter(reason);
+            },
+          });
+          return;
+        }
+      }
+
+      setIsUploadingLogo(true);
 
       let finalLogoUrl = (editingCenter as any).logoUrl || "";
       const prevLogoUrl =
@@ -841,21 +876,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           : (editingCenter as any).subscription,
       };
 
-      if (!isCreating) {
-        const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
-        const isActiveChanged =
-          previous && !!(previous as any).isActive !== !!(finalCenter as any).isActive;
-        const billingPrev = (previous as any)?.billing || {};
-        const billingNext = (finalCenter as any)?.billing || {};
-        const billingChanged =
-          billingPrev?.plan !== billingNext?.plan ||
-          billingPrev?.monthlyUF !== billingNext?.monthlyUF ||
-          billingPrev?.billingStatus !== billingNext?.billingStatus;
-        if (isActiveChanged || billingChanged) {
-          const reason = promptChangeReason("modificar estado o facturación del centro");
-          if (!reason) return;
-          (finalCenter as any).auditReason = reason;
-        }
+      if (!isCreating && confirmedReason) {
+        (finalCenter as any).auditReason = confirmedReason;
       }
 
       await onUpdateCenters([finalCenter as any]);
@@ -887,19 +909,26 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const handleDeleteCenter = async (id: string) => {
+  const handleDeleteCenter = (id: string) => {
     if (!id) return;
-    if (!window.confirm("¿Eliminar este centro? (no se puede deshacer)")) return;
-    const reason = promptChangeReason("eliminar el centro");
-    if (!reason) return;
-    try {
-      await onDeleteCenter(id, reason);
-      showToast("Centro eliminado", "success");
-      if (financeCenterId === id) setFinanceCenterId(centers?.[0]?.id || "");
-      if (commCenterId === id) setCommCenterId(centers?.[0]?.id || "");
-    } catch (e: any) {
-      showToast(e?.message || "Error al eliminar", "error");
-    }
+    setSaModalConfig({
+      isOpen: true,
+      title: "Eliminar Centro Médico",
+      message: "¿Está seguro de que desea eliminar este centro? Esta acción no se puede deshacer.",
+      warningText: "Todos los datos asociados al centro serán permanentemente archivados o eliminados.",
+      type: "text-prompt",
+      onConfirm: async (reason: string) => {
+        setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await onDeleteCenter(id, reason);
+          showToast("Centro eliminado", "success");
+          if (financeCenterId === id) setFinanceCenterId(centers?.[0]?.id || "");
+          if (commCenterId === id) setCommCenterId(centers?.[0]?.id || "");
+        } catch (e: any) {
+          showToast(e?.message || "Error al eliminar", "error");
+        }
+      },
+    });
   };
 
   const updateCenterPatch = async (
@@ -950,7 +979,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const updateBilling = async (centerId: string, billingPatch: Partial<BillingInfo>) => {
+  const updateBilling = async (centerId: string, billingPatch: Partial<BillingInfo>, confirmedReason?: string) => {
     const center = centers.find((c) => c.id === centerId) as CenterExt | undefined;
     if (!center) {
       showToast("Centro no encontrado", "error");
@@ -959,13 +988,23 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const requiresReason = ["plan", "monthlyUF", "billingStatus"].some(
       (key) => key in billingPatch
     );
-    let auditReason: string | null = null;
-    if (requiresReason) {
-      auditReason = promptChangeReason("cambiar información de facturación");
-      if (!auditReason) return;
+    
+    if (requiresReason && !confirmedReason) {
+      setSaModalConfig({
+        isOpen: true,
+        title: "Justificación de Modificación de Facturación",
+        message: "Debe indicar el motivo para cambiar la información de facturación del centro.",
+        type: "text-prompt",
+        onConfirm: (reason: string) => {
+          setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+          void updateBilling(centerId, billingPatch, reason);
+        },
+      });
+      return;
     }
+
     const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
-    await updateCenterPatch(centerId, { billing }, auditReason ?? undefined);
+    await updateCenterPatch(centerId, { billing }, confirmedReason ?? undefined);
   };
 
   const handleSendNotification = async () => {
@@ -1508,6 +1547,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
         Reportar Problema
       </a>
+      <ConfirmModal
+        isOpen={saModalConfig.isOpen}
+        onClose={() => setSaModalConfig((prev) => ({ ...prev, isOpen: false }))}
+        title={saModalConfig.title}
+        message={saModalConfig.message}
+        type={saModalConfig.type}
+        onConfirm={saModalConfig.onConfirm}
+        warningText={saModalConfig.warningText}
+      />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import LegalLinks from "../../../components/LegalLinks";
 
 interface Appointment {
@@ -16,6 +17,8 @@ interface DoctorMainHeaderProps {
   appointments: Appointment[];
   doctorId: string;
   onOpenLegal: (type: "terms" | "privacy") => void;
+  isPiiMasked?: boolean;
+  setIsPiiMasked?: (b: boolean) => void;
 }
 
 const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
@@ -24,6 +27,8 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
   appointments,
   doctorId,
   onOpenLegal,
+  isPiiMasked = true,
+  setIsPiiMasked,
 }) => {
   const [centerLogoError, setCenterLogoError] = useState(false);
 
@@ -65,6 +70,17 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
           <span className="w-1.5 h-1.5 rounded-full bg-health-500 animate-pulse"></span>
           {todayCount} Citas Hoy
         </div>
+
+        {setIsPiiMasked && (
+          <button
+            onClick={() => setIsPiiMasked(!isPiiMasked)}
+            className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm active:scale-95 gap-2 text-xs font-bold"
+            title={isPiiMasked ? "Mostrar datos sensibles (RUT/Tel)" : "Ocultar datos sensibles (RUT/Tel)"}
+          >
+            {isPiiMasked ? <EyeOff className="w-4 h-4 text-slate-500" /> : <Eye className="w-4 h-4 text-indigo-600" />}
+            <span className="hidden sm:inline">{isPiiMasked ? "Modo Seguro" : "Modo Abierto"}</span>
+          </button>
+        )}
 
         <div className="hidden xs:block border-l border-slate-100 pl-3">
           <LegalLinks

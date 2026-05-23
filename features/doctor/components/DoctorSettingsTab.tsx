@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { Doctor, ExamProfile, ExamDefinition, ClinicalTemplate } from "../../../types";
+import { ConfirmModal } from "../../../components/ConfirmModal";
 import { useToast } from "../../../components/Toast";
 import { generateId } from "../../../utils";
 import {
@@ -91,6 +92,18 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   setPwdState,
 }) => {
   const { showToast } = useToast();
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    warningText?: string;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
 
   // Handlers para Perfiles
   const toggleExamInTempProfile = (examId: string) => {
@@ -128,19 +141,34 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteProfile = (id: string) => {
-    if (globalThis.confirm("¿Eliminar perfil de exámenes?")) {
-      const updated = myExamProfiles.filter((p) => p.id !== id);
-      setMyExamProfiles(updated);
-      onUpdateDoctor({ id: doctorId, savedExamProfiles: updated });
-    }
+    setModalConfig({
+      isOpen: true,
+      title: "Eliminar Perfil de Exámenes",
+      message: "¿Está seguro de que desea eliminar este perfil de exámenes?",
+      warningText: "Esta acción eliminará la agrupación de exámenes. Sus exámenes individuales no se verán afectados.",
+      onConfirm: () => {
+        const updated = myExamProfiles.filter((p) => p.id !== id);
+        setMyExamProfiles(updated);
+        onUpdateDoctor({ id: doctorId, savedExamProfiles: updated });
+        showToast("Perfil de exámenes eliminado", "success");
+        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const handleResetProfiles = () => {
-    if (globalThis.confirm("¿Restaurar los perfiles de exámenes por defecto?")) {
-      setMyExamProfiles(EXAM_PROFILES);
-      onUpdateDoctor({ id: doctorId, savedExamProfiles: EXAM_PROFILES });
-      showToast("Perfiles restaurados.", "success");
-    }
+    setModalConfig({
+      isOpen: true,
+      title: "Restaurar Perfiles por Defecto",
+      message: "¿Está seguro de que desea restaurar los perfiles de exámenes por defecto?",
+      warningText: "Esta acción reemplazará todos sus perfiles actuales por la configuración inicial del sistema.",
+      onConfirm: () => {
+        setMyExamProfiles(EXAM_PROFILES);
+        onUpdateDoctor({ id: doctorId, savedExamProfiles: EXAM_PROFILES });
+        showToast("Perfiles restaurados.", "success");
+        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   // Custom Exams
@@ -162,19 +190,27 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteCustomExam = (examId: string) => {
-    if (globalThis.confirm("¿Eliminar este examen personalizado?")) {
-      const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
-      const updatedProfiles = myExamProfiles.map((p) => ({
-        ...p,
-        exams: p.exams.filter((eid) => eid !== examId),
-      }));
-      setMyExamProfiles(updatedProfiles);
-      onUpdateDoctor({
-        id: doctorId,
-        savedExamProfiles: updatedProfiles,
-        customExams: updatedCustoms,
-      });
-    }
+    setModalConfig({
+      isOpen: true,
+      title: "Eliminar Examen Personalizado",
+      message: "¿Está seguro de que desea eliminar este examen personalizado?",
+      warningText: "Este examen también será removido de cualquier perfil de exámenes que lo contenga actualmente.",
+      onConfirm: () => {
+        const updatedCustoms = (currentUser?.customExams || []).filter((e) => e.id !== examId);
+        const updatedProfiles = myExamProfiles.map((p) => ({
+          ...p,
+          exams: p.exams.filter((eid) => eid !== examId),
+        }));
+        setMyExamProfiles(updatedProfiles);
+        onUpdateDoctor({
+          id: doctorId,
+          savedExamProfiles: updatedProfiles,
+          customExams: updatedCustoms,
+        });
+        showToast("Examen personalizado eliminado", "success");
+        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   // Plantillas
@@ -207,11 +243,19 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
   };
 
   const handleDeleteTemplate = (id: string) => {
-    if (globalThis.confirm("¿Eliminar plantilla?")) {
-      const updated = myTemplates.filter((t) => t.id !== id);
-      setMyTemplates(updated);
-      onUpdateDoctor({ id: doctorId, savedTemplates: updated });
-    }
+    setModalConfig({
+      isOpen: true,
+      title: "Eliminar Plantilla Clínica",
+      message: "¿Está seguro de que desea eliminar esta plantilla clínica?",
+      warningText: "Esta acción no se puede deshacer y la plantilla no volverá a estar disponible para su uso.",
+      onConfirm: () => {
+        const updated = myTemplates.filter((t) => t.id !== id);
+        setMyTemplates(updated);
+        onUpdateDoctor({ id: doctorId, savedTemplates: updated });
+        showToast("Plantilla eliminada", "success");
+        setModalConfig((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const handleImportTemplate = (template: ClinicalTemplate) => {
@@ -504,6 +548,16 @@ export const DoctorSettingsTab: React.FC<DoctorSettingsTabProps> = ({
           </Card>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type="confirm"
+        onConfirm={modalConfig.onConfirm}
+        warningText={modalConfig.warningText}
+      />
     </div>
   );
 };

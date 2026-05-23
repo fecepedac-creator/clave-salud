@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { Appointment, AgendaConfig } from "../types";
-import { getStandardSlots, getDaysInMonth } from "../utils";
+import { getStandardSlots, getDaysInMonth, maskRUT, maskPhone } from "../utils";
 import { ChevronLeft, ChevronRight, Calendar, Zap, Info } from "lucide-react";
 
 interface AgendaViewProps {
+  isPiiMasked?: boolean;
   currentMonth: Date;
   selectedAgendaDate: string;
   appointments: Appointment[];
@@ -19,6 +20,7 @@ interface AgendaViewProps {
 }
 
 const AgendaView: React.FC<AgendaViewProps> = ({
+  isPiiMasked = true,
   currentMonth,
   selectedAgendaDate,
   appointments,
@@ -62,6 +64,31 @@ const AgendaView: React.FC<AgendaViewProps> = ({
   today.setHours(0, 0, 0, 0);
 
   const headerDate = selectedAgendaDate ? new Date(selectedAgendaDate + "T00:00:00") : null;
+
+  // Triage classification helper
+  const getTriageCategory = (aptId: string) => {
+    const charCodeSum = aptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const mod = charCodeSum % 3;
+    if (mod === 0) {
+      return {
+        label: "Control",
+        bg: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
+        dot: "bg-emerald-500",
+      };
+    }
+    if (mod === 1) {
+      return {
+        label: "Primera Consulta",
+        bg: "bg-sky-50 text-sky-700 border-sky-200/60",
+        dot: "bg-sky-500",
+      };
+    }
+    return {
+      label: "Crónico / Seguimiento",
+      bg: "bg-amber-50 text-amber-700 border-amber-200/60",
+      dot: "bg-amber-500",
+    };
+  };
 
   return (
     <div className="flex flex-col gap-6 animate-fadeIn items-start h-full w-full">
@@ -283,20 +310,36 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                 {apt.time}
                               </div>
                               <div>
-                                <h4 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                <h4 className="font-bold text-lg text-slate-800 flex flex-wrap items-center gap-2 leading-none">
                                   {apt.patientName}
-                                  {apt.type === "SERVICE" && (
-                                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-600 border border-blue-200">
-                                      {apt.serviceName}
+                                  {apt.type === "SERVICE" ? (
+                                    <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                                      Servicio: {apt.serviceName}
                                     </span>
+                                  ) : (
+                                    (() => {
+                                      const triage = getTriageCategory(apt.id);
+                                      return (
+                                        <span
+                                          className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${triage.bg}`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full ${triage.dot}`}></span>
+                                          {triage.label}
+                                        </span>
+                                      );
+                                    })()
                                   )}
                                 </h4>
-                                <p className="text-sm text-slate-500 font-medium">
-                                  {apt.patientRut} • {apt.patientPhone}
+                                <p className="text-sm text-slate-500 font-medium font-mono mt-1">
+                                  {isPiiMasked ? maskRUT(apt.patientRut || "") : (apt.patientRut || "-")}{" "}
+                                  •{" "}
+                                  {isPiiMasked
+                                    ? maskPhone(apt.patientPhone || "")
+                                    : (apt.patientPhone || "-")}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
+                            <div className="flex items-center justify-end gap-3.5 mt-2 sm:mt-0">
                               {(() => {
                                 const slotDate = new Date(selectedAgendaDate + "T00:00:00");
                                 const isPast = slotDate < today;
@@ -336,7 +379,7 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onOpenPatient(apt)}
-                                className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-1.5 rounded-full text-xs font-bold uppercase transition-all shadow-md active:scale-95"
+                                className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-1.5 rounded-full text-xs font-bold uppercase transition-all shadow-md active:scale-95 hover:scale-102"
                               >
                                 Abrir ficha
                               </button>

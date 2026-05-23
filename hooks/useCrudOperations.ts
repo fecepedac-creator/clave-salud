@@ -25,28 +25,7 @@ export function useCrudOperations(
     "Por normativa, la ficha clínica debe conservarse por al menos 15 años. Archivar no elimina definitivamente.";
   const RETENTION_YEARS = 15;
 
-  const requestDeleteReason = (label: string) => {
-    const selection = window.prompt(
-      `${ARCHIVE_WARNING}\n\nMotivo para archivar ${label}:\n1) Duplicado\n2) Error administrativo\n3) Solicitud del paciente (Ley 19.628)\n4) Otro (especificar)\n\nEscribe el número o un motivo libre:`
-    );
-    if (!selection || !selection.trim()) {
-      showToast("Debes indicar un motivo para archivar.", "warning");
-      return null;
-    }
-    const normalized = selection.trim();
-    if (normalized === "1") return "Duplicado";
-    if (normalized === "2") return "Error administrativo";
-    if (normalized === "3") return "Solicitud del paciente (Ley 19.628)";
-    if (normalized === "4") {
-      const other = window.prompt("Especifica el motivo:");
-      if (!other || !other.trim()) {
-        showToast("Debes indicar un motivo para archivar.", "warning");
-        return null;
-      }
-      return `Otro: ${other.trim()}`;
-    }
-    return normalized;
-  };
+
 
   const isOverRetention = (createdAt?: any) => {
     if (!createdAt) return false;
@@ -143,7 +122,11 @@ export function useCrudOperations(
   );
 
   const deletePatient = useCallback(
-    async (id: string) => {
+    async (id: string, reason: string) => {
+      if (!reason || !reason.trim()) {
+        showToast("Se requiere un motivo para archivar el paciente.", "warning");
+        return;
+      }
       const patientSnap = await getDoc(doc(db, "patients", id));
       const patientData = patientSnap.exists() ? (patientSnap.data() as any) : null;
       if (!patientData) {
@@ -166,14 +149,11 @@ export function useCrudOperations(
         return;
       }
 
-      const reason = requestDeleteReason("este paciente");
-      if (!reason) return;
-
       await updateDoc(doc(db, "patients", id), {
         active: false,
         deletedAt: serverTimestamp(),
         deletedBy: authUser?.uid ?? "unknown",
-        deleteReason: reason,
+        deleteReason: reason.trim(),
       });
 
       await updateAuditLog({
@@ -187,10 +167,10 @@ export function useCrudOperations(
         entityId: id,
         patientId: id,
         details: "Archivo de ficha clínica (root).",
-        metadata: { deleteReason: reason },
+        metadata: { deleteReason: reason.trim() },
       });
     },
-    [activeCenterId, requestDeleteReason, updateAuditLog]
+    [activeCenterId, updateAuditLog]
   );
 
   const updateStaff = useCallback(
@@ -275,8 +255,12 @@ export function useCrudOperations(
   );
 
   const deleteAppointment = useCallback(
-    async (id: string, reasonOverride?: string) => {
+    async (id: string, reason: string) => {
       if (!requireCenter("archivar citas")) return;
+      if (!reason || !reason.trim()) {
+        showToast("Se requiere un motivo para archivar la cita.", "warning");
+        return;
+      }
       const apptSnap = await getDoc(doc(db, "centers", activeCenterId, "appointments", id));
       const apptData = apptSnap.exists() ? (apptSnap.data() as any) : null;
       if (isOverRetention(apptData?.createdAt)) {
@@ -299,13 +283,11 @@ export function useCrudOperations(
         });
         return;
       }
-      const reason = reasonOverride ?? requestDeleteReason("esta cita");
-      if (!reason) return;
       await updateDoc(doc(db, "centers", activeCenterId, "appointments", id), {
         active: false,
         deletedAt: serverTimestamp(),
         deletedBy: authUser?.uid ?? "unknown",
-        deleteReason: reason,
+        deleteReason: reason.trim(),
       });
       await updateAuditLog({
         id: generateId(),
@@ -318,10 +300,10 @@ export function useCrudOperations(
         entityId: id,
         patientId: apptData?.patientId,
         details: "Archivo de cita.",
-        metadata: { deleteReason: reason },
+        metadata: { deleteReason: reason.trim() },
       });
     },
-    [activeCenterId, requireCenter, requestDeleteReason, updateAuditLog]
+    [activeCenterId, requireCenter, updateAuditLog]
   );
 
   const syncAppointments = useCallback(

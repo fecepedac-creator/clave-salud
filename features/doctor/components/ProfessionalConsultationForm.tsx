@@ -10,7 +10,10 @@ import {
   Calendar,
   Save,
   ExternalLink,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
+import { summarizeAnamnesis } from "../../../utils/gemini";
 import {
   Consultation,
   Patient,
@@ -84,6 +87,20 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
 }) => {
   const [expandedSection, setExpandedSection] = useState<string>("anamnesis");
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
+  const handleSummarize = async () => {
+    if (!newConsultation.anamnesis || isSummarizing) return;
+    setIsSummarizing(true);
+    try {
+      const summary = await summarizeAnamnesis(newConsultation.anamnesis);
+      setNewConsultation((prev) => ({ ...prev, anamnesis: summary }));
+    } catch (error) {
+      console.error("Error summarizing anamnesis:", error);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
 
   const toggleSection = (section: string) =>
     setExpandedSection((prev) => (prev === section ? prev : section));
@@ -257,9 +274,24 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                     />
                   </div>
                   <div className={isPsych ? "col-span-full" : ""}>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                      {labels.anamnesis}
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-bold text-slate-700">
+                        {labels.anamnesis}
+                      </label>
+                      <button
+                        onClick={handleSummarize}
+                        disabled={isSummarizing || !newConsultation.anamnesis}
+                        className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                        title="Resumir anamnesis con IA"
+                      >
+                        {isSummarizing ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                        Asistente IA
+                      </button>
+                    </div>
                     <textarea
                       value={newConsultation.anamnesis || ""}
                       onChange={(e) =>
@@ -497,6 +529,8 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                           templates={myTemplates}
                           role={role}
                           currentDiagnosis={newConsultation.diagnosis}
+                          currentUser={currentUser}
+                          patient={selectedPatient}
                         />
                         {!canPrescribeDrugs && (
                           <p className="text-xs text-slate-400 mt-2 italic">

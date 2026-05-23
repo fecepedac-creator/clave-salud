@@ -20,6 +20,8 @@ import {
   applyWhatsappTemplate,
   openEmailCompose,
   getProfessionalPrefix,
+  maskRUT,
+  maskPhone,
 } from "../utils";
 import { DEFAULT_TEMPLATES, EXAM_PROFILES, TRACKED_EXAMS_OPTIONS } from "../constants";
 import { MessageCircle } from "lucide-react";
@@ -145,6 +147,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<
     "patients" | "agenda" | "reminders" | "settings" | "performance"
   >("patients");
+  const [isPiiMasked, setIsPiiMasked] = useState<boolean>(true);
 
   // Custom Hooks
   const {
@@ -879,8 +882,6 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
 
 
-  const { activeCenterId, activeCenter, hasActiveCenter } = useContext(CenterContext);
-  
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
@@ -904,6 +905,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           appointments={appointments}
           doctorId={doctorId}
           onOpenLegal={onOpenLegal}
+          isPiiMasked={isPiiMasked}
+          setIsPiiMasked={setIsPiiMasked}
         />
 
         <main className="flex-1 overflow-hidden flex flex-col">
@@ -953,6 +956,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               {selectedPatient ? (
                 <DoctorPatientRecord
                   selectedPatient={selectedPatient}
+                  isPiiMasked={isPiiMasked}
                   setSelectedPatient={setSelectedPatient}
                   isEditingPatient={isEditingPatient}
                   setIsEditingPatient={setIsEditingPatient}
@@ -1007,6 +1011,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               {/* CONTENT: PATIENTS LIST */}
               {activeTab === "patients" && (
                 <DoctorPatientsListTab
+                  isPiiMasked={isPiiMasked}
+                  setIsPiiMasked={setIsPiiMasked}
                   searchTerm={searchTerm}
                   setSearchTerm={setSearchTerm}
                   filteredPatients={filteredPatients}
@@ -1033,6 +1039,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
               {/* CONTENT: AGENDA VIEW */}
               {activeTab === "agenda" && moduleGuards.agenda && (
                 <DoctorAgendaTab
+                  isPiiMasked={isPiiMasked}
                   isAdministrativo={isAdministrativo}
                   clinicalDoctors={clinicalDoctors}
                   viewingDoctorId={viewingDoctorId}
@@ -1103,8 +1110,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                       <p className="font-bold text-slate-800">
                         {formatPersonName(slotModal.appointment.patientName)}
                       </p>
-                      <p className="text-sm text-slate-500">
-                        {slotModal.appointment.patientRut} • {slotModal.appointment.patientPhone}
+                      <p className="text-sm text-slate-500 font-mono">
+                        {isPiiMasked ? maskRUT(slotModal.appointment.patientRut) : (slotModal.appointment.patientRut || "-")} • {isPiiMasked ? maskPhone(slotModal.appointment.patientPhone) : (slotModal.appointment.patientPhone || "-")}
                       </p>
                       <div className="mt-2 text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded w-fit">
                         {slotModal.appointment.date} - {slotModal.appointment.time}

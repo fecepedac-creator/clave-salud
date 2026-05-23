@@ -84,10 +84,12 @@ export interface DoctorPatientRecordProps {
   onSaveExamOrderProfile?: (profile: { label: string; exams: string[] }) => void;
   onDeleteExamOrderProfile?: (id: string) => void;
   savedExamOrderProfiles?: Array<{ id: string; label: string; exams: string[] }>;
+  isPiiMasked: boolean;
 }
 
 export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
   selectedPatient,
+  isPiiMasked,
   setSelectedPatient,
   isEditingPatient,
   setIsEditingPatient,
@@ -243,6 +245,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
 
       <DoctorPatientHeader
         selectedPatient={selectedPatient}
+        isPiiMasked={isPiiMasked}
         setSelectedPatient={setSelectedPatient}
         isEditingPatient={isEditingPatient}
         setIsEditingPatient={setIsEditingPatient}
@@ -263,6 +266,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
         <div className="h-auto lg:h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
           <PatientSidebar
             selectedPatient={selectedPatient}
+            isPiiMasked={isPiiMasked}
             isEditingPatient={isEditingPatient}
             toggleEditPatient={() => {
               if (isEditingPatient) {

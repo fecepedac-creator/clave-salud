@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
-import { generateId } from "../utils";
+import { ClinicalTemplate, Prescription, ProfessionalRole, Doctor, Patient } from "../types";
+import { generateId, auditPrescription } from "../utils";
+import { signDocument } from "../utils/signature";
 import {
   FilePlus,
   Copy,
@@ -11,6 +12,9 @@ import {
   Sparkles,
   FileText,
   CheckSquare,
+  AlertTriangle,
+  ShieldAlert,
+  Info,
 } from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
@@ -26,6 +30,8 @@ interface PrescriptionManagerProps {
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
   currentDiagnosis?: string;
+  currentUser?: Doctor;
+  patient?: Patient;
 }
 
 const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
@@ -38,6 +44,8 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   templates,
   role: roleRaw,
   currentDiagnosis,
+  currentUser,
+  patient,
 }) => {
   const role: ProfessionalRole = String(roleRaw || "").toUpperCase() as any;
 
@@ -99,6 +107,9 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   }, [templates, currentPrescriptionType, role]);
 
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
+  const clinicalAlerts = useMemo(() => {
+    return auditPrescription(currentPrescriptionText, patient, currentDiagnosis);
+  }, [currentPrescriptionText, patient, currentDiagnosis]);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [templateSearchTerm, setTemplateSearchTerm] = useState("");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -154,14 +165,19 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
     }
   }, [currentPrescriptionType, currentDiagnosis]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!currentPrescriptionText.trim()) return;
+
+    const signature = (currentUser && patient) 
+      ? await signDocument(currentPrescriptionText, currentUser.fullName, currentUser.rut || currentUser.id) 
+      : undefined;
 
     const newDoc: Prescription = {
       id: generateId(),
       type: currentPrescriptionType,
       content: currentPrescriptionText,
       createdAt: new Date().toISOString(),
+      signature,
       metadata:
         pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined,
     };
@@ -357,6 +373,38 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           spellCheck={true}
           lang="es"
         />
+
+        {/* Auditor Alerts Container */}
+        {clinicalAlerts.length > 0 && (
+          <div className="mb-4 space-y-2 animate-fadeIn">
+            {clinicalAlerts.map((alert, idx) => {
+              let bg = "bg-blue-50/70 border-blue-200 text-blue-800";
+              let icon = <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />;
+              
+              if (alert.severity === "error") {
+                bg = "bg-red-50/70 border-red-200 text-red-800";
+                icon = <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+              } else if (alert.severity === "warning") {
+                bg = "bg-amber-50/70 border-amber-200 text-amber-800";
+                icon = <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />;
+              }
+
+              return (
+                <div
+                  key={idx}
+                  className={`p-3.5 border rounded-xl flex items-start gap-3 text-sm font-medium transition-all ${bg}`}
+                >
+                  {icon}
+                  <div>
+                    <strong className="block font-bold text-xs uppercase tracking-wider mb-0.5">{alert.title}</strong>
+                    <span className="text-xs leading-relaxed">{alert.message}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex justify-end">
           <button
             type="button"

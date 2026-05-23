@@ -5,6 +5,7 @@ import { useToast } from "../../../components/Toast";
 import { generateSlotId } from "../../../utils";
 
 interface DoctorAgendaTabProps {
+  isPiiMasked: boolean;
   isAdministrativo: boolean;
   clinicalDoctors: Doctor[];
   viewingDoctorId: string;
@@ -24,9 +25,11 @@ interface DoctorAgendaTabProps {
   onUpdateAppointments: (appointments: Appointment[]) => Promise<void>;
   setSlotModal: (modal: { isOpen: boolean; appointment: Appointment | null }) => void;
   handleOpenPatientFromAppointment: (patientId: string) => void;
+  onToggleAttendance?: (appointment: Appointment, status: string) => Promise<void>;
 }
 
 export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
+  isPiiMasked,
   isAdministrativo,
   clinicalDoctors,
   viewingDoctorId,
@@ -46,6 +49,7 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
   onUpdateAppointments,
   setSlotModal,
   handleOpenPatientFromAppointment,
+  onToggleAttendance,
 }) => {
   const { showToast } = useToast();
 
@@ -91,12 +95,14 @@ export const DoctorAgendaTab: React.FC<DoctorAgendaTabProps> = ({
         </div>
       ) : (
         <AgendaView
+          isPiiMasked={isPiiMasked}
           currentMonth={currentMonth}
           selectedAgendaDate={selectedAgendaDate}
           appointments={appointments}
           doctorId={effectiveDoctorId}
           agendaConfig={effectiveAgendaConfig}
           isSyncingAppointments={isSyncingAppointments}
+          onToggleAttendance={onToggleAttendance}
           onMonthChange={(inc) => {
             const newDate = new Date(currentMonth);
             newDate.setMonth(newDate.getMonth() + inc);
