@@ -435,6 +435,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           }
 
           .print-document {
+            display: block !important;
             width: 100% !important;
             max-width: none !important;
             box-shadow: none !important;
