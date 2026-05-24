@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
 import { Printer, FileText, X } from "lucide-react";
@@ -91,8 +92,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   const doctorSpecialty = propSpecialty || "MEDICINA GENERAL";
   const doctorInstitution = propInstitution || "";
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
       <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none">
         {/* Toolbar (Hidden in Print) */}
         <div className="bg-slate-800 p-4 flex justify-between items-center text-white print:hidden">
@@ -138,7 +139,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <img
                       src="/assets/logo.png"
                       alt="ClaveSalud"
-                      className="h-8 w-auto object-contain"
+                      width="120"
+                      height="30"
+                      className="h-8 w-auto object-contain max-w-[120px]"
+                      style={{ objectFit: "contain" }}
                     />
                     <div>
                       <h1 className="text-base font-serif font-bold text-slate-900 tracking-wide uppercase leading-tight">
@@ -166,7 +170,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <img
                       src={centerLogoUrl}
                       alt={centerName ? `Logo ${centerName}` : "Logo centro"}
-                      className="h-8 w-auto object-contain"
+                      width="120"
+                      height="30"
+                      className="h-8 w-auto object-contain max-w-[120px]"
+                      style={{ objectFit: "contain" }}
                       loading="lazy"
                       onError={(event) => {
                         event.currentTarget.style.display = "none";
@@ -306,23 +313,20 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             visibility: visible;
           }
 
-          /* Documento: márgenes internos adecuados para A5 */
+          /* Mantener dimensiones físicas A5 reales para evitar estiramientos en A4/Carta */
           .print-document {
-            width: 100% !important;
-            max-width: none !important;
+            width: 148mm !important;
+            height: 210mm !important;
+            max-width: 148mm !important;
+            min-height: 210mm !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
-            margin: 0 !important;
-
-            /* Para A5, 10–12mm suele verse mejor que 2.5cm */
+            margin: 0 auto !important; /* Centrado en caso de imprimir en A4 */
             padding: 10mm !important;
             font-size: 10.5pt;
             line-height: 1.3;
-
-            /* Evitar forzar 100vh (a veces rompe el preview) */
-            height: auto !important;
-            min-height: auto !important;
+            box-sizing: border-box !important;
 
             page-break-after: always;
             break-after: page;
@@ -335,7 +339,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 
