@@ -93,8 +93,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   const doctorInstitution = propInstitution || "";
 
   return createPortal(
-    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
-      <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none">
+    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block clavesalud-print-view">
+      <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none clavesalud-print-box">
         {/* Toolbar (Hidden in Print) */}
         <div className="bg-slate-800 p-4 flex justify-between items-center text-white print:hidden">
           <h3 className="font-bold text-lg flex items-center gap-2">
@@ -125,7 +125,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         </div>
 
         {/* Printable Area (Iterate over documents) */}
-        <div className="flex-1 overflow-auto bg-slate-100 p-6 flex flex-col items-center gap-6 print:p-0 print:bg-white print:block print:overflow-visible">
+        <div className="flex-1 overflow-auto bg-slate-100 p-6 flex flex-col items-center gap-6 print:p-0 print:bg-white print:block print:overflow-visible clavesalud-print-content">
           {docs.map((doc) => (
             <div
               key={doc.id}
@@ -294,23 +294,44 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             height: auto !important;
           }
 
-          /* Importante: NO ocultar #root, porque este modal vive dentro de #root.
-             Si lo ocultas, la vista previa de impresión queda en blanco. */
-          body * {
-            visibility: hidden;
+          /* Ocultar el root de la app y otros portales para evitar páginas en blanco */
+          body > *:not(.clavesalud-print-view) {
+            display: none !important;
           }
 
-          .print\\:block {
+          .clavesalud-print-view {
             display: block !important;
-            position: absolute;
-            inset: 0;
-            z-index: 9999;
-            visibility: visible;
+            position: static !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            overflow: visible !important;
           }
 
-          .print\\:block,
-          .print\\:block * {
-            visibility: visible;
+          .clavesalud-print-box {
+            display: block !important;
+            position: static !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: white !important;
+            overflow: visible !important;
+          }
+
+          .clavesalud-print-content {
+            display: block !important;
+            position: static !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: white !important;
           }
 
           /* Mantener dimensiones físicas A5 reales para evitar estiramientos en A4/Carta */
@@ -327,11 +348,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             font-size: 10.5pt;
             line-height: 1.3;
             box-sizing: border-box !important;
-
-            page-break-after: always;
-            break-after: page;
             position: relative !important;
             overflow: visible !important;
+          }
+
+          /* Forzar salto de página entre documentos, pero no al final */
+          .print-document:not(:last-child) {
+            page-break-after: always !important;
+            break-after: page !important;
           }
 
           .print\\:break-inside-avoid {
