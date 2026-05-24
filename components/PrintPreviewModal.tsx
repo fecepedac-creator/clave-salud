@@ -59,6 +59,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
+  const origin = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? window.location.origin
+    : "https://clavesalud-2.web.app";
+
   const downloadPDF = async () => {
     const { jsPDF } = await import("jspdf");
     const html2canvas = (await import("html2canvas")).default;
@@ -233,8 +237,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <div className="bg-white p-1 border border-slate-200 rounded">
                       <QRCodeComponent
                         value={doc.signature 
-                          ? `${window.location.origin}/v/${doc.signature.hash}` 
-                          : `${window.location.origin}/verify/${selectedPatient.id}/${doc.id}`}
+                          ? `${origin}/v/${doc.signature.hash}` 
+                          : `${origin}/verify/${selectedPatient.id}/${doc.id}`}
                         size={64}
                       />
                     </div>
