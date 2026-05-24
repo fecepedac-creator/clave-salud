@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Consultation, MedicalCenter, Patient, Prescription, SnomedConcept } from "../types";
-import { calculateAge } from "../utils";
-import { Printer } from "lucide-react";
+import { calculateAge, openEmailCompose } from "../utils";
+import { Printer, Mail, X } from "lucide-react";
 
 interface GeneratedByInfo {
   name: string;
@@ -66,25 +67,84 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
     return sortedConsultations.flatMap((consultation) => consultation.prescriptions || []);
   }, [sortedConsultations]);
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
+  const handleSendEmail = () => {
+    if (!patient) return;
+
+    const subject = `Ficha Clínica Completa - ${patient.fullName}`;
+    const lines: string[] = [];
+
+    lines.push(`FICHA CLÍNICA COMPLETA`);
+    lines.push(`Centro Médico: ${centerName}`);
+    if (centerRut) lines.push(`RUT Centro: ${centerRut}`);
+    lines.push(`Fecha de Emisión: ${formatDateTime(generatedAt)}`);
+    lines.push(`Emisor: ${generatedBy?.name ?? "No registrado"}`);
+    lines.push(`==========================================`);
+    lines.push(`DATOS DEL PACIENTE`);
+    lines.push(`Nombre: ${patient.fullName || "No registrado"}`);
+    lines.push(`RUT: ${patient.rut || "No registrado"}`);
+    lines.push(`Fecha de nacimiento: ${formatDate(patient.birthDate)} (${age !== null ? `${age} años` : "No registrado"})`);
+    lines.push(`Sexo: ${patient.gender || "No registrado"}`);
+    lines.push(`Teléfono: ${patient.phone || "No registrado"}`);
+    lines.push(`Email: ${patient.email || "No registrado"}`);
+    lines.push(`Dirección: ${patient.address || "No registrado"}`);
+    lines.push(`Antecedentes Médicos: ${formatList(patient.medicalHistory)}`);
+    lines.push(`Antecedentes Quirúrgicos: ${formatList(patient.surgicalHistory)}`);
+    lines.push(`Alergias: ${patient.allergies?.length ? patient.allergies.map((a) => `${a.substance} (${a.type})`).join(", ") : "No registrado"}`);
+    lines.push(`Fármacos en uso: ${patient.medications?.length ? patient.medications.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`).join(", ") : "No registrado"}`);
+    lines.push(`==========================================`);
+    lines.push(`HISTORIAL CLÍNICO`);
+
+    if (sortedConsultations.length === 0) {
+      lines.push("Sin atenciones registradas.");
+    } else {
+      sortedConsultations.forEach((c) => {
+        lines.push(`------------------------------------------`);
+        lines.push(`Fecha: ${formatDateTime(c.date)}`);
+        lines.push(`Profesional: ${c.professionalName || "No registrado"}`);
+        lines.push(`Motivo: ${c.reason || "No registrado"}`);
+        lines.push(`Anamnesis: ${c.anamnesis || "No registrado"}`);
+        lines.push(`Diagnóstico: ${c.diagnosis || "No registrado"}`);
+        if (c.bloodPressure || c.weight || c.height) {
+          lines.push(`Signos: PA: ${c.bloodPressure || "-"} | HGT: ${c.hgt || "-"} | Peso: ${c.weight || "-"} kg | Talla: ${c.height || "-"} cm`);
+        }
+      });
+    }
+
+    openEmailCompose({
+      to: patient.email || "",
+      subject,
+      body: lines.join("\n"),
+    });
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
       <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none">
         <div className="bg-slate-800 p-4 flex justify-between items-center text-white print:hidden">
           <h3 className="font-bold text-lg flex items-center gap-2">
-            <Printer className="w-5 h-5" />
+            <Printer className="w-5 h-5 text-indigo-400" />
             Ficha Clínica Completa
           </h3>
           <div className="flex gap-2">
             <button
               onClick={() => window.print()}
-              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold transition-colors"
+              className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm shadow-md active:scale-95"
             >
+              <Printer className="w-4 h-4" />
               Imprimir / Guardar PDF
             </button>
             <button
-              onClick={onClose}
-              className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-bold transition-colors"
+              onClick={handleSendEmail}
+              className="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm shadow-md active:scale-95"
             >
+              <Mail className="w-4 h-4" />
+              Enviar por Email
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm active:scale-95"
+            >
+              <X className="w-4 h-4" />
               Cerrar
             </button>
           </div>
@@ -354,7 +414,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 
