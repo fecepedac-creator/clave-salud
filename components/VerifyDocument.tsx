@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { doc, getDoc, collectionGroup, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   CheckCircle,
@@ -28,43 +28,103 @@ const VerifyDocument: React.FC<VerifyDocumentProps> = ({ onClose }) => {
         const isAgentTest = params.has("agent_test") || params.has("master_access");
 
         const pathParts = window.location.pathname.split("/");
-        // URL format: /verify/:patientId/:docId
-        const patientId = pathParts[2];
-        const docId = pathParts[3];
+        // Can be:
+        // /v/:hash -> pathParts[1] === "v", pathParts[2] === hash
+        // /verify/:patientId/:docId -> pathParts[1] === "verify", pathParts[2] === patientId, pathParts[3] === docId
 
-        if (!patientId || !docId) {
+        let patientId = "";
+        let docId = "";
+        let hash = "";
+
+        if (pathParts[1] === "v") {
+          hash = pathParts[2];
+        } else if (pathParts[1] === "verify") {
+          patientId = pathParts[2];
+          docId = pathParts[3];
+        }
+
+        if (!hash && (!patientId || !docId)) {
           setError("URL de verificación inválida.");
           setLoading(false);
           return;
         }
 
-        const patientRef = doc(db, "patients", patientId);
-        let patientData: any = null;
+        let foundPatient: any = null;
+        let foundPrescription: any = null;
 
-        try {
-          const snap = await getDoc(patientRef);
-          if (snap.exists()) {
-            patientData = snap.data();
+        if (hash) {
+          try {
+            const querySnapshot = await getDocs(collection(db, "patients"));
+            querySnapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              if (data.consultations) {
+                data.consultations.forEach((c: any) => {
+                  if (c.prescriptions) {
+                    const match = c.prescriptions.find((p: any) => p.signature?.hash === hash);
+                    if (match) {
+                      foundPatient = data;
+                      foundPrescription = match;
+                    }
+                  }
+                });
+              }
+            });
+          } catch (e) {
+            console.warn("Could not query patients by hash directly, checking fallback...");
           }
-        } catch (e) {
-          console.warn("Could not fetch patient, checking demo mode...");
+        } else if (patientId && docId) {
+          try {
+            const patientRef = doc(db, "patients", patientId);
+            const snap = await getDoc(patientRef);
+            if (snap.exists()) {
+              const data = snap.data();
+              foundPatient = data;
+              if (data.consultations) {
+                data.consultations.forEach((c: any) => {
+                  if (c.prescriptions) {
+                    const match = c.prescriptions.find((p: any) => p.id === docId);
+                    if (match) {
+                      foundPrescription = match;
+                    }
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            console.warn("Could not fetch specific patient, checking fallback...");
+          }
         }
 
-        if (!patientData && !isAgentTest) {
-          setError("Paciente no encontrado en nuestros registros.");
+        if (!foundPatient && !isAgentTest) {
+          setError("Documento no encontrado en nuestros registros o firma digital no válida.");
           setLoading(false);
           return;
         }
 
+        const patientName = foundPatient?.fullName || "Paciente de Prueba (Audit)";
+        const patientRut = foundPatient?.rut || "12.345.678-9";
+        const finalDocId = foundPrescription?.id || docId || hash || "doc_id_demo";
+        const finalDocType = foundPrescription?.type || "Receta Médica";
+        const finalDocContent = foundPrescription?.content || "Prescripción / Indicación de prueba";
+        const issuedBy = foundPrescription?.signature?.professionalName || "Dr. Felipe Cepeda Cea";
+        const issuedAt = foundPrescription?.signature?.signedAt 
+          ? new Date(foundPrescription.signature.signedAt).toLocaleDateString("es-CL")
+          : (foundPrescription?.createdAt 
+              ? new Date(foundPrescription.createdAt).toLocaleDateString("es-CL") 
+              : new Date().toLocaleDateString("es-CL"));
+
         setDocData({
-          docId,
-          patientName: patientData?.fullName || "Paciente de Prueba (Audit)",
-          patientRut: patientData?.rut || "12.345.678-9",
+          docId: finalDocId,
+          docType: finalDocType,
+          docContent: finalDocContent,
+          patientName,
+          patientRut,
           verifiedAt: new Date().toISOString(),
           status: "VALID",
-          issuedBy: "Dr. Felipe Cepeda Cea",
-          issuedAt: new Date().toISOString().split("T")[0],
+          issuedBy,
+          issuedAt,
           institution: "Centro Médico ClaveSalud",
+          signature: foundPrescription?.signature
         });
 
         setLoading(false);
@@ -206,6 +266,16 @@ const VerifyDocument: React.FC<VerifyDocumentProps> = ({ onClose }) => {
                           {new Date(docData.verifiedAt).toLocaleString("es-CL")}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Contenido de la Receta / Documento */}
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-6 text-left">
+                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">
+                      Detalle del Documento ({docData.docType || "Receta"})
+                    </p>
+                    <div className="text-sm font-serif text-slate-800 whitespace-pre-wrap border-l-2 border-indigo-500 pl-4 py-1 leading-relaxed">
+                      {docData.docContent || "Sin contenido registrado"}
                     </div>
                   </div>
                 </div>

@@ -229,12 +229,12 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               <footer className="mt-auto pt-8 flex justify-between items-end print:break-inside-avoid relative">
                 <div className="text-[11px] font-serif text-slate-600 flex flex-col gap-2">
                   <div className="flex items-start gap-3">
-                    {/* QR Verification (Placeholder for real URL) */}
+                    {/* QR Verification */}
                     <div className="bg-white p-1 border border-slate-200 rounded">
                       <QRCodeComponent
                         value={doc.signature 
-                          ? `https://clavesalud.cl/v/${doc.signature.hash}` 
-                          : `https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
+                          ? `${window.location.origin}/v/${doc.signature.hash}` 
+                          : `${window.location.origin}/verify/${selectedPatient.id}/${doc.id}`}
                         size={64}
                       />
                     </div>

@@ -202,7 +202,7 @@ const App: React.FC = () => {
        if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
        return "admin-dashboard" as ViewMode;
     }
-    if (path.startsWith("/verify/")) return "verify-document" as ViewMode;
+    if (path.startsWith("/verify/") || path.startsWith("/v/")) return "verify-document" as ViewMode;
     if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) return "doctor-login" as ViewMode;
     if (path.startsWith("/acceso-admin")) return "admin-login" as ViewMode;
     if (path.startsWith("/center/")) {
@@ -751,6 +751,10 @@ const App: React.FC = () => {
       else if (pathname.startsWith("/superadmin")) {
         setView("superadmin-dashboard" as ViewMode);
         setLoginViewPreference("superadmin-dashboard" as ViewMode);
+      }
+      // Handle Verification Intent
+      else if (pathname.startsWith("/verify/") || pathname.startsWith("/v/")) {
+        setView("verify-document" as ViewMode);
       }
       // Handle Home/Empty
       else {
