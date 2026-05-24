@@ -150,30 +150,39 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
 
         <div className="flex-1 overflow-auto bg-slate-100 p-6 flex flex-col items-center print:p-0 print:bg-white print:block print:overflow-visible">
           <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[18mm] relative flex flex-col shadow-lg print-document">
-            {/* Running Header for print (Opción B) */}
-            <div className="hidden print:flex print-running-header">
-              <img src="/assets/logo.png" alt="ClaveSalud" width="90" height="22" className="h-5 w-auto object-contain" style={{ objectFit: "contain" }} />
-              <span className="text-[9px] text-slate-500 font-medium">
-                Ficha Clínica Completa - {patient.fullName}
-              </span>
-              {center?.logoUrl ? (
-                <img
-                  src={center.logoUrl}
-                  alt={`Logo ${centerName}`}
-                  width="90"
-                  height="22"
-                  className="h-5 w-auto object-contain"
-                  style={{ objectFit: "contain" }}
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              ) : (
-                <span className="text-[9px] text-slate-500 font-bold">{centerName}</span>
-              )}
-            </div>
-
-            <header className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start gap-4 print:break-inside-avoid">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="hidden print:table-row">
+                  <td className="p-0 border-0">
+                    {/* Running Header for print (Opción B) */}
+                    <div className="print-running-header">
+                      <img src="/assets/logo.png" alt="ClaveSalud" width="90" height="22" className="h-5 w-auto object-contain" style={{ objectFit: "contain" }} />
+                      <span className="text-[9px] text-slate-500 font-medium">
+                        Ficha Clínica Completa - {patient.fullName}
+                      </span>
+                      {center?.logoUrl ? (
+                        <img
+                          src={center.logoUrl}
+                          alt={`Logo ${centerName}`}
+                          width="90"
+                          height="22"
+                          className="h-5 w-auto object-contain"
+                          style={{ objectFit: "contain" }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <span className="text-[9px] text-slate-500 font-bold">{centerName}</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="p-0 border-0">
+                    <header className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start gap-4 print:break-inside-avoid">
               <div className="flex flex-col gap-2">
                 <img src="/assets/logo.png" alt="ClaveSalud" width="160" height="40" className="h-10 w-auto object-contain max-w-[160px]" style={{ objectFit: "contain" }} />
                 <div>
@@ -386,6 +395,10 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
               <span>Documento generado desde ClaveSalud.</span>
               <span className="page-counter"></span>
             </footer>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -394,7 +407,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
         @media print {
           @page {
             size: A4 portrait;
-            margin: 26mm 18mm 18mm 18mm;
+            margin: 18mm;
           }
 
           html, body {
@@ -438,17 +451,13 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           }
 
           .print-running-header {
-            position: fixed !important;
-            top: -18mm !important;
-            left: 0 !important;
-            right: 0 !important;
-            height: 10mm !important;
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
             border-bottom: 1px solid #cbd5e1 !important;
             padding-bottom: 2mm !important;
-            z-index: 1000 !important;
+            margin-bottom: 4mm !important;
+            width: 100% !important;
             visibility: visible !important;
           }
 
