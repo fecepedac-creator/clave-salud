@@ -204,3 +204,55 @@ export const auditPrescription = (
 
   return alerts;
 };
+
+export const CL_DRUG_SUGGESTIONS: Record<string, string[]> = {
+  metformina: [
+    "Metformina 500 mg",
+    "Metformina 750 mg LP",
+    "Metformina 850 mg",
+    "Metformina 1000 mg LP",
+    "Metformina + Dapagliflozina 1000/5 mg",
+    "Metformina + Vildagliptina 850/50 mg",
+    "Metformina + Glibenclamida 500/5 mg",
+  ],
+  paracetamol: [
+    "Paracetamol 500 mg",
+    "Paracetamol 1 g",
+    "Paracetamol + Codeína 500/30 mg",
+    "Paracetamol + Tramadol 325/37.5 mg",
+  ],
+  losartan: [
+    "Losartán 50 mg",
+    "Losartán 100 mg",
+    "Losartán + Hidroclorotiazida 50/12.5 mg",
+    "Losartán + Hidroclorotiazida 100/25 mg",
+  ],
+  ibuprofeno: [
+    "Ibuprofeno 400 mg",
+    "Ibuprofeno 600 mg",
+  ],
+  atorvastatina: [
+    "Atorvastatina 10 mg",
+    "Atorvastatina 20 mg",
+    "Atorvastatina 40 mg",
+    "Atorvastatina 80 mg",
+  ],
+  bisoprolol: [
+    "Bisoprolol 1.25 mg",
+    "Bisoprolol 2.5 mg",
+    "Bisoprolol 5 mg",
+    "Bisoprolol 10 mg",
+    "Bisoprolol + Amlodipino 5/5 mg",
+  ],
+};
+
+export function getDrugSuggestions(partial: string): string[] {
+  if (!partial || partial.length < 3) return [];
+  const cleanPartial = cleanStr(partial);
+  
+  const foundKey = Object.keys(CL_DRUG_SUGGESTIONS).find(key => 
+    key.startsWith(cleanPartial) || cleanPartial.startsWith(key)
+  );
+  
+  return foundKey ? CL_DRUG_SUGGESTIONS[foundKey] : [];
+}

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { ClinicalTemplate, Prescription, ProfessionalRole, Doctor, Patient } from "../types";
-import { generateId, auditPrescription } from "../utils";
+import { generateId, auditPrescription, getDrugSuggestions } from "../utils";
 import { signDocument } from "../utils/signature";
 import {
   FilePlus,
@@ -107,6 +107,63 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   }, [templates, currentPrescriptionType, role]);
 
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
+  const [activeSuggestions, setActiveSuggestions] = useState<string[]>([]);
+  const [wordRange, setWordRange] = useState<{ start: number; end: number } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleTextChange = (text: string, cursorPosition: number) => {
+    setCurrentPrescriptionText(text);
+    
+    if (cursorPosition === 0) {
+      setActiveSuggestions([]);
+      setWordRange(null);
+      return;
+    }
+
+    // Encontrar límites de la palabra en la posición del cursor
+    let start = cursorPosition;
+    while (start > 0 && !/\s|,/.test(text[start - 1])) {
+      start--;
+    }
+    let end = cursorPosition;
+    while (end < text.length && !/\s|,/.test(text[end])) {
+      end++;
+    }
+
+    const partialWord = text.substring(start, end);
+    if (partialWord.length >= 3) {
+      const matches = getDrugSuggestions(partialWord);
+      setActiveSuggestions(matches);
+      setWordRange({ start, end });
+    } else {
+      setActiveSuggestions([]);
+      setWordRange(null);
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion: string) => {
+    if (!wordRange || !textareaRef.current) return;
+    
+    const text = currentPrescriptionText;
+    const newText = 
+      text.substring(0, wordRange.start) + 
+      suggestion + " " + 
+      text.substring(wordRange.end);
+      
+    setCurrentPrescriptionText(newText);
+    setActiveSuggestions([]);
+    setWordRange(null);
+    
+    // Mantener el foco en el textarea y posicionar cursor
+    const newCursorPos = wordRange.start + suggestion.length + 1;
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
   const clinicalAlerts = useMemo(() => {
     return auditPrescription(currentPrescriptionText, patient, currentDiagnosis);
   }, [currentPrescriptionText, patient, currentDiagnosis]);
@@ -362,6 +419,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
         </div>
 
         <textarea
+          ref={textareaRef}
           placeholder={
             canPrescribe
               ? "Escriba aquí los fármacos, indicaciones o el contenido del documento..."
@@ -369,10 +427,34 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           }
           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-amber-100 focus:border-amber-400 outline-none resize-none h-48 text-lg text-slate-700 mb-4"
           value={currentPrescriptionText}
-          onChange={(e) => setCurrentPrescriptionText(e.target.value)}
+          onChange={(e) => handleTextChange(e.target.value, e.target.selectionStart)}
+          onKeyUp={(e) => handleTextChange((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart)}
+          onSelect={(e) => handleTextChange((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart)}
           spellCheck={true}
           lang="es"
         />
+
+        {/* Autocomplete Suggestions */}
+        {activeSuggestions.length > 0 && (
+          <div className="mb-4 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl animate-fadeIn">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">
+              Presentaciones sugeridas para receta (Haga clic para insertar):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {activeSuggestions.map((sug, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectSuggestion(sug)}
+                  className="bg-amber-100 hover:bg-amber-200 border border-amber-200 text-amber-900 font-bold px-3 py-1.5 rounded-xl text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  {sug}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Auditor Alerts Container */}
         {clinicalAlerts.length > 0 && (
