@@ -63,9 +63,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
     [consultations]
   );
 
-  const documents = useMemo<Prescription[]>(() => {
-    return sortedConsultations.flatMap((consultation) => consultation.prescriptions || []);
-  }, [sortedConsultations]);
+  // Las recetas se renderizan directamente debajo de cada consulta
 
   const handleSendEmail = () => {
     if (!patient) return;
@@ -154,7 +152,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[18mm] relative flex flex-col shadow-lg print-document">
             <header className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start gap-4 print:break-inside-avoid">
               <div className="flex flex-col gap-2">
-                <img src="/assets/logo.png" alt="ClaveSalud" className="h-10 w-auto" />
+                <img src="/assets/logo.png" alt="ClaveSalud" width="160" height="40" className="h-10 w-auto object-contain max-w-[160px]" style={{ objectFit: "contain" }} />
                 <div>
                   <h1 className="text-xl font-bold text-slate-900">Ficha Clínica Completa</h1>
                   <p className="text-xs text-slate-500">{centerName}</p>
@@ -332,27 +330,34 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                           </div>
                         ) : null}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
 
-            <section className="mb-10 print:break-inside-avoid">
-              <h2 className="text-lg font-bold text-slate-800 mb-3">Documentos Emitidos</h2>
-              {documents.length === 0 ? (
-                <p className="text-sm text-slate-500">No hay documentos emitidos.</p>
-              ) : (
-                <div className="space-y-3 text-sm text-slate-700">
-                  {documents.map((doc) => (
-                    <div key={doc.id} className="border border-slate-200 rounded-lg p-3">
-                      <div className="font-semibold">{doc.type}</div>
-                      <div className="whitespace-pre-wrap">{doc.content || "No registrado"}</div>
+                      {c.prescriptions && c.prescriptions.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-dashed border-slate-200 print:break-inside-avoid">
+                          <span className="font-bold text-slate-800 text-xs uppercase tracking-wider block mb-2">
+                            Documentos / Recetas Emitidas en esta Consulta:
+                          </span>
+                          <div className="space-y-2">
+                            {c.prescriptions.map((p) => (
+                              <div key={p.id} className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 text-xs">
+                                <div className="font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold text-[10px]">
+                                    {p.type || "Receta"}
+                                  </span>
+                                </div>
+                                <div className="whitespace-pre-wrap text-slate-700 font-mono leading-relaxed bg-white border border-slate-100 p-2.5 rounded shadow-sm">
+                                  {p.content || "Sin contenido registrado"}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </section>
+            {/* Las recetas y certificados se muestran directamente bajo cada atención para mayor claridad */}
 
             <footer className="mt-auto pt-6 border-t border-slate-200 text-xs text-slate-500 flex justify-between">
               <span>Documento generado desde ClaveSalud.</span>
