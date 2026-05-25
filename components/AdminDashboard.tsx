@@ -103,6 +103,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateDoctors,
   appointments,
   onUpdateAppointments,
+  onDeleteAppointment,
   onLogout,
   onOpenLegal,
   patients,
@@ -968,17 +969,28 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             </div>
             <div className="space-y-3">
               <button
-                onClick={() => {
-                   onUpdateAppointments(appointments.filter(a => a.id !== cancelModal.appointment?.id));
-                   onLogActivity({
-                    action: "APPOINTMENT_CANCEL",
-                    entityType: "appointment",
-                    entityId: cancelModal.appointment!.id,
-                    patientId: cancelModal.appointment!.patientId,
-                    details: `Canceló cita desde Command Center: ${cancelModal.appointment!.patientName}`,
-                   });
-                   setCancelModal({ isOpen: false, appointment: null });
-                   showToast("Cita cancelada correctamente.", "info");
+                onClick={async () => {
+                  const appointment = cancelModal.appointment;
+                  if (!appointment) return;
+                  try {
+                    if (onDeleteAppointment) {
+                      await onDeleteAppointment(appointment.id, "Cancelacion desde Command Center");
+                    } else {
+                      onUpdateAppointments(appointments.filter((a) => a.id !== appointment.id));
+                      onLogActivity({
+                        action: "APPOINTMENT_CANCEL",
+                        entityType: "appointment",
+                        entityId: appointment.id,
+                        patientId: appointment.patientId,
+                        details: `Cancelo cita desde Command Center: ${appointment.patientName}`,
+                      });
+                    }
+                    setCancelModal({ isOpen: false, appointment: null });
+                    showToast("Cita cancelada correctamente.", "info");
+                  } catch (error) {
+                    console.error("Error cancelling appointment from Command Center:", error);
+                    showToast("No se pudo cancelar la cita.", "error");
+                  }
                 }}
                 className="w-full bg-rose-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-rose-700 transition-colors"
               >
