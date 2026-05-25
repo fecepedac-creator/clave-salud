@@ -741,6 +741,25 @@ service cloud.firestore {
     // ROOT PATIENTS COLLECTION (Professional-Centric Model)
     // =====================================================
     match /patients/{patientId} {
+      function rootPatientDoc() {
+        return get(/databases/$(database)/documents/patients/$(patientId));
+      }
+
+      function rootPatientData() {
+        return rootPatientDoc().data;
+      }
+
+      function patientPrimaryCenterId(data) {
+        return data.centerId != null
+          ? data.centerId
+          : (
+            data.accessControl.centerIds is list
+            && data.accessControl.centerIds.size() > 0
+              ? data.accessControl.centerIds[0]
+              : ""
+          );
+      }
+
       // Helper: Is the current user the owner?
       function isOwner() {
         return signedIn() && resource.data.ownerUid == uid();
@@ -754,27 +773,93 @@ service cloud.firestore {
         );
       }
 
-      // Helper: Is the current user a center_admin for any center in centerIds?
-      function isCenterAdminOfPatient() {
-        return signedIn()
-          && resource.data.accessControl.centerIds.size() > 0
-          && resource.data.accessControl.centerIds is list;
-        // Logic: Client side filtering by centerId + Rule validation.
-        // For production, center admins usually check against their specific centers/{id}/staff doc.
+      function isCenterStaffForPatient(data) {
+        let centerId = patientPrimaryCenterId(data);
+        return centerId is string
+          && centerId != ""
+          && isStaff(centerId);
+      }
+
+      function canReadRootPatient() {
+        return isOwner()
+          || isAllowedProfessional()
+          || isCenterStaffForPatient(resource.data)
+          || isSuperAdmin();
+      }
+
+      function canWriteRootPatient() {
+        return isOwner()
+          || isAllowedProfessional()
+          || isCenterStaffForPatient(resource.data)
+          || isSuperAdmin();
+      }
+
+      function canCreateRootPatient() {
+        return signedIn() && (
+          request.resource.data.ownerUid == uid()
+          || isCenterStaffForPatient(request.resource.data)
+          || isSuperAdmin()
+        );
+      }
+
+      function rootHasPrescriptionDocuments() {
+        return request.resource.data.prescriptions is list
+          && request.resource.data.prescriptions.size() > 0;
+      }
+
+      function rootHasRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta MÃ©dica", "Receta Retenida"]);
+      }
+
+      function rootHasRetainedRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Retenida"]);
+      }
+
+      function rootConsultationPrescriptionSecurityValid() {
+        let centerId = request.resource.data.centerId;
+        return !rootHasPrescriptionDocuments()
+          || (
+            centerId is string
+            && centerId != ""
+            && request.resource.data.prescriptionTypes is list
+            && request.resource.data.hasControlledPrescription is bool
+            && (!rootHasRecipeDocumentType() || isClinicalPrescriber(centerId))
+            && (!rootHasRetainedRecipeDocumentType() || isControlledClinicalPrescriber(centerId))
+            && (
+              request.resource.data.hasControlledPrescription != true
+              || (rootHasRetainedRecipeDocumentType() && isControlledClinicalPrescriber(centerId))
+            )
+          );
+      }
+
+      function canAccessRootConsultationParent() {
+        let patient = rootPatientData();
+        return signedIn() && (
+          patient.ownerUid == uid()
+          || uid() in patient.accessControl.allowedUids
+          || (patient.careTeamUids is list && uid() in patient.careTeamUids)
+          || isCenterStaffForPatient(patient)
+          || isSuperAdmin()
+        );
+      }
+
+      function rootConsultationProfessionalFieldsUnchanged() {
+        return request.resource.data.professionalId == resource.data.professionalId
+          && request.resource.data.professionalName == resource.data.professionalName
+          && request.resource.data.professionalRole == resource.data.professionalRole;
       }
 
     // Read: owner, allowed professional (including care team), or superadmin
-    allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+    allow read: if canReadRootPatient();
 
     // Create: only authenticated users can create a patient
     // They automatically become the owner in the model
-    allow create: if signedIn() && (
-      request.resource.data.ownerUid == uid()
-      || isSuperAdmin()
-    );
+    allow create: if canCreateRootPatient();
 
       // Update: owner, allowed professional, or superadmin
-      allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+      allow update: if canWriteRootPatient();
 
       // Delete físico prohibido para cumplir conservación clínica.
       // El archivado debe realizarse por soft-delete (active=false + metadata).
@@ -782,20 +867,12 @@ service cloud.firestore {
 
       // Consultations as subcollection of patient
       match /consultations/{consultationId} {
-        allow read: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        );
-        allow create, update: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        );
+        allow read: if canAccessRootConsultationParent();
+        allow create: if canAccessRootConsultationParent()
+          && rootConsultationPrescriptionSecurityValid();
+        allow update: if canAccessRootConsultationParent()
+          && rootConsultationProfessionalFieldsUnchanged()
+          && rootConsultationPrescriptionSecurityValid();
         // Delete físico prohibido para mantener trazabilidad clínica.
         // Usar archivado lógico y retención.
         allow delete: if false;

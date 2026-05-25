@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 import LogoHeader from "./LogoHeader";
 
+const ENABLE_LOCAL_ACCESS_MODES =
+  (import.meta as any)?.env?.DEV === true ||
+  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true";
+
 interface VerifyDocumentProps {
   onClose: () => void;
 }
@@ -25,7 +29,8 @@ const VerifyDocument: React.FC<VerifyDocumentProps> = ({ onClose }) => {
     const fetchDoc = async () => {
       try {
         const params = new URLSearchParams(window.location.search);
-        const isAgentTest = params.has("agent_test") || params.has("master_access");
+        const isAgentTest =
+          ENABLE_LOCAL_ACCESS_MODES && (params.has("agent_test") || params.has("master_access"));
 
         const pathParts = window.location.pathname.split("/");
         // Can be:

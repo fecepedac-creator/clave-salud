@@ -1,88 +1,177 @@
 import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
 const db = admin.firestore();
 
-/**
- * Trigger de Auditoría Inmutable para Registros de Pacientes.
- * Reacciona a cualquier escritura en la colección de pacientes y genera
- * un log de auditoría forzoso en el servidor.
- */
-export const onPatientWriteAudit = functions.firestore.onDocumentWritten(
-  "centers/{centerId}/patients/{patientId}",
-  async (event) => {
-    const { centerId, patientId } = event.params;
-    const before = event.data?.before.data() || {};
-    const after = event.data?.after.data() || {};
+type AuditAction = "CREATE" | "UPDATE" | "ARCHIVE" | "DELETE";
+type AuditEntity = "patient" | "consultation";
 
-    // Si el documento fue eliminado
-    if (!event.data?.after.exists) {
-      await logAudit(centerId, "DELETE", "patient", patientId, before, null);
-      return;
+function asArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+function resolvePatientCenterIds(before: any, after: any): string[] {
+  const candidates = [
+    after?.centerId,
+    before?.centerId,
+    ...asArray(after?.accessControl?.centerIds),
+    ...asArray(before?.accessControl?.centerIds),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(candidates));
+}
+
+function resolveConsultationCenterIds(before: any, after: any): string[] {
+  const candidates = [after?.centerId, before?.centerId]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(candidates));
+}
+
+function resolveAction(beforeExists: boolean, afterExists: boolean, before: any, after: any): AuditAction {
+  if (!afterExists) return "DELETE";
+  if (!beforeExists) return "CREATE";
+  if (before?.active !== false && after?.active === false) return "ARCHIVE";
+  return "UPDATE";
+}
+
+function changedFieldNames(before: any, after: any): string[] {
+  const ignored = new Set(["updatedAt", "lastUpdated", "lastUpdatedByUid", "lastUpdatedByName"]);
+  const allKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  const changed: string[] = [];
+
+  for (const key of allKeys) {
+    if (ignored.has(key)) continue;
+    if (JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key])) {
+      changed.push(key);
     }
-
-    // Si el documento fue creado
-    if (!event.data?.before.exists) {
-      await logAudit(centerId, "CREATE", "patient", patientId, null, after);
-      return;
-    }
-
-    // Si fue una actualización, comparamos campos sensibles si es necesario
-    // o simplemente registramos el evento.
-    await logAudit(centerId, "UPDATE", "patient", patientId, before, after);
   }
-);
 
-/**
- * Función auxiliar para persistir el log de auditoría.
- */
-async function logAudit(
-  centerId: string,
-  action: string,
-  entityType: string,
-  entityId: string,
-  before: any,
-  after: any
-) {
-  const auditLogRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+  return changed.sort();
+}
 
-  // Determinamos quién hizo el cambio si el cliente envió la metadata
-  const actorUid = after?.lastUpdatedByUid || before?.lastUpdatedByUid || "system_trigger";
-  const actorName = after?.lastUpdatedByName || before?.lastUpdatedByName || "Trigger Automático";
+function resolveActor(before: any, after: any) {
+  return {
+    actorUid:
+      after?.lastUpdatedByUid ||
+      after?.updatedBy ||
+      after?.createdByUid ||
+      before?.lastUpdatedByUid ||
+      before?.updatedBy ||
+      before?.createdByUid ||
+      "system_trigger",
+    actorName:
+      after?.lastUpdatedByName ||
+      after?.professionalName ||
+      before?.lastUpdatedByName ||
+      before?.professionalName ||
+      "Trigger Automatico",
+    actorRole:
+      after?.professionalRole ||
+      before?.professionalRole ||
+      after?.lastUpdatedByRole ||
+      before?.lastUpdatedByRole ||
+      "unknown",
+  };
+}
 
-  const auditLogData = {
+async function logAudit(params: {
+  centerId: string;
+  action: AuditAction;
+  entityType: AuditEntity;
+  entityId: string;
+  patientId?: string;
+  resourcePath: string;
+  before: any;
+  after: any;
+}) {
+  const actor = resolveActor(params.before, params.after);
+  const auditLogRef = db.collection("centers").doc(params.centerId).collection("auditLogs").doc();
+
+  await auditLogRef.set({
     type: "ACTION",
-    action: action,
-    entityType: entityType,
-    entityId: entityId,
-    actorUid: actorUid,
-    actorName: actorName,
-    resourceType: entityType,
-    resourcePath: `centers/${centerId}/patients/${entityId}`,
+    action: `${params.entityType.toUpperCase()}_${params.action}`,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    patientId: params.patientId,
+    actorUid: actor.actorUid,
+    actorName: actor.actorName,
+    actorRole: actor.actorRole,
+    resourceType: params.entityType,
+    resourcePath: params.resourcePath,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     metadata: {
       source: "cloud_function_trigger",
-      // Opcional: registrar solo los campos que cambiaron para ahorrar espacio
-      changes: action === "UPDATE" ? getDifference(before, after) : null,
+      immutable: true,
+      changedFields: params.action === "UPDATE" || params.action === "ARCHIVE"
+        ? changedFieldNames(params.before, params.after)
+        : null,
     },
-  };
-
-  await auditLogRef.set(auditLogData);
-  console.log(`[Audit] ${action} on ${entityType}/${entityId} registered via Trigger.`);
+  });
 }
 
-function getDifference(obj1: any, obj2: any) {
-  const diff: any = {};
-  const allKeys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+export const onPatientWriteAudit = functions.firestore.onDocumentWritten(
+  "patients/{patientId}",
+  async (event) => {
+    const patientId = String(event.params.patientId);
+    const beforeExists = event.data?.before.exists ?? false;
+    const afterExists = event.data?.after.exists ?? false;
+    const before = event.data?.before.data() || {};
+    const after = event.data?.after.data() || {};
+    const action = resolveAction(beforeExists, afterExists, before, after);
+    const centerIds = resolvePatientCenterIds(before, after);
 
-  for (const key of allKeys) {
-    if (key === "updatedAt" || key === "lastUpdatedByUid" || key === "lastUpdatedByName") continue;
-    if (JSON.stringify(obj1[key]) !== JSON.stringify(obj2[key])) {
-      diff[key] = {
-        from: obj1[key] === undefined ? null : obj1[key],
-        to: obj2[key] === undefined ? null : obj2[key],
-      };
-    }
+    await Promise.all(
+      centerIds.map((centerId) =>
+        logAudit({
+          centerId,
+          action,
+          entityType: "patient",
+          entityId: patientId,
+          patientId,
+          resourcePath: `patients/${patientId}`,
+          before,
+          after,
+        })
+      )
+    );
   }
-  return Object.keys(diff).length > 0 ? diff : null;
-}
+);
+
+export const onConsultationWriteAudit = functions.firestore.onDocumentWritten(
+  "patients/{patientId}/consultations/{consultationId}",
+  async (event) => {
+    const patientId = String(event.params.patientId);
+    const consultationId = String(event.params.consultationId);
+    const beforeExists = event.data?.before.exists ?? false;
+    const afterExists = event.data?.after.exists ?? false;
+    const before = event.data?.before.data() || {};
+    const after = event.data?.after.data() || {};
+    const action = resolveAction(beforeExists, afterExists, before, after);
+    const centerIds = resolveConsultationCenterIds(before, after);
+
+    await Promise.all(
+      centerIds.map((centerId) =>
+        logAudit({
+          centerId,
+          action,
+          entityType: "consultation",
+          entityId: consultationId,
+          patientId,
+          resourcePath: `patients/${patientId}/consultations/${consultationId}`,
+          before,
+          after,
+        })
+      )
+    );
+  }
+);

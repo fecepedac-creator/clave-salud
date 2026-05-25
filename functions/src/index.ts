@@ -2179,7 +2179,7 @@ export * from "./performance";
 // lógica AES-256 sin duplicar código.
 import { encryptToken } from "./whatsapp";
 
-export const updateWhatsappConfig = (functions.https.onCall as any)(
+export const updateWhatsappConfig = (functions.runWith({ secrets: ["ENCRYPTION_KEY"] }).https.onCall as any)(
   async (data: any, context: CallableContext) => {
     requireAuth(context);
     const uid = context.auth?.uid as string;

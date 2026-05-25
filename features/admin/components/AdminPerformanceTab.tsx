@@ -15,6 +15,10 @@ import {
   Unlock,
 } from "lucide-react";
 
+const ENABLE_LOCAL_ACCESS_MODES =
+  (import.meta as any)?.env?.DEV === true ||
+  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true";
+
 interface AdminPerformanceTabProps {
   centerId: string;
   currentUserUid: string;
@@ -29,7 +33,8 @@ export const AdminPerformanceTab: React.FC<AdminPerformanceTabProps> = ({
   showToast,
 }) => {
   const [yearMonth, setYearMonth] = useState<string>(() => {
-    const isTest = new URLSearchParams(window.location.search).has("agent_test");
+    const isTest =
+      ENABLE_LOCAL_ACCESS_MODES && new URLSearchParams(window.location.search).has("agent_test");
     if (isTest) return "2026-03";
     return new Date().toISOString().slice(0, 7);
   });

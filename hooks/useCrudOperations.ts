@@ -409,7 +409,6 @@ export function useCrudOperations(
         }
         return res;
       };
-
       try {
         await fn({ ...payload, id });
         return;
@@ -437,32 +436,9 @@ export function useCrudOperations(
           throw err;
         }
 
-        console.warn(
-          "updateCenter callable failed (CORS/Network), trying direct Firestore fallback..."
-        );
-
-        // Determinar si es SuperAdmin de forma segura
-        let isFinalSuper = isSuperAdmin === true;
-        if (!isFinalSuper && authUser && typeof authUser.getIdTokenResult === "function") {
-          try {
-            const tokenResult = await authUser.getIdTokenResult();
-            const claims = tokenResult?.claims || {};
-            isFinalSuper =
-              claims.super_admin === true ||
-              claims.superadmin === true ||
-              claims.superAdmin === true;
-            // Auth Diagnosis SuperAdmin
-          } catch (authDiagErr) {
-            console.error("[Auth Diagnosis] Failed to get claims:", authDiagErr);
-          }
-        }
-
-        // Auth Diagnosis
-
-        if (!isFinalSuper) {
-          console.error("User is NOT SuperAdmin. Rejecting fallback flow.");
-          throw err;
-        }
+        console.warn("updateCenter callable failed; direct Firestore fallback is disabled.");
+        showToast("No se pudo actualizar el centro. Reintenta cuando el backend esté disponible.", "error");
+        throw err;
 
         try {
           const centerRef = doc(db, "centers", id);
@@ -506,6 +482,8 @@ export function useCrudOperations(
         await fn({ centerId: id, reason });
       } catch (err: any) {
         console.warn("deleteCenter callable failed, trying direct fallback...", err);
+        showToast("No se pudo eliminar el centro. Reintenta cuando el backend esté disponible.", "error");
+        throw err;
 
         const tokenResult = await authUser?.getIdTokenResult();
         const claims = tokenResult?.claims || {};

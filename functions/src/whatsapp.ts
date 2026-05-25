@@ -66,7 +66,9 @@ function getEncryptionKey(): Buffer | null {
 /** Cifra un texto y devuelve "iv:ciphertext" en hex. */
 export function encryptToken(plainText: string): string {
   const key = getEncryptionKey();
-  if (!key) return plainText; // Fallback: devuelve sin cifrar si no hay key
+  if (!key) {
+    throw new Error("ENCRYPTION_KEY no configurada. No se almacenara token de WhatsApp en texto plano.");
+  }
   const iv = cryptoNode.randomBytes(IV_LENGTH);
   const cipher = cryptoNode.createCipheriv(ENCRYPTION_ALGO, key, iv);
   const encrypted = Buffer.concat([cipher.update(plainText, "utf8"), cipher.final()]);
@@ -2618,7 +2620,7 @@ export const whatsappWebhook = functions
   .runWith({
     timeoutSeconds: 60,
     memory: "512MB",
-    secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"],
+    secrets: ["GEMINI_API_KEY", "WHATSAPP_TOKEN", "WA_VERIFY_TOKEN", "WHATSAPP_APP_SECRET", "ENCRYPTION_KEY"],
   })
   .https.onRequest(async (req, res) => {
     // GET — verificación del webhook por Meta
@@ -2637,6 +2639,11 @@ export const whatsappWebhook = functions
     if (req.method === "POST") {
       // 1. Validar Firma (Si existe el secreto)
       const appSecret = process.env.WHATSAPP_APP_SECRET;
+      if (!appSecret && process.env.NODE_ENV !== "test") {
+        console.error("[Security] WHATSAPP_APP_SECRET no configurado. Webhook POST bloqueado.");
+        res.status(500).send("Webhook signature secret not configured");
+        return;
+      }
       if (appSecret && !verifySignature(req, appSecret)) {
         res.status(401).send("Invalid Signature");
         return;

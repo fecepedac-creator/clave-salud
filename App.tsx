@@ -87,6 +87,15 @@ const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
+const ENABLE_LOCAL_ACCESS_MODES =
+  (import.meta as any)?.env?.DEV === true ||
+  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true";
+
+const queryHasLocalAccessMode = (name: string) =>
+  ENABLE_LOCAL_ACCESS_MODES && new URLSearchParams(window.location.search).has(name);
+
+const isAgentTestQueryActive = () =>
+  ENABLE_LOCAL_ACCESS_MODES && window.location.search.includes("agent_test=true");
 
 const App: React.FC = () => {
   const { showToast } = useToast();
@@ -111,13 +120,15 @@ const App: React.FC = () => {
   } = useAuth();
 
   const [demoMode, setDemoMode] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has("demo") || params.has("agent_test");
+    return queryHasLocalAccessMode("demo") || queryHasLocalAccessMode("agent_test");
   });
 
   const [masterAccess] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has("master_access") || params.has("agent_test") || params.has("demo");
+    return (
+      queryHasLocalAccessMode("master_access") ||
+      queryHasLocalAccessMode("agent_test") ||
+      queryHasLocalAccessMode("demo")
+    );
   });
 
   const demoRole = useMemo(() => {
@@ -185,7 +196,7 @@ const App: React.FC = () => {
   const [activeCenterId, setActiveCenterId] = useState(() => {
     const p = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
-    const isAgentTest = params.has("agent_test") || params.has("master_access");
+    const isAgentTest = queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("master_access");
     
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
@@ -196,7 +207,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(() => {
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname;
-    const isAgentTest = params.has("agent_test") || params.has("master_access");
+    const isAgentTest = queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("master_access");
 
     if (isAgentTest) {
        if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
@@ -253,7 +264,7 @@ const App: React.FC = () => {
   // --- ATOMIC FIX: Force Test Center for Audit Stability ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has("agent_test") || params.has("demo")) {
+    if (queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("demo")) {
       const TEST_ID = "c_eji2qv61";
       if (!activeCenterId) {
         console.log("[Audit] Iniciando Center ID de prueba:", TEST_ID);
@@ -625,7 +636,7 @@ const App: React.FC = () => {
   );
 
   const handleExitPreview = useCallback(() => {
-    const isAgentTest = window.location.search.includes("agent_test=true");
+    const isAgentTest = isAgentTestQueryActive();
     const demoRole = new URLSearchParams(window.location.search).get("demo_role");
 
     if (typeof window !== "undefined") {
@@ -814,7 +825,7 @@ const App: React.FC = () => {
 
   // AGGRESSIVE E2E FORCE: Isolate from main logic to avoid breaking login
   useEffect(() => {
-    const isAgentTest = window.location.search.includes("agent_test=true");
+    const isAgentTest = isAgentTestQueryActive();
     if (isAgentTest && window.location.pathname.startsWith("/superadmin") && effectiveLocalCurrentUser && !isPreviewActive) {
       if (view !== "superadmin-dashboard") {
         setView("superadmin-dashboard" as ViewMode);
@@ -825,7 +836,7 @@ const App: React.FC = () => {
   // Automatic dashboard redirection for authenticated users
   useEffect(() => {
     // 1. Case: Fully authenticated with center and data ready
-    const isAgentTest = window.location.search.includes("agent_test=true");
+    const isAgentTest = isAgentTestQueryActive();
     if (effectiveLocalCurrentUser && activeCenterId && (centers.length > 0 || isAgentTest)) {
       const isPublicView = view === ("home" as ViewMode) || view === ("center-portal" as ViewMode);
 
@@ -835,7 +846,7 @@ const App: React.FC = () => {
         view === ("select-center" as ViewMode) ||
         view === ("superadmin-login" as ViewMode);
 
-      const isAgentTest = window.location.search.includes("agent_test=true");
+      const isAgentTest = isAgentTestQueryActive();
 
       // Skip redirect if already on SuperAdmin dashboard and it's the intended view
       if (
@@ -846,7 +857,7 @@ const App: React.FC = () => {
       }
 
       // FORCING REDIRECT for E2E: If agent_test is active and we have a user, go to dashboard
-      if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
+      if (isAgentTestQueryActive() && effectiveLocalCurrentUser) {
         if (window.location.pathname.startsWith("/superadmin") && effectiveIsSuperAdmin) {
           if (view !== "superadmin-dashboard") {
             setView("superadmin-dashboard" as ViewMode);
@@ -906,7 +917,7 @@ const App: React.FC = () => {
       }
     }
 /*
-    if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
+    if (isAgentTestQueryActive() && effectiveLocalCurrentUser) {
       console.log("[DEBUG] Auth Redirect Check:", {
         view,
         activeCenterId,
@@ -930,7 +941,7 @@ const App: React.FC = () => {
       );
     }
 
-    if (!activeCenterId || (!isValidCenter(activeCenter) && !window.location.search.includes("agent_test=true"))) {
+    if (!activeCenterId || (!isValidCenter(activeCenter) && !isAgentTestQueryActive())) {
       if (activeCenterId && !isLoadingCenters) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
