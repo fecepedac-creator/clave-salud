@@ -243,6 +243,25 @@ const CLINICAL_AI_PROMPTS: Record<string, { id: string; version: string; instruc
   },
 };
 
+const CLINICAL_AI_ROLE_INSTRUCTIONS: Record<string, string> = {
+  medico:
+    "Usa redaccion medica sobria. No cierres diagnosticos si el texto solo contiene sintomas o hipotesis.",
+  enfermera:
+    "Prioriza lenguaje de enfermeria, procedimientos, educacion y observaciones objetivas.",
+  tens:
+    "Prioriza registro de procedimiento, signos observados y cuidados realizados sin formular diagnosticos medicos.",
+  kinesiologo:
+    "Prioriza evaluacion funcional, movilidad, dolor, tolerancia y plan terapeutico kinesico.",
+  psicologo:
+    "Usa lenguaje prudente: refiere, se explora, se aborda. No etiquetes diagnosticos ni afirmes hechos no relatados.",
+  nutricionista:
+    "Prioriza habitos alimentarios, adherencia, antropometria registrada y plan nutricional sin agregar indicaciones no escritas.",
+  matrona:
+    "Prioriza lenguaje gineco-obstetrico objetivo, antecedentes relevantes y educacion indicada.",
+  odontologo:
+    "Prioriza hallazgos odontologicos, piezas, procedimientos e indicaciones registradas.",
+};
+
 const CLINICAL_AI_STOPWORDS = new Set([
   "a",
   "al",
@@ -285,8 +304,35 @@ function tokenizeClinicalText(text: string): string[] {
 function detectPotentialAiAdditions(input: string, output: string): string[] {
   const inputTokens = new Set(tokenizeClinicalText(input));
   const outputTokens = Array.from(new Set(tokenizeClinicalText(output)));
-  const additions = outputTokens.filter((token) => !inputTokens.has(token)).slice(0, 8);
+  const clinicallySensitive = new Set([
+    "diagnostico",
+    "infeccion",
+    "deshidratacion",
+    "neumonia",
+    "fractura",
+    "depresion",
+    "ansiedad",
+    "urgencia",
+    "antibiotico",
+    "corticoide",
+    "insulina",
+    "embarazo",
+    "cancer",
+    "derivacion",
+    "hospitalizar",
+  ]);
+  const additions = outputTokens
+    .filter((token) => !inputTokens.has(token))
+    .sort((a, b) => Number(clinicallySensitive.has(b)) - Number(clinicallySensitive.has(a)))
+    .slice(0, 8);
   return additions;
+}
+
+function clinicalTextForField(consultation: any, field: string): string {
+  if (field === "anamnesis") return String(consultation.anamnesis || "");
+  if (field === "physicalExam") return String(consultation.physicalExam || "");
+  if (field === "indications") return String(consultation.nextControlReason || "");
+  return "";
 }
 
 function isClinicalPrescriberRole(role: unknown): boolean {
@@ -2400,6 +2446,51 @@ export const createPatientConsultation = (functions.https.onCall as any)(
       { merge: true }
     );
 
+    const aiClinicalUsage =
+      consultation && typeof consultation.aiClinicalUsage === "object"
+        ? consultation.aiClinicalUsage
+        : {};
+    const aiUsageEntries = Object.entries(aiClinicalUsage || {});
+    if (aiUsageEntries.length > 0) {
+      const auditBatch = db.batch();
+      for (const [field, usage] of aiUsageEntries) {
+        const usageData = usage as any;
+        const finalText = clinicalTextForField(consultation, field);
+        const outputLength = Number(usageData.outputLength || 0);
+        const finalLength = finalText.length;
+        const editDeltaPct = outputLength
+          ? Math.round((Math.abs(finalLength - outputLength) / outputLength) * 100)
+          : 0;
+        const auditRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+        auditBatch.set(auditRef, {
+          type: "ACTION",
+          action: "AI_CLINICAL_TEXT_FINALIZED",
+          entityType: "document",
+          entityId: patientId,
+          actorUid: uid,
+          actorEmail: lowerEmailFromContext(context) || "unknown",
+          actorRole: staffData.role || staffData.clinicalRole || "unknown",
+          resourceType: "consultation",
+          resourcePath: `/patients/${patientId}/consultations/${consultationRef.id}`,
+          timestamp: serverTimestamp(),
+          details: "Consulta guardada con texto clinico asistido por IA.",
+          metadata: {
+            field,
+            patientId,
+            consultationId: consultationRef.id,
+            promptId: usageData.promptId || null,
+            promptVersion: usageData.promptVersion || null,
+            inputLength: Number(usageData.inputLength || 0),
+            outputLength,
+            finalLength,
+            editDeltaPct,
+            warningCount: Number(usageData.warningCount || 0),
+          },
+        });
+      }
+      await auditBatch.commit();
+    }
+
     return {
       ok: true,
       id: consultationRef.id,
@@ -2422,6 +2513,7 @@ export const improveClinicalText = functions
     const patientId = String(data?.patientId || "").trim();
     const role = String(data?.role || "").trim();
     const promptConfig = CLINICAL_AI_PROMPTS[field] || CLINICAL_AI_PROMPTS.anamnesis;
+    const roleInstruction = CLINICAL_AI_ROLE_INSTRUCTIONS[normalizeRoleValue(role)] || "";
 
     if (!centerId || !rawText) {
       throw new functions.https.HttpsError("invalid-argument", "centerId y text son requeridos.");
@@ -2483,6 +2575,7 @@ Prompt: ${promptConfig.id}@${promptConfig.version}
 
 Instrucciones especificas:
 ${promptConfig.instructions}
+${roleInstruction ? `\nInstrucciones por rol:\n${roleInstruction}` : ""}
 
 Texto original:
 "${rawText}"
@@ -2604,6 +2697,147 @@ export const recordClinicalAiUsage = functions.https.onCall(
     return { ok: true };
   }
 );
+
+export const recordClinicalAiAlertFeedback = functions.https.onCall(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const sourceLogId = String(data?.sourceLogId || "").trim();
+    const feedback = String(data?.feedback || "").trim();
+
+    if (!centerId || !sourceLogId || !["confirmed", "false_positive"].includes(feedback)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, sourceLogId y feedback valido son requeridos."
+      );
+    }
+
+    const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action:
+        feedback === "confirmed"
+          ? "AI_CLINICAL_ALERT_CONFIRMED"
+          : "AI_CLINICAL_ALERT_FALSE_POSITIVE",
+      entityType: "auditLog",
+      entityId: sourceLogId,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: staffSnap.get("role") || "unknown",
+      resourceType: "ai_audit",
+      resourcePath: `/centers/${centerId}/auditLogs/${sourceLogId}`,
+      timestamp: serverTimestamp(),
+      details:
+        feedback === "confirmed"
+          ? "Alerta de IA clinica marcada como pertinente."
+          : "Alerta de IA clinica marcada como falso positivo.",
+      metadata: {
+        sourceLogId,
+        feedback,
+      },
+    });
+
+    return { ok: true };
+  }
+);
+
+export const generateMarketingCaption = functions
+  .runWith({ secrets: ["GEMINI_API_KEY"] })
+  .https.onCall(async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const idea = String(data?.idea || "").trim();
+    const type = String(data?.type || "center").trim();
+    const centerName = String(data?.centerName || "").trim();
+    const doctorName = String(data?.doctorName || "").trim();
+    const url = String(data?.url || "").trim();
+    const specialties = Array.isArray(data?.specialties) ? data.specialties.map(String) : [];
+
+    if (!idea || !url) {
+      throw new functions.https.HttpsError("invalid-argument", "idea y url son requeridos.");
+    }
+
+    if (centerId) {
+      const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+      if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "No tiene permisos activos en este centro."
+        );
+      }
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "GEMINI_API_KEY no esta configurada."
+      );
+    }
+
+    const category =
+      type === "professional"
+        ? "Profesional de salud"
+        : type === "platform"
+          ? "Gestion Clinica"
+          : "Centro Medico";
+    const prompt = `
+Actua como redactor senior de marketing healthcare.
+Redacta un copy para redes sociales elegante, confiable y profesional.
+
+Marca/Entidad: ${doctorName || centerName || "ClaveSalud"}
+Categoria: ${category}
+Servicios: ${specialties.join(", ") || "no informado"}
+Enlace de reserva: ${url}
+Idea: "${idea}"
+
+Reglas:
+1. No prometas resultados clinicos.
+2. No inventes precios, descuentos, horarios ni prestaciones no mencionadas.
+3. Prioriza confianza, claridad y llamado a reservar.
+4. Usa emojis con moderacion y 4 a 5 hashtags.
+
+Responde solo con el copy final.
+`;
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+
+    if (centerId) {
+      await db.collection("centers").doc(centerId).collection("auditLogs").add({
+        type: "ACTION",
+        action: "AI_MARKETING_CAPTION_GENERATED",
+        entityType: "marketing",
+        entityId: type,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: "marketing",
+        resourceType: "marketing",
+        resourcePath: `/centers/${centerId}/marketing/captions`,
+        timestamp: serverTimestamp(),
+        details: "Caption de marketing generado con IA.",
+        metadata: {
+          type,
+          inputLength: idea.length,
+          outputLength: text.length,
+        },
+      });
+    }
+
+    return { ok: true, text };
+  });
 
 export * from "./immutableAudit";
 export * from "./whatsapp";

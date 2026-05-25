@@ -56,6 +56,11 @@ Mejoras aplicadas en esta fase:
 - Comparador simple de posibles datos agregados: alerta terminos presentes en salida pero no en entrada para revision profesional.
 - Metadata de uso ampliada: `promptId`, `promptVersion`, `warningCount`, largos de entrada/salida y largo final aceptado.
 - Panel administrativo "Uso IA" con sugerencias, aceptadas, descartadas, alertas, campos usados y tiempo ahorrado estimado.
+- Filtros del panel "Uso IA" por rango de fecha, usuario/profesional y campo clinico.
+- Auditoria `AI_CLINICAL_TEXT_FINALIZED` al guardar consulta para medir edicion posterior real por largo final y delta porcentual.
+- Feedback administrativo de alertas: `AI_CLINICAL_ALERT_CONFIRMED` y `AI_CLINICAL_ALERT_FALSE_POSITIVE`.
+- Instrucciones asistidas por rol para medico, enfermeria/TENS, kinesiologia, psicologia, nutricion, matrona y odontologia.
+- IA de marketing movida a backend mediante `generateMarketingCaption`, usando `GEMINI_API_KEY` como secret y auditando el uso no clinico.
 
 ### Evaluacion clinica
 
@@ -70,9 +75,9 @@ Fortalezas:
 
 Riesgos remanentes:
 
-- No hay aun revision semantica avanzada posterior; existe una alerta heuristica inicial para posibles agregados.
-- La IA de marketing todavia usa `VITE_GEMINI_API_KEY`; no es clinica, pero conviene separarla en backend por consistencia operacional.
+- La IA de marketing ya usa backend, pero conviene mantener separada su auditoria de la auditoria clinica.
 - El comparador actual es heuristico y no reemplaza revision profesional; sirve como alerta inicial, no como bloqueo semantico definitivo.
+- El impacto por especialidad depende de que el rol/especialidad del usuario este bien normalizado en staff.
 
 ### Recomendaciones
 
@@ -84,15 +89,15 @@ P0:
 
 P1:
 
-- Ampliar el panel "Uso IA" con filtros por rango de fecha, profesional y campo.
-- Evolucionar el comparador simple hacia una revision semantica mas precisa.
-- Agregar auditoria de edicion posterior al guardar consulta para medir cuanto cambia el texto aceptado.
+- Mantener el panel "Uso IA" con revision operacional mensual.
+- Refinar gradualmente el comparador con casos reales marcados como confirmados/falsos positivos.
+- Usar `AI_CLINICAL_TEXT_FINALIZED` para monitorear campos con alta edicion posterior.
 
 P2:
 
-- Permitir plantillas clinicas asistidas por rol: medico, enfermeria, nutricion, psicologia, kinesiologia.
-- Crear metricas de calidad avanzadas: tasa de edicion posterior real, alertas confirmadas/falsos positivos, impacto por especialidad.
-- Mover IA de marketing a backend para tener un gobierno de llaves uniforme.
+- Evolucionar instrucciones por rol hacia plantillas configurables por centro/especialidad.
+- Crear revision visual por especialidad cuando haya suficiente volumen de eventos.
+- Separar dashboards clinicos y marketing si el volumen de IA no clinica aumenta.
 
 ## Auditoria modulo por modulo
 

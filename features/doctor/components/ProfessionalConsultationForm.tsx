@@ -160,9 +160,22 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
     if (!suggestion) return;
     await auditClinicalAiUsage(suggestion, "accepted", suggestion.text);
     setNewConsultation((prev) => {
-      if (field === "anamnesis") return { ...prev, anamnesis: suggestion.text };
-      if (field === "physicalExam") return { ...prev, physicalExam: suggestion.text };
-      return { ...prev, nextControlReason: suggestion.text };
+      const aiClinicalUsage = {
+        ...((prev as any).aiClinicalUsage || {}),
+        [field]: {
+          acceptedAt: new Date().toISOString(),
+          inputLength: suggestion.original.length,
+          outputLength: suggestion.text.length,
+          warningCount: suggestion.warnings.length,
+          promptId: suggestion.promptId,
+          promptVersion: suggestion.promptVersion,
+        },
+      };
+      if (field === "anamnesis") return { ...prev, anamnesis: suggestion.text, aiClinicalUsage };
+      if (field === "physicalExam") {
+        return { ...prev, physicalExam: suggestion.text, aiClinicalUsage };
+      }
+      return { ...prev, nextControlReason: suggestion.text, aiClinicalUsage };
     });
     setAiSuggestions((prev) => ({ ...prev, [field]: undefined }));
   };
