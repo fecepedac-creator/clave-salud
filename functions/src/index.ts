@@ -2352,6 +2352,7 @@ export const improveClinicalText = functions
     const centerId = String(data?.centerId || "").trim();
     const rawText = String(data?.text || "").trim();
     const field = String(data?.field || "anamnesis").trim();
+    const patientId = String(data?.patientId || "").trim();
 
     if (!centerId || !rawText) {
       throw new functions.https.HttpsError("invalid-argument", "centerId y text son requeridos.");
@@ -2363,6 +2364,23 @@ export const improveClinicalText = functions
         "permission-denied",
         "No tiene permisos activos en este centro."
       );
+    }
+
+    if (patientId) {
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      const patientData = patientSnap.data() || {};
+      const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+        ? patientData.accessControl.centerIds
+        : [];
+      if (
+        !patientSnap.exists ||
+        (patientData.centerId !== centerId && !patientCenterIds.includes(centerId))
+      ) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "El paciente no pertenece al centro indicado."
+        );
+      }
     }
 
     const apiKey = process.env.GEMINI_API_KEY || "";
@@ -2404,16 +2422,17 @@ Texto original:
       type: "ACTION",
       action: "AI_CLINICAL_TEXT_SUGGESTED",
       entityType: "document",
-      entityId: field,
+      entityId: patientId || field,
       actorUid: uid,
       actorEmail: lowerEmailFromContext(context) || "unknown",
       actorRole: staffSnap.get("role") || "unknown",
       resourceType: "consultation",
-      resourcePath: `/centers/${centerId}/ai/${field}`,
+      resourcePath: patientId ? `/patients/${patientId}` : `/centers/${centerId}/ai/${field}`,
       timestamp: serverTimestamp(),
       details: "Asistente IA generó una sugerencia de redacción clínica.",
       metadata: {
         field,
+        patientId: patientId || null,
         inputLength: rawText.length,
         outputLength: improvedText.length,
       },
@@ -2421,6 +2440,77 @@ Texto original:
 
     return { ok: true, text: improvedText };
   });
+
+export const recordClinicalAiUsage = functions.https.onCall(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const field = String(data?.field || "anamnesis").trim();
+    const action = String(data?.action || "").trim();
+    const inputLength = Number(data?.inputLength || 0);
+    const outputLength = Number(data?.outputLength || 0);
+
+    if (!centerId || !["accepted", "discarded"].includes(action)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId y action validos son requeridos."
+      );
+    }
+
+    const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    if (patientId) {
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      const patientData = patientSnap.data() || {};
+      const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+        ? patientData.accessControl.centerIds
+        : [];
+      if (
+        !patientSnap.exists ||
+        (patientData.centerId !== centerId && !patientCenterIds.includes(centerId))
+      ) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "El paciente no pertenece al centro indicado."
+        );
+      }
+    }
+
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action:
+        action === "accepted" ? "AI_CLINICAL_TEXT_ACCEPTED" : "AI_CLINICAL_TEXT_DISCARDED",
+      entityType: "document",
+      entityId: patientId || field,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: staffSnap.get("role") || "unknown",
+      resourceType: "consultation",
+      resourcePath: patientId ? `/patients/${patientId}` : `/centers/${centerId}/ai/${field}`,
+      timestamp: serverTimestamp(),
+      details:
+        action === "accepted"
+          ? "Profesional acepto una sugerencia de redaccion clinica con IA."
+          : "Profesional descarto una sugerencia de redaccion clinica con IA.",
+      metadata: {
+        field,
+        patientId: patientId || null,
+        inputLength: Number.isFinite(inputLength) ? inputLength : 0,
+        outputLength: Number.isFinite(outputLength) ? outputLength : 0,
+      },
+    });
+
+    return { ok: true };
+  }
+);
 
 export * from "./immutableAudit";
 export * from "./whatsapp";

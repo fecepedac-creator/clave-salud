@@ -13,7 +13,7 @@ import {
   Sparkles,
   Loader2,
 } from "lucide-react";
-import { summarizeAnamnesis } from "../../../utils/gemini";
+import { recordClinicalAiUsage, summarizeAnamnesis } from "../../../utils/clinicalAi";
 import {
   Consultation,
   Patient,
@@ -89,14 +89,34 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [aiAnamnesisSuggestion, setAiAnamnesisSuggestion] = useState<string | null>(null);
+  const [aiAnamnesisOriginal, setAiAnamnesisOriginal] = useState("");
+
+  const centerIdForAi =
+    selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "";
+
+  const auditAiAnamnesisUsage = async (action: "accepted" | "discarded") => {
+    if (!centerIdForAi || !aiAnamnesisSuggestion) return;
+    try {
+      await recordClinicalAiUsage({
+        centerId: centerIdForAi,
+        patientId: selectedPatient.id,
+        field: "anamnesis",
+        action,
+        inputLength: aiAnamnesisOriginal.length,
+        outputLength: aiAnamnesisSuggestion.length,
+      });
+    } catch (error) {
+      console.warn("No se pudo registrar auditoria de uso IA clinica:", error);
+    }
+  };
 
   const handleSummarize = async () => {
     if (!newConsultation.anamnesis || isSummarizing) return;
     setIsSummarizing(true);
     try {
-      const centerIdForAi =
-        selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "";
-      const summary = await summarizeAnamnesis(newConsultation.anamnesis, centerIdForAi);
+      const originalText = newConsultation.anamnesis;
+      setAiAnamnesisOriginal(originalText);
+      const summary = await summarizeAnamnesis(originalText, centerIdForAi, selectedPatient.id);
       setAiAnamnesisSuggestion(summary);
     } catch (error) {
       console.error("Error summarizing anamnesis:", error);
@@ -109,9 +129,15 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
     }
   };
 
-  const acceptAiAnamnesisSuggestion = () => {
+  const acceptAiAnamnesisSuggestion = async () => {
     if (!aiAnamnesisSuggestion) return;
+    await auditAiAnamnesisUsage("accepted");
     setNewConsultation((prev) => ({ ...prev, anamnesis: aiAnamnesisSuggestion }));
+    setAiAnamnesisSuggestion(null);
+  };
+
+  const discardAiAnamnesisSuggestion = async () => {
+    await auditAiAnamnesisUsage("discarded");
     setAiAnamnesisSuggestion(null);
   };
 
@@ -331,7 +357,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                           </div>
                           <button
                             type="button"
-                            onClick={() => setAiAnamnesisSuggestion(null)}
+                            onClick={discardAiAnamnesisSuggestion}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white"
                             title="Descartar sugerencia"
                           >
@@ -351,7 +377,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                           </button>
                           <button
                             type="button"
-                            onClick={() => setAiAnamnesisSuggestion(null)}
+                            onClick={discardAiAnamnesisSuggestion}
                             className="px-3 py-2 rounded-lg bg-white text-slate-600 text-xs font-bold border border-slate-200 hover:bg-slate-50"
                           >
                             Descartar
