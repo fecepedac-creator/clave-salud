@@ -88,13 +88,14 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
   const [expandedSection, setExpandedSection] = useState<string>("anamnesis");
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [aiAnamnesisSuggestion, setAiAnamnesisSuggestion] = useState<string | null>(null);
 
   const handleSummarize = async () => {
     if (!newConsultation.anamnesis || isSummarizing) return;
     setIsSummarizing(true);
     try {
       const summary = await summarizeAnamnesis(newConsultation.anamnesis);
-      setNewConsultation((prev) => ({ ...prev, anamnesis: summary }));
+      setAiAnamnesisSuggestion(summary);
     } catch (error) {
       console.error("Error summarizing anamnesis:", error);
       alert(
@@ -104,6 +105,12 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
     } finally {
       setIsSummarizing(false);
     }
+  };
+
+  const acceptAiAnamnesisSuggestion = () => {
+    if (!aiAnamnesisSuggestion) return;
+    setNewConsultation((prev) => ({ ...prev, anamnesis: aiAnamnesisSuggestion }));
+    setAiAnamnesisSuggestion(null);
   };
 
   const toggleSection = (section: string) =>
@@ -298,16 +305,58 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                     </div>
                     <textarea
                       value={newConsultation.anamnesis || ""}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        setAiAnamnesisSuggestion(null);
                         setNewConsultation((prev) => ({
                           ...prev,
                           anamnesis: e.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                       spellCheck={true}
                       className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700"
                       placeholder="Detalle clínico e historial de la enfermedad actual..."
                     />
+                    {aiAnamnesisSuggestion && (
+                      <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+                              Sugerencia IA para revisar
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              La ficha no cambia hasta que acepte esta redaccion.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAiAnamnesisSuggestion(null)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white"
+                            title="Descartar sugerencia"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                          {aiAnamnesisSuggestion}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={acceptAiAnamnesisSuggestion}
+                            className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
+                          >
+                            Aceptar redaccion
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAiAnamnesisSuggestion(null)}
+                            className="px-3 py-2 rounded-lg bg-white text-slate-600 text-xs font-bold border border-slate-200 hover:bg-slate-50"
+                          >
+                            Descartar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {labels.physical && (
                     <div className="col-span-full">
