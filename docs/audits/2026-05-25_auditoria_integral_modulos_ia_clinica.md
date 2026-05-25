@@ -49,6 +49,14 @@ Se agrego auditoria de ciclo de uso:
 
 Los logs registran metadatos minimos: centro, usuario, campo, paciente cuando existe, largo de entrada y salida. No guardan el texto clinico crudo en auditoria.
 
+Mejoras aplicadas en esta fase:
+
+- Prompts clinicos versionados por campo: `clinical_anamnesis@1.1.0`, `clinical_physical_exam@1.0.0`, `clinical_indications@1.0.0`.
+- Botones IA con revision obligatoria en anamnesis, examen fisico e indicaciones/plan.
+- Comparador simple de posibles datos agregados: alerta terminos presentes en salida pero no en entrada para revision profesional.
+- Metadata de uso ampliada: `promptId`, `promptVersion`, `warningCount`, largos de entrada/salida y largo final aceptado.
+- Panel administrativo "Uso IA" con sugerencias, aceptadas, descartadas, alertas, campos usados y tiempo ahorrado estimado.
+
 ### Evaluacion clinica
 
 Fortalezas:
@@ -62,10 +70,9 @@ Fortalezas:
 
 Riesgos remanentes:
 
-- La IA esta disponible solo para anamnesis/evolucion; no existe aun una politica comun para examen fisico, indicaciones, informes y certificados.
-- No hay revision automatica posterior que compare texto original vs sugerido para detectar agregados no presentes.
-- No hay panel dedicado para medir adopcion, tasa de descarte, campos usados y posibles eventos adversos de IA.
+- No hay aun revision semantica avanzada posterior; existe una alerta heuristica inicial para posibles agregados.
 - La IA de marketing todavia usa `VITE_GEMINI_API_KEY`; no es clinica, pero conviene separarla en backend por consistencia operacional.
+- El comparador actual es heuristico y no reemplaza revision profesional; sirve como alerta inicial, no como bloqueo semantico definitivo.
 
 ### Recomendaciones
 
@@ -77,15 +84,15 @@ P0:
 
 P1:
 
-- Crear un "AI Usage Dashboard" para administradores: usos por centro, usuario, campo, aceptacion/descarte, errores.
-- Agregar comparador semantico simple: alerta si la salida contiene datos no presentes en la entrada.
-- Extender boton IA a examen fisico e indicaciones solo con prompts especificos y revision obligatoria.
+- Ampliar el panel "Uso IA" con filtros por rango de fecha, profesional y campo.
+- Evolucionar el comparador simple hacia una revision semantica mas precisa.
+- Agregar auditoria de edicion posterior al guardar consulta para medir cuanto cambia el texto aceptado.
 
 P2:
 
-- Versionar prompts clinicos por tipo de campo.
 - Permitir plantillas clinicas asistidas por rol: medico, enfermeria, nutricion, psicologia, kinesiologia.
-- Crear metricas de calidad: tiempo ahorrado estimado, tasa de aceptacion, tasa de edicion posterior.
+- Crear metricas de calidad avanzadas: tasa de edicion posterior real, alertas confirmadas/falsos positivos, impacto por especialidad.
+- Mover IA de marketing a backend para tener un gobierno de llaves uniforme.
 
 ## Auditoria modulo por modulo
 

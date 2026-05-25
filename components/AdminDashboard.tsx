@@ -64,6 +64,7 @@ import { ROLE_CATALOG } from "../constants";
 import ServicesManager from "./ServicesManager";
 import ServiceAgendasManager from "./ServiceAgendasManager";
 import { AdminPerformanceTab } from "../features/admin/components/AdminPerformanceTab";
+import AdminAIUsageTab from "../features/admin/components/AdminAIUsageTab";
 import AdminCommandCenter from "../features/admin/components/AdminCommandCenter";
 import { WhatsappSettings } from "../features/admin/components/WhatsappSettings";
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
@@ -125,6 +126,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     | "preadmissions"
     | "services"
     | "performance"
+    | "ai_usage"
     | "campaigns";
 
   const userRoles = currentUser?.roles || [];
@@ -697,6 +699,14 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             <TrendingUp className="w-4 h-4" /> Rendimiento
           </button>
           <button
+            onClick={() => setActiveTab("ai_usage")}
+            disabled={!hasActiveCenter}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "ai_usage" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Uso de IA clinica" : "Selecciona un centro activo"}
+          >
+            <Shield className="w-4 h-4" /> Uso IA
+          </button>
+          <button
             onClick={() => setActiveTab("campaigns")}
             disabled={!hasActiveCenter}
             className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "campaigns" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -941,6 +951,12 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             doctors={doctors}
             showToast={showToast}
           />
+        </div>
+      )}
+
+      {activeTab === "ai_usage" && (
+        <div className="animate-fadeIn">
+          <AdminAIUsageTab centerId={resolvedCenterId} />
         </div>
       )}
 

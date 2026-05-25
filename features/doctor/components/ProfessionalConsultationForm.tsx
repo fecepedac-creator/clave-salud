@@ -12,8 +12,14 @@ import {
   ExternalLink,
   Sparkles,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
-import { recordClinicalAiUsage, summarizeAnamnesis } from "../../../utils/clinicalAi";
+import {
+  ClinicalAiField,
+  ClinicalAiResult,
+  improveClinicalText,
+  recordClinicalAiUsage,
+} from "../../../utils/clinicalAi";
 import {
   Consultation,
   Patient,
@@ -58,6 +64,11 @@ interface ProfessionalConsultationFormProps {
   hasActiveCenter: boolean;
 }
 
+type AiSuggestionState = ClinicalAiResult & {
+  field: ClinicalAiField;
+  original: string;
+};
+
 export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationFormProps> = ({
   newConsultation,
   setNewConsultation,
@@ -87,58 +98,133 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
 }) => {
   const [expandedSection, setExpandedSection] = useState<string>("anamnesis");
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [aiAnamnesisSuggestion, setAiAnamnesisSuggestion] = useState<string | null>(null);
-  const [aiAnamnesisOriginal, setAiAnamnesisOriginal] = useState("");
+  const [summarizingField, setSummarizingField] = useState<ClinicalAiField | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<Partial<Record<ClinicalAiField, AiSuggestionState>>>({});
 
   const centerIdForAi =
     selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "";
 
-  const auditAiAnamnesisUsage = async (action: "accepted" | "discarded") => {
-    if (!centerIdForAi || !aiAnamnesisSuggestion) return;
+  const auditClinicalAiUsage = async (
+    suggestion: AiSuggestionState,
+    action: "accepted" | "discarded",
+    editedOutput?: string
+  ) => {
+    if (!centerIdForAi) return;
     try {
       await recordClinicalAiUsage({
         centerId: centerIdForAi,
         patientId: selectedPatient.id,
-        field: "anamnesis",
+        field: suggestion.field,
         action,
-        inputLength: aiAnamnesisOriginal.length,
-        outputLength: aiAnamnesisSuggestion.length,
+        inputLength: suggestion.original.length,
+        outputLength: suggestion.text.length,
+        editedOutputLength: editedOutput?.length || suggestion.text.length,
+        warningCount: suggestion.warnings.length,
+        promptId: suggestion.promptId,
+        promptVersion: suggestion.promptVersion,
       });
     } catch (error) {
       console.warn("No se pudo registrar auditoria de uso IA clinica:", error);
     }
   };
 
-  const handleSummarize = async () => {
-    if (!newConsultation.anamnesis || isSummarizing) return;
-    setIsSummarizing(true);
+  const requestAiSuggestion = async (field: ClinicalAiField, rawText?: string) => {
+    const originalText = (rawText || "").trim();
+    if (!originalText || summarizingField) return;
+    setSummarizingField(field);
     try {
-      const originalText = newConsultation.anamnesis;
-      setAiAnamnesisOriginal(originalText);
-      const summary = await summarizeAnamnesis(originalText, centerIdForAi, selectedPatient.id);
-      setAiAnamnesisSuggestion(summary);
+      const result = await improveClinicalText({
+        rawText: originalText,
+        field,
+        centerId: centerIdForAi,
+        patientId: selectedPatient.id,
+        role,
+      });
+      setAiSuggestions((prev) => ({
+        ...prev,
+        [field]: { ...result, field, original: originalText },
+      }));
     } catch (error) {
-      console.error("Error summarizing anamnesis:", error);
+      console.error("Error improving clinical text:", error);
       alert(
         "Error del Asistente de IA: " + 
         (error instanceof Error ? error.message : "No se pudo conectar con la IA de Gemini. Por favor verifica tu API Key.")
       );
     } finally {
-      setIsSummarizing(false);
+      setSummarizingField(null);
     }
   };
 
-  const acceptAiAnamnesisSuggestion = async () => {
-    if (!aiAnamnesisSuggestion) return;
-    await auditAiAnamnesisUsage("accepted");
-    setNewConsultation((prev) => ({ ...prev, anamnesis: aiAnamnesisSuggestion }));
-    setAiAnamnesisSuggestion(null);
+  const acceptAiSuggestion = async (field: ClinicalAiField) => {
+    const suggestion = aiSuggestions[field];
+    if (!suggestion) return;
+    await auditClinicalAiUsage(suggestion, "accepted", suggestion.text);
+    setNewConsultation((prev) => {
+      if (field === "anamnesis") return { ...prev, anamnesis: suggestion.text };
+      if (field === "physicalExam") return { ...prev, physicalExam: suggestion.text };
+      return { ...prev, nextControlReason: suggestion.text };
+    });
+    setAiSuggestions((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const discardAiAnamnesisSuggestion = async () => {
-    await auditAiAnamnesisUsage("discarded");
-    setAiAnamnesisSuggestion(null);
+  const discardAiSuggestion = async (field: ClinicalAiField) => {
+    const suggestion = aiSuggestions[field];
+    if (suggestion) await auditClinicalAiUsage(suggestion, "discarded");
+    setAiSuggestions((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const renderAiSuggestion = (field: ClinicalAiField) => {
+    const suggestion = aiSuggestions[field];
+    if (!suggestion) return null;
+    return (
+      <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+              Sugerencia IA para revisar
+            </p>
+            <p className="text-xs text-slate-500">
+              La ficha no cambia hasta que acepte esta redaccion.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => discardAiSuggestion(field)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white"
+            title="Descartar sugerencia"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {suggestion.warnings.length > 0 && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="font-bold flex items-center gap-1.5 mb-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> Revisar posibles datos agregados
+            </div>
+            <p>Terminos a verificar: {suggestion.warnings.join(", ")}</p>
+          </div>
+        )}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+          {suggestion.text}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => acceptAiSuggestion(field)}
+            className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
+          >
+            Aceptar redaccion
+          </button>
+          <button
+            type="button"
+            onClick={() => discardAiSuggestion(field)}
+            className="px-3 py-2 rounded-lg bg-white text-slate-600 text-xs font-bold border border-slate-200 hover:bg-slate-50"
+          >
+            Descartar
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const toggleSection = (section: string) =>
@@ -318,12 +404,12 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                         {labels.anamnesis}
                       </label>
                       <button
-                        onClick={handleSummarize}
-                        disabled={isSummarizing || !newConsultation.anamnesis}
+                        onClick={() => requestAiSuggestion("anamnesis", newConsultation.anamnesis)}
+                        disabled={summarizingField !== null || !newConsultation.anamnesis}
                         className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
                         title="Mejorar redacción clínica con IA"
                       >
-                        {isSummarizing ? (
+                        {summarizingField === "anamnesis" ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
                           <Sparkles className="w-3.5 h-3.5" />
@@ -334,7 +420,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                     <textarea
                       value={newConsultation.anamnesis || ""}
                       onChange={(e) => {
-                        setAiAnamnesisSuggestion(null);
+                        setAiSuggestions((prev) => ({ ...prev, anamnesis: undefined }));
                         setNewConsultation((prev) => ({
                           ...prev,
                           anamnesis: e.target.value,
@@ -344,65 +430,44 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                       className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700"
                       placeholder="Detalle clínico e historial de la enfermedad actual..."
                     />
-                    {aiAnamnesisSuggestion && (
-                      <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div>
-                            <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
-                              Sugerencia IA para revisar
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              La ficha no cambia hasta que acepte esta redaccion.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={discardAiAnamnesisSuggestion}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white"
-                            title="Descartar sugerencia"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                          {aiAnamnesisSuggestion}
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={acceptAiAnamnesisSuggestion}
-                            className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
-                          >
-                            Aceptar redaccion
-                          </button>
-                          <button
-                            type="button"
-                            onClick={discardAiAnamnesisSuggestion}
-                            className="px-3 py-2 rounded-lg bg-white text-slate-600 text-xs font-bold border border-slate-200 hover:bg-slate-50"
-                          >
-                            Descartar
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    {renderAiSuggestion("anamnesis")}
                   </div>
                   {labels.physical && (
                     <div className="col-span-full">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        {labels.physical}
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-bold text-slate-700">
+                          {labels.physical}
+                        </label>
+                        <button
+                          onClick={() =>
+                            requestAiSuggestion("physicalExam", newConsultation.physicalExam)
+                          }
+                          disabled={summarizingField !== null || !newConsultation.physicalExam}
+                          className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                          title="Mejorar redaccion de examen fisico con IA"
+                        >
+                          {summarizingField === "physicalExam" ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          Asistente IA
+                        </button>
+                      </div>
                       <textarea
                         value={newConsultation.physicalExam || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          setAiSuggestions((prev) => ({ ...prev, physicalExam: undefined }));
                           setNewConsultation((prev) => ({
                             ...prev,
                             physicalExam: e.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                         spellCheck={true}
                         className="w-full p-4 border border-slate-300 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none resize-none h-40 text-base leading-relaxed text-slate-700"
                         placeholder="Hallazgos físicos..."
                       />
+                      {renderAiSuggestion("physicalExam")}
                     </div>
                   )}
                 </div>
@@ -667,24 +732,43 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                       />
                     </div>
                     <div>
-                      <label
-                        htmlFor="nextControlReason"
-                        className="block text-sm font-bold text-slate-700 mb-2"
-                      >
-                        Indicaciones / Requisitos
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label
+                          htmlFor="nextControlReason"
+                          className="block text-sm font-bold text-slate-700"
+                        >
+                          Indicaciones / Requisitos
+                        </label>
+                        <button
+                          onClick={() =>
+                            requestAiSuggestion("indications", newConsultation.nextControlReason)
+                          }
+                          disabled={summarizingField !== null || !newConsultation.nextControlReason}
+                          className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                          title="Mejorar redaccion de indicaciones con IA"
+                        >
+                          {summarizingField === "indications" ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          Asistente IA
+                        </button>
+                      </div>
                       <input
                         id="nextControlReason"
                         placeholder="Ej: Traer radiografía..."
                         value={newConsultation.nextControlReason || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          setAiSuggestions((prev) => ({ ...prev, indications: undefined }));
                           setNewConsultation((prev) => ({
                             ...prev,
                             nextControlReason: e.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                         className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-500 bg-white"
                       />
+                      {renderAiSuggestion("indications")}
                     </div>
                   </div>
                 </div>

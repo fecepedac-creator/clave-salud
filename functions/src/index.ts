@@ -222,6 +222,73 @@ function normalizeRoleValue(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+const CLINICAL_AI_PROMPTS: Record<string, { id: string; version: string; instructions: string }> = {
+  anamnesis: {
+    id: "clinical_anamnesis",
+    version: "1.1.0",
+    instructions:
+      "Redacta como anamnesis/evolucion clinica. Conserva relato, tiempo de evolucion, sintomas asociados, tratamientos usados y respuesta si fueron mencionados. No diagnostiques.",
+  },
+  physicalExam: {
+    id: "clinical_physical_exam",
+    version: "1.0.0",
+    instructions:
+      "Redacta exclusivamente hallazgos de examen fisico. No agregues signos no consignados. Si el texto contiene solo parametros o hallazgos breves, ordenalos en frases clinicas objetivas.",
+  },
+  indications: {
+    id: "clinical_indications",
+    version: "1.0.0",
+    instructions:
+      "Redacta indicaciones y plan de manejo en lenguaje claro y profesional. No agregues medicamentos, dosis, examenes ni controles que no esten mencionados. Mantiene signos de alarma solo si fueron escritos.",
+  },
+};
+
+const CLINICAL_AI_STOPWORDS = new Set([
+  "a",
+  "al",
+  "ante",
+  "con",
+  "de",
+  "del",
+  "el",
+  "en",
+  "es",
+  "la",
+  "las",
+  "lo",
+  "los",
+  "o",
+  "por",
+  "que",
+  "se",
+  "sin",
+  "un",
+  "una",
+  "y",
+  "paciente",
+  "refiere",
+  "consulta",
+  "presenta",
+  "cuadro",
+  "segun",
+  "registro",
+]);
+
+function tokenizeClinicalText(text: string): string[] {
+  return normalizeRoleValue(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 5 && !CLINICAL_AI_STOPWORDS.has(token));
+}
+
+function detectPotentialAiAdditions(input: string, output: string): string[] {
+  const inputTokens = new Set(tokenizeClinicalText(input));
+  const outputTokens = Array.from(new Set(tokenizeClinicalText(output)));
+  const additions = outputTokens.filter((token) => !inputTokens.has(token)).slice(0, 8);
+  return additions;
+}
+
 function isClinicalPrescriberRole(role: unknown): boolean {
   const r = normalizeRoleValue(role);
   return ["medico", "doctor", "odontologo", "matrona"].includes(r);
@@ -2353,6 +2420,8 @@ export const improveClinicalText = functions
     const rawText = String(data?.text || "").trim();
     const field = String(data?.field || "anamnesis").trim();
     const patientId = String(data?.patientId || "").trim();
+    const role = String(data?.role || "").trim();
+    const promptConfig = CLINICAL_AI_PROMPTS[field] || CLINICAL_AI_PROMPTS.anamnesis;
 
     if (!centerId || !rawText) {
       throw new functions.https.HttpsError("invalid-argument", "centerId y text son requeridos.");
@@ -2408,7 +2477,12 @@ Reglas:
 7. No uses Markdown, títulos ni viñetas largas.
 8. Devuelve sólo el texto final.
 
-Campo clínico: ${field}
+Campo clinico: ${field}
+Rol profesional: ${role || "no informado"}
+Prompt: ${promptConfig.id}@${promptConfig.version}
+
+Instrucciones especificas:
+${promptConfig.instructions}
 
 Texto original:
 "${rawText}"
@@ -2417,6 +2491,7 @@ Texto original:
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const improvedText = response.text().trim();
+    const warnings = detectPotentialAiAdditions(rawText, improvedText);
 
     await db.collection("centers").doc(centerId).collection("auditLogs").add({
       type: "ACTION",
@@ -2433,12 +2508,22 @@ Texto original:
       metadata: {
         field,
         patientId: patientId || null,
+        role: role || null,
+        promptId: promptConfig.id,
+        promptVersion: promptConfig.version,
         inputLength: rawText.length,
         outputLength: improvedText.length,
+        warningCount: warnings.length,
       },
     });
 
-    return { ok: true, text: improvedText };
+    return {
+      ok: true,
+      text: improvedText,
+      warnings,
+      promptId: promptConfig.id,
+      promptVersion: promptConfig.version,
+    };
   });
 
 export const recordClinicalAiUsage = functions.https.onCall(
@@ -2451,6 +2536,10 @@ export const recordClinicalAiUsage = functions.https.onCall(
     const action = String(data?.action || "").trim();
     const inputLength = Number(data?.inputLength || 0);
     const outputLength = Number(data?.outputLength || 0);
+    const editedOutputLength = Number(data?.editedOutputLength || 0);
+    const warningCount = Number(data?.warningCount || 0);
+    const promptId = String(data?.promptId || "").trim();
+    const promptVersion = String(data?.promptVersion || "").trim();
 
     if (!centerId || !["accepted", "discarded"].includes(action)) {
       throw new functions.https.HttpsError(
@@ -2503,8 +2592,12 @@ export const recordClinicalAiUsage = functions.https.onCall(
       metadata: {
         field,
         patientId: patientId || null,
+        promptId: promptId || null,
+        promptVersion: promptVersion || null,
         inputLength: Number.isFinite(inputLength) ? inputLength : 0,
         outputLength: Number.isFinite(outputLength) ? outputLength : 0,
+        editedOutputLength: Number.isFinite(editedOutputLength) ? editedOutputLength : 0,
+        warningCount: Number.isFinite(warningCount) ? warningCount : 0,
       },
     });
 
