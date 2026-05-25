@@ -1,0 +1,18 @@
+{
+  "sourceUrl": "https://datos.gob.cl/uploads/recursos/Productos_farmaceuticos_vigentes_venta_directa.csv",
+  "generatedAt": "2026-05-24",
+  "totalRows": 2428,
+  "validRows": 201,
+  "discardedRows": 2227,
+  "anomalies": [
+    "SPERTI PREPARATION H UNGÜENTO TÓPICO",
+    "INFLUVAC VACUNA ANTI - INFLUENZA SUSPENSIÓN INYECTABLE",
+    "BACITOPIC UNGÜENTO DÉRMICO",
+    "FLUAD VACUNA ANTIGRIPAL SUSPENSIÓN INYECTABLE",
+    "GC-FLU VACUNA ANTIINFLUENZA INACTIVADA, FRACCIONADA SUSPENSIÓN INYECTABLE"
+  ],
+  "localRows": 95,
+  "finalRows": 284,
+  "controlledRows": 18,
+  "prescriptionRequiredRows": 95
+}

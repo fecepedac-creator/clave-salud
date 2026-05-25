@@ -15,7 +15,7 @@ interface CaptionContext {
 
 export async function generateAICaption(idea: string, context: CaptionContext): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const prompt = `
 Actúa como un Director Creativo Senior de una agencia de marketing digital de lujo especializada en Healthcare. 
@@ -56,26 +56,53 @@ Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook
 }
 
 /**
- * Genera un resumen clínico estructurado a partir de una anamnesis extensa.
+ * Mejora la redacción clínica de notas libres para dejarlas listas para ficha.
  */
 export async function summarizeAnamnesis(rawText: string): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const prompt = `
-Actúa como un Médico Especialista Senior. Tu tarea es resumir la siguiente anamnesis de un paciente para la ficha clínica.
+Actúa como asistente de redacción clínica para una ficha médica electrónica en Chile.
+
+Tu tarea es transformar notas libres escritas por un profesional de salud en una redacción clínica clara, breve, objetiva y útil para la ficha clínica.
 
 DIRECTRICES:
-1. Usa terminología médica profesional (ej: "cefalea" en lugar de "dolor de cabeza").
-2. Estructura el resumen en: Motivo de consulta, Síntomas principales, Evolución y Hallazgos relevantes.
-3. Sé conciso pero no omitas datos críticos (ej: alergias, antecedentes mencionados).
-4. El tono debe ser objetivo y clínico.
-5. No inventes información. Si algo no está claro, omítelo.
+1. No diagnostiques.
+2. No inventes síntomas, signos, antecedentes, exámenes, tratamientos ni evolución.
+3. No agregues datos que no estén explícitamente mencionados.
+4. No cambies el sentido clínico de lo escrito por el profesional.
+5. Conserva datos relevantes: tiempo de evolución, intensidad, localización, síntomas asociados, tratamientos usados, respuesta al tratamiento, antecedentes, alergias, contactos enfermos, factores de riesgo y signos de alarma si fueron mencionados.
+6. Si un dato está poco claro, redacta de forma prudente: "refiere", "aparentemente", "según relato", solo cuando corresponda.
+7. No uses Markdown, negritas, títulos decorativos ni viñetas largas.
+8. Usa lenguaje clínico natural, no excesivamente rebuscado.
+9. Mantén el texto en español clínico chileno.
+10. El resultado debe poder pegarse directamente en el campo de anamnesis o evolución.
 
-TEXTO A RESUMIR:
+FORMATO DE SALIDA:
+- Devuelve solo el texto clínico final, sin comentarios adicionales.
+- Usa un párrafo breve si la nota es simple.
+- Usa dos o tres párrafos si hay muchos datos.
+- No uses encabezado "Ficha Clínica".
+- No repitas la misma información en distintas secciones.
+- No conviertas todo en lista salvo que el texto original venga muy desordenado.
+
+SI CORRESPONDE A ANAMNESIS PRÓXIMA:
+Redacta como enfermedad actual. Ejemplo de estilo:
+"Paciente consulta por cuadro de ... de ... días de evolución, asociado a ... Refiere ... Ha utilizado ... sin mejoría. Señala antecedente de ..."
+
+SI CORRESPONDE A EVOLUCIÓN CLÍNICA:
+Redacta como evolución de control. Ejemplo de estilo:
+"Paciente en control por ... Refiere evolución ... desde la última atención. Actualmente ... Se mantiene/ajusta ... según lo registrado."
+
+DATOS FALTANTES:
+Si faltan datos clínicos importantes, no los agregues al texto principal.
+Al final, agrega una línea separada con el formato:
+"Datos por precisar: ..."
+Solo incluye esta línea si realmente faltan datos relevantes para completar la anamnesis o evolución.
+
+TEXTO ORIGINAL:
 "${rawText}"
-
-Responde ÚNICAMENTE con el resumen estructurado listo para la ficha. No incluyas comentarios adicionales.
 `;
 
     const result = await model.generateContent(prompt);

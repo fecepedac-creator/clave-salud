@@ -97,6 +97,10 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
       setNewConsultation((prev) => ({ ...prev, anamnesis: summary }));
     } catch (error) {
       console.error("Error summarizing anamnesis:", error);
+      alert(
+        "Error del Asistente de IA: " + 
+        (error instanceof Error ? error.message : "No se pudo conectar con la IA de Gemini. Por favor verifica tu API Key.")
+      );
     } finally {
       setIsSummarizing(false);
     }
@@ -273,7 +277,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                       placeholder="¿Cuál es el motivo principal de la consulta?"
                     />
                   </div>
-                  <div className={isPsych ? "col-span-full" : ""}>
+                  <div className="col-span-full">
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-bold text-slate-700">
                         {labels.anamnesis}
@@ -282,7 +286,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                         onClick={handleSummarize}
                         disabled={isSummarizing || !newConsultation.anamnesis}
                         className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                        title="Resumir anamnesis con IA"
+                        title="Mejorar redacción clínica con IA"
                       >
                         {isSummarizing ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -306,7 +310,7 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                     />
                   </div>
                   {labels.physical && (
-                    <div>
+                    <div className="col-span-full">
                       <label className="block text-sm font-bold text-slate-700 mb-2">
                         {labels.physical}
                       </label>

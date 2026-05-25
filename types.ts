@@ -323,6 +323,8 @@ export interface Consultation extends SoftDeletable {
   podogram?: NailState[];
 
   prescriptions: Prescription[];
+  prescriptionTypes?: string[];
+  hasControlledPrescription?: boolean;
   professionalName: string;
   professionalId: string;
   professionalRole: ProfessionalRole;

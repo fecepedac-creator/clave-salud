@@ -1,4 +1,22 @@
 import { Patient, Allergy } from "../types";
+import vademecumIspRaw from "../constants/vademecum_isp.json";
+
+export interface VademecumItem {
+  id: string;
+  activePrinciple: string;
+  brandName: string;
+  presentation: string;
+  strength: string;
+  form: string;
+  route: string;
+  prescriptionRequired: boolean;
+  controlled: boolean;
+  source: string;
+  lastUpdated: string;
+  registryId?: string;
+  laboratory?: string;
+  sourceUrl?: string;
+}
 
 export interface VademecumDrug {
   brandName: string;
@@ -7,17 +25,36 @@ export interface VademecumDrug {
 }
 
 export interface ClinicalAlert {
-  type: "interaction" | "allergy" | "contraindication" | "bioequivalent";
-  severity: "info" | "warning" | "error"; // warning=media/alta, error=crítica
+  type: "interaction" | "allergy" | "contraindication" | "bioequivalent" | "duplication";
+  severity: "info" | "warning" | "error"; // info=azul, warning=amarillo, error=rojo (crítico)
   title: string;
   message: string;
 }
+
+export const PRESCRIBING_ROLES = ["MEDICO", "ODONTOLOGO", "MATRONA"];
+export const CONTROLLED_PRESCRIBING_ROLES = ["MEDICO", "ODONTOLOGO"];
+export const PRESCRIPTION_TYPES = ["Receta Médica", "Receta Retenida"];
+
+export const normalizeClinicalRole = (role?: string | null): string =>
+  String(role || "").trim().toUpperCase();
+
+export const canRoleIssuePrescription = (role?: string | null): boolean =>
+  PRESCRIBING_ROLES.includes(normalizeClinicalRole(role));
+
+export const canRoleIssueControlledPrescription = (role?: string | null): boolean =>
+  CONTROLLED_PRESCRIBING_ROLES.includes(normalizeClinicalRole(role));
+
+export const isPrescriptionDocumentType = (type?: string | null): boolean =>
+  PRESCRIPTION_TYPES.includes(String(type || ""));
+
+export const isControlledPrescriptionType = (type?: string | null): boolean =>
+  String(type || "") === "Receta Retenida";
 
 // Chilean brand names to bioequivalent mapping
 export const BRAND_TO_BIOEQUIVALENTS: VademecumDrug[] = [
   { brandName: "Apronax", activePrinciple: "Naproxeno", bioequivalent: "Naproxeno Genérico (ISP)" },
   { brandName: "Lipitor", activePrinciple: "Atorvastatina", bioequivalent: "Atorvastatina Genérica (ISP)" },
-  { brandName: "Gliax", activePrinciple: "Linagliptina", bioequivalent: "Linagliptina Genérica (ISP)" },
+  { brandName: "Gliax", activePrinciple: "Linagliptina", bioequivalent: "Linagliptica Genérica (ISP)" },
   { brandName: "Trayenta", activePrinciple: "Linagliptina", bioequivalent: "Linagliptina Genérica (ISP)" },
   { brandName: "Eurocor", activePrinciple: "Bisoprolol", bioequivalent: "Bisoprolol Genérico (ISP)" },
   { brandName: "Concor", activePrinciple: "Bisoprolol", bioequivalent: "Bisoprolol Genérico (ISP)" },
@@ -29,22 +66,178 @@ export const BRAND_TO_BIOEQUIVALENTS: VademecumDrug[] = [
 ];
 
 // Helper to normalize strings for comparison
-const cleanStr = (s: string) =>
+export const cleanStr = (s: string): string =>
   s
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // remove accents
     .trim();
 
+export const CL_VADEMECUM: VademecumItem[] = vademecumIspRaw as VademecumItem[];
+
+// Memoized flat indices for 0ms lookup speeds
+export const activePrinciplesIndex = new Map<string, VademecumItem[]>();
+export const brandNamesIndex = new Map<string, VademecumItem[]>();
+
+// Populate indices
+CL_VADEMECUM.forEach((item) => {
+  const princKey = cleanStr(item.activePrinciple);
+  if (!activePrinciplesIndex.has(princKey)) {
+    activePrinciplesIndex.set(princKey, []);
+  }
+  activePrinciplesIndex.get(princKey)!.push(item);
+
+  const brandKey = cleanStr(item.brandName);
+  if (!brandNamesIndex.has(brandKey)) {
+    brandNamesIndex.set(brandKey, []);
+  }
+  brandNamesIndex.get(brandKey)!.push(item);
+});
+
+export function getDrugSuggestions(partial: string): VademecumItem[] {
+  if (!partial || partial.length < 3) return [];
+  
+  let cleanPartial = cleanStr(partial);
+  
+  // Normalizaciones y correcciones fuzzy específicas
+  if (cleanPartial.includes("glifozina")) {
+    cleanPartial = cleanPartial.replace("glifozina", "gliflozina");
+  }
+  if (cleanPartial.includes("dapaglifozina")) {
+    cleanPartial = cleanPartial.replace("dapaglifozina", "dapagliflozina");
+  }
+  if (cleanPartial.includes("empaglifozina")) {
+    cleanPartial = cleanPartial.replace("empaglifozina", "empagliflozina");
+  }
+  if (cleanPartial.includes("parecetamol")) {
+    cleanPartial = cleanPartial.replace("parecetamol", "paracetamol");
+  }
+  if (cleanPartial.includes("valsartan")) {
+    cleanPartial = cleanPartial.replace("valsartan", "valsartan");
+  }
+  
+  const scoredItems: { item: VademecumItem; score: number }[] = [];
+  const tokens = cleanPartial.split(/\s+/).filter(Boolean);
+  
+  CL_VADEMECUM.forEach((item) => {
+    const princClean = cleanStr(item.activePrinciple);
+    const brandClean = cleanStr(item.brandName);
+    const presentationClean = cleanStr(item.presentation);
+    
+    let score = 0;
+    
+    // Si hay múltiples tokens (ej: "valsartan amlodipino")
+    if (tokens.length > 1) {
+      const matchesAllTokens = tokens.every(token => presentationClean.includes(token));
+      if (matchesAllTokens) {
+        score = 50;
+        const matchesPrincTokens = tokens.every(token => princClean.includes(token));
+        if (matchesPrincTokens) {
+          score = 90;
+        }
+      }
+    } else {
+      // Un solo token
+      if (princClean === cleanPartial) {
+        score = 100;
+      } else if (princClean.startsWith(cleanPartial)) {
+        score = 80;
+      } else if (brandClean.startsWith(cleanPartial)) {
+        score = 70;
+      } else if (princClean.includes(cleanPartial)) {
+        score = 50;
+      } else if (brandClean.includes(cleanPartial)) {
+        score = 40;
+      } else if (presentationClean.includes(cleanPartial)) {
+        score = 30;
+      }
+    }
+    
+    if (score > 0) {
+      scoredItems.push({ item, score });
+    }
+  });
+  
+  // Ordenar por puntaje descendente
+  scoredItems.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    // Si tienen igual puntaje, dar prioridad a local (presets)
+    if (a.item.source !== b.item.source) {
+      return a.item.source === "local" ? -1 : 1;
+    }
+    return a.item.presentation.localeCompare(b.item.presentation);
+  });
+  
+  return scoredItems.map(si => si.item);
+}
+
+export function findControlledDrugMatches(text: string): VademecumItem[] {
+  if (!text || !text.trim()) return [];
+
+  const cleanText = cleanStr(text);
+  const matches: VademecumItem[] = [];
+  const seen = new Set<string>();
+
+  CL_VADEMECUM.forEach((item) => {
+    if (!item.controlled) return;
+
+    const principle = cleanStr(item.activePrinciple);
+    const brand = cleanStr(item.brandName);
+    const presentation = cleanStr(item.presentation);
+    const hasPrinciple = principle.length > 2 && cleanText.includes(principle);
+    const hasBrand = brand.length > 2 && brand !== "generico" && cleanText.includes(brand);
+    const hasPresentation = presentation.length > 2 && cleanText.includes(presentation);
+
+    if (hasPrinciple || hasBrand || hasPresentation) {
+      const key = `${principle}|${brand}`;
+      if (!seen.has(key)) {
+        matches.push(item);
+        seen.add(key);
+      }
+    }
+  });
+
+  return matches;
+}
+
+export function hasControlledDrug(text: string): boolean {
+  return findControlledDrugMatches(text).length > 0;
+}
+
 export const auditPrescription = (
   text: string,
   patient?: Patient,
-  currentDiagnosis?: string
+  currentDiagnosis?: string,
+  prescriptionType?: string
 ): ClinicalAlert[] => {
   const alerts: ClinicalAlert[] = [];
   if (!text || !text.trim()) return alerts;
 
   const cleanText = cleanStr(text);
+  const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
+
+  const controlledMatches = findControlledDrugMatches(text);
+  if (controlledMatches.length > 0 && !isControlledPrescriptionType(prescriptionType)) {
+    const names = controlledMatches
+      .slice(0, 4)
+      .map((item) => item.activePrinciple)
+      .join(", ");
+    alerts.push({
+      type: "contraindication",
+      severity: "error",
+      title: "Tipo de Receta Incompatible",
+      message: `Se detectó medicamento potencialmente controlado (${names}). Debe emitirse como Receta Retenida y por profesional autorizado.`,
+    });
+  } else if (controlledMatches.length > 0) {
+    alerts.push({
+      type: "contraindication",
+      severity: "warning",
+      title: "Medicamento Controlado",
+      message: "Verifique normativa vigente, identidad del paciente, tipo de receta, indicación y firma antes de emitir.",
+    });
+  }
 
   // 1. Check for brand name drugs to suggest bioequivalents
   BRAND_TO_BIOEQUIVALENTS.forEach((item) => {
@@ -103,7 +296,6 @@ export const auditPrescription = (
 
       // Generic match
       if (substance.length > 3 && cleanText.includes(substance)) {
-        // Prevent duplicate alerts if already added by specific rule
         if (!alerts.some((a) => a.type === "allergy" && a.message.includes(allergy.substance))) {
           alerts.push({
             type: "allergy",
@@ -172,7 +364,7 @@ export const auditPrescription = (
     });
   }
 
-  // 4. Drug-Diagnosis Contraindications (based on patient's medical history or current diagnosis)
+  // 4. Drug-Diagnosis Contraindications
   const patientHistories = patient?.medicalHistory
     ? patient.medicalHistory.map((h) => (typeof h === "string" ? cleanStr(h) : cleanStr(h.display)))
     : [];
@@ -202,57 +394,126 @@ export const auditPrescription = (
     });
   }
 
+  // 5. Therapeutic Duplications (Same Active Principle or Same Drug Class)
+  const UNIQUE_PRINCIPLES = Array.from(new Set(CL_VADEMECUM.map(item => cleanStr(item.activePrinciple))));
+  
+  // Find which active principles are in each line to check for duplication (literal or mapped from brand)
+  const linePrinciples = lines.map(line => {
+    const principlesFound = new Set<string>();
+    
+    // Check direct active principle
+    UNIQUE_PRINCIPLES.forEach(princ => {
+      if (line.includes(princ)) {
+        principlesFound.add(princ);
+      }
+    });
+    
+    // Check brand name to map to active principle
+    CL_VADEMECUM.forEach(item => {
+      const brandClean = cleanStr(item.brandName);
+      if (brandClean !== "generico" && line.includes(brandClean)) {
+        principlesFound.add(cleanStr(item.activePrinciple));
+      }
+    });
+    
+    return Array.from(principlesFound);
+  });
+
+  const activePrincipleCounts: Record<string, number> = {};
+  linePrinciples.forEach(principles => {
+    principles.forEach(p => {
+      activePrincipleCounts[p] = (activePrincipleCounts[p] || 0) + 1;
+    });
+  });
+
+  Object.entries(activePrincipleCounts).forEach(([princ, count]) => {
+    if (count > 1) {
+      alerts.push({
+        type: "duplication",
+        severity: "error",
+        title: `Duplicidad Terapéutica`,
+        message: `El principio activo "${princ.toUpperCase()}" está prescrito más de una vez en esta receta. Verifique que no se trate de una duplicación involuntaria.`,
+      });
+    }
+  });
+
+  // NSAID Class Duplication
+  const foundNsaids = nsaidsList.filter(nsaid => {
+    return lines.some(line => line.includes(nsaid));
+  });
+  if (foundNsaids.length > 1) {
+    alerts.push({
+      type: "duplication",
+      severity: "warning",
+      title: `Duplicidad de Clase (AINEs)`,
+      message: `Se detectó la prescripción simultánea de múltiples AINEs (${foundNsaids.map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(" y ")}). Esto eleva exponencialmente el riesgo de efectos adversos gastrointestinales y renales.`,
+    });
+  }
+
+  // ARA-II / IECA Class Duplication
+  const foundRaasDrugs = raasInhibitors.filter(raas => {
+    return lines.some(line => line.includes(raas));
+  });
+  if (foundRaasDrugs.length > 1) {
+    alerts.push({
+      type: "duplication",
+      severity: "warning",
+      title: `Duplicidad de Clase (ARA-II / IECA)`,
+      message: `Se detectó el uso simultáneo de múltiples bloqueadores del sistema renina-angiotensina (${foundRaasDrugs.map(r => r.charAt(0).toUpperCase() + r.slice(1)).join(" y ")}). No se recomienda la terapia dual.`,
+    });
+  }
+
   return alerts;
 };
 
-export const CL_DRUG_SUGGESTIONS: Record<string, string[]> = {
-  metformina: [
-    "Metformina 500 mg",
-    "Metformina 750 mg LP",
-    "Metformina 850 mg",
-    "Metformina 1000 mg LP",
-    "Metformina + Dapagliflozina 1000/5 mg",
-    "Metformina + Vildagliptina 850/50 mg",
-    "Metformina + Glibenclamida 500/5 mg",
-  ],
-  paracetamol: [
-    "Paracetamol 500 mg",
-    "Paracetamol 1 g",
-    "Paracetamol + Codeína 500/30 mg",
-    "Paracetamol + Tramadol 325/37.5 mg",
-  ],
-  losartan: [
-    "Losartán 50 mg",
-    "Losartán 100 mg",
-    "Losartán + Hidroclorotiazida 50/12.5 mg",
-    "Losartán + Hidroclorotiazida 100/25 mg",
-  ],
-  ibuprofeno: [
-    "Ibuprofeno 400 mg",
-    "Ibuprofeno 600 mg",
-  ],
-  atorvastatina: [
-    "Atorvastatina 10 mg",
-    "Atorvastatina 20 mg",
-    "Atorvastatina 40 mg",
-    "Atorvastatina 80 mg",
-  ],
-  bisoprolol: [
-    "Bisoprolol 1.25 mg",
-    "Bisoprolol 2.5 mg",
-    "Bisoprolol 5 mg",
-    "Bisoprolol 10 mg",
-    "Bisoprolol + Amlodipino 5/5 mg",
-  ],
+export const getPosologyTemplate = (item: VademecumItem): string => {
+  const formClean = item.form.toLowerCase();
+  const routeClean = item.route.toLowerCase();
+  
+  if (formClean.includes("comprimido") || formClean.includes("tableta")) {
+    return ": Tomar ___ comprimido(s) cada ___ horas por ___ días.";
+  }
+  if (formClean.includes("capsula") || formClean.includes("cápsula")) {
+    return ": Tomar ___ cápsula(s) cada ___ horas por ___ días.";
+  }
+  if (formClean.includes("gotas")) {
+    return ": Tomar ___ gota(s) cada ___ horas por ___ días.";
+  }
+  if (
+    formClean.includes("jarabe") || 
+    formClean.includes("suspension") || 
+    formClean.includes("suspensión") || 
+    formClean.includes("solucion oral") || 
+    formClean.includes("solución oral")
+  ) {
+    return ": Tomar ___ ml cada ___ horas por ___ días.";
+  }
+  if (
+    formClean.includes("aerosol") || 
+    formClean.includes("inhalador") || 
+    formClean.includes("puff")
+  ) {
+    return ": ___ puff(s) cada ___ horas por ___ días.";
+  }
+  if (
+    routeClean === "topica" || 
+    routeClean === "tópica" ||
+    formClean.includes("crema") || 
+    formClean.includes("unguento") || 
+    formClean.includes("ungüento") || 
+    formClean.includes("gel") || 
+    formClean.includes("pomada")
+  ) {
+    return ": Aplicar una capa delgada cada ___ horas por ___ días en ___.";
+  }
+  if (
+    routeClean === "inyectable" || 
+    formClean.includes("ampolla") || 
+    formClean.includes("solucion inyectable") || 
+    formClean.includes("solución inyectable")
+  ) {
+    return ": Administrar ___ por vía ___ cada ___ horas/días por ___ días.";
+  }
+  // Default fallback
+  return ": Tomar ___ cada ___ horas por ___ días.";
 };
-
-export function getDrugSuggestions(partial: string): string[] {
-  if (!partial || partial.length < 3) return [];
-  const cleanPartial = cleanStr(partial);
-  
-  const foundKey = Object.keys(CL_DRUG_SUGGESTIONS).find(key => 
-    key.startsWith(cleanPartial) || cleanPartial.startsWith(key)
-  );
-  
-  return foundKey ? CL_DRUG_SUGGESTIONS[foundKey] : [];
-}

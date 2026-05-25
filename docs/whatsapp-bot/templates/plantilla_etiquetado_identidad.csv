@@ -1,0 +1,6 @@
+conversation_id,turn_count,scenario,patient_signal,bot_decision,expected_decision,decision_result,empathy_0_2,clarity_0_2,formality_0_2,closure_0_2,no_diagnosis,urgency_handled,data_validation,explicit_confirmation,real_availability,handoff_correct,tenant_correct,cancel_safety,operational_hallucination,severity,notes
+CONV_001,0,agendamiento_medico,,,,,0,0,0,0,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no,P3,
+CONV_002,0,examen_o_procedimiento,,,,,0,0,0,0,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no,P3,
+CONV_003,0,cancelacion_o_cambio,,,,,0,0,0,0,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no,P3,
+CONV_004,0,administrativo_handoff,,,,,0,0,0,0,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no,P3,
+CONV_005,0,sintoma_o_urgencia,,,,,0,0,0,0,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no_aplica,no,P3,

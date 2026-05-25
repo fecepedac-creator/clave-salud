@@ -91,6 +91,41 @@ service cloud.firestore {
       return isStaff(centerId) && staffAccessRole(centerId) == "doctor";
     }
 
+    function staffClinicalRole(centerId) {
+      return isStaff(centerId)
+        ? (staffDoc(centerId).data.clinicalRole != null
+          ? staffDoc(centerId).data.clinicalRole
+          : (staffDoc(centerId).data.professionalRole != null
+            ? staffDoc(centerId).data.professionalRole
+            : staffDoc(centerId).data.role))
+        : null;
+    }
+
+    function isClinicalPrescriber(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "medico" ||
+        r == "médico" ||
+        r == "doctor" ||
+        r == "odontologo" ||
+        r == "odontólogo" ||
+        r == "matrona"
+      );
+    }
+
+    function isControlledClinicalPrescriber(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "medico" ||
+        r == "médico" ||
+        r == "doctor" ||
+        r == "odontologo" ||
+        r == "odontólogo"
+      );
+    }
+
     function centerDoc(centerId) {
       return get(/databases/$(database)/documents/centers/$(centerId));
     }
@@ -374,6 +409,35 @@ service cloud.firestore {
           && request.resource.data.professionalRut == resource.data.professionalRut;
       }
 
+      function hasPrescriptionDocuments() {
+        return request.resource.data.prescriptions is list
+          && request.resource.data.prescriptions.size() > 0;
+      }
+
+      function hasRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Médica", "Receta Retenida"]);
+      }
+
+      function hasRetainedRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Retenida"]);
+      }
+
+      function consultationPrescriptionSecurityValid(centerId) {
+        return !hasPrescriptionDocuments()
+          || (
+            request.resource.data.prescriptionTypes is list
+            && request.resource.data.hasControlledPrescription is bool
+            && (!hasRecipeDocumentType() || isClinicalPrescriber(centerId))
+            && (!hasRetainedRecipeDocumentType() || isControlledClinicalPrescriber(centerId))
+            && (
+              request.resource.data.hasControlledPrescription != true
+              || (hasRetainedRecipeDocumentType() && isControlledClinicalPrescriber(centerId))
+            )
+          );
+      }
+
       match /publicStaff/{staffUid} {
         // Allow public read of staff members designated for the booking portal.
         // We trust the data in this subcollection is public-ready.
@@ -432,13 +496,15 @@ service cloud.firestore {
             isSuperAdmin()
             || isCenterAdmin(centerId)
             || isDoctor(centerId)
-          );
+          )
+          && consultationPrescriptionSecurityValid(centerId);
           allow update: if signedIn() && (
             isSuperAdmin()
             || isCenterAdmin(centerId)
             || isDoctor(centerId)
           )
           && professionalFieldsUnchanged()
+          && consultationPrescriptionSecurityValid(centerId)
           && (
             !softDeleteKeysChanged()
             || (

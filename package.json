@@ -20,7 +20,9 @@
     "audit:all": "node scripts/audit/run-audit.cjs --all",
     "audit:all:smoke": "node scripts/audit/run-audit.cjs --all --profile smoke",
     "audit:all:deep": "node scripts/audit/run-audit.cjs --all --profile deep",
-    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean"
+    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean",
+    "identity:whatsapp": "node scripts/whatsapp-identity/run_identity_eval.cjs",
+    "identity:whatsapp:agent": "npm --prefix functions run build && node scripts/whatsapp-identity/run_identity_eval.cjs --mode=agent"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Consultation, Patient, MedicalCenter, ProfessionalRole, SnomedConcept } from "../../types";
-import { generateId, sanitizeForFirestore } from "../../utils";
+import {
+  canRoleIssueControlledPrescription,
+  canRoleIssuePrescription,
+  generateId,
+  hasControlledDrug,
+  isControlledPrescriptionType,
+  sanitizeForFirestore,
+} from "../../utils";
 import { useToast } from "../../components/Toast";
 import { db, auth } from "../../firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -228,6 +235,40 @@ export const useConsultationLogic = ({
       return;
     }
 
+    // Validar seguridad de roles sobre recetas
+    const prescriptions = newConsultation.prescriptions || [];
+    const prescriptionTypes = Array.from(new Set(prescriptions.map((p) => p.type).filter(Boolean)));
+    const hasStandardReceta = prescriptions.some(p => p.type === "Receta Médica");
+    const hasRetenidaReceta = prescriptions.some(p => isControlledPrescriptionType(p.type));
+    const hasControlledDrugContent = prescriptions.some(p => hasControlledDrug(p.content || ""));
+
+    if (hasStandardReceta || hasRetenidaReceta) {
+      if (!canRoleIssuePrescription(role)) {
+        showToast(`Rol no autorizado para emitir recetas. Su rol es: ${role}`, "error");
+        console.error("Intento de guardado de receta por rol no autorizado:", role);
+        return;
+      }
+      
+      if (hasRetenidaReceta && !canRoleIssueControlledPrescription(role)) {
+        showToast(`Su rol (${role}) no está autorizado para prescribir medicamentos controlados (Receta Retenida).`, "error");
+        console.error("Intento de guardado de Receta Retenida por rol no calificado:", role);
+        return;
+      }
+
+    }
+
+    if (hasControlledDrugContent && !hasRetenidaReceta) {
+      showToast("Se detectó un medicamento potencialmente controlado. Debe emitirse como Receta Retenida.", "error");
+      console.error("Intento de guardado de medicamento controlado fuera de Receta Retenida:", role);
+      return;
+    }
+
+    if (hasControlledDrugContent && !canRoleIssueControlledPrescription(role)) {
+      showToast(`Su rol (${role}) no está autorizado para medicamentos controlados.`, "error");
+      console.error("Intento de guardado de medicamento controlado por rol no calificado:", role);
+      return;
+    }
+
     // Construye un objeto consulta (local + nube) con mapeo explícito para evitar undefined
     const currentUid = auth.currentUser?.uid || doctorId;
     const consultation: Consultation = {
@@ -253,6 +294,8 @@ export const useConsultationLogic = ({
 
       // Special Modules
       prescriptions: (newConsultation.prescriptions || []) as any,
+      prescriptionTypes,
+      hasControlledPrescription: hasRetenidaReceta || hasControlledDrugContent,
       dentalMap: (newConsultation.dentalMap || []) as any,
       podogram: (newConsultation.podogram || []) as any,
       exams: (newConsultation.exams || {}) as any,
