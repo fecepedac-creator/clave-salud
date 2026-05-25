@@ -335,6 +335,40 @@ function clinicalTextForField(consultation: any, field: string): string {
   return "";
 }
 
+async function requireActiveCenterStaff(
+  context: CallableContext,
+  centerId: string
+): Promise<FirebaseFirestore.DocumentSnapshot> {
+  requireAuth(context);
+  const uid = context.auth?.uid as string;
+  const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+  if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "No tiene permisos activos en este centro."
+    );
+  }
+  return staffSnap;
+}
+
+async function assertPatientInCenter(patientId: string, centerId: string): Promise<any> {
+  const patientSnap = await db.collection("patients").doc(patientId).get();
+  if (!patientSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
+  }
+  const patientData = patientSnap.data() || {};
+  const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+    ? patientData.accessControl.centerIds
+    : [];
+  if (patientData.centerId !== centerId && !patientCenterIds.includes(centerId)) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "El paciente no pertenece al centro indicado."
+    );
+  }
+  return patientData;
+}
+
 function isClinicalPrescriberRole(role: unknown): boolean {
   const r = normalizeRoleValue(role);
   return ["medico", "doctor", "odontologo", "matrona"].includes(r);
@@ -2499,6 +2533,128 @@ export const createPatientConsultation = (functions.https.onCall as any)(
         createdAt: new Date().toISOString(),
       },
     };
+  }
+);
+
+export const archiveAppointment = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const appointmentId = String(data?.appointmentId || "").trim();
+    const reason = String(data?.reason || "").trim();
+
+    if (!centerId || !appointmentId || !reason) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, appointmentId y reason son requeridos."
+      );
+    }
+
+    const staffSnap = await requireActiveCenterStaff(context, centerId);
+    const appointmentRef = db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId);
+    const appointmentSnap = await appointmentRef.get();
+    if (!appointmentSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Cita no encontrada.");
+    }
+    const appointment = appointmentSnap.data() || {};
+
+    await appointmentRef.set(
+      {
+        active: false,
+        attendanceStatus: "cancelled",
+        status: "cancelled",
+        deletedAt: serverTimestamp(),
+        deletedBy: uid,
+        deleteReason: reason,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action: "APPOINTMENT_ARCHIVE",
+      entityType: "appointment",
+      entityId: appointmentId,
+      patientId: appointment.patientId || null,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: staffSnap.get("role") || "staff",
+      resourceType: "appointment",
+      resourcePath: `/centers/${centerId}/appointments/${appointmentId}`,
+      timestamp: serverTimestamp(),
+      details: "Archivo/cancelacion administrativa de cita.",
+      metadata: {
+        deleteReason: reason,
+        previousStatus: appointment.status || null,
+        date: appointment.date || null,
+        time: appointment.time || null,
+      },
+    });
+
+    return { ok: true };
+  }
+);
+
+export const addPatientAttachment = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const attachment = data?.attachment || {};
+
+    if (!centerId || !patientId || !attachment?.id || !attachment?.url || !attachment?.name) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, patientId y attachment valido son requeridos."
+      );
+    }
+
+    const staffSnap = await requireActiveCenterStaff(context, centerId);
+    await assertPatientInCenter(patientId, centerId);
+
+    const safeAttachment = {
+      id: String(attachment.id),
+      name: String(attachment.name).slice(0, 180),
+      type: String(attachment.type || "other").slice(0, 40),
+      date: String(attachment.date || new Date().toISOString()),
+      url: String(attachment.url),
+      storagePath: attachment.storagePath ? String(attachment.storagePath) : null,
+      uploadedByUid: uid,
+    };
+
+    await db.collection("patients").doc(patientId).set(
+      {
+        attachments: admin.firestore.FieldValue.arrayUnion(safeAttachment),
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action: "PATIENT_ATTACHMENT_ADD",
+      entityType: "patient",
+      entityId: patientId,
+      patientId,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: staffSnap.get("role") || "staff",
+      resourceType: "patient",
+      resourcePath: `/patients/${patientId}`,
+      timestamp: serverTimestamp(),
+      details: "Adjunto clinico agregado a ficha.",
+      metadata: {
+        attachmentId: safeAttachment.id,
+        fileName: safeAttachment.name,
+        fileType: safeAttachment.type,
+        storagePath: safeAttachment.storagePath,
+      },
+    });
+
+    return { ok: true, attachment: safeAttachment };
   }
 );
 

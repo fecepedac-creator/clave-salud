@@ -1,28 +1,8 @@
-<<<<<<< HEAD
-# 📑 Índice de Auditorías
+# Indice de Auditorias
 
-Generado automáticamente por el corredor de auditoría.
+Este indice agrupa auditorias historicas y documentos operativos. Se normalizo para permitir futuras actualizaciones automaticas sin conflictos de merge.
 
-| Reporte | Fecha Modificación |
-|---|---|
-| [2026/2026-03-22_whatsapp-chatbot.md](2026/2026-03-22_whatsapp-chatbot.md) | 2026-03-22T13:05:28.590Z |
-| [2026/2026-03-22_whatsapp-chatbot_smoke.md](2026/2026-03-22_whatsapp-chatbot_smoke.md) | 2026-03-22T21:12:36.832Z |
-| [2026/2026-03-22_transversal-tenancy_smoke.md](2026/2026-03-22_transversal-tenancy_smoke.md) | 2026-03-22T21:12:06.869Z |
-| [2026/2026-03-22_superadmin.md](2026/2026-03-22_superadmin.md) | 2026-03-22T13:24:09.845Z |
-| [2026/2026-03-22_superadmin_smoke.md](2026/2026-03-22_superadmin_smoke.md) | 2026-03-22T21:09:34.683Z |
-| [2026/2026-03-22_patient-portal_smoke.md](2026/2026-03-22_patient-portal_smoke.md) | 2026-03-22T21:11:38.804Z |
-| [2026/2026-03-22_doctor-subviews_smoke.md](2026/2026-03-22_doctor-subviews_smoke.md) | 2026-03-22T21:11:30.373Z |
-| [2026/2026-03-22_doctor-dashboard_smoke.md](2026/2026-03-22_doctor-dashboard_smoke.md) | 2026-03-22T21:10:52.657Z |
-| [2026/2026-03-22_admin-center_smoke.md](2026/2026-03-22_admin-center_smoke.md) | 2026-03-22T21:13:20.595Z |
-| [2026-02-21-superadmin-main-readiness-action-plan.md](2026-02-21-superadmin-main-readiness-action-plan.md) | 2026-02-22T00:12:44.970Z |
-| [2026-02-21-superadmin-execution-prompts.md](2026-02-21-superadmin-execution-prompts.md) | 2026-02-22T00:12:44.968Z |
-| [2026-02-21-superadmin-branch-audit.md](2026-02-21-superadmin-branch-audit.md) | 2026-02-22T00:12:44.967Z |
-=======
-# Índice de Auditorías
-
-Este índice se actualiza automáticamente con cada ejecución de `run-audit.cjs`.
-
-## Ejecución rápida
+## Ejecucion rapida
 
 ```bash
 npm run audit:setup:e2e
@@ -32,7 +12,7 @@ npm run audit:run -- --all --profile deep
 npm run audit:all:strict
 ```
 
-## Checklist Playwright para ejecución real
+## Checklist Playwright para ejecucion real
 
 1. `npx playwright install`
 2. Configurar `.env.test` con credenciales y IDs
@@ -41,22 +21,28 @@ npm run audit:all:strict
    - `npx playwright test tests/admin/login.spec.ts --project=admin-tests`
    - `npx playwright test tests/doctor/login.spec.ts --project=doctor-tests`
 
+## Reportes principales
 
-| Archivo | Última actualización (UTC) |
+| Archivo | Nota |
 |---|---|
-| [multiagent/SALIDA_ESTANDAR.md](multiagent/SALIDA_ESTANDAR.md) | 2026-03-22T21:37:00.096Z |
-| [multiagent/ORQUESTADOR_PROMPT.md](multiagent/ORQUESTADOR_PROMPT.md) | 2026-03-22T21:37:00.092Z |
-| [multiagent/AGENTES_PROMPTS.md](multiagent/AGENTES_PROMPTS.md) | 2026-03-22T21:37:00.092Z |
-| [2026/2026-03-22_whatsapp-chatbot.md](2026/2026-03-22_whatsapp-chatbot.md) | 2026-03-22T21:38:37.187Z |
-| [2026/2026-03-22_transversal-tenancy.md](2026/2026-03-22_transversal-tenancy.md) | 2026-03-22T21:38:19.439Z |
-| [2026/2026-03-22_superadmin.md](2026/2026-03-22_superadmin.md) | 2026-03-22T21:38:09.331Z |
-| [2026/2026-03-22_patient-portal.md](2026/2026-03-22_patient-portal.md) | 2026-03-22T21:37:59.455Z |
-| [2026/2026-03-22_multiagente_consolidado.md](2026/2026-03-22_multiagente_consolidado.md) | 2026-03-22T21:38:37.191Z |
-| [2026/2026-03-22_doctor-subviews.md](2026/2026-03-22_doctor-subviews.md) | 2026-03-22T21:37:48.668Z |
-| [2026/2026-03-22_doctor-dashboard.md](2026/2026-03-22_doctor-dashboard.md) | 2026-03-22T21:37:38.724Z |
-| [2026/2026-03-22_admin-center.md](2026/2026-03-22_admin-center.md) | 2026-03-22T21:37:28.580Z |
-| [2026-02-21-superadmin-main-readiness-action-plan.md](2026-02-21-superadmin-main-readiness-action-plan.md) | 2026-03-22T14:22:14.536Z |
-| [2026-02-21-superadmin-execution-prompts.md](2026-02-21-superadmin-execution-prompts.md) | 2026-03-22T14:22:14.536Z |
-| [2026-02-21-superadmin-branch-audit.md](2026-02-21-superadmin-branch-audit.md) | 2026-03-22T14:22:14.536Z |
+| [2026-05-25_auditoria_integral_modulos_ia_clinica.md](2026-05-25_auditoria_integral_modulos_ia_clinica.md) | Auditoria integral reciente por modulos e IA clinica |
+| [2026/2026-03-22_admin-center.md](2026/2026-03-22_admin-center.md) | Auditoria admin centro |
+| [2026/2026-03-22_doctor-dashboard.md](2026/2026-03-22_doctor-dashboard.md) | Auditoria panel medico |
+| [2026/2026-03-22_doctor-subviews.md](2026/2026-03-22_doctor-subviews.md) | Auditoria subviews medico |
+| [2026/2026-03-22_patient-portal.md](2026/2026-03-22_patient-portal.md) | Auditoria portal paciente |
+| [2026/2026-03-22_superadmin.md](2026/2026-03-22_superadmin.md) | Auditoria superadmin |
+| [2026/2026-03-22_transversal-tenancy.md](2026/2026-03-22_transversal-tenancy.md) | Auditoria multi-tenant |
+| [2026/2026-03-22_whatsapp-chatbot.md](2026/2026-03-22_whatsapp-chatbot.md) | Auditoria chatbot WhatsApp |
+| [AUDITORIA_PROFUNDA_BACKEND_FIREBASE_2026-03-29.md](AUDITORIA_PROFUNDA_BACKEND_FIREBASE_2026-03-29.md) | Backend/Firebase |
+| [AUDITORIA_PROFUNDA_DASHBOARDS_FLUJO_CLINICO_UX_2026-03-29.md](AUDITORIA_PROFUNDA_DASHBOARDS_FLUJO_CLINICO_UX_2026-03-29.md) | Dashboards, flujo clinico y UX |
+| [BACKLOG_TECNICO_FIREBASE_CLINICO_2026-03-29.md](BACKLOG_TECNICO_FIREBASE_CLINICO_2026-03-29.md) | Backlog tecnico |
+| [PLAN_LOTES_REMEDIACION_P0_P1_2026-03-29.md](PLAN_LOTES_REMEDIACION_P0_P1_2026-03-29.md) | Plan P0/P1 |
 
->>>>>>> pr-104
+## Multiagente
+
+| Archivo |
+|---|
+| [multiagent/README.md](multiagent/README.md) |
+| [multiagent/AGENTES_PROMPTS.md](multiagent/AGENTES_PROMPTS.md) |
+| [multiagent/ORQUESTADOR_PROMPT.md](multiagent/ORQUESTADOR_PROMPT.md) |
+| [multiagent/SALIDA_ESTANDAR.md](multiagent/SALIDA_ESTANDAR.md) |

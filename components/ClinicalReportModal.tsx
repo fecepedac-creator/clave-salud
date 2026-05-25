@@ -3,6 +3,7 @@ import { Patient, Consultation, ProfessionalRole, ExamDefinition } from "../type
 import { calculateAge, formatPersonName } from "../utils";
 import { TRACKED_EXAMS_OPTIONS } from "../constants";
 import { FileText, Printer, X } from "lucide-react";
+import { logAuditEventSafe } from "../hooks/useAuditLog";
 
 type Props = {
   isOpen: boolean;
@@ -624,7 +625,22 @@ const ClinicalReportModal: React.FC<Props> = ({
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={async () => {
+                await logAuditEventSafe({
+                  centerId: patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                  action: "CLINICAL_REPORT_PRINT",
+                  entityType: "patient",
+                  entityId: patient.id,
+                  patientId: patient.id,
+                  details: "Impresion/exportacion PDF de informe clinico.",
+                  metadata: {
+                    professionalName,
+                    professionalRole,
+                    reportObjectiveLength: reportObjective.length,
+                  },
+                });
+                window.print();
+              }}
               disabled={!canPrint}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
             >

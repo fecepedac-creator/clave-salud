@@ -4,6 +4,7 @@ import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
 import { Printer, FileText, X } from "lucide-react";
 import QRCode from "qrcode";
+import { logAuditEventSafe } from "../hooks/useAuditLog";
 
 const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
   const [qrSrc, setQrSrc] = React.useState<string>("");
@@ -64,6 +65,15 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     : "https://clavesalud-2.web.app";
 
   const downloadPDF = async () => {
+    await logAuditEventSafe({
+      centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+      action: "CLINICAL_DOCUMENT_DOWNLOAD",
+      entityType: "prescription",
+      entityId: docs.map((doc) => doc.id).join(","),
+      patientId: selectedPatient.id,
+      details: "Descarga PDF de receta/documento clinico.",
+      metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
+    });
     const { jsPDF } = await import("jspdf");
     const html2canvas = (await import("html2canvas")).default;
     const pdf = new jsPDF("p", "mm", "a5");
@@ -114,7 +124,18 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               Descargar PDF
             </button>
             <button
-              onClick={() => window.print()}
+              onClick={async () => {
+                await logAuditEventSafe({
+                  centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+                  action: "CLINICAL_DOCUMENT_PRINT",
+                  entityType: "prescription",
+                  entityId: docs.map((doc) => doc.id).join(","),
+                  patientId: selectedPatient.id,
+                  details: "Impresion de receta/documento clinico.",
+                  metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
+                });
+                window.print();
+              }}
               className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold transition-colors"
             >
               Imprimir

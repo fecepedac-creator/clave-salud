@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Consultation, MedicalCenter, Patient, Prescription, SnomedConcept } from "../types";
 import { calculateAge, openEmailCompose } from "../utils";
 import { Printer, Mail, X } from "lucide-react";
+import { logAuditEventSafe } from "../hooks/useAuditLog";
 
 interface GeneratedByInfo {
   name: string;
@@ -67,6 +68,15 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
 
   const handleSendEmail = () => {
     if (!patient) return;
+    void logAuditEventSafe({
+      centerId: center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+      action: "FULL_CLINICAL_RECORD_EMAIL_EXPORT",
+      entityType: "patient",
+      entityId: patient.id,
+      patientId: patient.id,
+      details: "Envio/exportacion por email de ficha clinica completa.",
+      metadata: { consultationCount: sortedConsultations.length },
+    });
 
     const subject = `Ficha Clínica Completa - ${patient.fullName}`;
     const lines: string[] = [];
@@ -125,7 +135,18 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           </h3>
           <div className="flex gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={async () => {
+                await logAuditEventSafe({
+                  centerId: center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                  action: "FULL_CLINICAL_RECORD_PRINT",
+                  entityType: "patient",
+                  entityId: patient.id,
+                  patientId: patient.id,
+                  details: "Impresion/exportacion PDF de ficha clinica completa.",
+                  metadata: { consultationCount: sortedConsultations.length },
+                });
+                window.print();
+              }}
               className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm shadow-md active:scale-95"
             >
               <Printer className="w-4 h-4" />

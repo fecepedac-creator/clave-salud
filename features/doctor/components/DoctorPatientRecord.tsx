@@ -11,6 +11,8 @@ import {
   SnomedConcept,
 } from "../../../types";
 import { generateId } from "../../../utils";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../../../firebase";
 
 // Components
 import PatientSidebar from "../../../components/PatientSidebar";
@@ -285,9 +287,10 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 try {
                   const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
                   const { storage } = await import("../../../firebase");
+                  const storagePath = `centers/${activeCenterId}/patients/${selectedPatient.id}/attachments/${Date.now()}_${f.name}`;
                   const storageRef = ref(
                     storage,
-                    `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`
+                    storagePath
                   );
                   await uploadBytes(storageRef, f);
                   const downloadUrl = await getDownloadURL(storageRef);
@@ -297,13 +300,20 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                     : f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf")
                       ? "pdf"
                       : "other";
-                  const att: Attachment = {
+                  const att = {
                     id: generateId(),
                     name: f.name,
                     type: fileType,
                     date: new Date().toISOString(),
                     url: downloadUrl,
-                  };
+                    storagePath,
+                  } as Attachment & { storagePath: string };
+                  const addPatientAttachment = httpsCallable(functions, "addPatientAttachment");
+                  await addPatientAttachment({
+                    centerId: activeCenterId,
+                    patientId: selectedPatient.id,
+                    attachment: att,
+                  });
                   const up = {
                     ...selectedPatient,
                     attachments: [...(selectedPatient.attachments || []), att],

@@ -283,27 +283,14 @@ export function useCrudOperations(
         });
         return;
       }
-      await updateDoc(doc(db, "centers", activeCenterId, "appointments", id), {
-        active: false,
-        deletedAt: serverTimestamp(),
-        deletedBy: authUser?.uid ?? "unknown",
-        deleteReason: reason.trim(),
-      });
-      await updateAuditLog({
-        id: generateId(),
+      const archiveAppointment = httpsCallable(getFunctions(), "archiveAppointment");
+      await archiveAppointment({
         centerId: activeCenterId,
-        actorUid: authUser?.uid ?? "unknown",
-        actorName: authUser?.displayName ?? "Usuario",
-        actorRole: "staff",
-        action: "APPOINTMENT_ARCHIVE",
-        entityType: "appointment",
-        entityId: id,
-        patientId: apptData?.patientId,
-        details: "Archivo de cita.",
-        metadata: { deleteReason: reason.trim() },
+        appointmentId: id,
+        reason: reason.trim(),
       });
     },
-    [activeCenterId, requireCenter, updateAuditLog]
+    [activeCenterId, requireCenter]
   );
 
   const syncAppointments = useCallback(
