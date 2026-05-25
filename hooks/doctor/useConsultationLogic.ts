@@ -9,8 +9,8 @@ import {
   sanitizeForFirestore,
 } from "../../utils";
 import { useToast } from "../../components/Toast";
-import { db, auth } from "../../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { auth, functions } from "../../firebase";
+import { httpsCallable } from "firebase/functions";
 
 interface UseConsultationLogicProps {
   selectedPatient: Patient | null;
@@ -318,21 +318,26 @@ export const useConsultationLogic = ({
     // 1) Guardar en Firestore (colección "consultations")
     try {
       if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
-      await addDoc(
-        collection(db, "patients", selectedPatient.id, "consultations"),
-        sanitizeForFirestore({
+      const createPatientConsultation = httpsCallable<
+        { centerId: string; patientId: string; consultation: Consultation },
+        { ok: boolean; id: string }
+      >(functions, "createPatientConsultation");
+      await createPatientConsultation({
+        centerId: activeCenterId || "",
+        patientId: selectedPatient.id,
+        consultation: sanitizeForFirestore({
           ...consultation,
           centerId: activeCenterId,
           patientId: selectedPatient?.id ?? null,
           createdByUid: currentUid,
-          createdAt: serverTimestamp(),
-        })
-      );
+        }) as Consultation,
+      });
       console.log("✅ Consultation saved to Firestore");
       showToast("Atención guardada correctamente en la nube", "success");
     } catch (error) {
       console.error(error);
-      showToast("Error al guardar en la nube (se guardó localmente)", "error");
+      showToast("Error al guardar la atención. No se modificó la ficha.", "error");
+      return;
     }
 
     // 2) Actualizar estado local (lista de pacientes)

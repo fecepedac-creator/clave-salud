@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../firebase";
 
 // Inicializar Gemini API (Usando la key de pruebas del entorno)
 // Nota: En producción, esto debería inyectarse vía variables de entorno (VITE_GEMINI_API_KEY)
@@ -58,8 +60,19 @@ Responde ÚNICAMENTE con el copy final listo para brillar en Instagram, Facebook
 /**
  * Mejora la redacción clínica de notas libres para dejarlas listas para ficha.
  */
-export async function summarizeAnamnesis(rawText: string): Promise<string> {
+export async function summarizeAnamnesis(rawText: string, centerId?: string): Promise<string> {
   try {
+    const improveClinicalText = httpsCallable<
+      { centerId?: string; text: string; field: string },
+      { ok: boolean; text: string }
+    >(functions, "improveClinicalText");
+    const improved = await improveClinicalText({
+      centerId,
+      text: rawText,
+      field: "anamnesis",
+    });
+    return improved.data.text.trim();
+
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const prompt = `

@@ -10,8 +10,9 @@ import {
   VademecumItem,
 } from "../../utils/vademecum";
 import { useConsultationLogic } from "../../hooks/doctor/useConsultationLogic";
-import * as firestore from "firebase/firestore";
 import { Patient } from "../../types";
+
+const mockCreatePatientConsultation = vi.fn().mockResolvedValue({ data: { ok: true, id: "mock_doc_id" } });
 
 // Mock toast component to prevent provider errors
 vi.mock("../../components/Toast", () => ({
@@ -24,18 +25,12 @@ vi.mock("../../components/Toast", () => ({
 vi.mock("../../firebase", () => ({
   db: {},
   auth: { currentUser: { uid: "test_doctor_uid" } },
+  functions: {},
 }));
 
-// Mock firestore functions
-vi.mock("firebase/firestore", async () => {
-  const actual = await vi.importActual("firebase/firestore");
-  return {
-    ...actual,
-    collection: vi.fn(),
-    addDoc: vi.fn().mockResolvedValue({ id: "mock_doc_id" }),
-    serverTimestamp: vi.fn(() => "mock-timestamp"),
-  };
-});
+vi.mock("firebase/functions", () => ({
+  httpsCallable: vi.fn(() => mockCreatePatientConsultation),
+}));
 
 describe("Vademecum Suggestions Search", () => {
   it("should return matches for paracetamol", () => {
@@ -228,8 +223,7 @@ describe("Role Validation in useConsultationLogic", () => {
 
     await result.current.handleCreateConsultation();
 
-    // Firestore addDoc should not have been called because validation blocked it
-    expect(firestore.addDoc).not.toHaveBeenCalled();
+    expect(mockCreatePatientConsultation).not.toHaveBeenCalled();
     expect(onUpdatePatient).not.toHaveBeenCalled();
   });
 
@@ -263,7 +257,7 @@ describe("Role Validation in useConsultationLogic", () => {
 
     await result.current.handleCreateConsultation();
 
-    expect(firestore.addDoc).not.toHaveBeenCalled();
+    expect(mockCreatePatientConsultation).not.toHaveBeenCalled();
     expect(onUpdatePatient).not.toHaveBeenCalled();
   });
 
@@ -296,7 +290,7 @@ describe("Role Validation in useConsultationLogic", () => {
 
     await result.current.handleCreateConsultation();
 
-    expect(firestore.addDoc).not.toHaveBeenCalled();
+    expect(mockCreatePatientConsultation).not.toHaveBeenCalled();
     expect(onUpdatePatient).not.toHaveBeenCalled();
   });
 
@@ -329,7 +323,7 @@ describe("Role Validation in useConsultationLogic", () => {
 
     await result.current.handleCreateConsultation();
 
-    expect(firestore.addDoc).toHaveBeenCalled();
+    expect(mockCreatePatientConsultation).toHaveBeenCalled();
     expect(onUpdatePatient).toHaveBeenCalled();
   });
 });

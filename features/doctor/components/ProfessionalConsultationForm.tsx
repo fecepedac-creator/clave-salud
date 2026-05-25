@@ -94,7 +94,9 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
     if (!newConsultation.anamnesis || isSummarizing) return;
     setIsSummarizing(true);
     try {
-      const summary = await summarizeAnamnesis(newConsultation.anamnesis);
+      const centerIdForAi =
+        selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "";
+      const summary = await summarizeAnamnesis(newConsultation.anamnesis, centerIdForAi);
       setAiAnamnesisSuggestion(summary);
     } catch (error) {
       console.error("Error summarizing anamnesis:", error);

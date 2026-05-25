@@ -6,6 +6,7 @@ if (!admin.apps.length) {
 }
 
 import * as crypto from "crypto";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 
@@ -211,6 +212,48 @@ function lowerEmailFromContext(context: CallableContext): string {
   return String(raw || "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeRoleValue(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isClinicalPrescriberRole(role: unknown): boolean {
+  const r = normalizeRoleValue(role);
+  return ["medico", "doctor", "odontologo", "matrona"].includes(r);
+}
+
+function isControlledPrescriberRole(role: unknown): boolean {
+  const r = normalizeRoleValue(role);
+  return ["medico", "doctor", "odontologo"].includes(r);
+}
+
+function isControlledPrescriptionType(type: unknown): boolean {
+  return String(type || "").trim() === "Receta Retenida";
+}
+
+const CONTROLLED_DRUG_PATTERNS = [
+  /\bclonazepam\b/i,
+  /\bravotril\b/i,
+  /\bdiazepam\b/i,
+  /\balprazolam\b/i,
+  /\blorazepam\b/i,
+  /\btramadol\b/i,
+  /\bcodeina\b/i,
+  /\bmetilfenidato\b/i,
+  /\bmorfina\b/i,
+  /\bfentanilo\b/i,
+  /\boxicodona\b/i,
+  /\bzolpidem\b/i,
+];
+
+function hasControlledDrugContent(prescriptions: any[]): boolean {
+  const text = prescriptions.map((p) => String(p?.content || "")).join("\n");
+  return CONTROLLED_DRUG_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 type PosterFormat = "feed" | "story" | "whatsapp" | "internal";
@@ -2169,6 +2212,215 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
     }
   }
 );
+
+export const createPatientConsultation = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const consultation = data?.consultation || {};
+
+    if (!centerId || !patientId || !consultation || typeof consultation !== "object") {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, patientId y consultation son requeridos."
+      );
+    }
+
+    const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    const staffData = staffSnap.data() || {};
+    const isStaffMember = staffSnap.exists && resolveActive(staffData);
+    if (!isStaffMember && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    const patientRef = db.collection("patients").doc(patientId);
+    const patientSnap = await patientRef.get();
+    if (!patientSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
+    }
+
+    const patient = patientSnap.data() || {};
+    const allowedUids = Array.isArray(patient?.accessControl?.allowedUids)
+      ? patient.accessControl.allowedUids
+      : [];
+    const careTeamUids = Array.isArray(patient?.careTeamUids) ? patient.careTeamUids : [];
+    const centerIds = Array.isArray(patient?.accessControl?.centerIds)
+      ? patient.accessControl.centerIds
+      : [];
+
+    const canAccessPatient =
+      patient.ownerUid === uid ||
+      allowedUids.includes(uid) ||
+      careTeamUids.includes(uid) ||
+      centerIds.includes(centerId) ||
+      isSuperAdmin(context);
+
+    if (!canAccessPatient) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene acceso a esta ficha clínica."
+      );
+    }
+
+    const prescriptions = Array.isArray(consultation.prescriptions)
+      ? consultation.prescriptions
+      : [];
+    const prescriptionTypes: string[] = Array.from(
+      new Set(prescriptions.map((p: any) => String(p?.type || "").trim()).filter(Boolean))
+    );
+    const hasAnyPrescription = prescriptions.length > 0;
+    const hasRecipe = prescriptionTypes.some((type) =>
+      ["Receta Médica", "Receta Medica", "Receta Retenida"].includes(type)
+    );
+    const hasRetainedRecipe = prescriptionTypes.some(isControlledPrescriptionType);
+    const hasControlledContent = hasControlledDrugContent(prescriptions);
+    const clinicalRole =
+      consultation.professionalRole ||
+      staffData.clinicalRole ||
+      staffData.professionalRole ||
+      staffData.role;
+
+    if (hasAnyPrescription && hasRecipe && !isClinicalPrescriberRole(clinicalRole)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Rol no autorizado para emitir recetas."
+      );
+    }
+
+    if ((hasRetainedRecipe || hasControlledContent) && !isControlledPrescriberRole(clinicalRole)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Rol no autorizado para medicamentos controlados."
+      );
+    }
+
+    if (hasControlledContent && !hasRetainedRecipe) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Medicamento controlado debe emitirse como Receta Retenida."
+      );
+    }
+
+    const consultationRef = patientRef.collection("consultations").doc();
+    const cleanConsultation = {
+      ...consultation,
+      id: consultation.id || consultationRef.id,
+      patientId,
+      centerId,
+      professionalId: uid,
+      professionalRole: consultation.professionalRole || staffData.clinicalRole || staffData.role || "",
+      prescriptionTypes,
+      hasControlledPrescription: hasRetainedRecipe || hasControlledContent,
+      createdByUid: uid,
+      createdAt: serverTimestamp(),
+    };
+
+    await consultationRef.set(cleanConsultation);
+
+    await patientRef.set(
+      {
+        careTeamUids: admin.firestore.FieldValue.arrayUnion(uid),
+        "accessControl.allowedUids": admin.firestore.FieldValue.arrayUnion(uid),
+        "accessControl.centerIds": admin.firestore.FieldValue.arrayUnion(centerId),
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return {
+      ok: true,
+      id: consultationRef.id,
+      consultation: {
+        ...cleanConsultation,
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+);
+
+export const improveClinicalText = functions
+  .runWith({ secrets: ["GEMINI_API_KEY"] })
+  .https.onCall(async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const rawText = String(data?.text || "").trim();
+    const field = String(data?.field || "anamnesis").trim();
+
+    if (!centerId || !rawText) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId y text son requeridos.");
+    }
+
+    const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "GEMINI_API_KEY no está configurada."
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const prompt = `
+Actúa como asistente de redacción clínica para una ficha médica electrónica en Chile.
+
+Transforma notas libres de un profesional de salud en redacción clínica clara, breve, objetiva y útil.
+
+Reglas:
+1. No diagnostiques.
+2. No inventes síntomas, signos, antecedentes, exámenes, tratamientos ni evolución.
+3. No agregues datos no mencionados.
+4. No cambies el sentido clínico.
+5. Conserva tiempo de evolución, localización, síntomas asociados, tratamientos usados, respuesta, antecedentes, alergias, contactos enfermos, factores de riesgo y signos de alarma si fueron mencionados.
+6. Si falta un dato importante, agrégalo al final como "Datos por precisar: ...".
+7. No uses Markdown, títulos ni viñetas largas.
+8. Devuelve sólo el texto final.
+
+Campo clínico: ${field}
+
+Texto original:
+"${rawText}"
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const improvedText = response.text().trim();
+
+    await db.collection("centers").doc(centerId).collection("auditLogs").add({
+      type: "ACTION",
+      action: "AI_CLINICAL_TEXT_SUGGESTED",
+      entityType: "document",
+      entityId: field,
+      actorUid: uid,
+      actorEmail: lowerEmailFromContext(context) || "unknown",
+      actorRole: staffSnap.get("role") || "unknown",
+      resourceType: "consultation",
+      resourcePath: `/centers/${centerId}/ai/${field}`,
+      timestamp: serverTimestamp(),
+      details: "Asistente IA generó una sugerencia de redacción clínica.",
+      metadata: {
+        field,
+        inputLength: rawText.length,
+        outputLength: improvedText.length,
+      },
+    });
+
+    return { ok: true, text: improvedText };
+  });
 
 export * from "./immutableAudit";
 export * from "./whatsapp";
