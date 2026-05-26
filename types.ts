@@ -379,6 +379,14 @@ export interface Patient extends SoftDeletable {
   occupation?: string;
   livingWith?: string[];
 
+  hasAllergies?: "Si" | "No";
+  hasTobacco?: "Si" | "No";
+  tobaccoAmount?: string;
+  hasAlcohol?: "Si" | "No";
+  alcoholAmount?: string;
+  hasDrugs?: "Si" | "No";
+  pets?: string;
+
   // --- FHIR R4 / Core-CL Alignment ---
   fhirMetadata?: {
     identifier?: Array<{
