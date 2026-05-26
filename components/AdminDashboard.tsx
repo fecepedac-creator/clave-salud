@@ -956,7 +956,12 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
 
       {activeTab === "ai_usage" && (
         <div className="animate-fadeIn">
-          <AdminAIUsageTab centerId={resolvedCenterId} />
+          <AdminAIUsageTab
+            centerId={resolvedCenterId}
+            doctors={doctors}
+            appointments={appointments}
+            patients={patients}
+          />
         </div>
       )}
 
