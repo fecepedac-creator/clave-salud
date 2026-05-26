@@ -25,7 +25,8 @@ import {
   User,
 } from "lucide-react";
 import { useToast } from "../../../components/Toast";
-import { db, auth } from "../../../firebase";
+import { db, auth, functions } from "../../../firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   query,
@@ -36,7 +37,6 @@ import {
   getDocs,
   getDoc,
   Timestamp,
-  updateDoc,
 } from "firebase/firestore";
 
 interface AdminAgendaProps {
@@ -347,12 +347,25 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
     }
   };
 
-  const handleConfirmCancellation = (notify: boolean) => {
+  const handleConfirmCancellation = async (notify: boolean) => {
     if (!hasActiveCenter) {
       showToast("Selecciona un centro activo para cancelar citas.", "warning");
       return;
     }
     if (!cancelModal.appointment) return;
+    const apt = cancelModal.appointment;
+    try {
+      const archiveAppointment = httpsCallable(functions, "archiveAppointment");
+      await archiveAppointment({
+        centerId: resolvedCenterId,
+        appointmentId: apt.id,
+        reason: `Cancelacion desde agenda administrativa. Notificacion: ${notify ? "Si" : "No"}`,
+      });
+    } catch (error) {
+      console.error("Admin agenda cancellation", error);
+      showToast("No se pudo cancelar la cita.", "error");
+      return;
+    }
 
     onLogActivity({
       action: "APPOINTMENT_CANCEL",
@@ -377,7 +390,13 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       window.open(url, "_blank");
     }
 
-    onUpdateAppointments(appointments.filter((a) => a.id !== cancelModal.appointment?.id));
+    onUpdateAppointments(
+      appointments.map((a) =>
+        a.id === apt.id
+          ? { ...a, status: "cancelled", attendanceStatus: "cancelled", active: false }
+          : a
+      )
+    );
     setCancelModal({ isOpen: false, appointment: null });
     showToast("Cita cancelada y horario bloqueado.", "info");
   };

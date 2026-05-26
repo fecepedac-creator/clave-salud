@@ -3,7 +3,7 @@ import { Appointment, Doctor, Preadmission } from "../../../types";
 import MetricCard from "../../../components/MetricCard";
 import TodayActivity from "./TodayActivity";
 import PreadmissionList from "./PreadmissionList";
-import { Users, Calendar, Activity, Clock } from "lucide-react";
+import SecretaryTaskPanel from "./SecretaryTaskPanel";
 
 export interface AdminCommandCenterProps {
   stats: {
@@ -61,6 +61,14 @@ const AdminCommandCenter: React.FC<AdminCommandCenterProps> = ({
           colorClass="text-purple-400"
         />
       </div>
+
+      <SecretaryTaskPanel
+        appointments={appointments}
+        doctors={doctors}
+        preadmissions={preadmissions}
+        onApprovePreadmission={onApprovePreadmission}
+        onCancelAppointment={onCancelAppointment}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Today's Activity */}

@@ -485,7 +485,7 @@ export interface Appointment extends SoftDeletable {
   patientEmail?: string;
   bookedAt?: FirestoreDateLike;
   cancelledAt?: FirestoreDateLike;
-  status: "available" | "booked";
+  status: "available" | "booked" | "cancelled" | "requires_contact";
 
   // Service/Exam Extension
   type?: "CONSULTATION" | "SERVICE";
@@ -552,7 +552,7 @@ export interface Preadmission {
   source?: "public" | "staff";
   submittedByUid?: string | null;
   createdAt?: FirestoreDateLike;
-  status?: "pending" | "approved" | "rejected";
+  status?: "pending" | "approved" | "rejected" | "requires_contact";
 }
 
 export interface AgendaConfig {

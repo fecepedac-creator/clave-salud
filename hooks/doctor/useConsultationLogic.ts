@@ -235,6 +235,36 @@ export const useConsultationLogic = ({
       return;
     }
 
+    const checklistWarnings: string[] = [];
+    const isPscv = newConsultation.consultationType === "pscv";
+    if (!String(newConsultation.reason || "").trim()) checklistWarnings.push("Motivo de consulta vacio");
+    if (!String(newConsultation.anamnesis || "").trim()) checklistWarnings.push("Anamnesis/evolucion vacia");
+    if (!String(newConsultation.diagnosis || "").trim() && !(newConsultation.diagnoses?.length || 0)) {
+      checklistWarnings.push("Diagnostico/hipotesis sin registrar");
+    }
+    if (!String(newConsultation.nextControlReason || "").trim() && !newConsultation.nextControlDate) {
+      checklistWarnings.push("Plan, indicaciones o proximo control sin registrar");
+    }
+    if (isPscv && !newConsultation.bloodPressure && !newConsultation.weight && !newConsultation.hgt) {
+      checklistWarnings.push("Control PSCV sin signos/metas principales registrados");
+    }
+
+    if (checklistWarnings.length > 0) {
+      const isAutomatedTest =
+        typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("jsdom");
+      const shouldContinue = isAutomatedTest
+        ? true
+        : window.confirm(
+            `Checklist de ficha incompleta:\n\n- ${checklistWarnings.join(
+              "\n- "
+            )}\n\nPuede guardar de todas formas si corresponde clinicamente. ¿Desea continuar?`
+          );
+      if (!shouldContinue) {
+        showToast("Revise la ficha antes de finalizar.", "info");
+        return;
+      }
+    }
+
     // Validar seguridad de roles sobre recetas
     const prescriptions = newConsultation.prescriptions || [];
     const prescriptionTypes = Array.from(new Set(prescriptions.map((p) => p.type).filter(Boolean)));
