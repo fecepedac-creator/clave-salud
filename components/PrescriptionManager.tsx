@@ -130,7 +130,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
   const handleTextChange = (text: string, cursorPosition: number) => {
     setCurrentPrescriptionText(text);
-    
+
     if (cursorPosition === 0) {
       setActiveSuggestions([]);
       setSelectedSuggestionIdx(-1);
@@ -166,25 +166,27 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
 
   const handleSelectSuggestion = (item: VademecumItem, cleanOnly: boolean) => {
     if (!wordRange || !textareaRef.current) return;
-    
+
     const drugName = item.presentation;
     const posology = cleanOnly ? "" : getPosologyTemplate(item);
 
     const text = currentPrescriptionText;
-    const newText = 
-      text.substring(0, wordRange.start) + 
-      drugName + posology + 
-      text.substring(wordRange.end);
-      
+    const newText =
+      text.substring(0, wordRange.start) + drugName + posology + text.substring(wordRange.end);
+
     setCurrentPrescriptionText(newText);
-    if (item.controlled && canPrescribeControlled && !isControlledPrescriptionType(currentPrescriptionType)) {
+    if (
+      item.controlled &&
+      canPrescribeControlled &&
+      !isControlledPrescriptionType(currentPrescriptionType)
+    ) {
       setCurrentPrescriptionType("Receta Retenida" as any);
     }
     setActiveSuggestions([]);
     setSelectedSuggestionIdx(-1);
     setShowAllSuggestions(false);
     setWordRange(null);
-    
+
     // Calcular posición para resaltar los primeros guiones bajos "___"
     setTimeout(() => {
       if (textareaRef.current) {
@@ -227,7 +229,12 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   };
 
   const clinicalAlerts = useMemo(() => {
-    return auditPrescription(currentPrescriptionText, patient, currentDiagnosis, currentPrescriptionType);
+    return auditPrescription(
+      currentPrescriptionText,
+      patient,
+      currentDiagnosis,
+      currentPrescriptionType
+    );
   }, [currentPrescriptionText, patient, currentDiagnosis, currentPrescriptionType]);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [templateSearchTerm, setTemplateSearchTerm] = useState("");
@@ -297,14 +304,24 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
       return;
     }
 
-    if (hasControlledDrug(currentPrescriptionText) && !isControlledPrescriptionType(currentPrescriptionType)) {
-      alert("Se detectó un medicamento potencialmente controlado. Debe emitirse como Receta Retenida por profesional autorizado.");
+    if (
+      hasControlledDrug(currentPrescriptionText) &&
+      !isControlledPrescriptionType(currentPrescriptionType)
+    ) {
+      alert(
+        "Se detectó un medicamento potencialmente controlado. Debe emitirse como Receta Retenida por profesional autorizado."
+      );
       return;
     }
 
-    const signature = (currentUser && patient) 
-      ? await signDocument(currentPrescriptionText, currentUser.fullName, currentUser.rut || currentUser.id) 
-      : undefined;
+    const signature =
+      currentUser && patient
+        ? await signDocument(
+            currentPrescriptionText,
+            currentUser.fullName,
+            currentUser.rut || currentUser.id
+          )
+        : undefined;
 
     const newDoc: Prescription = {
       id: generateId(),
@@ -507,77 +524,88 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           onChange={(e) => handleTextChange(e.target.value, e.target.selectionStart)}
           onKeyDown={handleKeyDown}
           onKeyUp={(e) => {
-            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key) && activeSuggestions.length > 0) {
+            if (
+              ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key) &&
+              activeSuggestions.length > 0
+            ) {
               return;
             }
-            handleTextChange((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart);
+            handleTextChange(
+              (e.target as HTMLTextAreaElement).value,
+              (e.target as HTMLTextAreaElement).selectionStart
+            );
           }}
-          onSelect={(e) => handleTextChange((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart)}
+          onSelect={(e) =>
+            handleTextChange(
+              (e.target as HTMLTextAreaElement).value,
+              (e.target as HTMLTextAreaElement).selectionStart
+            )
+          }
           spellCheck={true}
           lang="es"
         />
 
         {/* Autocomplete Suggestions */}
         {activeSuggestions.length > 0 && (
-          <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-md max-h-[400px] overflow-y-auto custom-scrollbar animate-fadeIn animate-duration-150">
-            <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-200">
-              <p className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                Resultados del Vademécum ({activeSuggestions.length}):
+          <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm max-h-[320px] overflow-y-auto custom-scrollbar animate-fadeIn animate-duration-150">
+            <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200">
+              <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                Resultados del Vademécum ({activeSuggestions.length})
               </p>
               <span className="text-[10px] text-slate-400 font-medium">
-                Use ↑↓ para navegar y Enter para insertar con posología
+                ↑↓ navegar · Enter inserta con posología
               </span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {visibleSuggestions.map((item, idx) => {
                 const isHighlighted = idx === selectedSuggestionIdx;
                 return (
                   <div
                     key={item.id}
-                    className={`flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 rounded-xl border transition-all ${
+                    className={`flex items-center justify-between gap-2 p-2 rounded-lg border transition-all ${
                       isHighlighted
                         ? "bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-100"
                         : "bg-white border-slate-100 hover:bg-slate-50"
                     }`}
                   >
-                    <div className="flex-1 min-w-0 pr-4">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-slate-800 truncate">
                           {item.presentation}
                         </span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          item.source === "local" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                        }`}>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            item.source === "local"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
                           {item.source === "local" ? "Local" : "ISP"}
                         </span>
                         {item.controlled && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
                             Controlado
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
-                        <span>Principio: <strong>{item.activePrinciple}</strong></span>
-                        <span className="text-slate-300 hidden sm:inline">|</span>
-                        <span>Forma: <strong>{item.form}</strong></span>
-                        <span className="text-slate-300 hidden sm:inline">|</span>
-                        <span>Vía: <strong>{item.route}</strong></span>
+                      <p className="text-xs text-slate-500 truncate">
+                        {item.activePrinciple} · {item.form} · {item.route}
                       </p>
                     </div>
-                    <div className="flex gap-2 mt-2 sm:mt-0 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
                         onClick={() => handleSelectSuggestion(item, true)}
-                        className="bg-slate-100 hover:bg-slate-200 border border-slate-205 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all active:scale-95"
+                        className="h-7 px-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-semibold rounded-md text-[11px] transition-all active:scale-95"
                       >
-                        Solo Fármaco
+                        + Fármaco
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSelectSuggestion(item, false)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all active:scale-95 shadow-sm"
+                        className="h-7 px-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-md text-[11px] transition-all active:scale-95 shadow-sm"
                       >
-                        Con Posología
+                        Posología
                       </button>
                     </div>
                   </div>
@@ -587,9 +615,9 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAllSuggestions(true)}
-                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition-colors mt-2 text-center"
+                  className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-lg text-xs transition-colors mt-1.5 text-center"
                 >
-                  Ver más sugerencias... ({activeSuggestions.length - 8} más)
+                  Ver más sugerencias ({activeSuggestions.length - 8})
                 </button>
               )}
             </div>
@@ -602,13 +630,14 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
             <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-500 font-medium italic">
               <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
               <span>
-                <strong>Descargo Clínico:</strong> Estas alertas son un apoyo operacional y no reemplazan el criterio clínico del profesional tratante.
+                <strong>Descargo Clínico:</strong> Estas alertas son un apoyo operacional y no
+                reemplazan el criterio clínico del profesional tratante.
               </span>
             </div>
             {clinicalAlerts.map((alert, idx) => {
               let bg = "bg-blue-50/70 border-blue-200 text-blue-800";
               let icon = <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />;
-              
+
               if (alert.severity === "error") {
                 bg = "bg-red-50/70 border-red-200 text-red-800";
                 icon = <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
@@ -624,7 +653,9 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
                 >
                   {icon}
                   <div>
-                    <strong className="block font-bold text-xs uppercase tracking-wider mb-0.5">{alert.title}</strong>
+                    <strong className="block font-bold text-xs uppercase tracking-wider mb-0.5">
+                      {alert.title}
+                    </strong>
                     <span className="text-xs leading-relaxed">{alert.message}</span>
                   </div>
                 </div>

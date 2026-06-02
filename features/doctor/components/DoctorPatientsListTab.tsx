@@ -106,7 +106,9 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
             <button
               onClick={() => setIsPiiMasked(!isPiiMasked)}
               className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm active:scale-95"
-              title={isPiiMasked ? "Mostrar datos sensibles (RUT)" : "Ocultar datos sensibles (RUT)"}
+              title={
+                isPiiMasked ? "Mostrar datos sensibles (RUT)" : "Ocultar datos sensibles (RUT)"
+              }
             >
               {isPiiMasked ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
@@ -225,7 +227,9 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
                     </td>
                     <td className="p-5">
                       <div className="text-slate-600 font-medium">{safeAgeLabel(p.birthDate)}</div>
-                      <div className="text-xs text-slate-400 font-mono">{isPiiMasked ? maskRUT(p.rut) : p.rut}</div>
+                      <div className="text-xs text-slate-400 font-mono">
+                        {isPiiMasked ? maskRUT(p.rut) : p.rut}
+                      </div>
                     </td>
                     <td className="p-5">
                       {lastConsult ? (

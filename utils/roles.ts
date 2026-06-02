@@ -5,7 +5,14 @@ export function normalizeRole(role: unknown): CanonicalRole | null {
   const r = String(role).trim();
 
   // Canonical
-  if (r === "super_admin" || r === "center_admin" || r === "admin" || r === "doctor")
+  if (
+    r === "super_admin" ||
+    r === "center_admin" ||
+    r === "administrative" ||
+    r === "professional" ||
+    r === "admin" ||
+    r === "doctor"
+  )
     return r as CanonicalRole;
 
   // Common legacy variants
@@ -13,10 +20,22 @@ export function normalizeRole(role: unknown): CanonicalRole | null {
   if (upper === "SUPERADMIN" || upper === "SUPER_ADMIN") return "super_admin";
   if (upper === "CENTER_ADMIN" || upper === "ADMIN_CENTRO") return "center_admin";
   if (upper === "ADMIN" || upper === "ADMINISTRADOR") return "admin";
+  if (
+    upper === "ADMINISTRATIVO" ||
+    upper === "ADMINISTRATIVA" ||
+    upper === "SECRETARIA" ||
+    upper === "SECRETARY"
+  )
+    return "administrative";
   if (upper === "MEDICO" || upper === "DOCTOR") return "doctor";
+  if (upper === "PROFESIONAL" || upper === "PROFESSIONAL") return "professional";
   if (upper === "STAFF") return "staff";
 
   return null;
+}
+
+export function isAdministrativeRole(role: unknown): boolean {
+  return normalizeRole(role) === "administrative";
 }
 
 export function normalizeRoles(input: unknown): CanonicalRole[] {

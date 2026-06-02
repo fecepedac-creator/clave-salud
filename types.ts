@@ -42,6 +42,7 @@ export interface MedicalCenter {
     dental: boolean; // Enables Odontogram
     prescriptions: boolean; // Enables Prescription Manager
     agenda: boolean; // Enables Appointment Scheduling
+    reports?: boolean;
   };
   accessMode?: "CENTER_WIDE" | "CARE_TEAM";
   features?: {
@@ -55,6 +56,14 @@ export interface MedicalCenter {
     representativePhone: string; // For WhatsApp
     email: string;
     address?: string;
+  };
+  billing?: {
+    plan?: "trial" | "basic" | "pro" | "enterprise";
+    monthlyUF?: number;
+    billingStatus?: "paid" | "due" | "overdue" | "grace" | "suspended";
+    nextDueDate?: string;
+    lastPaidAt?: string;
+    notes?: string;
   };
   subscription?: {
     planName: string;
@@ -594,7 +603,14 @@ export type RoleId =
  * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
  * Mantener compatibilidad con roles legacy definidos en RoleId.
  */
-export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor" | "staff";
+export type CanonicalRole =
+  | "super_admin"
+  | "center_admin"
+  | "administrative"
+  | "professional"
+  | "admin"
+  | "doctor"
+  | "staff";
 
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.

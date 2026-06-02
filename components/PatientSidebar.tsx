@@ -1,9 +1,14 @@
 import React, { useState } from "react";
-import { Patient, Attachment, Medication, Allergy, ExamProfile, ExamDefinition, SnomedConcept } from "../types";
 import {
-  MAULE_COMMUNES,
-  COMMON_MEDICATIONS,
-} from "../constants";
+  Patient,
+  Attachment,
+  Medication,
+  Allergy,
+  ExamProfile,
+  ExamDefinition,
+  SnomedConcept,
+} from "../types";
+import { MAULE_COMMUNES, COMMON_MEDICATIONS } from "../constants";
 import { generateId, maskPhone } from "../utils";
 import {
   Users,
@@ -48,13 +53,7 @@ const BTN_SURGICAL_HISTORY = [
   { id: "CES", display: "Cesárea", code: "200147004" },
 ];
 
-const LIVING_WITH_BTN_OPTIONS = [
-  "Sola",
-  "Pareja",
-  "Hijos",
-  "Padres",
-  "Otros familiares"
-];
+const LIVING_WITH_BTN_OPTIONS = ["Sola", "Pareja", "Hijos", "Padres", "Otros familiares"];
 
 interface PatientSidebarProps {
   selectedPatient: Patient;
@@ -112,13 +111,19 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
       : selectedPatient.smokingStatus === "No fumador"
         ? "No"
         : undefined);
-  const tobaccoAmount = selectedPatient.tobaccoAmount || 
+  const tobaccoAmount =
+    selectedPatient.tobaccoAmount ||
     (selectedPatient.cigarettesPerDay ? `${selectedPatient.cigarettesPerDay} cig/día` : "");
 
-  const hasAlcohol = selectedPatient.hasAlcohol || 
-    (selectedPatient.alcoholStatus === "Frecuente" || selectedPatient.alcoholStatus === "Ocasional" ? "Si" : 
-     selectedPatient.alcoholStatus === "No consumo" ? "No" : undefined);
-  const alcoholAmount = selectedPatient.alcoholAmount || 
+  const hasAlcohol =
+    selectedPatient.hasAlcohol ||
+    (selectedPatient.alcoholStatus === "Frecuente" || selectedPatient.alcoholStatus === "Ocasional"
+      ? "Si"
+      : selectedPatient.alcoholStatus === "No consumo"
+        ? "No"
+        : undefined);
+  const alcoholAmount =
+    selectedPatient.alcoholAmount ||
     (selectedPatient.alcoholFrequency ? selectedPatient.alcoholFrequency : "");
 
   const hasDrugs = selectedPatient.hasDrugs || selectedPatient.drugUse;
@@ -126,7 +131,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
   const pets = selectedPatient.pets || "";
 
   // Functions for medical history
-  const isMedicalSelected = (item: typeof BTN_MEDICAL_HISTORY[0]) => {
+  const isMedicalSelected = (item: (typeof BTN_MEDICAL_HISTORY)[0]) => {
     return medicalHistory.some((x) => {
       if (typeof x === "string") {
         return x.toLowerCase() === item.display.toLowerCase() || x === item.id;
@@ -135,7 +140,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     });
   };
 
-  const toggleMedicalItem = (item: typeof BTN_MEDICAL_HISTORY[0]) => {
+  const toggleMedicalItem = (item: (typeof BTN_MEDICAL_HISTORY)[0]) => {
     const isSelected = isMedicalSelected(item);
     if (isSelected) {
       handleEditPatientField(
@@ -180,7 +185,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
   };
 
   // Functions for surgical history
-  const isSurgicalSelected = (item: typeof BTN_SURGICAL_HISTORY[0]) => {
+  const isSurgicalSelected = (item: (typeof BTN_SURGICAL_HISTORY)[0]) => {
     return surgicalHistory.some((x) => {
       if (typeof x === "string") {
         return x.toLowerCase() === item.display.toLowerCase() || x === item.id;
@@ -189,7 +194,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
     });
   };
 
-  const toggleSurgicalItem = (item: typeof BTN_SURGICAL_HISTORY[0]) => {
+  const toggleSurgicalItem = (item: (typeof BTN_SURGICAL_HISTORY)[0]) => {
     const isSelected = isSurgicalSelected(item);
     if (isSelected) {
       handleEditPatientField(
@@ -286,7 +291,10 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
   // Social
   const toggleSocialBtn = (value: string) => {
     if (livingWith.includes(value)) {
-      handleEditPatientField("livingWith", livingWith.filter((x) => x !== value));
+      handleEditPatientField(
+        "livingWith",
+        livingWith.filter((x) => x !== value)
+      );
     } else {
       handleEditPatientField("livingWith", [...livingWith, value]);
     }
@@ -363,7 +371,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           <div className="space-y-4">
             {/* Quick activate buttons */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">Presione para activar/desactivar:</p>
+              <p className="text-xs font-semibold text-slate-500 mb-2">
+                Presione para activar/desactivar:
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {BTN_MEDICAL_HISTORY.map((opt) => {
                   const isSelected = isMedicalSelected(opt);
@@ -415,7 +425,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {/* Display custom items for editing */}
             {customMedicalItems.length > 0 && (
               <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Otras Patologías Ingresadas:</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase">
+                  Otras Patologías Ingresadas:
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {customMedicalItems.map((h, idx) => {
                     const itemId = typeof h === "string" ? h : h.id || h.code || idx.toString();
@@ -432,7 +444,10 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                             handleEditPatientField(
                               "medicalHistory",
                               medicalHistory.filter((item, i) => {
-                                const idToComp = typeof item === "string" ? item : item.id || item.code || i.toString();
+                                const idToComp =
+                                  typeof item === "string"
+                                    ? item
+                                    : item.id || item.code || i.toString();
                                 return idToComp !== itemId;
                               })
                             )
@@ -454,7 +469,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {medicalHistory.map((h, idx) => {
               const label = typeof h === "string" ? h : h.display;
               const code = typeof h === "string" ? "" : h.code;
-              const isPredef = BTN_MEDICAL_HISTORY.some(b => b.display.toLowerCase() === label.toLowerCase() || b.code === code);
+              const isPredef = BTN_MEDICAL_HISTORY.some(
+                (b) => b.display.toLowerCase() === label.toLowerCase() || b.code === code
+              );
               return (
                 <span
                   key={idx}
@@ -471,7 +488,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               );
             })}
             {medicalHistory.length === 0 && (
-              <p className="text-xs text-slate-400 italic">Sin antecedentes patológicos declarados.</p>
+              <p className="text-xs text-slate-400 italic">
+                Sin antecedentes patológicos declarados.
+              </p>
             )}
           </div>
         )}
@@ -487,7 +506,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           <div className="space-y-4">
             {/* Quick activate buttons */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">Presione para activar/desactivar:</p>
+              <p className="text-xs font-semibold text-slate-500 mb-2">
+                Presione para activar/desactivar:
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {BTN_SURGICAL_HISTORY.map((opt) => {
                   const isSelected = isSurgicalSelected(opt);
@@ -539,7 +560,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {/* Display custom items for editing */}
             {customSurgicalItems.length > 0 && (
               <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Otras Cirugías Ingresadas:</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase">
+                  Otras Cirugías Ingresadas:
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {customSurgicalItems.map((h, idx) => {
                     const itemId = typeof h === "string" ? h : h.id || h.code || idx.toString();
@@ -556,7 +579,10 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                             handleEditPatientField(
                               "surgicalHistory",
                               surgicalHistory.filter((item, i) => {
-                                const idToComp = typeof item === "string" ? item : item.id || item.code || i.toString();
+                                const idToComp =
+                                  typeof item === "string"
+                                    ? item
+                                    : item.id || item.code || i.toString();
                                 return idToComp !== itemId;
                               })
                             )
@@ -578,7 +604,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             {surgicalHistory.map((h, idx) => {
               const label = typeof h === "string" ? h : h.display;
               const code = typeof h === "string" ? "" : h.code;
-              const isPredef = BTN_SURGICAL_HISTORY.some(b => b.display.toLowerCase() === label.toLowerCase() || b.code === code);
+              const isPredef = BTN_SURGICAL_HISTORY.some(
+                (b) => b.display.toLowerCase() === label.toLowerCase() || b.code === code
+              );
               return (
                 <span
                   key={idx}
@@ -595,7 +623,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               );
             })}
             {surgicalHistory.length === 0 && (
-              <p className="text-xs text-slate-400 italic">Sin antecedentes quirúrgicos declarados.</p>
+              <p className="text-xs text-slate-400 italic">
+                Sin antecedentes quirúrgicos declarados.
+              </p>
             )}
           </div>
         )}
@@ -763,7 +793,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
             {/* Alcohol */}
             <div className="pt-3 space-y-2">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Alcohol (OH)</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Alcohol (OH)
+              </p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -800,7 +832,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
             {/* Otras Sustancias / Drogas */}
             <div className="pt-3 space-y-2">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Otras Sustancias</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Otras Sustancias
+              </p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -841,19 +875,31 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">TABACO</span>
               <span className="text-xs font-extrabold text-slate-700">
-                {hasTobacco === "Si" ? `SI (${tobaccoAmount || "No especifica cantidad"})` : hasTobacco === "No" ? "NO" : "No registrado"}
+                {hasTobacco === "Si"
+                  ? `SI (${tobaccoAmount || "No especifica cantidad"})`
+                  : hasTobacco === "No"
+                    ? "NO"
+                    : "No registrado"}
               </span>
             </div>
             <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">ALCOHOL</span>
               <span className="text-xs font-extrabold text-slate-700">
-                {hasAlcohol === "Si" ? `SI (${alcoholAmount || "No especifica cantidad"})` : hasAlcohol === "No" ? "NO" : "No registrado"}
+                {hasAlcohol === "Si"
+                  ? `SI (${alcoholAmount || "No especifica cantidad"})`
+                  : hasAlcohol === "No"
+                    ? "NO"
+                    : "No registrado"}
               </span>
             </div>
             <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">OTRAS SUSTANCIAS</span>
               <span className="text-xs font-extrabold text-slate-700">
-                {hasDrugs === "Si" ? `SI (${drugDetails || "No especifica"})` : hasDrugs === "No" ? "NO" : "No registrado"}
+                {hasDrugs === "Si"
+                  ? `SI (${drugDetails || "No especifica"})`
+                  : hasDrugs === "No"
+                    ? "NO"
+                    : "No registrado"}
               </span>
             </div>
           </div>
@@ -893,7 +939,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
             </div>
           ))}
           {medications.length === 0 && (
-            <p className="text-xs text-slate-400 italic">No hay fármacos permanentes registrados.</p>
+            <p className="text-xs text-slate-400 italic">
+              No hay fármacos permanentes registrados.
+            </p>
           )}
         </div>
 
@@ -1107,7 +1155,9 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
               />
             ) : (
               <span className="text-slate-800 font-semibold text-sm bg-slate-50 p-2.5 rounded-xl block border border-slate-100">
-                {isPiiMasked ? maskPhone(selectedPatient.phone || "") : (selectedPatient.phone || "-")}
+                {isPiiMasked
+                  ? maskPhone(selectedPatient.phone || "")
+                  : selectedPatient.phone || "-"}
               </span>
             )}
           </div>
@@ -1137,4 +1187,3 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 };
 
 export default PatientSidebar;
-

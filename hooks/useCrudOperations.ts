@@ -25,8 +25,6 @@ export function useCrudOperations(
     "Por normativa, la ficha clínica debe conservarse por al menos 15 años. Archivar no elimina definitivamente.";
   const RETENTION_YEARS = 15;
 
-
-
   const isOverRetention = (createdAt?: any) => {
     if (!createdAt) return false;
     const createdDate =
@@ -424,7 +422,10 @@ export function useCrudOperations(
         }
 
         console.warn("updateCenter callable failed; direct Firestore fallback is disabled.");
-        showToast("No se pudo actualizar el centro. Reintenta cuando el backend esté disponible.", "error");
+        showToast(
+          "No se pudo actualizar el centro. Reintenta cuando el backend esté disponible.",
+          "error"
+        );
         throw err;
 
         try {
@@ -469,7 +470,10 @@ export function useCrudOperations(
         await fn({ centerId: id, reason });
       } catch (err: any) {
         console.warn("deleteCenter callable failed, trying direct fallback...", err);
-        showToast("No se pudo eliminar el centro. Reintenta cuando el backend esté disponible.", "error");
+        showToast(
+          "No se pudo eliminar el centro. Reintenta cuando el backend esté disponible.",
+          "error"
+        );
         throw err;
 
         const tokenResult = await authUser?.getIdTokenResult();

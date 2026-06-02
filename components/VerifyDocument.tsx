@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { doc, getDoc, collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  collectionGroup,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import {
   CheckCircle,
@@ -112,11 +120,11 @@ const VerifyDocument: React.FC<VerifyDocumentProps> = ({ onClose }) => {
         const finalDocType = foundPrescription?.type || "Receta Médica";
         const finalDocContent = foundPrescription?.content || "Prescripción / Indicación de prueba";
         const issuedBy = foundPrescription?.signature?.professionalName || "Dr. Felipe Cepeda Cea";
-        const issuedAt = foundPrescription?.signature?.signedAt 
+        const issuedAt = foundPrescription?.signature?.signedAt
           ? new Date(foundPrescription.signature.signedAt).toLocaleDateString("es-CL")
-          : (foundPrescription?.createdAt 
-              ? new Date(foundPrescription.createdAt).toLocaleDateString("es-CL") 
-              : new Date().toLocaleDateString("es-CL"));
+          : foundPrescription?.createdAt
+            ? new Date(foundPrescription.createdAt).toLocaleDateString("es-CL")
+            : new Date().toLocaleDateString("es-CL");
 
         setDocData({
           docId: finalDocId,
@@ -129,7 +137,7 @@ const VerifyDocument: React.FC<VerifyDocumentProps> = ({ onClose }) => {
           issuedBy,
           issuedAt,
           institution: "Centro Médico ClaveSalud",
-          signature: foundPrescription?.signature
+          signature: foundPrescription?.signature,
         });
 
         setLoading(false);

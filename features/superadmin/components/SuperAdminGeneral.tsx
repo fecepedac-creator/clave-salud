@@ -1,5 +1,13 @@
 import React from "react";
-import { TrendingUp, Users, Zap, Building2, AlertTriangle, Activity, ShieldCheck } from "lucide-react";
+import {
+  TrendingUp,
+  Users,
+  Zap,
+  Building2,
+  AlertTriangle,
+  Activity,
+  ShieldCheck,
+} from "lucide-react";
 import MetricCard from "../../../components/MetricCard";
 import { MedicalCenter } from "../../../types";
 
@@ -114,9 +122,7 @@ export const SuperAdminGeneral: React.FC<SuperAdminGeneralProps> = ({
           </div>
           <h3 className="text-slate-400 text-sm font-medium mb-1">En Riesgo (Bajo Uso)</h3>
           <div className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-white tracking-tight">
-              {totals.atRisk}
-            </span>
+            <span className="text-3xl font-bold text-white tracking-tight">{totals.atRisk}</span>
             <div className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
               Analizar →
             </div>
@@ -139,9 +145,9 @@ export const SuperAdminGeneral: React.FC<SuperAdminGeneralProps> = ({
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-sm text-slate-600">
         <p className="font-semibold text-slate-800 mb-2">Nota importante</p>
         <p>
-          Por seguridad, este panel <b>no crea usuarios/contraseñas</b> en Firebase Auth desde
-          el navegador. Para un alta segura de administradores, usa una <b>Cloud Function</b>{" "}
-          (Admin SDK) o un flujo de invitación controlado.
+          Por seguridad, este panel <b>no crea usuarios/contraseñas</b> en Firebase Auth desde el
+          navegador. Para un alta segura de administradores, usa una <b>Cloud Function</b> (Admin
+          SDK) o un flujo de invitación controlado.
         </p>
       </div>
 

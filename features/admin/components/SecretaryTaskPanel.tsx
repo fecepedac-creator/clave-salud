@@ -34,7 +34,9 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
     const today = todayIso();
 
     preadmissions
-      .filter((item) => !item.status || item.status === "pending" || item.status === "requires_contact")
+      .filter(
+        (item) => !item.status || item.status === "pending" || item.status === "requires_contact"
+      )
       .slice(0, 8)
       .forEach((item) => {
         const name = item.contact?.name || item.patientDraft?.fullName || "Paciente sin nombre";
@@ -43,7 +45,8 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
           id: `preadmission-${item.id}`,
           priority: item.status === "requires_contact" ? "alta" : "media",
           title: `Preingreso pendiente: ${name}`,
-          subtitle: `${phone} - ${item.appointmentDraft?.date || "sin fecha solicitada"} ${item.appointmentDraft?.time || ""}`.trim(),
+          subtitle:
+            `${phone} - ${item.appointmentDraft?.date || "sin fecha solicitada"} ${item.appointmentDraft?.time || ""}`.trim(),
           badge: "Preingreso",
           actionLabel: "Aprobar",
           onAction: () => onApprovePreadmission(item),
@@ -79,7 +82,9 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
       });
 
     appointments
-      .filter((appt) => appt.attendanceStatus === "no-show" || appt.attendanceStatus === "cancelled")
+      .filter(
+        (appt) => appt.attendanceStatus === "no-show" || appt.attendanceStatus === "cancelled"
+      )
       .slice(0, 6)
       .forEach((appt) => {
         pending.push({
@@ -89,7 +94,8 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
           subtitle: `${appt.date} ${appt.time} - ${appt.patientName || "Paciente"}`,
           badge: appt.attendanceStatus === "no-show" ? "No asistio" : "Cancelada",
           actionLabel: appt.attendanceStatus === "no-show" ? "Revisar" : undefined,
-          onAction: appt.attendanceStatus === "no-show" ? () => onCancelAppointment(appt) : undefined,
+          onAction:
+            appt.attendanceStatus === "no-show" ? () => onCancelAppointment(appt) : undefined,
         });
       });
 
@@ -110,7 +116,9 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
           <h3 className="font-bold text-white text-xl flex items-center gap-2">
             <ClipboardList className="w-5 h-5 text-health-400" /> Tareas de secretaria
           </h3>
-          <p className="text-slate-400 text-sm mt-1">Pendientes operativos derivados de agenda y preingresos.</p>
+          <p className="text-slate-400 text-sm mt-1">
+            Pendientes operativos derivados de agenda y preingresos.
+          </p>
         </div>
         <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-700">
           {tasks.length} pendientes
@@ -129,7 +137,9 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className={`text-[10px] uppercase font-black px-2 py-1 rounded border ${priorityClass[task.priority]}`}>
+                    <span
+                      className={`text-[10px] uppercase font-black px-2 py-1 rounded border ${priorityClass[task.priority]}`}
+                    >
                       {task.priority}
                     </span>
                     <span className="text-[10px] uppercase font-black px-2 py-1 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
@@ -138,7 +148,11 @@ const SecretaryTaskPanel: React.FC<SecretaryTaskPanelProps> = ({
                   </div>
                   <p className="font-bold text-white">{task.title}</p>
                   <p className="text-sm text-slate-400 mt-1 flex items-center gap-1.5">
-                    {task.badge === "Contactar" ? <Phone className="w-3.5 h-3.5" /> : <CalendarClock className="w-3.5 h-3.5" />}
+                    {task.badge === "Contactar" ? (
+                      <Phone className="w-3.5 h-3.5" />
+                    ) : (
+                      <CalendarClock className="w-3.5 h-3.5" />
+                    )}
                     {task.subtitle}
                   </p>
                 </div>

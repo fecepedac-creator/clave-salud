@@ -27,8 +27,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Scan tracked files for secrets
+        run: npm run security:secrets
+
+      - name: Verify commercial-readiness controls
+        run: npm run security:commercial
+
       - name: Run ESLint
-        run: npm run lint --if-present
+        run: npm run lint:ci
         continue-on-error: false
 
       - name: Check TypeScript

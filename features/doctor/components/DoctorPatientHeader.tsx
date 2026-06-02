@@ -276,7 +276,9 @@ export const DoctorPatientHeader: React.FC<DoctorPatientHeaderProps> = ({
       {!isEditingPatient && (
         <div className="flex flex-wrap items-center gap-4 py-2.5 px-4 bg-slate-50/80 rounded-xl border border-slate-200/60 text-xs text-slate-600 shadow-inner w-full font-medium">
           <div className="flex items-center gap-1.5 border-r border-slate-200 pr-4">
-            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Patologías:</span>
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">
+              Patologías:
+            </span>
             <div className="flex flex-wrap gap-1">
               {activeDiagnoses.length > 0 ? (
                 activeDiagnoses.map((diag, idx) => {
@@ -297,7 +299,9 @@ export const DoctorPatientHeader: React.FC<DoctorPatientHeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 border-r border-slate-200 pr-4">
-            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Alergias:</span>
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">
+              Alergias:
+            </span>
             <div className="flex flex-wrap gap-1">
               {allergies.length > 0 ? (
                 <>
@@ -329,7 +333,9 @@ export const DoctorPatientHeader: React.FC<DoctorPatientHeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 ml-auto text-slate-500">
-            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Último Control:</span>
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">
+              Último Control:
+            </span>
             {lastControl ? (
               <span className="font-semibold text-slate-700 bg-slate-100/50 px-2 py-0.5 rounded-lg border border-slate-200/50">
                 {lastControl.date} ({lastControl.professionalName} - {lastControl.professionalRole})

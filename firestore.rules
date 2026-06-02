@@ -39,8 +39,11 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if signedIn() && (isSuperAdmin() || uid() == userId);
-      allow create: if signedIn() && uid() == userId;
-      allow update: if signedIn() && (uid() == userId || isSuperAdmin());
+      allow create: if false; // Solo Cloud Functions durante onboarding
+      allow update: if signedIn() && (
+        isSuperAdmin()
+        || (uid() == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["roles", "isAdmin", "billing", "activo", "centros", "centers"]))
+      );
       allow delete: if false;
     }
 
@@ -55,7 +58,10 @@ service cloud.firestore {
     function isStaff(centerId) {
       return signedIn()
         && exists(staffPath(centerId, uid()))
-        && staffDoc(centerId).data.active == true;
+        && (
+          staffDoc(centerId).data.active == true
+          || staffDoc(centerId).data.activo == true
+        );
     }
 
     function staffAccessRole(centerId) {
@@ -88,7 +94,13 @@ service cloud.firestore {
 
 
     function isDoctor(centerId) {
-      return isStaff(centerId) && staffAccessRole(centerId) == "doctor";
+      let role = staffAccessRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "doctor"
+        || r == "professional"
+        || r == "profesional"
+      );
     }
 
     function staffClinicalRole(centerId) {
@@ -124,6 +136,20 @@ service cloud.firestore {
         r == "odontologo" ||
         r == "odontólogo"
       );
+    }
+
+    function hasClinicalRole(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId)
+        && r != ""
+        && r != "center_admin"
+        && r != "admin_centro"
+        && r != "admin"
+        && r != "administrative"
+        && r != "administrativo"
+        && r != "administrativa"
+        && r != "secretaria";
     }
 
     function centerDoc(centerId) {
@@ -335,14 +361,7 @@ service cloud.firestore {
           || isCenterAdmin(centerId)
         );
 
-        allow create: if signedIn() && (
-          isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || (
-            uid() == staffUid
-            && inviteValidForSelf(centerId, staffUid, request.resource.data.inviteToken)
-          )
-        );
+        allow create: if false; // Solo Cloud Functions
 
         allow update: if signedIn() && (
           isSuperAdmin()
@@ -564,6 +583,18 @@ service cloud.firestore {
           && request.resource.data.get('amount', null) == resource.data.get('amount', null);
       }
 
+      function monthIsOpen(date) {
+        let monthKey = date is string && date.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+          ? date.split("-")[0] + "-" + date.split("-")[1]
+          : "";
+        let closurePath = /databases/$(database)/documents/centers/$(centerId)/closures_month/$(monthKey);
+        return monthKey != ""
+          && (
+            !exists(closurePath)
+            || get(closurePath).data.status != "closed"
+          );
+      }
+
       match /appointments/{apptId} {
         allow read: if isPublicAppointmentRead()
           || (
@@ -586,8 +617,8 @@ service cloud.firestore {
             request.resource.data.doctorUid == uid()
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
           ))
-        );
-        allow update: if isPublicAppointmentBooking()
+        ) && monthIsOpen(request.resource.data.date);
+        allow update: if (isPublicAppointmentBooking() && monthIsOpen(request.resource.data.date))
           || (
             signedIn() && (
               isSuperAdmin()
@@ -599,6 +630,8 @@ service cloud.firestore {
               ))
             )
             && performanceFieldsUnchanged()
+            && monthIsOpen(resource.data.date)
+            && monthIsOpen(request.resource.data.date)
             && (
             !softDeleteKeysChanged()
             || (
@@ -704,24 +737,10 @@ service cloud.firestore {
         || (resource.data.emailLower is string && resource.data.emailLower == emailLower())
       );
 
-      allow create: if signedIn() && (
-        isSuperAdmin()
-        || (
-          request.resource.data.centerId is string
-          && isCenterAdmin(request.resource.data.centerId)
-        )
-      );
+      allow create: if false; // Solo Cloud Functions
 
       // ✅ acepta pending -> accepted o pending -> claimed (dueño del correo)
-      allow update: if signedIn()
-        && (resource.data.emailLower is string && resource.data.emailLower == emailLower())
-        && resource.data.status == "pending"
-        && (
-          (request.resource.data.status == "accepted"
-            && request.resource.data.acceptedByUid == uid())
-          || (request.resource.data.status == "claimed"
-            && request.resource.data.claimedByUid == uid())
-        );
+      allow update: if false; // Solo Cloud Functions
 
       allow delete: if false;
     }
@@ -780,24 +799,28 @@ service cloud.firestore {
           && isStaff(centerId);
       }
 
+      function isClinicalStaffForPatient(data) {
+        let centerId = patientPrimaryCenterId(data);
+        return centerId is string
+          && centerId != ""
+          && hasClinicalRole(centerId);
+      }
+
       function canReadRootPatient() {
-        return isOwner()
-          || isAllowedProfessional()
-          || isCenterStaffForPatient(resource.data)
+        return isAllowedProfessional()
+          || isClinicalStaffForPatient(resource.data)
           || isSuperAdmin();
       }
 
       function canWriteRootPatient() {
-        return isOwner()
-          || isAllowedProfessional()
-          || isCenterStaffForPatient(resource.data)
+        return isAllowedProfessional()
+          || isClinicalStaffForPatient(resource.data)
           || isSuperAdmin();
       }
 
       function canCreateRootPatient() {
         return signedIn() && (
-          request.resource.data.ownerUid == uid()
-          || isCenterStaffForPatient(request.resource.data)
+          isClinicalStaffForPatient(request.resource.data)
           || isSuperAdmin()
         );
       }
@@ -837,10 +860,9 @@ service cloud.firestore {
       function canAccessRootConsultationParent() {
         let patient = rootPatientData();
         return signedIn() && (
-          patient.ownerUid == uid()
-          || uid() in patient.accessControl.allowedUids
+          uid() in patient.accessControl.allowedUids
           || (patient.careTeamUids is list && uid() in patient.careTeamUids)
-          || isCenterStaffForPatient(patient)
+          || isClinicalStaffForPatient(patient)
           || isSuperAdmin()
         );
       }

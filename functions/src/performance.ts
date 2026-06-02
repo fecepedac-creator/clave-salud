@@ -10,6 +10,19 @@ interface AppointmentPayload {
   amount: number | null;
 }
 
+function normalizeAccessRole(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isCenterAdminRole(value: unknown): boolean {
+  const role = normalizeAccessRole(value);
+  return role === "center_admin" || role === "admin_centro" || role === "admin";
+}
+
 // --- UTILIDADES ---
 
 // Verifica permiso asumiendo que el token tiene el email o claim (se envia via context)
@@ -43,6 +56,16 @@ export const updateAppointmentAttendance = functions.https.onCall(async (data, c
   if (!centerId || !appointmentId || !payload) {
     throw new functions.https.HttpsError("invalid-argument", "Parámetros incompletos.");
   }
+  if (
+    !["completed", "cancelled", "no-show", null].includes(payload.attendanceStatus) ||
+    typeof payload.billable !== "boolean" ||
+    (payload.amount !== null && (typeof payload.amount !== "number" || payload.amount < 0))
+  ) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Estado de asistencia o monto inválido."
+    );
+  }
 
   // 2. Traer la cita actual
   const apptRef = db
@@ -71,8 +94,7 @@ export const updateAppointmentAttendance = functions.https.onCall(async (data, c
     if (!staffSnap.exists || staffSnap.data()?.active !== true) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
-    const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
-    const isCenterAdmin = role === "center_admin" || role === "admin";
+    const isCenterAdmin = isCenterAdminRole(staffSnap.data()?.accessRole || staffSnap.data()?.role);
 
     if (!isCenterAdmin && uid !== professionalId) {
       throw new functions.https.HttpsError(
@@ -378,8 +400,7 @@ export const recomputeMonthStats = functions.https.onCall(async (data, context) 
     if (!staffSnap.exists || staffSnap.data()?.active !== true) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
-    const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
-    if (role !== "center_admin" && role !== "admin") {
+    if (!isCenterAdminRole(staffSnap.data()?.accessRole || staffSnap.data()?.role)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Solo administradores pueden recalcular el mes entero."
@@ -553,8 +574,7 @@ export const closeMonth = functions.https.onCall(async (data, context) => {
     if (!staffSnap.exists || staffSnap.data()?.active !== true) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
-    const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
-    if (role !== "center_admin" && role !== "admin") {
+    if (!isCenterAdminRole(staffSnap.data()?.accessRole || staffSnap.data()?.role)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Solo administradores pueden cerrar el mes."
@@ -606,8 +626,7 @@ export const reopenMonth = functions.https.onCall(async (data, context) => {
     if (!staffSnap.exists || staffSnap.data()?.active !== true) {
       throw new functions.https.HttpsError("permission-denied", "Acceso denegado al centro.");
     }
-    const role = (staffSnap.data()?.accessRole || staffSnap.data()?.role || "").toLowerCase();
-    if (role !== "center_admin" && role !== "admin") {
+    if (!isCenterAdminRole(staffSnap.data()?.accessRole || staffSnap.data()?.role)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Solo administradores pueden reabrir el mes."

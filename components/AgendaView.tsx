@@ -323,7 +323,9 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                         <span
                                           className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${triage.bg}`}
                                         >
-                                          <span className={`w-1.5 h-1.5 rounded-full ${triage.dot}`}></span>
+                                          <span
+                                            className={`w-1.5 h-1.5 rounded-full ${triage.dot}`}
+                                          ></span>
                                           {triage.label}
                                         </span>
                                       );
@@ -331,11 +333,13 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                                   )}
                                 </h4>
                                 <p className="text-sm text-slate-500 font-medium font-mono mt-1">
-                                  {isPiiMasked ? maskRUT(apt.patientRut || "") : (apt.patientRut || "-")}{" "}
+                                  {isPiiMasked
+                                    ? maskRUT(apt.patientRut || "")
+                                    : apt.patientRut || "-"}{" "}
                                   •{" "}
                                   {isPiiMasked
                                     ? maskPhone(apt.patientPhone || "")
-                                    : (apt.patientPhone || "-")}
+                                    : apt.patientPhone || "-"}
                                 </p>
                               </div>
                             </div>

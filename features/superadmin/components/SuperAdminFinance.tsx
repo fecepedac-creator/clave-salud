@@ -75,7 +75,9 @@ export const SuperAdminFinance: React.FC<SuperAdminFinanceProps> = ({
                 <select
                   className="w-full p-3 border rounded-xl bg-white"
                   value={(financeCenter.billing?.plan || "trial") as PlanKey}
-                  onChange={(e) => updateBilling(financeCenter.id, { plan: e.target.value as PlanKey })}
+                  onChange={(e) =>
+                    updateBilling(financeCenter.id, { plan: e.target.value as PlanKey })
+                  }
                 >
                   <option value="trial">Trial</option>
                   <option value="basic">Basic</option>
@@ -90,7 +92,9 @@ export const SuperAdminFinance: React.FC<SuperAdminFinanceProps> = ({
                   type="number"
                   className="w-full p-3 border rounded-xl"
                   value={Number(financeCenter.billing?.monthlyUF || 0)}
-                  onChange={(e) => updateBilling(financeCenter.id, { monthlyUF: Number(e.target.value) })}
+                  onChange={(e) =>
+                    updateBilling(financeCenter.id, { monthlyUF: Number(e.target.value) })
+                  }
                 />
               </label>
 

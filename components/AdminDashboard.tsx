@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./Toast";
 import { db, auth } from "../firebase";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   collection,
   onSnapshot,
@@ -70,6 +71,8 @@ import { WhatsappSettings } from "../features/admin/components/WhatsappSettings"
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
 import { AdminAgenda } from "../features/admin/components/AdminAgenda";
 import CampaignManager from "./CampaignManager";
+import { PILOT_FEATURES } from "../config/pilot";
+import { isAdministrativeRole } from "../utils/roles";
 
 interface AdminDashboardProps {
   centerId: string; // NEW PROP: Required to link slots to the specific center
@@ -96,7 +99,6 @@ interface AdminDashboardProps {
 export const ROLE_LABELS: Record<string, string> = Object.fromEntries(
   ROLE_CATALOG.map((r) => [r.id, r.label])
 );
-
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   centerId,
@@ -132,7 +134,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const userRoles = currentUser?.roles || [];
   const isSecretary = userRoles.some((r) => {
     const low = String(r || "").toLowerCase();
-    return low === "administrativo" || low === "administrativa" || low === "secretaria";
+    return isAdministrativeRole(low);
   });
 
   const [activeTab, setActiveTab] = useState<AdminTab>(isSecretary ? "agenda" : "doctors");
@@ -201,8 +203,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!db || !resolvedCenterId) return;
     const q = collection(db, "centers", resolvedCenterId, "services");
     return onSnapshot(q, (snapshot) => {
-      const servicesData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as MedicalService));
-      const sortedServices = [...servicesData].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      const servicesData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as MedicalService);
+      const sortedServices = [...servicesData].sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "")
+      );
       setMedicalServices(sortedServices);
     });
   }, [resolvedCenterId]);
@@ -272,6 +276,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!emailLower) {
       throw new Error("El correo electrónico es requerido para crear el profesional");
     }
+
+    const createInvite = httpsCallable(getFunctions(), "createProfessionalInvite");
+    await createInvite({
+      centerId,
+      email: doctor.email,
+      tempStaffId: doctor.id,
+      accessRole: doctor.isAdmin ? "center_admin" : "professional",
+      profileData: {
+        fullName: doctor.fullName,
+        rut: doctor.rut,
+        specialty: doctor.specialty || null,
+        photoUrl: doctor.photoUrl || null,
+        agendaConfig: doctor.agendaConfig || null,
+        clinicalRole: doctor.clinicalRole ?? doctor.role,
+        visibleInBooking: doctor.visibleInBooking === true,
+        isAdmin: doctor.isAdmin || false,
+      },
+    });
+    return;
 
     const tempStaffId = doctor.id; // ID temporal generado por el admin
 
@@ -563,7 +586,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           </button>
 
           <div className="flex gap-2 w-full md:w-auto justify-center">
-            {!isSecretary && (
+            {!isSecretary && PILOT_FEATURES.browserClinicalMigration && (
               <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
                 <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
                 <input
@@ -574,7 +597,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
                 />
               </label>
             )}
-            {!isSecretary && (
+            {!isSecretary && PILOT_FEATURES.manualClinicalBackup && (
               <button
                 onClick={() => {
                   downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
@@ -646,14 +669,16 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               <Calendar className="w-4 h-4" /> Configurar Agenda
             </button>
           )}
-          <button
-            onClick={() => setActiveTab("whatsapp")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
-          >
-            <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
-          </button>
+          {PILOT_FEATURES.advancedWhatsapp && !isSecretary && (
+            <button
+              onClick={() => setActiveTab("whatsapp")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "whatsapp" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Plantillas WhatsApp" : "Selecciona un centro activo"}
+            >
+              <MessageCircle className="w-4 h-4" /> Plantillas WhatsApp
+            </button>
+          )}
 
           {!isSecretary && (
             <button
@@ -665,39 +690,47 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               <ShieldCheck className="w-4 h-4" /> Seguridad / Auditoría
             </button>
           )}
-          <button
-            onClick={() => setActiveTab("preadmissions")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "preadmissions" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Preingresos" : "Selecciona un centro activo"}
-          >
-            <User className="w-4 h-4" /> Preingresos
-          </button>
-          <button
-            onClick={() => setActiveTab("services")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "services" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Catálogo de Prestaciones" : "Selecciona un centro activo"}
-          >
-            <Activity className="w-4 h-4" /> Prestaciones / Exámenes
-          </button>
-          <button
-            onClick={() => setActiveTab("marketing")}
-            disabled={!hasActiveCenter}
-            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "marketing" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Afiche para redes sociales" : "Selecciona un centro activo"}
-          >
-            <Share2 className="w-4 h-4" /> Afiche RRSS
-          </button>
-          <button
-            data-testid="admin-tab-performance"
-            onClick={() => setActiveTab("performance")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "performance" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Rendimiento del Centro" : "Selecciona un centro activo"}
-          >
-            <TrendingUp className="w-4 h-4" /> Rendimiento
-          </button>
+          {PILOT_FEATURES.marketing && !isSecretary && (
+            <button
+              onClick={() => setActiveTab("preadmissions")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "preadmissions" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Preingresos" : "Selecciona un centro activo"}
+            >
+              <User className="w-4 h-4" /> Preingresos
+            </button>
+          )}
+          {!isSecretary && (
+            <button
+              onClick={() => setActiveTab("services")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "services" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Catálogo de Prestaciones" : "Selecciona un centro activo"}
+            >
+              <Activity className="w-4 h-4" /> Prestaciones / Exámenes
+            </button>
+          )}
+          {PILOT_FEATURES.aiUsage && !isSecretary && (
+            <button
+              onClick={() => setActiveTab("marketing")}
+              disabled={!hasActiveCenter}
+              className={`px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "marketing" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Afiche para redes sociales" : "Selecciona un centro activo"}
+            >
+              <Share2 className="w-4 h-4" /> Afiche RRSS
+            </button>
+          )}
+          {PILOT_FEATURES.campaigns && !isSecretary && (
+            <button
+              data-testid="admin-tab-performance"
+              onClick={() => setActiveTab("performance")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "performance" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Rendimiento del Centro" : "Selecciona un centro activo"}
+            >
+              <TrendingUp className="w-4 h-4" /> Rendimiento
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("ai_usage")}
             disabled={!hasActiveCenter}
@@ -725,9 +758,11 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               totalPatients: activeCenter?.stats?.patientCount || patients.length,
               todayAppointments:
                 activeCenter?.stats?.appointmentCount ||
-                appointments.filter((a) => a.date === new Date().toISOString().split("T")[0]).length,
+                appointments.filter((a) => a.date === new Date().toISOString().split("T")[0])
+                  .length,
               pendingPreadmissions: sortedPreadmissions.length,
-              activeDoctors: activeCenter?.stats?.staffCount || doctors.filter((d) => d.active !== false).length,
+              activeDoctors:
+                activeCenter?.stats?.staffCount || doctors.filter((d) => d.active !== false).length,
             }}
             appointments={appointments}
             doctors={doctors}
@@ -785,7 +820,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* WHATSAPP TEMPLATES */}
-      {activeTab === "whatsapp" && (
+      {PILOT_FEATURES.advancedWhatsapp && !isSecretary && activeTab === "whatsapp" && (
         <WhatsappSettings
           db={db!}
           auth={auth}
@@ -796,50 +831,53 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* MARKETING */}
-      {activeTab === "marketing" && (activeCenter || centerId) && (
-        <div className="animate-fadeIn space-y-6">
-          <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex-1">
-                <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
-                  <ImageIcon className="w-8 h-8 text-purple-400" /> Generador de Afiches
-                </h3>
-                <p className="text-slate-400 text-sm max-w-xl">
-                  Crea piezas gráficas profesionales para tus redes sociales con QR de agendamiento
-                  automático y descargas en alta calidad.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setMarketingFlyerType("center");
-                    setShowMarketingModal(true);
-                  }}
-                  disabled={!hasActiveCenter}
-                  className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Plus className="w-5 h-5" /> Crear Flyer Centro
-                </button>
-                <button
-                  onClick={() => {
-                    setMarketingFlyerType("professional");
-                    setShowMarketingModal(true);
-                  }}
-                  disabled={!hasActiveCenter || doctors.length === 0}
-                  className="flex items-center gap-2 px-8 py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition-all border border-slate-600 shadow-lg disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Users className="w-5 h-5" /> Por Especialista
-                </button>
+      {PILOT_FEATURES.marketing &&
+        !isSecretary &&
+        activeTab === "marketing" &&
+        (activeCenter || centerId) && (
+          <div className="animate-fadeIn space-y-6">
+            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-xl">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <ImageIcon className="w-8 h-8 text-purple-400" /> Generador de Afiches
+                  </h3>
+                  <p className="text-slate-400 text-sm max-w-xl">
+                    Crea piezas gráficas profesionales para tus redes sociales con QR de
+                    agendamiento automático y descargas en alta calidad.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setMarketingFlyerType("center");
+                      setShowMarketingModal(true);
+                    }}
+                    disabled={!hasActiveCenter}
+                    className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Plus className="w-5 h-5" /> Crear Flyer Centro
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMarketingFlyerType("professional");
+                      setShowMarketingModal(true);
+                    }}
+                    disabled={!hasActiveCenter || doctors.length === 0}
+                    className="flex items-center gap-2 px-8 py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition-all border border-slate-600 shadow-lg disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Users className="w-5 h-5" /> Por Especialista
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <MarketingPosterModule
-            centerId={resolvedCenterId}
-            centerName={activeCenter?.name || ""}
-          />
-        </div>
-      )}
+            <MarketingPosterModule
+              centerId={resolvedCenterId}
+              centerName={activeCenter?.name || ""}
+            />
+          </div>
+        )}
 
       {/* AUDIT LOGS */}
       {activeTab === "audit" && (
@@ -943,7 +981,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* PERFORMANCE / RENDIMIENTO */}
-      {activeTab === "performance" && (
+      {!isSecretary && activeTab === "performance" && (
         <div className="animate-fadeIn">
           <AdminPerformanceTab
             centerId={resolvedCenterId}
@@ -954,7 +992,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
         </div>
       )}
 
-      {activeTab === "ai_usage" && (
+      {PILOT_FEATURES.aiUsage && !isSecretary && activeTab === "ai_usage" && (
         <div className="animate-fadeIn">
           <AdminAIUsageTab
             centerId={resolvedCenterId}
@@ -966,7 +1004,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* CAMPAIGNS IA */}
-      {activeTab === "campaigns" && (
+      {PILOT_FEATURES.campaigns && !isSecretary && activeTab === "campaigns" && (
         <div className="animate-fadeIn min-h-[600px]">
           <CampaignManager centerId={resolvedCenterId} />
         </div>
@@ -1028,7 +1066,6 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
         </div>
       )}
 
-
       {/* MARKETING FLYER */}
       {showMarketingModal && activeCenter && (
         <MarketingFlyerModal
@@ -1060,7 +1097,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* MIGRATION */}
-      {showMigrationModal && activeCenter && (
+      {PILOT_FEATURES.browserClinicalMigration && showMigrationModal && activeCenter && (
         <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
       )}
 

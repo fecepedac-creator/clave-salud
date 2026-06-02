@@ -51,14 +51,20 @@ const AMBIGUOUS_TERMS = [
 const SPECIALTY_TEMPLATES: Record<string, Array<{ title: string; focus: string }>> = {
   MEDICO: [
     { title: "Control crónico", focus: "Motivo, evolución, plan farmacológico y próximo control." },
-    { title: "Consulta aguda respiratoria", focus: "Síntomas, examen segmentario, signos de alarma." },
+    {
+      title: "Consulta aguda respiratoria",
+      focus: "Síntomas, examen segmentario, signos de alarma.",
+    },
   ],
   KINESIOLOGO: [
     { title: "Sesión kinésica motora", focus: "Dolor EVA, movilidad, intervención y objetivos." },
     { title: "Rehabilitación respiratoria", focus: "Síntomas, técnica aplicada y tolerancia." },
   ],
   NUTRICIONISTA: [
-    { title: "Control nutricional", focus: "Anamnesis alimentaria, antropometría y plan dietario." },
+    {
+      title: "Control nutricional",
+      focus: "Anamnesis alimentaria, antropometría y plan dietario.",
+    },
     { title: "Seguimiento metabólico", focus: "Adherencia, barreras y metas SMART." },
   ],
   ENFERMERA: [
@@ -136,7 +142,9 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
   const users = useMemo(
     () =>
       Array.from(
-        new Set(logs.map((log) => log.actorEmail || log.actorRole || log.actorUid || "").filter(Boolean))
+        new Set(
+          logs.map((log) => log.actorEmail || log.actorRole || log.actorUid || "").filter(Boolean)
+        )
       ),
     [logs]
   );
@@ -178,11 +186,19 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
   }, [allConsultations]);
 
   const aiStats = useMemo(() => {
-    const generated = filteredLogs.filter((log) => log.action === "AI_CLINICAL_TEXT_SUGGESTED").length;
-    const accepted = filteredLogs.filter((log) => log.action === "AI_CLINICAL_TEXT_ACCEPTED").length;
-    const discarded = filteredLogs.filter((log) => log.action === "AI_CLINICAL_TEXT_DISCARDED").length;
+    const generated = filteredLogs.filter(
+      (log) => log.action === "AI_CLINICAL_TEXT_SUGGESTED"
+    ).length;
+    const accepted = filteredLogs.filter(
+      (log) => log.action === "AI_CLINICAL_TEXT_ACCEPTED"
+    ).length;
+    const discarded = filteredLogs.filter(
+      (log) => log.action === "AI_CLINICAL_TEXT_DISCARDED"
+    ).length;
     const finalized = filteredLogs.filter((log) => log.action === "AI_CLINICAL_TEXT_FINALIZED");
-    const confirmedAlerts = filteredLogs.filter((log) => log.action === "AI_CLINICAL_ALERT_CONFIRMED").length;
+    const confirmedAlerts = filteredLogs.filter(
+      (log) => log.action === "AI_CLINICAL_ALERT_CONFIRMED"
+    ).length;
     const falsePositiveAlerts = filteredLogs.filter(
       (log) => log.action === "AI_CLINICAL_ALERT_FALSE_POSITIVE"
     ).length;
@@ -216,7 +232,9 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
       string,
       { doctorName: string; role: string; consultations: number; completed: number; noShow: number }
     >();
-    const doctorById = new Map(doctors.map((d) => [d.id, d]));
+    const doctorById = new Map<string, Doctor>(
+      doctors.map((doctor): [string, Doctor] => [String(doctor.id), doctor])
+    );
 
     recentConsultations.forEach((row) => {
       const id = row.consultation.professionalId || "unknown";
@@ -267,8 +285,17 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
     pendingExamThreshold.setDate(now.getDate() - 60);
 
     const noControl: Array<{ patientId: string; patientName: string; days: number }> = [];
-    const pendingExams: Array<{ patientId: string; patientName: string; exams: number; days: number }> = [];
-    const overdueFollowup: Array<{ patientId: string; patientName: string; nextControlDate: string }> = [];
+    const pendingExams: Array<{
+      patientId: string;
+      patientName: string;
+      exams: number;
+      days: number;
+    }> = [];
+    const overdueFollowup: Array<{
+      patientId: string;
+      patientName: string;
+      nextControlDate: string;
+    }> = [];
 
     patients.forEach((patient) => {
       const consultations = [...(patient.consultations || [])].sort((a, b) => {
@@ -319,7 +346,12 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
     let missingCore = 0;
     let ambiguous = 0;
     let withoutPlan = 0;
-    const issues: Array<{ patientName: string; date: string; issue: string; professional: string }> = [];
+    const issues: Array<{
+      patientName: string;
+      date: string;
+      issue: string;
+      professional: string;
+    }> = [];
 
     const recent = [...allConsultations]
       .sort(
@@ -334,21 +366,37 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
       const date = c.date || "-";
       const professional = c.professionalName || c.professionalRole || "Profesional";
       const coreMissing = !String(c.reason || "").trim() || !String(c.anamnesis || "").trim();
-      const lacksPlan = !String(c.nextControlReason || "").trim() && !String(c.nextControlDate || "").trim();
+      const lacksPlan =
+        !String(c.nextControlReason || "").trim() && !String(c.nextControlDate || "").trim();
       const text = `${c.anamnesis || ""} ${c.physicalExam || ""} ${c.diagnosis || ""}`.trim();
       const hasAmbiguous = AMBIGUOUS_TERMS.some((pattern) => pattern.test(text));
 
       if (coreMissing) {
         missingCore += 1;
-        issues.push({ patientName: row.patientName, date, issue: "Campos esenciales incompletos", professional });
+        issues.push({
+          patientName: row.patientName,
+          date,
+          issue: "Campos esenciales incompletos",
+          professional,
+        });
       }
       if (lacksPlan) {
         withoutPlan += 1;
-        issues.push({ patientName: row.patientName, date, issue: "Sin plan ni seguimiento", professional });
+        issues.push({
+          patientName: row.patientName,
+          date,
+          issue: "Sin plan ni seguimiento",
+          professional,
+        });
       }
       if (hasAmbiguous) {
         ambiguous += 1;
-        issues.push({ patientName: row.patientName, date, issue: "Texto ambiguo a revisar", professional });
+        issues.push({
+          patientName: row.patientName,
+          date,
+          issue: "Texto ambiguo a revisar",
+          professional,
+        });
       }
     });
 
@@ -368,7 +416,7 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
   }, [allConsultations]);
 
   const templateSuggestions = useMemo(() => {
-    const roleSet = new Set(doctors.map((d) => String(d.role || "").toUpperCase()));
+    const roleSet = new Set<string>(doctors.map((d) => String(d.role || "").toUpperCase()));
     const list: Array<{ role: string; title: string; focus: string }> = [];
     roleSet.forEach((role) => {
       (SPECIALTY_TEMPLATES[role] || []).forEach((tpl) => list.push({ role, ...tpl }));
@@ -384,7 +432,10 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
     }, {});
   }, [filteredLogs]);
 
-  const recordAlertFeedback = async (sourceLogId: string, feedback: "confirmed" | "false_positive") => {
+  const recordAlertFeedback = async (
+    sourceLogId: string,
+    feedback: "confirmed" | "false_positive"
+  ) => {
     const fn = httpsCallable<
       { centerId: string; sourceLogId: string; feedback: string },
       { ok: boolean }
@@ -425,7 +476,9 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
           </div>
           <div className="bg-slate-900/70 border border-slate-700 rounded-2xl p-5">
             <p className="text-xs uppercase font-black text-slate-500 mb-2">Exámenes pendientes</p>
-            <p className="text-3xl font-black text-indigo-300">{patientAlerts.pendingExams.length}</p>
+            <p className="text-3xl font-black text-indigo-300">
+              {patientAlerts.pendingExams.length}
+            </p>
           </div>
           <div className="bg-slate-900/70 border border-slate-700 rounded-2xl p-5">
             <p className="text-xs uppercase font-black text-slate-500 mb-2">Tiempo ahorrado IA</p>
@@ -488,7 +541,10 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
           </h4>
           <div className="space-y-3">
             {productivityRows.map((row) => (
-              <div key={row.doctorId} className="bg-slate-900/70 border border-slate-700 rounded-xl p-3">
+              <div
+                key={row.doctorId}
+                className="bg-slate-900/70 border border-slate-700 rounded-xl p-3"
+              >
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="text-white font-bold">{row.doctorName}</p>
@@ -563,7 +619,10 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
           </h4>
           <div className="space-y-3">
             {templateSuggestions.map((tpl, idx) => (
-              <div key={`${tpl.role}-${idx}`} className="bg-slate-900/70 border border-slate-700 rounded-xl p-3">
+              <div
+                key={`${tpl.role}-${idx}`}
+                className="bg-slate-900/70 border border-slate-700 rounded-xl p-3"
+              >
                 <div className="flex justify-between gap-2">
                   <p className="text-white font-bold">{tpl.title}</p>
                   <span className="text-[10px] px-2 py-1 rounded bg-indigo-500/20 text-indigo-200 font-black">
@@ -652,7 +711,10 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
           </h4>
           <div className="space-y-2 text-sm max-h-72 overflow-y-auto">
             {patientAlerts.noControl.slice(0, 12).map((item) => (
-              <div key={`nocontrol-${item.patientId}`} className="bg-slate-900/70 border border-slate-700 rounded-lg p-2">
+              <div
+                key={`nocontrol-${item.patientId}`}
+                className="bg-slate-900/70 border border-slate-700 rounded-lg p-2"
+              >
                 <p className="text-white font-semibold">{item.patientName}</p>
                 <p className="text-slate-400">Sin control hace {item.days} días</p>
               </div>
@@ -665,7 +727,10 @@ const AdminAIUsageTab: React.FC<AdminAIUsageTabProps> = ({
           </h4>
           <div className="space-y-2 text-sm max-h-72 overflow-y-auto">
             {quality.issues.slice(0, 12).map((item, idx) => (
-              <div key={`issue-${idx}`} className="bg-slate-900/70 border border-slate-700 rounded-lg p-2">
+              <div
+                key={`issue-${idx}`}
+                className="bg-slate-900/70 border border-slate-700 rounded-lg p-2"
+              >
                 <p className="text-white font-semibold">{item.patientName}</p>
                 <p className="text-slate-400">
                   {item.date} - {item.issue} - {item.professional}

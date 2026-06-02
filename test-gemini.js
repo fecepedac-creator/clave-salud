@@ -3,7 +3,8 @@ import mammoth from "mammoth";
 import fs from "fs/promises";
 import path from "path";
 
-const API_KEY = "AIzaSyD7y8hKM8khe_PVwjCtmGjd1drfUuDfeEo";
+const API_KEY = process.env.GEMINI_API_KEY;
+if (!API_KEY) throw new Error("GEMINI_API_KEY no configurada.");
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 

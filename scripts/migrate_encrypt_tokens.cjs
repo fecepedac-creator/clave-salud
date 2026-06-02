@@ -2,7 +2,7 @@
  * Script de migración: Cifra los Access Tokens de Meta almacenados en Firestore.
  *
  * USO (PowerShell):
- *   $env:ENCRYPTION_KEY = "0c0c88ba0b07cacbd6b8daf9e5a51c2eaadf1510736d9e284859773cf6e1d9a2"
+ *   $env:ENCRYPTION_KEY = "<64 caracteres hexadecimales>"
  *   node scripts/migrate_encrypt_tokens.cjs
  *
  * SEGURIDAD:

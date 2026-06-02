@@ -59,14 +59,14 @@ const PreadmissionList: React.FC<PreadmissionListProps> = ({
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 tracking-wider">
                     Asignado: {doc?.fullName || "Médico no asignado"}
                   </span>
                 </div>
               </div>
-              
+
               <Button
                 variant="primary"
                 onClick={() => onApprove(item)}

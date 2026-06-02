@@ -37,9 +37,7 @@ const formatDate = (value?: string) => {
 
 const formatList = (items?: Array<string | SnomedConcept>) => {
   if (!items || items.length === 0) return "No registrado";
-  return items
-    .map((item) => (typeof item === "string" ? item : item.display))
-    .join(", ");
+  return items.map((item) => (typeof item === "string" ? item : item.display)).join(", ");
 };
 
 const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = ({
@@ -51,11 +49,6 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
   generatedAt,
   generatedBy,
 }) => {
-  if (!isOpen) return null;
-
-  const centerName = center?.name ?? "Centro Médico";
-  const centerRut = center?.legalInfo?.rut ?? "";
-  const age = calculateAge(patient.birthDate);
   const sortedConsultations = useMemo(
     () =>
       [...(consultations || [])].sort(
@@ -63,6 +56,12 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
       ),
     [consultations]
   );
+
+  if (!isOpen) return null;
+
+  const centerName = center?.name ?? "Centro Médico";
+  const centerRut = center?.legalInfo?.rut ?? "";
+  const age = calculateAge(patient.birthDate);
 
   // Las recetas se renderizan directamente debajo de cada consulta
 
@@ -90,15 +89,21 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
     lines.push(`DATOS DEL PACIENTE`);
     lines.push(`Nombre: ${patient.fullName || "No registrado"}`);
     lines.push(`RUT: ${patient.rut || "No registrado"}`);
-    lines.push(`Fecha de nacimiento: ${formatDate(patient.birthDate)} (${age !== null ? `${age} años` : "No registrado"})`);
+    lines.push(
+      `Fecha de nacimiento: ${formatDate(patient.birthDate)} (${age !== null ? `${age} años` : "No registrado"})`
+    );
     lines.push(`Sexo: ${patient.gender || "No registrado"}`);
     lines.push(`Teléfono: ${patient.phone || "No registrado"}`);
     lines.push(`Email: ${patient.email || "No registrado"}`);
     lines.push(`Dirección: ${patient.address || "No registrado"}`);
     lines.push(`Antecedentes Médicos: ${formatList(patient.medicalHistory)}`);
     lines.push(`Antecedentes Quirúrgicos: ${formatList(patient.surgicalHistory)}`);
-    lines.push(`Alergias: ${patient.allergies?.length ? patient.allergies.map((a) => `${a.substance} (${a.type})`).join(", ") : "No registrado"}`);
-    lines.push(`Fármacos en uso: ${patient.medications?.length ? patient.medications.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`).join(", ") : "No registrado"}`);
+    lines.push(
+      `Alergias: ${patient.allergies?.length ? patient.allergies.map((a) => `${a.substance} (${a.type})`).join(", ") : "No registrado"}`
+    );
+    lines.push(
+      `Fármacos en uso: ${patient.medications?.length ? patient.medications.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` (${m.frequency})` : ""}`).join(", ") : "No registrado"}`
+    );
     lines.push(`==========================================`);
     lines.push(`HISTORIAL CLÍNICO`);
 
@@ -113,7 +118,9 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
         lines.push(`Anamnesis: ${c.anamnesis || "No registrado"}`);
         lines.push(`Diagnóstico: ${c.diagnosis || "No registrado"}`);
         if (c.bloodPressure || c.weight || c.height) {
-          lines.push(`Signos: PA: ${c.bloodPressure || "-"} | HGT: ${c.hgt || "-"} | Peso: ${c.weight || "-"} kg | Talla: ${c.height || "-"} cm`);
+          lines.push(
+            `Signos: PA: ${c.bloodPressure || "-"} | HGT: ${c.hgt || "-"} | Peso: ${c.weight || "-"} kg | Talla: ${c.height || "-"} cm`
+          );
         }
       });
     }
@@ -137,7 +144,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
             <button
               onClick={async () => {
                 await logAuditEventSafe({
-                  centerId: center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                  centerId:
+                    center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
                   action: "FULL_CLINICAL_RECORD_PRINT",
                   entityType: "patient",
                   entityId: patient.id,
@@ -176,7 +184,14 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                 <tr className="hidden print:table-row">
                   <td className="p-0 border-0">
                     <div className="print-running-header">
-                      <img src="/assets/logo.png" alt="ClaveSalud" width="90" height="22" className="h-5 w-auto object-contain" style={{ objectFit: "contain" }} />
+                      <img
+                        src="/assets/logo.png"
+                        alt="ClaveSalud"
+                        width="90"
+                        height="22"
+                        className="h-5 w-auto object-contain"
+                        style={{ objectFit: "contain" }}
+                      />
                       <span className="text-[9px] text-slate-500 font-medium">
                         Ficha Clínica Completa - {patient.fullName}
                       </span>
@@ -204,9 +219,18 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   <td className="p-0 border-0">
                     <header className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start gap-4 print:break-inside-avoid">
                       <div className="flex flex-col gap-2">
-                        <img src="/assets/logo.png" alt="ClaveSalud" width="160" height="40" className="h-10 w-auto object-contain max-w-[160px]" style={{ objectFit: "contain" }} />
+                        <img
+                          src="/assets/logo.png"
+                          alt="ClaveSalud"
+                          width="160"
+                          height="40"
+                          className="h-10 w-auto object-contain max-w-[160px]"
+                          style={{ objectFit: "contain" }}
+                        />
                         <div>
-                          <h1 className="text-xl font-bold text-slate-900">Ficha Clínica Completa</h1>
+                          <h1 className="text-xl font-bold text-slate-900">
+                            Ficha Clínica Completa
+                          </h1>
                           <p className="text-xs text-slate-500">{centerName}</p>
                           {centerRut ? (
                             <p className="text-xs text-slate-500 font-mono">RUT: {centerRut}</p>
@@ -247,7 +271,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                           {patient.fullName || "No registrado"}
                         </div>
                         <div>
-                          <span className="font-semibold">RUT:</span> {patient.rut || "No registrado"}
+                          <span className="font-semibold">RUT:</span>{" "}
+                          {patient.rut || "No registrado"}
                         </div>
                         <div>
                           <span className="font-semibold">Fecha nacimiento:</span>{" "}
@@ -258,14 +283,16 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                           {age !== null ? `${age} años` : "No registrado"}
                         </div>
                         <div>
-                          <span className="font-semibold">Sexo:</span> {patient.gender || "No registrado"}
+                          <span className="font-semibold">Sexo:</span>{" "}
+                          {patient.gender || "No registrado"}
                         </div>
                         <div>
                           <span className="font-semibold">Teléfono:</span>{" "}
                           {patient.phone || "No registrado"}
                         </div>
                         <div>
-                          <span className="font-semibold">Email:</span> {patient.email || "No registrado"}
+                          <span className="font-semibold">Email:</span>{" "}
+                          {patient.email || "No registrado"}
                         </div>
                         <div>
                           <span className="font-semibold">Dirección:</span>{" "}
@@ -317,7 +344,9 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                 </tr>
                 <tr>
                   <td className="p-0 border-0">
-                    <h2 className="text-lg font-bold text-slate-800 mb-3 print:break-inside-avoid">Historia Clínica</h2>
+                    <h2 className="text-lg font-bold text-slate-800 mb-3 print:break-inside-avoid">
+                      Historia Clínica
+                    </h2>
                   </td>
                 </tr>
                 {sortedConsultations.length === 0 ? (
@@ -356,7 +385,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                                 {c.bloodPressure || "No registrado"}
                               </div>
                               <div>
-                                <span className="font-semibold">HGT:</span> {c.hgt || "No registrado"}
+                                <span className="font-semibold">HGT:</span>{" "}
+                                {c.hgt || "No registrado"}
                               </div>
                               <div>
                                 <span className="font-semibold">Peso:</span>{" "}
@@ -367,7 +397,8 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                                 {c.height || "No registrado"}
                               </div>
                               <div>
-                                <span className="font-semibold">IMC:</span> {c.bmi || "No registrado"}
+                                <span className="font-semibold">IMC:</span>{" "}
+                                {c.bmi || "No registrado"}
                               </div>
                               <div>
                                 <span className="font-semibold">Cintura/Cadera:</span>{" "}
@@ -398,7 +429,10 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                               </span>
                               <div className="space-y-2">
                                 {c.prescriptions.map((p) => (
-                                  <div key={p.id} className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 text-xs">
+                                  <div
+                                    key={p.id}
+                                    className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 text-xs"
+                                  >
                                     <div className="font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
                                       <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold text-[10px]">
                                         {p.type || "Receta"}

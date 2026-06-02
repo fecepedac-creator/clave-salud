@@ -30,7 +30,7 @@ export async function signDocument(
   // Mezclamos el contenido con el RUT del profesional para un sellado único
   const hash = await generateIntegrityHash(content + professionalRut);
   const verificationCode = generateVerificationCode();
-  
+
   return {
     hash,
     signedAt: new Date().toISOString(),

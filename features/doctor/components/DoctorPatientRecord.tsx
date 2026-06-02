@@ -288,10 +288,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                   const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
                   const { storage } = await import("../../../firebase");
                   const storagePath = `centers/${activeCenterId}/patients/${selectedPatient.id}/attachments/${Date.now()}_${f.name}`;
-                  const storageRef = ref(
-                    storage,
-                    storagePath
-                  );
+                  const storageRef = ref(storage, storagePath);
                   await uploadBytes(storageRef, f);
                   const downloadUrl = await getDownloadURL(storageRef);
 
@@ -353,9 +350,14 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 </div>
                 {!isReadOnly &&
                   role !== "KINESIOLOGO" &&
-                  (["MEDICO", "ENFERMERA", "NUTRICIONISTA", "PODOLOGO", "ADMIN_CENTRO", "SUPER_ADMIN"].includes(
-                    role as string
-                  ) ||
+                  ([
+                    "MEDICO",
+                    "ENFERMERA",
+                    "NUTRICIONISTA",
+                    "PODOLOGO",
+                    "ADMIN_CENTRO",
+                    "SUPER_ADMIN",
+                  ].includes(role as string) ||
                     (role as string).includes("ADMIN")) && (
                     <div className="flex gap-4">
                       <button
@@ -364,7 +366,10 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                         className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="btn-new-morbidity-consultation"
                         onClick={() => {
-                          setNewConsultation((prev) => ({ ...prev, consultationType: "morbidity" }));
+                          setNewConsultation((prev) => ({
+                            ...prev,
+                            consultationType: "morbidity",
+                          }));
                           setIsCreatingConsultation(true);
                         }}
                       >
@@ -418,7 +423,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 currentUser={currentUser}
                 myExamProfiles={myExamProfiles}
                 myTemplates={myTemplates}
-                diagnoses={diagnoses}
+                diagnoses={newConsultation.diagnoses || diagnoses}
                 addDiagnosis={addDiagnosis}
                 removeDiagnosis={removeDiagnosis}
                 pinDiagnosis={pinDiagnosis}

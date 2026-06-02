@@ -60,9 +60,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
-  const origin = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? window.location.origin
-    : "https://clavesalud-2.web.app";
+  const origin =
+    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? window.location.origin
+      : "https://clavesalud-2.web.app";
 
   const downloadPDF = async () => {
     await logAuditEventSafe({
@@ -126,13 +127,17 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             <button
               onClick={async () => {
                 await logAuditEventSafe({
-                  centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+                  centerId:
+                    selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
                   action: "CLINICAL_DOCUMENT_PRINT",
                   entityType: "prescription",
                   entityId: docs.map((doc) => doc.id).join(","),
                   patientId: selectedPatient.id,
                   details: "Impresion de receta/documento clinico.",
-                  metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
+                  metadata: {
+                    documentCount: docs.length,
+                    documentTypes: docs.map((doc) => doc.type),
+                  },
                 });
                 window.print();
               }}
@@ -257,9 +262,11 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     {/* QR Verification */}
                     <div className="bg-white p-1 border border-slate-200 rounded">
                       <QRCodeComponent
-                        value={doc.signature 
-                          ? `${origin}/v/${doc.signature.hash}` 
-                          : `${origin}/verify/${selectedPatient.id}/${doc.id}`}
+                        value={
+                          doc.signature
+                            ? `${origin}/v/${doc.signature.hash}`
+                            : `${origin}/verify/${selectedPatient.id}/${doc.id}`
+                        }
                         size={64}
                       />
                     </div>

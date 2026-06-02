@@ -64,7 +64,7 @@ export const formatPersonName = (value?: string | null): string => {
 export const normalizePhone = (phone: string): string => {
   if (!phone) return "";
   // Remove spaces, dashes, parentheses
-  const clean = phone.replace(/[\s\-\(\)]/g, "");
+  const clean = phone.replace(/[\s\-()]/g, "");
 
   // Basic validation/formatting for Chile (+569)
   // If user enters 912345678, make it +56912345678
@@ -82,7 +82,7 @@ export const normalizePhone = (phone: string): string => {
 export const sanitizeText = (text: string | undefined): string => {
   if (!text) return "";
   // Removes null bytes and trims whitespace.
-  return text.replace(/\u0000/g, "").trim();
+  return text.split(String.fromCharCode(0)).join("").trim();
 };
 
 export const getProfessionalPrefix = (role?: string): string => {
@@ -139,4 +139,3 @@ export const maskPhone = (phone: string): string => {
   }
   return "****";
 };
-

@@ -294,7 +294,8 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         type="export-options"
         onConfirm={(option) => {
           setIsExportModalOpen(false);
-          const toExport = option === "all" ? filteredConsultations : filteredConsultations.slice(0, 20);
+          const toExport =
+            option === "all" ? filteredConsultations : filteredConsultations.slice(0, 20);
           setSelectedConsultations(toExport);
           setIsPrintOpen(true);
         }}

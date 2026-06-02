@@ -30,7 +30,7 @@ test.describe("SuperAdmin Access & Multi-tenant Visibility", () => {
     await expect(page.getByRole("heading", { name: /Visión General/i })).toBeVisible({
       timeout: 15000,
     });
-    
+
     // "Centros Activos" está dentro de un MetricCard como H3
     await expect(page.getByRole("heading", { name: /Centros Activos/i })).toBeVisible();
     await expect(page.getByText("SuperAdmin", { exact: false }).first()).toBeVisible();

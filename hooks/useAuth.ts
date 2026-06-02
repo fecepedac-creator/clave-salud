@@ -25,6 +25,9 @@ import {
 import { ViewMode, UserProfile, AnyRole } from "../types";
 
 const SUPERADMIN_ALLOWED_EMAILS = new Set(["fecepedac@gmail.com", "dr.felipecepeda@gmail.com"]);
+const GOOGLE_REDIRECT_MODE_KEY = "cs_google_redirect_mode";
+const GOOGLE_REDIRECT_TARGET_KEY = "cs_google_redirect_target";
+const GOOGLE_REDIRECT_MODE_PROFESSIONAL = "professional";
 
 export function useAuth() {
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -283,6 +286,16 @@ export function useAuth() {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
 
+        if (window.location.hostname === "localhost") {
+          window.sessionStorage.setItem(
+            GOOGLE_REDIRECT_MODE_KEY,
+            GOOGLE_REDIRECT_MODE_PROFESSIONAL
+          );
+          window.sessionStorage.setItem(GOOGLE_REDIRECT_TARGET_KEY, String(targetView));
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+
         let user;
         try {
           const cred = await signInWithPopup(auth, provider);
@@ -307,6 +320,11 @@ export function useAuth() {
         const uid = user.uid;
         const emailUser = (user.email || "").trim().toLowerCase();
         if (!emailUser) throw new Error("Tu cuenta Google no tiene email disponible.");
+
+        const acceptPendingInvites = httpsCallable(getFunctions(), "acceptPendingInvites");
+        await acceptPendingInvites({}).catch((inviteError) => {
+          console.warn("No fue posible conciliar invitaciones pendientes:", inviteError);
+        });
 
         const existingSnap = await getDoc(doc(db, "users", uid));
         if (existingSnap.exists()) {
@@ -577,7 +595,9 @@ export function useAuth() {
   const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     setCurrentUser(null);
     setEmail("");
     setPassword("");
@@ -604,16 +624,65 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setError("No autorizado");
     try {
       await signOut(auth);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     setCurrentUser(null);
   }, []);
 
   // Handle OAuth redirect result
   const handleRedirectResult = useCallback(
-    async (onSuccess: () => void, onUnauthorized: () => void) => {
+    async (
+      onSuccess: () => void,
+      onUnauthorized: () => void,
+      onProfessionalSuccess: (user: UserProfile, targetView: ViewMode) => void
+    ) => {
       try {
         const result = await getRedirectResult(auth);
         if (!result?.user) return;
+        const redirectMode = window.sessionStorage.getItem(GOOGLE_REDIRECT_MODE_KEY);
+        const redirectTarget =
+          (window.sessionStorage.getItem(GOOGLE_REDIRECT_TARGET_KEY) as ViewMode | null) ??
+          ("doctor-dashboard" as ViewMode);
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_MODE_KEY);
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_TARGET_KEY);
+        if (redirectMode === GOOGLE_REDIRECT_MODE_PROFESSIONAL) {
+          const snap = await getDoc(doc(db, "users", result.user.uid));
+          if (!snap.exists()) {
+            throw new Error(
+              "Tu cuenta Google fue autenticada, pero aún no tiene un perfil activo en ClaveSalud."
+            );
+          }
+          const profile: any = snap.data();
+          if (profile.activo === false) throw new Error("Usuario inactivo");
+          const roles = (Array.isArray(profile.roles) ? profile.roles : [])
+            .map((role: unknown) => String(role ?? "").trim())
+            .filter(Boolean) as AnyRole[];
+          const centros: string[] = Array.isArray(profile.centros)
+            ? profile.centros
+            : Array.isArray(profile.centers)
+              ? profile.centers
+              : [];
+          const userProfile: UserProfile = {
+            uid: result.user.uid,
+            id: result.user.uid,
+            email: profile.email || result.user.email || "",
+            roles,
+            centers: centros,
+            centros,
+            fullName:
+              profile.fullName ||
+              profile.nombre ||
+              profile.email ||
+              result.user.displayName ||
+              "Usuario",
+            role: profile.role || roles[0] || "Profesional",
+            billing: profile.billing,
+          };
+          setCurrentUser(userProfile);
+          onProfessionalSuccess(userProfile, redirectTarget);
+          return;
+        }
         await assertSuperAdminAccess(result.user);
         onSuccess();
       } catch (e: any) {

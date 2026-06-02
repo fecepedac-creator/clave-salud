@@ -36,7 +36,9 @@ export const CONTROLLED_PRESCRIBING_ROLES = ["MEDICO", "ODONTOLOGO"];
 export const PRESCRIPTION_TYPES = ["Receta Médica", "Receta Retenida"];
 
 export const normalizeClinicalRole = (role?: string | null): string =>
-  String(role || "").trim().toUpperCase();
+  String(role || "")
+    .trim()
+    .toUpperCase();
 
 export const canRoleIssuePrescription = (role?: string | null): boolean =>
   PRESCRIBING_ROLES.includes(normalizeClinicalRole(role));
@@ -53,16 +55,56 @@ export const isControlledPrescriptionType = (type?: string | null): boolean =>
 // Chilean brand names to bioequivalent mapping
 export const BRAND_TO_BIOEQUIVALENTS: VademecumDrug[] = [
   { brandName: "Apronax", activePrinciple: "Naproxeno", bioequivalent: "Naproxeno Genérico (ISP)" },
-  { brandName: "Lipitor", activePrinciple: "Atorvastatina", bioequivalent: "Atorvastatina Genérica (ISP)" },
-  { brandName: "Gliax", activePrinciple: "Linagliptina", bioequivalent: "Linagliptica Genérica (ISP)" },
-  { brandName: "Trayenta", activePrinciple: "Linagliptina", bioequivalent: "Linagliptina Genérica (ISP)" },
-  { brandName: "Eurocor", activePrinciple: "Bisoprolol", bioequivalent: "Bisoprolol Genérico (ISP)" },
-  { brandName: "Concor", activePrinciple: "Bisoprolol", bioequivalent: "Bisoprolol Genérico (ISP)" },
-  { brandName: "Viadil", activePrinciple: "Pargeverina", bioequivalent: "Pargeverina Genérica (ISP)" },
-  { brandName: "Tafirol", activePrinciple: "Paracetamol", bioequivalent: "Paracetamol Genérico (ISP)" },
-  { brandName: "Glafornil", activePrinciple: "Metformina", bioequivalent: "Metformina Genérica (ISP)" },
-  { brandName: "Plavix", activePrinciple: "Clopidogrel", bioequivalent: "Clopidogrel Genérico (ISP)" },
-  { brandName: "Aspirina", activePrinciple: "Ácido Acetilsalicílico", bioequivalent: "Ácido Acetilsalicílico Genérico (ISP)" },
+  {
+    brandName: "Lipitor",
+    activePrinciple: "Atorvastatina",
+    bioequivalent: "Atorvastatina Genérica (ISP)",
+  },
+  {
+    brandName: "Gliax",
+    activePrinciple: "Linagliptina",
+    bioequivalent: "Linagliptica Genérica (ISP)",
+  },
+  {
+    brandName: "Trayenta",
+    activePrinciple: "Linagliptina",
+    bioequivalent: "Linagliptina Genérica (ISP)",
+  },
+  {
+    brandName: "Eurocor",
+    activePrinciple: "Bisoprolol",
+    bioequivalent: "Bisoprolol Genérico (ISP)",
+  },
+  {
+    brandName: "Concor",
+    activePrinciple: "Bisoprolol",
+    bioequivalent: "Bisoprolol Genérico (ISP)",
+  },
+  {
+    brandName: "Viadil",
+    activePrinciple: "Pargeverina",
+    bioequivalent: "Pargeverina Genérica (ISP)",
+  },
+  {
+    brandName: "Tafirol",
+    activePrinciple: "Paracetamol",
+    bioequivalent: "Paracetamol Genérico (ISP)",
+  },
+  {
+    brandName: "Glafornil",
+    activePrinciple: "Metformina",
+    bioequivalent: "Metformina Genérica (ISP)",
+  },
+  {
+    brandName: "Plavix",
+    activePrinciple: "Clopidogrel",
+    bioequivalent: "Clopidogrel Genérico (ISP)",
+  },
+  {
+    brandName: "Aspirina",
+    activePrinciple: "Ácido Acetilsalicílico",
+    bioequivalent: "Ácido Acetilsalicílico Genérico (ISP)",
+  },
 ];
 
 // Helper to normalize strings for comparison
@@ -96,9 +138,9 @@ CL_VADEMECUM.forEach((item) => {
 
 export function getDrugSuggestions(partial: string): VademecumItem[] {
   if (!partial || partial.length < 3) return [];
-  
+
   let cleanPartial = cleanStr(partial);
-  
+
   // Normalizaciones y correcciones fuzzy específicas
   if (cleanPartial.includes("glifozina")) {
     cleanPartial = cleanPartial.replace("glifozina", "gliflozina");
@@ -115,23 +157,23 @@ export function getDrugSuggestions(partial: string): VademecumItem[] {
   if (cleanPartial.includes("valsartan")) {
     cleanPartial = cleanPartial.replace("valsartan", "valsartan");
   }
-  
+
   const scoredItems: { item: VademecumItem; score: number }[] = [];
   const tokens = cleanPartial.split(/\s+/).filter(Boolean);
-  
+
   CL_VADEMECUM.forEach((item) => {
     const princClean = cleanStr(item.activePrinciple);
     const brandClean = cleanStr(item.brandName);
     const presentationClean = cleanStr(item.presentation);
-    
+
     let score = 0;
-    
+
     // Si hay múltiples tokens (ej: "valsartan amlodipino")
     if (tokens.length > 1) {
-      const matchesAllTokens = tokens.every(token => presentationClean.includes(token));
+      const matchesAllTokens = tokens.every((token) => presentationClean.includes(token));
       if (matchesAllTokens) {
         score = 50;
-        const matchesPrincTokens = tokens.every(token => princClean.includes(token));
+        const matchesPrincTokens = tokens.every((token) => princClean.includes(token));
         if (matchesPrincTokens) {
           score = 90;
         }
@@ -152,12 +194,12 @@ export function getDrugSuggestions(partial: string): VademecumItem[] {
         score = 30;
       }
     }
-    
+
     if (score > 0) {
       scoredItems.push({ item, score });
     }
   });
-  
+
   // Ordenar por puntaje descendente
   scoredItems.sort((a, b) => {
     if (b.score !== a.score) {
@@ -169,8 +211,8 @@ export function getDrugSuggestions(partial: string): VademecumItem[] {
     }
     return a.item.presentation.localeCompare(b.item.presentation);
   });
-  
-  return scoredItems.map(si => si.item);
+
+  return scoredItems.map((si) => si.item);
 }
 
 export function findControlledDrugMatches(text: string): VademecumItem[] {
@@ -216,7 +258,10 @@ export const auditPrescription = (
   if (!text || !text.trim()) return alerts;
 
   const cleanText = cleanStr(text);
-  const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = cleanText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   const controlledMatches = findControlledDrugMatches(text);
   if (controlledMatches.length > 0 && !isControlledPrescriptionType(prescriptionType)) {
@@ -235,7 +280,8 @@ export const auditPrescription = (
       type: "contraindication",
       severity: "warning",
       title: "Medicamento Controlado",
-      message: "Verifique normativa vigente, identidad del paciente, tipo de receta, indicación y firma antes de emitir.",
+      message:
+        "Verifique normativa vigente, identidad del paciente, tipo de receta, indicación y firma antes de emitir.",
     });
   }
 
@@ -264,7 +310,11 @@ export const auditPrescription = (
         substance.includes("amoxicilina") ||
         substance.includes("ampicilina")
       ) {
-        if (cleanText.includes("amoxicilina") || cleanText.includes("ampicilina") || cleanText.includes("penicilina")) {
+        if (
+          cleanText.includes("amoxicilina") ||
+          cleanText.includes("ampicilina") ||
+          cleanText.includes("penicilina")
+        ) {
           alerts.push({
             type: "allergy",
             severity: "error",
@@ -282,7 +332,16 @@ export const auditPrescription = (
         substance.includes("aspirina") ||
         substance.includes("ketorolaco")
       ) {
-        const nsaids = ["ibuprofeno", "ketorolaco", "naproxeno", "aspirina", "diclofenaco", "ketoprofeno", "meloxicam", "celecoxib"];
+        const nsaids = [
+          "ibuprofeno",
+          "ketorolaco",
+          "naproxeno",
+          "aspirina",
+          "diclofenaco",
+          "ketoprofeno",
+          "meloxicam",
+          "celecoxib",
+        ];
         const foundNsaid = nsaids.find((n) => cleanText.includes(n));
         if (foundNsaid) {
           alerts.push({
@@ -327,7 +386,16 @@ export const auditPrescription = (
 
   // Check Tramadol + SSRI antidepressants
   const hasTramadol = cleanText.includes("tramadol");
-  const ssris = ["sertralina", "fluoxetina", "escitalopram", "citalopram", "paroxetina", "amitriptilina", "duloxetina", "venlafaxina"];
+  const ssris = [
+    "sertralina",
+    "fluoxetina",
+    "escitalopram",
+    "citalopram",
+    "paroxetina",
+    "amitriptilina",
+    "duloxetina",
+    "venlafaxina",
+  ];
   const foundSsri = ssris.find((s) => cleanText.includes(s));
   if (hasTramadol && foundSsri) {
     alerts.push({
@@ -339,8 +407,23 @@ export const auditPrescription = (
   }
 
   // Check NSAID + Oral Anticoagulants
-  const nsaidsList = ["ibuprofeno", "ketorolaco", "naproxeno", "aspirina", "diclofenaco", "ketoprofeno", "meloxicam"];
-  const anticoagulants = ["warfarina", "acenocumarol", "neosintrom", "rivaroxaban", "apixaban", "dabigatran"];
+  const nsaidsList = [
+    "ibuprofeno",
+    "ketorolaco",
+    "naproxeno",
+    "aspirina",
+    "diclofenaco",
+    "ketoprofeno",
+    "meloxicam",
+  ];
+  const anticoagulants = [
+    "warfarina",
+    "acenocumarol",
+    "neosintrom",
+    "rivaroxaban",
+    "apixaban",
+    "dabigatran",
+  ];
   const foundNsaid = nsaidsList.find((n) => cleanText.includes(n));
   const foundAnticoag = anticoagulants.find((a) => cleanText.includes(a));
   if (foundNsaid && foundAnticoag) {
@@ -353,7 +436,14 @@ export const auditPrescription = (
   }
 
   // Check NSAID + ACE inhibitors/ARBs
-  const raasInhibitors = ["losartan", "enalapril", "captopril", "valsartan", "candesartan", "lisinopril"];
+  const raasInhibitors = [
+    "losartan",
+    "enalapril",
+    "captopril",
+    "valsartan",
+    "candesartan",
+    "lisinopril",
+  ];
   const foundRaas = raasInhibitors.find((r) => cleanText.includes(r));
   if (foundNsaid && foundRaas) {
     alerts.push({
@@ -371,20 +461,25 @@ export const auditPrescription = (
   const activeDiagClean = currentDiagnosis ? cleanStr(currentDiagnosis) : "";
 
   const isRenalPatient =
-    patientHistories.some((h) => h.includes("renal") || h.includes("erc") || h.includes("nefropatia")) ||
+    patientHistories.some(
+      (h) => h.includes("renal") || h.includes("erc") || h.includes("nefropatia")
+    ) ||
     activeDiagClean.includes("renal") ||
     activeDiagClean.includes("erc");
   const isHeartFailurePatient =
-    patientHistories.some((h) => h.includes("insuficiencia cardiaca") || h.includes("icc") || h.includes("corazon")) ||
+    patientHistories.some(
+      (h) => h.includes("insuficiencia cardiaca") || h.includes("icc") || h.includes("corazon")
+    ) ||
     activeDiagClean.includes("insuficiencia cardiaca") ||
     activeDiagClean.includes("icc");
 
   if (foundNsaid && (isRenalPatient || isHeartFailurePatient)) {
-    const reason = isRenalPatient && isHeartFailurePatient
-      ? "Enfermedad Renal e Insuficiencia Cardíaca"
-      : isRenalPatient
-      ? "Enfermedad Renal Crónica"
-      : "Insuficiencia Cardíaca";
+    const reason =
+      isRenalPatient && isHeartFailurePatient
+        ? "Enfermedad Renal e Insuficiencia Cardíaca"
+        : isRenalPatient
+          ? "Enfermedad Renal Crónica"
+          : "Insuficiencia Cardíaca";
 
     alerts.push({
       type: "contraindication",
@@ -395,33 +490,35 @@ export const auditPrescription = (
   }
 
   // 5. Therapeutic Duplications (Same Active Principle or Same Drug Class)
-  const UNIQUE_PRINCIPLES = Array.from(new Set(CL_VADEMECUM.map(item => cleanStr(item.activePrinciple))));
-  
+  const UNIQUE_PRINCIPLES = Array.from(
+    new Set(CL_VADEMECUM.map((item) => cleanStr(item.activePrinciple)))
+  );
+
   // Find which active principles are in each line to check for duplication (literal or mapped from brand)
-  const linePrinciples = lines.map(line => {
+  const linePrinciples = lines.map((line) => {
     const principlesFound = new Set<string>();
-    
+
     // Check direct active principle
-    UNIQUE_PRINCIPLES.forEach(princ => {
+    UNIQUE_PRINCIPLES.forEach((princ) => {
       if (line.includes(princ)) {
         principlesFound.add(princ);
       }
     });
-    
+
     // Check brand name to map to active principle
-    CL_VADEMECUM.forEach(item => {
+    CL_VADEMECUM.forEach((item) => {
       const brandClean = cleanStr(item.brandName);
       if (brandClean !== "generico" && line.includes(brandClean)) {
         principlesFound.add(cleanStr(item.activePrinciple));
       }
     });
-    
+
     return Array.from(principlesFound);
   });
 
   const activePrincipleCounts: Record<string, number> = {};
-  linePrinciples.forEach(principles => {
-    principles.forEach(p => {
+  linePrinciples.forEach((principles) => {
+    principles.forEach((p) => {
       activePrincipleCounts[p] = (activePrincipleCounts[p] || 0) + 1;
     });
   });
@@ -438,28 +535,28 @@ export const auditPrescription = (
   });
 
   // NSAID Class Duplication
-  const foundNsaids = nsaidsList.filter(nsaid => {
-    return lines.some(line => line.includes(nsaid));
+  const foundNsaids = nsaidsList.filter((nsaid) => {
+    return lines.some((line) => line.includes(nsaid));
   });
   if (foundNsaids.length > 1) {
     alerts.push({
       type: "duplication",
       severity: "warning",
       title: `Duplicidad de Clase (AINEs)`,
-      message: `Se detectó la prescripción simultánea de múltiples AINEs (${foundNsaids.map(n => n.charAt(0).toUpperCase() + n.slice(1)).join(" y ")}). Esto eleva exponencialmente el riesgo de efectos adversos gastrointestinales y renales.`,
+      message: `Se detectó la prescripción simultánea de múltiples AINEs (${foundNsaids.map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(" y ")}). Esto eleva exponencialmente el riesgo de efectos adversos gastrointestinales y renales.`,
     });
   }
 
   // ARA-II / IECA Class Duplication
-  const foundRaasDrugs = raasInhibitors.filter(raas => {
-    return lines.some(line => line.includes(raas));
+  const foundRaasDrugs = raasInhibitors.filter((raas) => {
+    return lines.some((line) => line.includes(raas));
   });
   if (foundRaasDrugs.length > 1) {
     alerts.push({
       type: "duplication",
       severity: "warning",
       title: `Duplicidad de Clase (ARA-II / IECA)`,
-      message: `Se detectó el uso simultáneo de múltiples bloqueadores del sistema renina-angiotensina (${foundRaasDrugs.map(r => r.charAt(0).toUpperCase() + r.slice(1)).join(" y ")}). No se recomienda la terapia dual.`,
+      message: `Se detectó el uso simultáneo de múltiples bloqueadores del sistema renina-angiotensina (${foundRaasDrugs.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(" y ")}). No se recomienda la terapia dual.`,
     });
   }
 
@@ -469,7 +566,7 @@ export const auditPrescription = (
 export const getPosologyTemplate = (item: VademecumItem): string => {
   const formClean = item.form.toLowerCase();
   const routeClean = item.route.toLowerCase();
-  
+
   if (formClean.includes("comprimido") || formClean.includes("tableta")) {
     return ": Tomar ___ comprimido(s) cada ___ horas por ___ días.";
   }
@@ -480,36 +577,36 @@ export const getPosologyTemplate = (item: VademecumItem): string => {
     return ": Tomar ___ gota(s) cada ___ horas por ___ días.";
   }
   if (
-    formClean.includes("jarabe") || 
-    formClean.includes("suspension") || 
-    formClean.includes("suspensión") || 
-    formClean.includes("solucion oral") || 
+    formClean.includes("jarabe") ||
+    formClean.includes("suspension") ||
+    formClean.includes("suspensión") ||
+    formClean.includes("solucion oral") ||
     formClean.includes("solución oral")
   ) {
     return ": Tomar ___ ml cada ___ horas por ___ días.";
   }
   if (
-    formClean.includes("aerosol") || 
-    formClean.includes("inhalador") || 
+    formClean.includes("aerosol") ||
+    formClean.includes("inhalador") ||
     formClean.includes("puff")
   ) {
     return ": ___ puff(s) cada ___ horas por ___ días.";
   }
   if (
-    routeClean === "topica" || 
+    routeClean === "topica" ||
     routeClean === "tópica" ||
-    formClean.includes("crema") || 
-    formClean.includes("unguento") || 
-    formClean.includes("ungüento") || 
-    formClean.includes("gel") || 
+    formClean.includes("crema") ||
+    formClean.includes("unguento") ||
+    formClean.includes("ungüento") ||
+    formClean.includes("gel") ||
     formClean.includes("pomada")
   ) {
     return ": Aplicar una capa delgada cada ___ horas por ___ días en ___.";
   }
   if (
-    routeClean === "inyectable" || 
-    formClean.includes("ampolla") || 
-    formClean.includes("solucion inyectable") || 
+    routeClean === "inyectable" ||
+    formClean.includes("ampolla") ||
+    formClean.includes("solucion inyectable") ||
     formClean.includes("solución inyectable")
   ) {
     return ": Administrar ___ por vía ___ cada ___ horas/días por ___ días.";

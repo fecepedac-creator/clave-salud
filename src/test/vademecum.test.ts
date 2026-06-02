@@ -12,7 +12,9 @@ import {
 import { useConsultationLogic } from "../../hooks/doctor/useConsultationLogic";
 import { Patient } from "../../types";
 
-const mockCreatePatientConsultation = vi.fn().mockResolvedValue({ data: { ok: true, id: "mock_doc_id" } });
+const mockCreatePatientConsultation = vi
+  .fn()
+  .mockResolvedValue({ data: { ok: true, id: "mock_doc_id" } });
 
 // Mock toast component to prevent provider errors
 vi.mock("../../components/Toast", () => ({
@@ -78,7 +80,7 @@ describe("Posology Templates", () => {
       prescriptionRequired: true,
       controlled: false,
       source: "local",
-      lastUpdated: "2026-05-25"
+      lastUpdated: "2026-05-25",
     };
     const template = getPosologyTemplate(item);
     expect(template).toBe(": Tomar ___ comprimido(s) cada ___ horas por ___ días.");
@@ -96,7 +98,7 @@ describe("Posology Templates", () => {
       prescriptionRequired: true,
       controlled: true,
       source: "local",
-      lastUpdated: "2026-05-25"
+      lastUpdated: "2026-05-25",
     };
     const template = getPosologyTemplate(item);
     expect(template).toBe(": Tomar ___ gota(s) cada ___ horas por ___ días.");
@@ -114,7 +116,7 @@ describe("Posology Templates", () => {
       prescriptionRequired: true,
       controlled: false,
       source: "local",
-      lastUpdated: "2026-05-25"
+      lastUpdated: "2026-05-25",
     };
     const template = getPosologyTemplate(item);
     expect(template).toBe(": Administrar ___ por vía ___ cada ___ horas/días por ___ días.");
@@ -124,69 +126,103 @@ describe("Posology Templates", () => {
 describe("Clinical Alerts Auditor", () => {
   const patient: Patient = {
     id: "pat_1",
+    active: true,
+    centerId: "center_1",
     fullName: "Juan Perez",
     rut: "12345678-9",
     birthDate: "1980-01-01",
-    gender: "male",
+    gender: "Masculino",
     allergies: [
-      { substance: "penicilina", reaction: "rash" },
-      { substance: "AINEs", reaction: "gastritis" }
+      { id: "al_1", type: "Farmaco", substance: "penicilina", reaction: "rash" },
+      { id: "al_2", type: "Otro", substance: "AINEs", reaction: "gastritis" },
     ],
     medicalHistory: ["Enfermedad Renal Crónica"],
+    surgicalHistory: [],
+    smokingStatus: "No fumador",
+    alcoholStatus: "No consumo",
+    medications: [],
+    consultations: [],
+    attachments: [],
     email: "juan@perez.cl",
     phone: "+56912345678",
     createdAt: "",
-    lastUpdated: ""
+    lastUpdated: "",
   };
 
   it("should trigger allergy alerts for penicilina/amoxicilina", () => {
     const alerts = auditPrescription("Amoxicilina 500 mg: Tomar 1 cada 8 horas", patient);
-    expect(alerts.some(a => a.type === "allergy" && a.severity === "error")).toBe(true);
+    expect(alerts.some((a) => a.type === "allergy" && a.severity === "error")).toBe(true);
   });
 
   it("should trigger allergy alerts for AINEs/ibuprofen", () => {
     const alerts = auditPrescription("Ibuprofeno 400 mg: Tomar 1 cada 8 horas", patient);
-    expect(alerts.some(a => a.type === "allergy" && a.severity === "error")).toBe(true);
+    expect(alerts.some((a) => a.type === "allergy" && a.severity === "error")).toBe(true);
   });
 
   it("should trigger sildenafil + nitratos critical alert", () => {
     const alerts = auditPrescription("Sildenafil 50 mg\nNitroglicerina parches", patient);
-    expect(alerts.some(a => a.type === "interaction" && a.severity === "error")).toBe(true);
+    expect(alerts.some((a) => a.type === "interaction" && a.severity === "error")).toBe(true);
   });
 
   it("should trigger therapeutic duplication alert for same active principle twice", () => {
     const alerts = auditPrescription("Metformina 850 mg\nGlafornil 1000 mg", patient);
-    expect(alerts.some(a => a.type === "duplication" && a.severity === "error")).toBe(true);
+    expect(alerts.some((a) => a.type === "duplication" && a.severity === "error")).toBe(true);
   });
 
   it("should trigger therapeutic duplication alert for two AINEs", () => {
     const alerts = auditPrescription("Ibuprofeno 400 mg\nNaproxeno 550 mg", patient);
-    expect(alerts.some(a => a.type === "duplication" && a.severity === "warning")).toBe(true);
+    expect(alerts.some((a) => a.type === "duplication" && a.severity === "warning")).toBe(true);
   });
 
   it("should detect controlled drugs and require Receta Retenida", () => {
     expect(hasControlledDrug("Clonazepam 2 mg comprimidos")).toBe(true);
     expect(findControlledDrugMatches("Ravotril 0.5 mg").length).toBeGreaterThan(0);
 
-    const standardAlerts = auditPrescription("Clonazepam 2 mg comprimidos", patient, "", "Receta Médica");
-    expect(standardAlerts.some(a => a.title === "Tipo de Receta Incompatible" && a.severity === "error")).toBe(true);
+    const standardAlerts = auditPrescription(
+      "Clonazepam 2 mg comprimidos",
+      patient,
+      "",
+      "Receta Médica"
+    );
+    expect(
+      standardAlerts.some(
+        (a) => a.title === "Tipo de Receta Incompatible" && a.severity === "error"
+      )
+    ).toBe(true);
 
-    const retainedAlerts = auditPrescription("Clonazepam 2 mg comprimidos", patient, "", "Receta Retenida");
-    expect(retainedAlerts.some(a => a.title === "Medicamento Controlado" && a.severity === "warning")).toBe(true);
+    const retainedAlerts = auditPrescription(
+      "Clonazepam 2 mg comprimidos",
+      patient,
+      "",
+      "Receta Retenida"
+    );
+    expect(
+      retainedAlerts.some((a) => a.title === "Medicamento Controlado" && a.severity === "warning")
+    ).toBe(true);
   });
 });
 
 describe("Role Validation in useConsultationLogic", () => {
   const mockPatient: Patient = {
     id: "pat_1",
+    active: true,
+    centerId: "center_1",
     fullName: "Juan Perez",
     rut: "12345678-9",
     birthDate: "1980-01-01",
-    gender: "male",
+    gender: "Masculino",
+    allergies: [],
+    medicalHistory: [],
+    surgicalHistory: [],
+    smokingStatus: "No fumador",
+    alcoholStatus: "No consumo",
+    medications: [],
+    consultations: [],
+    attachments: [],
     email: "juan@perez.cl",
     phone: "",
     createdAt: "",
-    lastUpdated: ""
+    lastUpdated: "",
   };
 
   beforeEach(() => {
@@ -201,6 +237,7 @@ describe("Role Validation in useConsultationLogic", () => {
     const { result } = renderHook(() =>
       useConsultationLogic({
         selectedPatient: mockPatient,
+        setSelectedPatient: vi.fn(),
         activeCenterId: "center_1",
         hasActiveCenter: true,
         doctorId: "doc_123",
@@ -235,6 +272,7 @@ describe("Role Validation in useConsultationLogic", () => {
     const { result } = renderHook(() =>
       useConsultationLogic({
         selectedPatient: mockPatient,
+        setSelectedPatient: vi.fn(),
         activeCenterId: "center_1",
         hasActiveCenter: true,
         doctorId: "doc_123",
@@ -269,6 +307,7 @@ describe("Role Validation in useConsultationLogic", () => {
     const { result } = renderHook(() =>
       useConsultationLogic({
         selectedPatient: mockPatient,
+        setSelectedPatient: vi.fn(),
         activeCenterId: "center_1",
         hasActiveCenter: true,
         doctorId: "doc_123",
@@ -302,6 +341,7 @@ describe("Role Validation in useConsultationLogic", () => {
     const { result } = renderHook(() =>
       useConsultationLogic({
         selectedPatient: mockPatient,
+        setSelectedPatient: vi.fn(),
         activeCenterId: "center_1",
         hasActiveCenter: true,
         doctorId: "doc_123",

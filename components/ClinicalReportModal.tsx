@@ -841,7 +841,7 @@ const ClinicalReportModal: React.FC<Props> = ({
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          .print\:block { display: block !important; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }
+          .print\\:block { display: block !important; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }
           .print-document {
             width: 100% !important;
             max-width: none !important;

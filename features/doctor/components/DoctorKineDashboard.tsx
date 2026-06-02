@@ -171,9 +171,7 @@ export const DoctorKineDashboard: React.FC<DoctorKineDashboardProps> = ({
                     ) : (
                       <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
                         {prog.sessions
-                          .sort(
-                            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                          )
+                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                           .map((session, idx) => (
                             <div key={session.id || idx} className="relative pl-8">
                               <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-indigo-100 border-2 border-indigo-500"></div>

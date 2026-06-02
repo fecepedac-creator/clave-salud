@@ -63,9 +63,11 @@ const TodayActivity: React.FC<TodayActivityProps> = ({
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-slate-900/50 flex flex-col items-center justify-center border border-slate-700/50 group-hover:border-emerald-500/30 transition-colors">
-                        <span className="font-mono font-bold text-emerald-400 text-sm">{appt.time}</span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm">
+                          {appt.time}
+                        </span>
                       </div>
-                      
+
                       <div
                         onClick={() => appt.status === "booked" && onOpenPatient(appt)}
                         className={appt.status === "booked" ? "cursor-pointer" : ""}
@@ -73,7 +75,9 @@ const TodayActivity: React.FC<TodayActivityProps> = ({
                         {appt.status === "booked" ? (
                           <>
                             <div className="flex items-center gap-2">
-                              <p className="font-bold text-white group-hover:text-emerald-300 transition-colors">{appt.patientName}</p>
+                              <p className="font-bold text-white group-hover:text-emerald-300 transition-colors">
+                                {appt.patientName}
+                              </p>
                               {appt.type === "SERVICE" && (
                                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
                                   {appt.serviceName || "Servicio"}

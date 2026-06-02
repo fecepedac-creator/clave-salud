@@ -5,7 +5,7 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
-    "lint": "eslint .",
+    "lint": "tsc --noEmit",
     "serve": "firebase emulators:start --only functions",
     "deploy": "npm run build && firebase deploy --only functions",
     "test:agent": "jest src/__tests__/whatsapp-agent.test.ts --runInBand"

@@ -10,6 +10,9 @@ interface SuperAdminUsersProps {
   editingUser: any | null;
   setEditingUser: (user: any | null) => void;
   handleSaveUser: (user: any) => void;
+  hasMoreUsers: boolean;
+  onLoadMoreUsers: () => void;
+  isLoadingMoreUsers: boolean;
 }
 
 export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
@@ -21,6 +24,9 @@ export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
   editingUser,
   setEditingUser,
   handleSaveUser,
+  hasMoreUsers,
+  onLoadMoreUsers,
+  isLoadingMoreUsers,
 }) => {
   return (
     <div className="space-y-6">
@@ -66,9 +72,7 @@ export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
               <label className="block">
-                <span className="text-xs font-bold text-slate-400 uppercase">
-                  Nombre Completo
-                </span>
+                <span className="text-xs font-bold text-slate-400 uppercase">Nombre Completo</span>
                 <input
                   className="w-full p-3 border rounded-xl bg-slate-50"
                   value={editingUser.fullName || ""}
@@ -180,60 +184,64 @@ export const SuperAdminUsers: React.FC<SuperAdminUsersProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {globalUsers
-                .filter(
-                  (u) =>
-                    u.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-                    u.fullName?.toLowerCase().includes(userSearchTerm.toLowerCase())
-                )
-                .map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-800">
-                        {u.fullName || "Sin nombre"}
-                      </div>
-                      <div className="text-xs text-slate-400">{u.email}</div>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-medium text-slate-600 uppercase">
-                      {u.role || u.roles?.[0] || "—"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-bold text-slate-700 uppercase">
-                          {u.billing?.plan || "free"}
-                        </span>
-                        {u.billing?.nextDueDate && (
-                          <span className="text-[10px] text-slate-400">
-                            Vence: {u.billing.nextDueDate}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                          u.activo === false || u.billing?.status === "suspended"
-                            ? "bg-red-100 text-red-700"
-                            : u.billing?.status === "overdue"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-emerald-100 text-emerald-700"
-                        }`}
-                      >
-                        {u.activo === false ? "Inactivo" : u.billing?.status || "active"}
+              {globalUsers.map((u) => (
+                <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-slate-800">{u.fullName || "Sin nombre"}</div>
+                    <div className="text-xs text-slate-400">{u.email}</div>
+                  </td>
+                  <td className="px-6 py-4 text-xs font-medium text-slate-600 uppercase">
+                    {u.role || u.roles?.[0] || "—"}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-slate-700 uppercase">
+                        {u.billing?.plan || "free"}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => setEditingUser(u)}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      {u.billing?.nextDueDate && (
+                        <span className="text-[10px] text-slate-400">
+                          Vence: {u.billing.nextDueDate}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                        u.activo === false || u.billing?.status === "suspended"
+                          ? "bg-red-100 text-red-700"
+                          : u.billing?.status === "overdue"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {u.activo === false ? "Inactivo" : u.billing?.status || "active"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => setEditingUser(u)}
+                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {hasMoreUsers && (
+        <div className="flex justify-center mt-4">
+          <button
+            type="button"
+            className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 disabled:opacity-60"
+            disabled={isLoadingMoreUsers}
+            onClick={onLoadMoreUsers}
+          >
+            {isLoadingMoreUsers ? "Cargando..." : "Cargar más usuarios"}
+          </button>
         </div>
       )}
     </div>
