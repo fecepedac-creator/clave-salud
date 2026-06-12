@@ -14,9 +14,9 @@ const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
 
-const BACKUP_TOKEN = process.env.BACKUP_TOKEN || "";
-const BACKUP_BUCKET = process.env.BACKUP_BUCKET || "";
-const BACKUP_PREFIX = process.env.BACKUP_PREFIX || "backups/firestore";
+const BACKUP_TOKEN = (process.env.BACKUP_TOKEN || "").trim();
+const BACKUP_BUCKET = (process.env.BACKUP_BUCKET || "").trim();
+const BACKUP_PREFIX = (process.env.BACKUP_PREFIX || "backups/firestore").trim();
 
 const METADATA_TOKEN_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
@@ -130,6 +130,14 @@ function canonicalAccessRole(value: unknown): string {
     return "super_admin";
   }
   return role || "professional";
+}
+
+function isBookableServiceResource(staffUid: string, data: Record<string, any>): boolean {
+  const role = normalizeString(data?.role ?? data?.accessRole ?? data?.clinicalRole ?? "")
+    .trim()
+    .toLowerCase();
+  const email = normalizeString(data?.email ?? "").trim().toLowerCase();
+  return staffUid.startsWith("svc_") || role === "servicio" || email.startsWith("svc_");
 }
 
 function normalizeClinicalRole(data: Record<string, any> | undefined): string {
@@ -1422,6 +1430,7 @@ export const migrateCanonicalStaffRoles = (functions.https.onCall as any)(
       for (const member of staff.docs) {
         inspected += 1;
         const current = member.data() as Record<string, any>;
+        if (isBookableServiceResource(member.id, current)) continue;
         const from = normalizeString(current.accessRole ?? current.role ?? "");
         const to = canonicalAccessRole(from);
         if (from === to && current.accessRole === to) continue;
@@ -2042,7 +2051,9 @@ export const logAuditEvent = (functions.https.onCall as any)(
  * runMonthlyBackup - Ejecuta export de Firestore a GCS.
  * Diseñada para Cloud Scheduler (token) y ejecución manual por super_admin.
  */
-export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
+export const runMonthlyBackup = functions
+  .runWith({ secrets: ["BACKUP_TOKEN", "BACKUP_BUCKET"] })
+  .https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, error: "Method not allowed" });
     return;
@@ -2137,7 +2148,7 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
     functions.logger.error("runMonthlyBackup error", { error: String(error) });
     res.status(500).json({ ok: false, error: "Backup failed" });
   }
-});
+  });
 
 export const generateMarketingPoster = functions.https.onCall(
   async (data: any, context: CallableContext) => {
