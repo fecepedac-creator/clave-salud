@@ -35,8 +35,11 @@ solo incluye ficha clinica, profesionales, agenda, preingresos y auditoria.
 - [ ] Confirmar trazabilidad de lectura, impresion, exportacion, modificacion y archivado de ficha.
 - [ ] Probar cierre mensual: una cita cerrada no admite cambios de fecha, asistencia ni monto.
 - [ ] Definir retencion de datos clinicos por al menos 15 anos.
-- [ ] Ejecutar exportacion cifrada controlada y restauracion de prueba.
-- [ ] Registrar responsable, fecha, duracion y resultado de la restauracion.
+- [x] Configurar backup semanal automatico de Firestore.
+- [x] Configurar retencion automatica de los ultimos 8 backups semanales.
+- [x] Ejecutar restauracion de prueba en proyecto aislado.
+- [ ] Registrar responsable operativo por centro para revisar alertas de backup.
+- [ ] Ejecutar `npm run ops:verify` antes de cada activacion de centro.
 
 ## 5. Autenticacion y salida
 
@@ -49,6 +52,8 @@ solo incluye ficha clinica, profesionales, agenda, preingresos y auditoria.
 
 ```bash
 npm run security:secrets
+npm run security:commercial
+npm run ops:verify
 npm run build
 npx tsc --noEmit
 npm --prefix functions run build

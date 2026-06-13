@@ -14,6 +14,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "security:secrets": "node scripts/check-secrets.mjs",
     "security:commercial": "node scripts/verify-commercial-readiness.mjs",
+    "ops:verify": "node scripts/verify-ops.mjs",
     "audit:run": "node scripts/audit/run-audit.cjs",
     "audit:setup:e2e": "node scripts/audit/run-audit.cjs --setup-playwright",
     "audit:superadmin": "node scripts/audit/run-audit.cjs --area superadmin",

@@ -1,75 +1,123 @@
-# Runbook — Backups automáticos mensuales (Firestore → GCS)
+# Runbook - Backups automaticos de Firestore
 
-## 1) Arquitectura
-- **Cloud Scheduler** ejecuta mensualmente la función HTTPS `runMonthlyBackup`.
-- **Cloud Function (v1)** exporta Firestore con la API Admin de Firestore y guarda los archivos en **GCS**.
-- Se escribe un `manifest.json` en el mismo prefijo del backup con metadata de la ejecución.
+## 1. Objetivo
 
-## 2) Variables requeridas (Functions config / env)
-Configurar en `firebase functions:config:set` o variables de entorno:
-- `backup.bucket` / `BACKUP_BUCKET`: nombre del bucket GCS (obligatorio).
-- `backup.prefix` / `BACKUP_PREFIX`: prefijo base (opcional, default `backups/firestore`).
-- `backup.token` / `BACKUP_TOKEN`: token compartido para Scheduler (recomendado).
-- `backup.projectid` / `GCLOUD_PROJECT`: proyecto Firebase/GCP (se autodetecta en GCP).
-- `BACKUP_ACCESS_TOKEN`: **solo para pruebas locales** si no hay metadata server.
+Mantener una copia recuperable de la base Firestore de ClaveSalud sin depender de descargas manuales desde el navegador.
+
+La politica activa para el piloto es:
+
+- Ejecutar un backup completo semanal.
+- Guardar los ultimos 8 backups semanales.
+- Borrar automaticamente los backups mas antiguos.
+- Probar restauracion en un proyecto aislado antes de aprobar salida comercial.
+
+## 2. Arquitectura Actual
+
+- Proyecto productivo: `clavesalud-2`.
+- Bucket dedicado: `gs://clavesalud-2-firestore-backups`.
+- Funcion de backup: `runMonthlyBackup`.
+- Funcion de limpieza: `cleanupWeeklyBackups`.
+- Scheduler de backup: `firestore-weekly-backup`.
+- Scheduler de retencion: `firestore-weekly-backup-retention`.
+
+Aunque la funcion conserva el nombre historico `runMonthlyBackup`, la ejecucion automatica activa es semanal.
+
+## 3. Horario
+
+| Tarea | Frecuencia | Horario | Zona horaria |
+|---|---:|---:|---|
+| Backup Firestore | Semanal, domingo | 03:30 | America/Santiago |
+| Limpieza de retencion | Semanal, domingo | 04:15 | America/Santiago |
+
+La limpieza corre despues del backup para conservar el respaldo recien creado.
+
+## 4. Retencion
+
+La politica activa conserva los ultimos 8 backups bajo:
+
+```text
+gs://clavesalud-2-firestore-backups/backups/firestore/
+```
+
+Cuando existan mas de 8 backups, `cleanupWeeklyBackups` elimina los prefijos mas antiguos.
+
+El bucket mantiene ademas soft delete por 7 dias como red de seguridad adicional ante borrados recientes.
+
+## 5. Secretos Requeridos
+
+Estos valores deben existir en Firebase Secret Manager:
+
+- `BACKUP_BUCKET`
+- `BACKUP_TOKEN`
+
+No deben guardarse en archivos versionados.
+
+## 6. Permisos Requeridos
+
+La cuenta runtime de Functions necesita:
+
+- `roles/datastore.importExportAdmin` en el proyecto `clavesalud-2`.
+- Acceso de escritura al bucket `clavesalud-2-firestore-backups`.
+
+El service agent de Firestore del proyecto productivo tambien debe poder escribir en el bucket.
+
+## 7. Verificacion Operativa
+
+Ejecutar:
+
+```bash
+npm run ops:verify
+```
+
+El comando valida, entre otros puntos:
+
+- Schedulers activos.
+- Secrets requeridos.
+- `WHATSAPP_TOKEN` como secreto, no como variable plana.
+- Existencia de backups.
+- Roles canonicos de staff.
+- Proyecto de recuperacion disponible.
+
+## 8. Restauracion
+
+La restauracion no se realiza desde la interfaz web.
+
+Procedimiento seguro:
+
+1. Elegir un prefijo de backup.
+2. Restaurar primero en proyecto aislado.
+3. Verificar conteos basicos.
+4. Registrar resultado.
+5. Solo despues decidir una restauracion productiva.
 
 Ejemplo:
-```
-firebase functions:config:set backup.bucket="mi-bucket-backups" backup.token="TOKEN_LARGO"
-```
 
-## 3) APIs y permisos mínimos
-Habilitar APIs:
-- Firestore Admin API
-- Cloud Scheduler API
-- Cloud Storage API
-
-Service Account para Scheduler (recomendado):
-- `roles/datastore.importExportAdmin` (solo export)
-- `roles/storage.objectAdmin` **solo** sobre el bucket de backups
-
-Bucket:
-- Uniform access habilitado.
-- Encriptación por defecto habilitada.
-
-## 4) Crear Cloud Scheduler (mensual)
-Ejemplo (UTC):
-```
-gcloud scheduler jobs create http firestore-monthly-backup \
-  --schedule="30 6 1 * *" \
-  --time-zone="America/Santiago" \
-  --uri="https://<REGION>-<PROJECT_ID>.cloudfunctions.net/runMonthlyBackup" \
-  --http-method=POST \
-  --headers="X-Backup-Token: TOKEN_LARGO" \
-  --message-body='{"reason":"SCHEDULED_MONTHLY","initiatedBy":"cloud-scheduler","dryRun":false}' \
-  --oidc-service-account-email="<SCHEDULER_SA>@<PROJECT_ID>.iam.gserviceaccount.com"
-```
-> Ajustar horario y región. Si usas OIDC, puedes mantener el token header como segundo factor o removerlo.
-
-## 5) Verificación
-- Logs en Cloud Functions → `runMonthlyBackup`.
-- Listar backups:
-```
-gsutil ls gs://<BUCKET>/backups/firestore/
-```
-- Revisar `manifest.json` en el prefijo generado.
-
-## 6) Restauración (import)
-**Advertencia:** importa sobreescribiendo datos. Usar primero un proyecto staging.
-```
-gcloud firestore import gs://<BUCKET>/backups/firestore/YYYY-MM/YYYY-MM-DD_HH-mm-ss
+```bash
+gcloud firestore import gs://clavesalud-2-firestore-backups/backups/firestore/YYYY-MM/YYYY-MM-DD_HH-mm-ss \
+  --project clave-salud-62998165-597b1
 ```
 
-## 7) Alcance / limitaciones
-- **Cubre solo Firestore.** No incluye Firebase Storage.
-- Se recomienda un plan de respaldo adicional si se usan muchos adjuntos en Storage.
+## 9. Resultado Probado
 
-## 8) Retención sugerida
-- Recomendado conservar al menos **24 meses** de backups mensuales.
-- Limpieza automática opcional no incluida (puede añadirse en otro ciclo).
+Restauracion probada en proyecto aislado:
 
-## 9) Checklist DR (centro pequeño)
-- **RPO:** hasta 30 días (backup mensual).
-- **RTO:** horas (depende de tamaño y operación).
-- Verificar export mensual en logs + manifest.
-- Probar restauración en staging 1 vez por trimestre.
+- Proyecto: `clave-salud-62998165-597b1`.
+- Backup probado: `gs://clavesalud-2-firestore-backups/manual/firestore/2026-06-07_23-19-57`.
+- Resultado: exitoso.
+- Documentos importados: 3.375.
+
+Conteos verificados en restauracion:
+
+- Centros: 3.
+- Pacientes: 76.
+- Usuarios: 7.
+- Invitaciones: 44.
+- Staff: 26.
+- Citas: 273.
+
+## 10. RPO y RTO Del Piloto
+
+- RPO actual: hasta 7 dias, porque el backup automatico es semanal.
+- RTO esperado: horas, dependiendo del tamano de la base y permisos del proyecto destino.
+
+Antes de pasar a produccion comercial abierta, se debe reevaluar si el RPO debe bajar a 24 horas.

@@ -37,10 +37,16 @@ const assertions = [
   ["closed month guard", read("firestore.rules"), /monthIsOpen\(request\.resource\.data\.date\)/],
   ["clinical role guard", read("firestore.rules"), /hasClinicalRole\(centerId\)/],
   ["server backup", read("functions/src/index.ts"), /export const runMonthlyBackup/],
+  ["backup retention", read("functions/src/index.ts"), /export const cleanupWeeklyBackups/],
   [
     "recovery runbook",
     read("docs/operacion/RESPALDO_Y_RECUPERACION.md"),
-    /Restauracion controlada/,
+    /Restauracion controlada/i,
+  ],
+  [
+    "weekly backup policy",
+    read("docs/operacion/RUNBOOK_BACKUPS.md"),
+    /ultimos 8 backups/i,
   ],
 ];
 
