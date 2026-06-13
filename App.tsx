@@ -87,9 +87,13 @@ const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
+const IS_LOCALHOST =
+  typeof window !== "undefined" &&
+  /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
 const ENABLE_LOCAL_ACCESS_MODES =
   (import.meta as any)?.env?.DEV === true ||
-  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true";
+  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true" ||
+  IS_LOCALHOST;
 
 const queryHasLocalAccessMode = (name: string) =>
   ENABLE_LOCAL_ACCESS_MODES && new URLSearchParams(window.location.search).has(name);
@@ -136,23 +140,36 @@ const App: React.FC = () => {
   }, []);
 
   const mockDemoUser: UserProfile = useMemo(
-    () => ({
-      uid: "demo_user_uid",
-      id: "demo_user_uid",
-      email: "demo@clavesalud.com",
-      fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
-      role: demoRole === "doctor" ? "MEDICO" : "ADMIN_CENTRO",
-      roles:
-        demoRole === "superadmin"
-          ? ["SUPER_ADMIN"]
-          : demoRole === "doctor"
-            ? ["MEDICO"]
-            : ["ADMIN_CENTRO"],
-      centers: ["c_saludmass", "c_eji2qv61"],
-      centros: ["c_saludmass", "c_eji2qv61"],
-      isAdmin: demoRole !== "doctor",
-      activo: true,
-    }),
+    () => {
+      const normalizedDemoRole = String(demoRole || "admin").toLowerCase();
+      const isDoctor = normalizedDemoRole === "doctor" || normalizedDemoRole === "professional";
+      const isAdministrative =
+        normalizedDemoRole === "administrative" ||
+        normalizedDemoRole === "administrativo" ||
+        normalizedDemoRole === "secretaria";
+      const isSuperAdmin = normalizedDemoRole === "superadmin" || normalizedDemoRole === "super_admin";
+      const role = isDoctor ? "MEDICO" : isAdministrative ? "ADMINISTRATIVO" : "ADMIN_CENTRO";
+      const roles = isSuperAdmin
+        ? ["SUPER_ADMIN"]
+        : isDoctor
+          ? ["MEDICO"]
+          : isAdministrative
+            ? ["ADMINISTRATIVO"]
+            : ["ADMIN_CENTRO"];
+
+      return {
+        uid: "demo_user_uid",
+        id: "demo_user_uid",
+        email: "demo@clavesalud.com",
+        fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
+        role,
+        roles,
+        centers: ["c_saludmass", "c_eji2qv61"],
+        centros: ["c_saludmass", "c_eji2qv61"],
+        isAdmin: !isDoctor,
+        activo: true,
+      };
+    },
     [demoRole]
   );
 
@@ -696,8 +713,19 @@ const App: React.FC = () => {
     if (previewCenterId !== activeCenterId) setActiveCenterId(previewCenterId);
   }, [activeCenterId, previewCenterId, setActiveCenterId]);
 
+  const resolvedActiveCenter = useMemo(() => {
+    const loadedCenter = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    if (loadedCenter) return loadedCenter;
+    const localAccessMode =
+      queryHasLocalAccessMode("agent_test") ||
+      queryHasLocalAccessMode("demo") ||
+      queryHasLocalAccessMode("master_access");
+    if (!localAccessMode || !activeCenterId) return null;
+    return INITIAL_CENTERS.find((c) => c.id === activeCenterId) ?? null;
+  }, [activeCenterId, centers]);
+
   const centerCtxValue = useMemo(() => {
-    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    const c = resolvedActiveCenter;
     const modules = (c?.modules ?? {}) as CenterModules;
     return {
       activeCenterId,
@@ -712,7 +740,7 @@ const App: React.FC = () => {
         return v === true || (typeof v === "string" && v === "enabled");
       },
     };
-  }, [activeCenterId, centers, updateModules]);
+  }, [activeCenterId, resolvedActiveCenter, updateModules]);
 
   const isApplyingPopStateRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
@@ -741,6 +769,7 @@ const App: React.FC = () => {
         pathname.startsWith("/pro/center/") ||
         pathname === "/pro" ||
         pathname === "/accesoprofesionales";
+      const isAgentTest = isAgentTestQueryActive();
 
       isApplyingPopStateRef.current = true;
 
@@ -752,8 +781,13 @@ const App: React.FC = () => {
           }
           setView("doctor-dashboard" as ViewMode);
         } else {
-          setView("doctor-login" as ViewMode);
-          if (activeCenterIdRef.current) setActiveCenterId("");
+          if (isAgentTest) {
+            if (!activeCenterIdRef.current) setActiveCenterId("c_eji2qv61");
+            setView("doctor-dashboard" as ViewMode);
+          } else {
+            setView("doctor-login" as ViewMode);
+            if (activeCenterIdRef.current) setActiveCenterId("");
+          }
         }
         setLoginViewPreference("doctor-dashboard" as ViewMode);
       }
@@ -785,7 +819,11 @@ const App: React.FC = () => {
       }
       // Handle Home/Empty
       else {
-        if (activeCenterIdRef.current) setActiveCenterId("");
+        if (isAgentTest && !activeCenterIdRef.current) {
+          setActiveCenterId("c_eji2qv61");
+        } else if (activeCenterIdRef.current && !isAdminEntry && !isProEntry && !isAgentTest) {
+          setActiveCenterId("");
+        }
         setLoginViewPreference(null);
         if (
           viewRef.current !== ("home" as ViewMode) &&
@@ -967,7 +1005,7 @@ const App: React.FC = () => {
       );
     }
 
-    if (!activeCenterId || (!isValidCenter(activeCenter) && !isAgentTestQueryActive())) {
+    if (!activeCenterId || (!isValidCenter(resolvedActiveCenter) && !isAgentTestQueryActive())) {
       if (activeCenterId && !isLoadingCenters) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
@@ -1010,10 +1048,10 @@ const App: React.FC = () => {
 
         <div className="text-center mb-10">
           <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg overflow-hidden">
-            {(activeCenter as any).logoUrl ? (
+            {(resolvedActiveCenter as any)?.logoUrl ? (
               <img
-                src={(activeCenter as any).logoUrl}
-                alt={`Logo de ${activeCenter.name}`}
+                src={(resolvedActiveCenter as any).logoUrl}
+                alt={`Logo de ${resolvedActiveCenter?.name ?? "Centro medico"}`}
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -1021,7 +1059,7 @@ const App: React.FC = () => {
             )}
           </div>
           <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
-            {activeCenter.name}
+            {resolvedActiveCenter?.name ?? "Centro medico"}
           </h1>
           <p className="text-slate-500 mt-3 text-xl font-medium">Plataforma Integral de Salud</p>
         </div>
@@ -1143,7 +1181,7 @@ const App: React.FC = () => {
   const renderBooking = () => (
     <BookingPortal
       activeCenterId={activeCenterId}
-      activeCenter={activeCenter}
+      activeCenter={resolvedActiveCenter}
       doctors={doctors}
       appointments={appointments}
       services={services || []}
@@ -1169,7 +1207,9 @@ const App: React.FC = () => {
 
   const renderLogin = (isDoc: boolean) => {
     const centerLogoUrl =
-      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
+      activeCenterId && isValidCenter(resolvedActiveCenter)
+        ? (resolvedActiveCenter as any).logoUrl
+        : undefined;
 
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
@@ -1656,7 +1696,9 @@ const App: React.FC = () => {
   );
   const renderByView = () => {
     const activeCenterName =
-      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).name : undefined;
+      activeCenterId && isValidCenter(resolvedActiveCenter)
+        ? (resolvedActiveCenter as any).name
+        : undefined;
 
     const handleClosePanel = () => {
       const allowed = Array.isArray(localCurrentUser?.centros)

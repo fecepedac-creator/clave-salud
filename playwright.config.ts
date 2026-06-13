@@ -56,7 +56,18 @@ export default defineConfig({
       },
     },
 
-    // 3. Tests de Admin (usa storageState del Admin)
+    // 3. Pilot simulated tests (local demo roles, no real credentials)
+    {
+      name: "pilot-simulated",
+      testMatch: "**/pilot-simulated.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 4. Tests de Admin (usa storageState del Admin)
     {
       name: "admin-tests",
       testDir: "./tests/admin",
@@ -68,7 +79,7 @@ export default defineConfig({
       },
     },
 
-    // 3. Tests de Doctor
+    // 5. Tests de Doctor
     {
       name: "doctor-tests",
       testDir: "./tests/doctor",
