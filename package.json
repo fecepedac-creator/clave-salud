@@ -15,6 +15,7 @@
     "security:secrets": "node scripts/check-secrets.mjs",
     "security:commercial": "node scripts/verify-commercial-readiness.mjs",
     "ops:verify": "node scripts/verify-ops.mjs",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts src/test/firestore-rules.test.ts\"",
     "audit:run": "node scripts/audit/run-audit.cjs",
     "audit:setup:e2e": "node scripts/audit/run-audit.cjs --setup-playwright",
     "audit:superadmin": "node scripts/audit/run-audit.cjs --area superadmin",
@@ -45,6 +46,7 @@
     "react-google-drive-picker": "^1.2.2"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",

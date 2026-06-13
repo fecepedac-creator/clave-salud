@@ -86,6 +86,7 @@ service cloud.firestore {
       let role = staffAccessRole(centerId);
       let r = role == null ? "" : role.lower();
       return isStaff(centerId) && (
+        r == "administrative" ||
         r == "administrativo" || 
         r == "administrativa" || 
         r == "secretaria"
@@ -505,22 +506,19 @@ service cloud.firestore {
           allow read: if signedIn()
             && (
               isSuperAdmin()
-              || isCenterAdmin(centerId)
-              || (isStaff(centerId) && (
+              || (hasClinicalRole(centerId) && (
                 !isCareTeamMode(centerId)
                 || isCareTeamMember(centerId, patientId)
               ))
             );
           allow create: if signedIn() && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || isDoctor(centerId)
+            || hasClinicalRole(centerId)
           )
           && consultationPrescriptionSecurityValid(centerId);
           allow update: if signedIn() && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || isDoctor(centerId)
+            || hasClinicalRole(centerId)
           )
           && professionalFieldsUnchanged()
           && consultationPrescriptionSecurityValid(centerId)
@@ -654,8 +652,7 @@ service cloud.firestore {
         allow read: if signedIn()
           && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || (isStaff(centerId) && (
+            || (hasClinicalRole(centerId) && (
               !isCareTeamMode(centerId)
               || (resource.data.patientId is string
                 && isCareTeamMember(centerId, resource.data.patientId))
@@ -663,13 +660,11 @@ service cloud.firestore {
           );
         allow create: if signedIn() && (
           isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || isDoctor(centerId)
+          || hasClinicalRole(centerId)
         );
         allow update: if signedIn() && (
           isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || isDoctor(centerId)
+          || hasClinicalRole(centerId)
         )
         && professionalFieldsUnchanged()
         && (
