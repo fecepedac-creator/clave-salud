@@ -43,6 +43,32 @@ function getBackupPrefix() {
   return `${BACKUP_PREFIX}/${month}/${date}_${time}`;
 }
 
+function parsePositiveInteger(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
+}
+
+async function listBackupPrefixes(): Promise<string[]> {
+  if (!BACKUP_BUCKET) return [];
+  const normalizedPrefix = BACKUP_PREFIX.replace(/^\/+|\/+$/g, "");
+  const bucket = storage.bucket(BACKUP_BUCKET);
+  const [files] = await bucket.getFiles({ prefix: `${normalizedPrefix}/` });
+  const prefixes = new Set<string>();
+
+  for (const file of files) {
+    const parts = file.name.split("/");
+    if (parts.length < 4) continue;
+    if (parts[0] !== normalizedPrefix.split("/")[0]) continue;
+    const backupPrefix = parts.slice(0, 4).join("/");
+    if (/^\d{4}-\d{2}$/.test(parts[2]) && /^\d{4}-\d{2}-\d{2}_/.test(parts[3])) {
+      prefixes.add(backupPrefix);
+    }
+  }
+
+  return Array.from(prefixes).sort();
+}
+
 async function getAccessToken(): Promise<string> {
   if (process.env.BACKUP_ACCESS_TOKEN) {
     return process.env.BACKUP_ACCESS_TOKEN;
@@ -2148,6 +2174,68 @@ export const runMonthlyBackup = functions
     functions.logger.error("runMonthlyBackup error", { error: String(error) });
     res.status(500).json({ ok: false, error: "Backup failed" });
   }
+  });
+
+/**
+ * cleanupWeeklyBackups - Mantiene los ultimos N backups Firestore.
+ * Diseñada para Cloud Scheduler luego del backup semanal.
+ */
+export const cleanupWeeklyBackups = functions
+  .runWith({ secrets: ["BACKUP_TOKEN", "BACKUP_BUCKET"] })
+  .https.onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const headerToken = String(req.get("X-Backup-Token") || "").trim();
+    const schedulerAuthorized = Boolean(BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN);
+    const superAdminAuthorized = await verifySuperAdminFromRequest(req);
+
+    if (!schedulerAuthorized && !superAdminAuthorized) {
+      res.status(403).json({ ok: false, error: "Unauthorized" });
+      return;
+    }
+    if (!BACKUP_BUCKET) {
+      res.status(500).json({ ok: false, error: "Missing BACKUP_BUCKET" });
+      return;
+    }
+
+    const payload = typeof req.body === "object" ? req.body : {};
+    const keep = parsePositiveInteger(payload?.keep, 8);
+    const dryRun = Boolean(payload?.dryRun);
+
+    try {
+      const prefixes = await listBackupPrefixes();
+      const toDelete = prefixes.slice(0, Math.max(0, prefixes.length - keep));
+
+      if (!dryRun) {
+        const bucket = storage.bucket(BACKUP_BUCKET);
+        for (const prefix of toDelete) {
+          await bucket.deleteFiles({ prefix: `${prefix}/`, force: true });
+        }
+      }
+
+      functions.logger.info("cleanupWeeklyBackups completed", {
+        keep,
+        dryRun,
+        totalBackups: prefixes.length,
+        deleted: toDelete.length,
+      });
+
+      res.status(200).json({
+        ok: true,
+        dryRun,
+        keep,
+        totalBackups: prefixes.length,
+        deleted: dryRun ? 0 : toDelete.length,
+        wouldDelete: dryRun ? toDelete : undefined,
+        deletedPrefixes: dryRun ? undefined : toDelete,
+      });
+    } catch (error) {
+      functions.logger.error("cleanupWeeklyBackups error", { error: String(error) });
+      res.status(500).json({ ok: false, error: "Backup cleanup failed" });
+    }
   });
 
 export const generateMarketingPoster = functions.https.onCall(
