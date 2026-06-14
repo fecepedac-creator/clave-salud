@@ -67,7 +67,18 @@ export default defineConfig({
       },
     },
 
-    // 4. Tests de Admin (usa storageState del Admin)
+    // 4. Pilot real auth smoke tests (test accounts, no local bypass)
+    {
+      name: "pilot-real-auth",
+      testMatch: "**/pilot-real-auth.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 5. Tests de Admin (usa storageState del Admin)
     {
       name: "admin-tests",
       testDir: "./tests/admin",
@@ -79,7 +90,7 @@ export default defineConfig({
       },
     },
 
-    // 5. Tests de Doctor
+    // 6. Tests de Doctor
     {
       name: "doctor-tests",
       testDir: "./tests/doctor",

@@ -17,6 +17,7 @@
     "ops:verify": "node scripts/verify-ops.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts src/test/firestore-rules.test.ts\"",
     "test:e2e:pilot": "playwright test --project=pilot-simulated",
+    "test:e2e:real-auth": "playwright test --project=pilot-real-auth",
     "audit:run": "node scripts/audit/run-audit.cjs",
     "audit:setup:e2e": "node scripts/audit/run-audit.cjs --setup-playwright",
     "audit:superadmin": "node scripts/audit/run-audit.cjs --area superadmin",
