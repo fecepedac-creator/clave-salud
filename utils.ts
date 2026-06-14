@@ -7,3 +7,4 @@ export * from "./utils/templates";
 export * from "./utils/files";
 export * from "./utils/roles";
 export * from "./utils/email";
+export * from "./utils/vademecum";

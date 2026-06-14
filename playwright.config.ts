@@ -56,7 +56,40 @@ export default defineConfig({
       },
     },
 
-    // 3. Tests de Admin (usa storageState del Admin)
+    // 3. Pilot simulated tests (local demo roles, no real credentials)
+    {
+      name: "pilot-simulated",
+      testMatch: "**/pilot-simulated.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 4. Pilot real auth smoke tests (test accounts, no local bypass)
+    {
+      name: "pilot-real-auth",
+      testMatch: "**/pilot-real-auth.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 5. Pilot invite flow (temporary test invite/account, cleaned up)
+    {
+      name: "pilot-invite",
+      testMatch: "**/pilot-invite.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 6. Tests de Admin (usa storageState del Admin)
     {
       name: "admin-tests",
       testDir: "./tests/admin",
@@ -68,7 +101,7 @@ export default defineConfig({
       },
     },
 
-    // 3. Tests de Doctor
+    // 7. Tests de Doctor
     {
       name: "doctor-tests",
       testDir: "./tests/doctor",

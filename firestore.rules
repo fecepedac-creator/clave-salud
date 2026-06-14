@@ -39,8 +39,11 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if signedIn() && (isSuperAdmin() || uid() == userId);
-      allow create: if signedIn() && uid() == userId;
-      allow update: if signedIn() && (uid() == userId || isSuperAdmin());
+      allow create: if false; // Solo Cloud Functions durante onboarding
+      allow update: if signedIn() && (
+        isSuperAdmin()
+        || (uid() == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["roles", "isAdmin", "billing", "activo", "centros", "centers"]))
+      );
       allow delete: if false;
     }
 
@@ -55,7 +58,10 @@ service cloud.firestore {
     function isStaff(centerId) {
       return signedIn()
         && exists(staffPath(centerId, uid()))
-        && staffDoc(centerId).data.active == true;
+        && (
+          staffDoc(centerId).data.active == true
+          || staffDoc(centerId).data.activo == true
+        );
     }
 
     function staffAccessRole(centerId) {
@@ -80,6 +86,7 @@ service cloud.firestore {
       let role = staffAccessRole(centerId);
       let r = role == null ? "" : role.lower();
       return isStaff(centerId) && (
+        r == "administrative" ||
         r == "administrativo" || 
         r == "administrativa" || 
         r == "secretaria"
@@ -88,7 +95,62 @@ service cloud.firestore {
 
 
     function isDoctor(centerId) {
-      return isStaff(centerId) && staffAccessRole(centerId) == "doctor";
+      let role = staffAccessRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "doctor"
+        || r == "professional"
+        || r == "profesional"
+      );
+    }
+
+    function staffClinicalRole(centerId) {
+      return isStaff(centerId)
+        ? (staffDoc(centerId).data.clinicalRole != null
+          ? staffDoc(centerId).data.clinicalRole
+          : (staffDoc(centerId).data.professionalRole != null
+            ? staffDoc(centerId).data.professionalRole
+            : staffDoc(centerId).data.role))
+        : null;
+    }
+
+    function isClinicalPrescriber(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "medico" ||
+        r == "médico" ||
+        r == "doctor" ||
+        r == "odontologo" ||
+        r == "odontólogo" ||
+        r == "matrona"
+      );
+    }
+
+    function isControlledClinicalPrescriber(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "medico" ||
+        r == "médico" ||
+        r == "doctor" ||
+        r == "odontologo" ||
+        r == "odontólogo"
+      );
+    }
+
+    function hasClinicalRole(centerId) {
+      let role = staffClinicalRole(centerId);
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId)
+        && r != ""
+        && r != "center_admin"
+        && r != "admin_centro"
+        && r != "admin"
+        && r != "administrative"
+        && r != "administrativo"
+        && r != "administrativa"
+        && r != "secretaria";
     }
 
     function centerDoc(centerId) {
@@ -300,14 +362,7 @@ service cloud.firestore {
           || isCenterAdmin(centerId)
         );
 
-        allow create: if signedIn() && (
-          isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || (
-            uid() == staffUid
-            && inviteValidForSelf(centerId, staffUid, request.resource.data.inviteToken)
-          )
-        );
+        allow create: if false; // Solo Cloud Functions
 
         allow update: if signedIn() && (
           isSuperAdmin()
@@ -374,6 +429,35 @@ service cloud.firestore {
           && request.resource.data.professionalRut == resource.data.professionalRut;
       }
 
+      function hasPrescriptionDocuments() {
+        return request.resource.data.prescriptions is list
+          && request.resource.data.prescriptions.size() > 0;
+      }
+
+      function hasRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Médica", "Receta Retenida"]);
+      }
+
+      function hasRetainedRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Retenida"]);
+      }
+
+      function consultationPrescriptionSecurityValid(centerId) {
+        return !hasPrescriptionDocuments()
+          || (
+            request.resource.data.prescriptionTypes is list
+            && request.resource.data.hasControlledPrescription is bool
+            && (!hasRecipeDocumentType() || isClinicalPrescriber(centerId))
+            && (!hasRetainedRecipeDocumentType() || isControlledClinicalPrescriber(centerId))
+            && (
+              request.resource.data.hasControlledPrescription != true
+              || (hasRetainedRecipeDocumentType() && isControlledClinicalPrescriber(centerId))
+            )
+          );
+      }
+
       match /publicStaff/{staffUid} {
         // Allow public read of staff members designated for the booking portal.
         // We trust the data in this subcollection is public-ready.
@@ -422,23 +506,22 @@ service cloud.firestore {
           allow read: if signedIn()
             && (
               isSuperAdmin()
-              || isCenterAdmin(centerId)
-              || (isStaff(centerId) && (
+              || (hasClinicalRole(centerId) && (
                 !isCareTeamMode(centerId)
                 || isCareTeamMember(centerId, patientId)
               ))
             );
           allow create: if signedIn() && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || isDoctor(centerId)
-          );
+            || hasClinicalRole(centerId)
+          )
+          && consultationPrescriptionSecurityValid(centerId);
           allow update: if signedIn() && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || isDoctor(centerId)
+            || hasClinicalRole(centerId)
           )
           && professionalFieldsUnchanged()
+          && consultationPrescriptionSecurityValid(centerId)
           && (
             !softDeleteKeysChanged()
             || (
@@ -498,6 +581,18 @@ service cloud.firestore {
           && request.resource.data.get('amount', null) == resource.data.get('amount', null);
       }
 
+      function monthIsOpen(date) {
+        let monthKey = date is string && date.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+          ? date.split("-")[0] + "-" + date.split("-")[1]
+          : "";
+        let closurePath = /databases/$(database)/documents/centers/$(centerId)/closures_month/$(monthKey);
+        return monthKey != ""
+          && (
+            !exists(closurePath)
+            || get(closurePath).data.status != "closed"
+          );
+      }
+
       match /appointments/{apptId} {
         allow read: if isPublicAppointmentRead()
           || (
@@ -520,8 +615,8 @@ service cloud.firestore {
             request.resource.data.doctorUid == uid()
             || (request.resource.data.doctorUid == null && request.resource.data.doctorId == uid())
           ))
-        );
-        allow update: if isPublicAppointmentBooking()
+        ) && monthIsOpen(request.resource.data.date);
+        allow update: if (isPublicAppointmentBooking() && monthIsOpen(request.resource.data.date))
           || (
             signedIn() && (
               isSuperAdmin()
@@ -533,6 +628,8 @@ service cloud.firestore {
               ))
             )
             && performanceFieldsUnchanged()
+            && monthIsOpen(resource.data.date)
+            && monthIsOpen(request.resource.data.date)
             && (
             !softDeleteKeysChanged()
             || (
@@ -555,8 +652,7 @@ service cloud.firestore {
         allow read: if signedIn()
           && (
             isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || (isStaff(centerId) && (
+            || (hasClinicalRole(centerId) && (
               !isCareTeamMode(centerId)
               || (resource.data.patientId is string
                 && isCareTeamMember(centerId, resource.data.patientId))
@@ -564,13 +660,11 @@ service cloud.firestore {
           );
         allow create: if signedIn() && (
           isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || isDoctor(centerId)
+          || hasClinicalRole(centerId)
         );
         allow update: if signedIn() && (
           isSuperAdmin()
-          || isCenterAdmin(centerId)
-          || isDoctor(centerId)
+          || hasClinicalRole(centerId)
         )
         && professionalFieldsUnchanged()
         && (
@@ -638,24 +732,10 @@ service cloud.firestore {
         || (resource.data.emailLower is string && resource.data.emailLower == emailLower())
       );
 
-      allow create: if signedIn() && (
-        isSuperAdmin()
-        || (
-          request.resource.data.centerId is string
-          && isCenterAdmin(request.resource.data.centerId)
-        )
-      );
+      allow create: if false; // Solo Cloud Functions
 
       // ✅ acepta pending -> accepted o pending -> claimed (dueño del correo)
-      allow update: if signedIn()
-        && (resource.data.emailLower is string && resource.data.emailLower == emailLower())
-        && resource.data.status == "pending"
-        && (
-          (request.resource.data.status == "accepted"
-            && request.resource.data.acceptedByUid == uid())
-          || (request.resource.data.status == "claimed"
-            && request.resource.data.claimedByUid == uid())
-        );
+      allow update: if false; // Solo Cloud Functions
 
       allow delete: if false;
     }
@@ -675,6 +755,25 @@ service cloud.firestore {
     // ROOT PATIENTS COLLECTION (Professional-Centric Model)
     // =====================================================
     match /patients/{patientId} {
+      function rootPatientDoc() {
+        return get(/databases/$(database)/documents/patients/$(patientId));
+      }
+
+      function rootPatientData() {
+        return rootPatientDoc().data;
+      }
+
+      function patientPrimaryCenterId(data) {
+        return data.centerId != null
+          ? data.centerId
+          : (
+            data.accessControl.centerIds is list
+            && data.accessControl.centerIds.size() > 0
+              ? data.accessControl.centerIds[0]
+              : ""
+          );
+      }
+
       // Helper: Is the current user the owner?
       function isOwner() {
         return signedIn() && resource.data.ownerUid == uid();
@@ -688,51 +787,112 @@ service cloud.firestore {
         );
       }
 
-      // Helper: Is the current user a center_admin for any center in centerIds?
-      function isCenterAdminOfPatient() {
-        return signedIn()
-          && resource.data.accessControl.centerIds.size() > 0
-          && resource.data.accessControl.centerIds is list;
-        // Logic: Client side filtering by centerId + Rule validation.
-        // For production, center admins usually check against their specific centers/{id}/staff doc.
+      function isCenterStaffForPatient(data) {
+        let centerId = patientPrimaryCenterId(data);
+        return centerId is string
+          && centerId != ""
+          && isStaff(centerId);
+      }
+
+      function isClinicalStaffForPatient(data) {
+        let centerId = patientPrimaryCenterId(data);
+        return centerId is string
+          && centerId != ""
+          && hasClinicalRole(centerId);
+      }
+
+      function canReadRootPatient() {
+        return isAllowedProfessional()
+          || isClinicalStaffForPatient(resource.data)
+          || isSuperAdmin();
+      }
+
+      function canWriteRootPatient() {
+        return isAllowedProfessional()
+          || isClinicalStaffForPatient(resource.data)
+          || isSuperAdmin();
+      }
+
+      function canCreateRootPatient() {
+        return signedIn() && (
+          isClinicalStaffForPatient(request.resource.data)
+          || isSuperAdmin()
+        );
+      }
+
+      function rootHasPrescriptionDocuments() {
+        return request.resource.data.prescriptions is list
+          && request.resource.data.prescriptions.size() > 0;
+      }
+
+      function rootHasRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta MÃ©dica", "Receta Retenida"]);
+      }
+
+      function rootHasRetainedRecipeDocumentType() {
+        return request.resource.data.prescriptionTypes is list
+          && request.resource.data.prescriptionTypes.hasAny(["Receta Retenida"]);
+      }
+
+      function rootConsultationPrescriptionSecurityValid() {
+        let centerId = request.resource.data.centerId;
+        return !rootHasPrescriptionDocuments()
+          || (
+            centerId is string
+            && centerId != ""
+            && request.resource.data.prescriptionTypes is list
+            && request.resource.data.hasControlledPrescription is bool
+            && (!rootHasRecipeDocumentType() || isClinicalPrescriber(centerId))
+            && (!rootHasRetainedRecipeDocumentType() || isControlledClinicalPrescriber(centerId))
+            && (
+              request.resource.data.hasControlledPrescription != true
+              || (rootHasRetainedRecipeDocumentType() && isControlledClinicalPrescriber(centerId))
+            )
+          );
+      }
+
+      function canAccessRootConsultationParent() {
+        let patient = rootPatientData();
+        return signedIn() && (
+          uid() in patient.accessControl.allowedUids
+          || (patient.careTeamUids is list && uid() in patient.careTeamUids)
+          || isClinicalStaffForPatient(patient)
+          || isSuperAdmin()
+        );
+      }
+
+      function rootConsultationProfessionalFieldsUnchanged() {
+        return request.resource.data.professionalId == resource.data.professionalId
+          && request.resource.data.professionalName == resource.data.professionalName
+          && request.resource.data.professionalRole == resource.data.professionalRole;
       }
 
     // Read: owner, allowed professional (including care team), or superadmin
-    allow read: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+    allow read: if canReadRootPatient();
 
     // Create: only authenticated users can create a patient
     // They automatically become the owner in the model
-    allow create: if signedIn() && (
-      request.resource.data.ownerUid == uid()
-      || isSuperAdmin()
-    );
+    allow create: if canCreateRootPatient();
 
       // Update: owner, allowed professional, or superadmin
-      allow update: if isOwner() || isAllowedProfessional() || isSuperAdmin();
+      allow update: if canWriteRootPatient();
 
-      // Delete: only owner or superadmin
-      allow delete: if (signedIn() && resource.data.ownerUid == uid()) || isSuperAdmin();
+      // Delete físico prohibido para cumplir conservación clínica.
+      // El archivado debe realizarse por soft-delete (active=false + metadata).
+      allow delete: if false;
 
       // Consultations as subcollection of patient
       match /consultations/{consultationId} {
-        allow read: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        );
-        allow create, update: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.accessControl.allowedUids
-          || (get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids is list && 
-              uid() in get(/databases/$(database)/documents/patients/$(patientId)).data.careTeamUids)
-          || isSuperAdmin()
-        );
-        allow delete: if signedIn() && (
-          get(/databases/$(database)/documents/patients/$(patientId)).data.ownerUid == uid()
-          || isSuperAdmin()
-        );
+        allow read: if canAccessRootConsultationParent();
+        allow create: if canAccessRootConsultationParent()
+          && rootConsultationPrescriptionSecurityValid();
+        allow update: if canAccessRootConsultationParent()
+          && rootConsultationProfessionalFieldsUnchanged()
+          && rootConsultationPrescriptionSecurityValid();
+        // Delete físico prohibido para mantener trazabilidad clínica.
+        // Usar archivado lógico y retención.
+        allow delete: if false;
       }
     }
   }

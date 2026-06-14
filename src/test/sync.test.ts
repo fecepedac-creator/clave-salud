@@ -76,8 +76,8 @@ describe("useCrudOperations - syncAppointments Delta Sync", () => {
 
     await result.current.syncAppointments(nextAppointments, vi.fn());
 
-    // Should call update for deactivate
-    expect(mockBatch.update).toHaveBeenCalledTimes(1);
+    // Deactivation uses merge writes so missing fields are preserved.
+    expect(mockBatch.set).toHaveBeenCalledTimes(1);
     expect(mockBatch.commit).toHaveBeenCalledTimes(1);
   });
 });

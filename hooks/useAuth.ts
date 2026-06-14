@@ -11,20 +11,13 @@ import {
   GoogleAuthProvider,
   User,
 } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  collection,
-  where,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ViewMode, UserProfile, AnyRole } from "../types";
 
 const SUPERADMIN_ALLOWED_EMAILS = new Set(["fecepedac@gmail.com", "dr.felipecepeda@gmail.com"]);
+const GOOGLE_REDIRECT_MODE_KEY = "cs_google_redirect_mode";
+const GOOGLE_REDIRECT_TARGET_KEY = "cs_google_redirect_target";
+const GOOGLE_REDIRECT_MODE_PROFESSIONAL = "professional";
 
 export function useAuth() {
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -283,6 +276,16 @@ export function useAuth() {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
 
+        if (window.location.hostname === "localhost") {
+          window.sessionStorage.setItem(
+            GOOGLE_REDIRECT_MODE_KEY,
+            GOOGLE_REDIRECT_MODE_PROFESSIONAL
+          );
+          window.sessionStorage.setItem(GOOGLE_REDIRECT_TARGET_KEY, String(targetView));
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+
         let user;
         try {
           const cred = await signInWithPopup(auth, provider);
@@ -308,6 +311,11 @@ export function useAuth() {
         const emailUser = (user.email || "").trim().toLowerCase();
         if (!emailUser) throw new Error("Tu cuenta Google no tiene email disponible.");
 
+        const acceptPendingInvites = httpsCallable(getFunctions(), "acceptPendingInvites");
+        await acceptPendingInvites({}).catch((inviteError) => {
+          console.warn("No fue posible conciliar invitaciones pendientes:", inviteError);
+        });
+
         const existingSnap = await getDoc(doc(db, "users", uid));
         if (existingSnap.exists()) {
           const profile: any = existingSnap.data();
@@ -331,83 +339,6 @@ export function useAuth() {
             : Array.isArray(profile.centers)
               ? profile.centers
               : [];
-
-          // ── Check for pending invites even for existing users ──
-          const qPendingInv = query(
-            collection(db, "invites"),
-            where("emailLower", "==", emailUser),
-            where("status", "==", "pending")
-          );
-          const pendingInvSnap = await getDocs(qPendingInv);
-
-          if (!pendingInvSnap.empty) {
-            const pendingInvites = pendingInvSnap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as any),
-            }));
-            const newCenters = pendingInvites
-              .map((i) => String(i.centerId || "").trim())
-              .filter((cId) => cId && !centers.includes(cId));
-            const newRoles: AnyRole[] = pendingInvites
-              .map((i) => String(i.role || "").trim() as AnyRole)
-              .filter((r) => !!r);
-
-            if (newCenters.length > 0) {
-              centers = [...centers, ...newCenters];
-              const mergedRoles = Array.from(new Set([...roles, ...newRoles]));
-              const updateData: any = {
-                centros: centers,
-                centers: centers,
-                roles: mergedRoles,
-                updatedAt: serverTimestamp(),
-              };
-              const latestInvite = pendingInvites[pendingInvites.length - 1];
-              if (latestInvite?.profileData?.fullName) {
-                updateData.fullName = latestInvite.profileData.fullName;
-              }
-              await updateDoc(doc(db, "users", uid), updateData);
-              roles.push(...newRoles.filter((r) => !roles.includes(r)));
-            }
-
-            await Promise.all(
-              pendingInvites.map(async (inv) => {
-                await updateDoc(doc(db, "invites", inv.id), {
-                  status: "accepted",
-                  acceptedAt: serverTimestamp(),
-                  acceptedByUid: uid,
-                }).catch(() => {});
-                const cId = String(inv.centerId || "").trim();
-                const rId = String(inv.role || "").trim() || "staff";
-                const profileData = inv.profileData || {};
-                if (cId) {
-                  await setDoc(
-                    doc(db, "centers", cId, "staff", uid),
-                    {
-                      uid,
-                      emailLower: emailUser,
-                      role: rId,
-                      roles: [rId],
-                      active: true,
-                      activo: true,
-                      createdAt: serverTimestamp(),
-                      updatedAt: serverTimestamp(),
-                      inviteToken: inv.id,
-                      invitedBy: inv.invitedBy ?? null,
-                      invitedAt: inv.createdAt ?? null,
-                      fullName: profileData.fullName ?? "",
-                      rut: profileData.rut ?? "",
-                      specialty: profileData.specialty ?? "",
-                      photoUrl: profileData.photoUrl ?? "",
-                      agendaConfig: profileData.agendaConfig ?? null,
-                      professionalRole: profileData.role ?? inv.professionalRole ?? "",
-                      isAdmin: profileData.isAdmin ?? false,
-                    },
-                    { merge: true }
-                  );
-                }
-              })
-            );
-          }
 
           const token = await user.getIdTokenResult(true).catch(() => null as any);
           const claims: any = token?.claims ?? {};
@@ -451,13 +382,6 @@ export function useAuth() {
           return;
         }
 
-        const qInv = query(
-          collection(db, "invites"),
-          where("emailLower", "==", emailUser),
-          where("status", "==", "pending")
-        );
-        const invSnap = await getDocs(qInv);
-
         const tokenResult = await user.getIdTokenResult(true).catch(() => null);
         const claims: any = tokenResult?.claims ?? {};
         const isSuperAdminByClaim = !!(
@@ -467,27 +391,14 @@ export function useAuth() {
           SUPERADMIN_ALLOWED_EMAILS.has(emailUser)
         );
 
-        const inviteDocs = invSnap.empty
-          ? []
-          : invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-
-        if (inviteDocs.length === 0 && !isSuperAdminByClaim) {
+        if (!isSuperAdminByClaim) {
           throw new Error(
             "No tienes invitación activa. Pide al administrador del centro que te invite con este correo."
           );
         }
 
-        const rolesFromInvites: AnyRole[] = Array.from(
-          new Set(inviteDocs.map((i) => i.role).filter(Boolean))
-        ) as AnyRole[];
-        const centersFromInvites = Array.from(
-          new Set(inviteDocs.map((i) => i.centerId).filter(Boolean))
-        );
-
-        const finalRoles: AnyRole[] = isSuperAdminByClaim
-          ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole]))
-          : rolesFromInvites;
-        const inviteName = inviteDocs.find((i) => i.profileData?.fullName)?.profileData?.fullName;
+        const finalRoles: AnyRole[] = ["super_admin" as AnyRole];
+        const centersFromInvites: string[] = [];
 
         await setDoc(
           doc(db, "users", uid),
@@ -496,7 +407,7 @@ export function useAuth() {
             email: emailUser,
             displayName: user.displayName ?? "",
             photoURL: user.photoURL ?? "",
-            fullName: inviteName ?? user.displayName ?? "Usuario",
+            fullName: user.displayName ?? "Usuario",
             roles: finalRoles,
             centers: centersFromInvites,
             centros: centersFromInvites,
@@ -507,54 +418,10 @@ export function useAuth() {
           { merge: true }
         );
 
-        await Promise.all(
-          inviteDocs.map(async (inv) => {
-            await updateDoc(doc(db, "invites", inv.id), {
-              status: "accepted",
-              acceptedAt: serverTimestamp(),
-              acceptedByUid: uid,
-            }).catch(() => {});
-
-            const cId = String((inv as any).centerId || "").trim();
-            const rId = String((inv as any).role || "").trim() || "staff";
-            const eLower = String((inv as any).emailLower || emailUser)
-              .trim()
-              .toLowerCase();
-            const profileData = (inv as any).profileData || {};
-
-            if (cId) {
-              await setDoc(
-                doc(db, "centers", cId, "staff", uid),
-                {
-                  uid,
-                  emailLower: eLower,
-                  role: rId,
-                  roles: [rId],
-                  active: true,
-                  activo: true,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                  inviteToken: inv.id,
-                  invitedBy: (inv as any).invitedBy ?? null,
-                  invitedAt: (inv as any).createdAt ?? null,
-                  fullName: profileData.fullName ?? "",
-                  rut: profileData.rut ?? "",
-                  specialty: profileData.specialty ?? "",
-                  photoUrl: profileData.photoUrl ?? "",
-                  agendaConfig: profileData.agendaConfig ?? null,
-                  professionalRole: profileData.role ?? (inv as any).professionalRole ?? "",
-                  isAdmin: profileData.isAdmin ?? false,
-                },
-                { merge: true }
-              );
-            }
-          })
-        );
-
         const newUser: UserProfile = {
           uid,
           email: emailUser,
-          roles: rolesFromInvites,
+          roles: finalRoles,
           centers: centersFromInvites,
           centros: centersFromInvites,
           activeCenterId: centersFromInvites?.[0] ?? null,
@@ -577,7 +444,9 @@ export function useAuth() {
   const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     setCurrentUser(null);
     setEmail("");
     setPassword("");
@@ -604,16 +473,65 @@ Cierra sesión y vuelve a ingresar para aplicar permisos.`);
     setError("No autorizado");
     try {
       await signOut(auth);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     setCurrentUser(null);
   }, []);
 
   // Handle OAuth redirect result
   const handleRedirectResult = useCallback(
-    async (onSuccess: () => void, onUnauthorized: () => void) => {
+    async (
+      onSuccess: () => void,
+      onUnauthorized: () => void,
+      onProfessionalSuccess: (user: UserProfile, targetView: ViewMode) => void
+    ) => {
       try {
         const result = await getRedirectResult(auth);
         if (!result?.user) return;
+        const redirectMode = window.sessionStorage.getItem(GOOGLE_REDIRECT_MODE_KEY);
+        const redirectTarget =
+          (window.sessionStorage.getItem(GOOGLE_REDIRECT_TARGET_KEY) as ViewMode | null) ??
+          ("doctor-dashboard" as ViewMode);
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_MODE_KEY);
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_TARGET_KEY);
+        if (redirectMode === GOOGLE_REDIRECT_MODE_PROFESSIONAL) {
+          const snap = await getDoc(doc(db, "users", result.user.uid));
+          if (!snap.exists()) {
+            throw new Error(
+              "Tu cuenta Google fue autenticada, pero aún no tiene un perfil activo en ClaveSalud."
+            );
+          }
+          const profile: any = snap.data();
+          if (profile.activo === false) throw new Error("Usuario inactivo");
+          const roles = (Array.isArray(profile.roles) ? profile.roles : [])
+            .map((role: unknown) => String(role ?? "").trim())
+            .filter(Boolean) as AnyRole[];
+          const centros: string[] = Array.isArray(profile.centros)
+            ? profile.centros
+            : Array.isArray(profile.centers)
+              ? profile.centers
+              : [];
+          const userProfile: UserProfile = {
+            uid: result.user.uid,
+            id: result.user.uid,
+            email: profile.email || result.user.email || "",
+            roles,
+            centers: centros,
+            centros,
+            fullName:
+              profile.fullName ||
+              profile.nombre ||
+              profile.email ||
+              result.user.displayName ||
+              "Usuario",
+            role: profile.role || roles[0] || "Profesional",
+            billing: profile.billing,
+          };
+          setCurrentUser(userProfile);
+          onProfessionalSuccess(userProfile, redirectTarget);
+          return;
+        }
         await assertSuperAdminAccess(result.user);
         onSuccess();
       } catch (e: any) {

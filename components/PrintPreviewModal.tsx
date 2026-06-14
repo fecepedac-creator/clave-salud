@@ -1,8 +1,10 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
 import { Printer, FileText, X } from "lucide-react";
 import QRCode from "qrcode";
+import { logAuditEventSafe } from "../hooks/useAuditLog";
 
 const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
   const [qrSrc, setQrSrc] = React.useState<string>("");
@@ -58,7 +60,21 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
+  const origin =
+    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? window.location.origin
+      : "https://clavesalud-2.web.app";
+
   const downloadPDF = async () => {
+    await logAuditEventSafe({
+      centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+      action: "CLINICAL_DOCUMENT_DOWNLOAD",
+      entityType: "prescription",
+      entityId: docs.map((doc) => doc.id).join(","),
+      patientId: selectedPatient.id,
+      details: "Descarga PDF de receta/documento clinico.",
+      metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
+    });
     const { jsPDF } = await import("jspdf");
     const html2canvas = (await import("html2canvas")).default;
     const pdf = new jsPDF("p", "mm", "a5");
@@ -91,9 +107,9 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   const doctorSpecialty = propSpecialty || "MEDICINA GENERAL";
   const doctorInstitution = propInstitution || "";
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
-      <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block clavesalud-print-view">
+      <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none clavesalud-print-box">
         {/* Toolbar (Hidden in Print) */}
         <div className="bg-slate-800 p-4 flex justify-between items-center text-white print:hidden">
           <h3 className="font-bold text-lg flex items-center gap-2">
@@ -109,7 +125,22 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               Descargar PDF
             </button>
             <button
-              onClick={() => window.print()}
+              onClick={async () => {
+                await logAuditEventSafe({
+                  centerId:
+                    selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+                  action: "CLINICAL_DOCUMENT_PRINT",
+                  entityType: "prescription",
+                  entityId: docs.map((doc) => doc.id).join(","),
+                  patientId: selectedPatient.id,
+                  details: "Impresion de receta/documento clinico.",
+                  metadata: {
+                    documentCount: docs.length,
+                    documentTypes: docs.map((doc) => doc.type),
+                  },
+                });
+                window.print();
+              }}
               className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold transition-colors"
             >
               Imprimir
@@ -124,7 +155,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         </div>
 
         {/* Printable Area (Iterate over documents) */}
-        <div className="flex-1 overflow-auto bg-slate-100 p-6 flex flex-col items-center gap-6 print:p-0 print:bg-white print:block print:overflow-visible">
+        <div className="flex-1 overflow-auto bg-slate-100 p-6 flex flex-col items-center gap-6 print:p-0 print:bg-white print:block print:overflow-visible clavesalud-print-content">
           {docs.map((doc) => (
             <div
               key={doc.id}
@@ -138,7 +169,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <img
                       src="/assets/logo.png"
                       alt="ClaveSalud"
-                      className="h-8 w-auto object-contain"
+                      width="120"
+                      height="30"
+                      className="h-8 w-auto object-contain max-w-[120px]"
+                      style={{ objectFit: "contain" }}
                     />
                     <div>
                       <h1 className="text-base font-serif font-bold text-slate-900 tracking-wide uppercase leading-tight">
@@ -166,7 +200,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     <img
                       src={centerLogoUrl}
                       alt={centerName ? `Logo ${centerName}` : "Logo centro"}
-                      className="h-8 w-auto object-contain"
+                      width="120"
+                      height="30"
+                      className="h-8 w-auto object-contain max-w-[120px]"
+                      style={{ objectFit: "contain" }}
                       loading="lazy"
                       onError={(event) => {
                         event.currentTarget.style.display = "none";
@@ -222,10 +259,14 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               <footer className="mt-auto pt-8 flex justify-between items-end print:break-inside-avoid relative">
                 <div className="text-[11px] font-serif text-slate-600 flex flex-col gap-2">
                   <div className="flex items-start gap-3">
-                    {/* QR Verification (Placeholder for real URL) */}
+                    {/* QR Verification */}
                     <div className="bg-white p-1 border border-slate-200 rounded">
                       <QRCodeComponent
-                        value={`https://clavesalud.cl/verify/${selectedPatient.id}/${doc.id}`}
+                        value={
+                          doc.signature
+                            ? `${origin}/v/${doc.signature.hash}`
+                            : `${origin}/verify/${selectedPatient.id}/${doc.id}`
+                        }
                         size={64}
                       />
                     </div>
@@ -241,6 +282,12 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                         <br />
                         autenticidad de este documento.
                       </p>
+                      {doc.signature && (
+                        <div className="mt-2 pt-2 border-t border-slate-100 text-[7px] font-mono text-slate-400 max-w-[150px]">
+                          <p className="truncate">HASH: {doc.signature.hash}</p>
+                          <p>VERIFICACIÓN: {doc.signature.verificationCode}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -279,47 +326,68 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             height: auto !important;
           }
 
-          /* Importante: NO ocultar #root, porque este modal vive dentro de #root.
-             Si lo ocultas, la vista previa de impresión queda en blanco. */
-          body * {
-            visibility: hidden;
+          /* Ocultar el root de la app y otros portales para evitar páginas en blanco */
+          body > *:not(.clavesalud-print-view) {
+            display: none !important;
           }
 
-          .print\\:block {
+          .clavesalud-print-view {
             display: block !important;
-            position: absolute;
-            inset: 0;
-            z-index: 9999;
-            visibility: visible;
-          }
-
-          .print\\:block,
-          .print\\:block * {
-            visibility: visible;
-          }
-
-          /* Documento: márgenes internos adecuados para A5 */
-          .print-document {
+            position: static !important;
+            height: auto !important;
             width: 100% !important;
-            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            overflow: visible !important;
+          }
+
+          .clavesalud-print-box {
+            display: block !important;
+            position: static !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: white !important;
+            overflow: visible !important;
+          }
+
+          .clavesalud-print-content {
+            display: block !important;
+            position: static !important;
+            height: auto !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: white !important;
+          }
+
+          /* Mantener dimensiones físicas A5 reales para evitar estiramientos en A4/Carta */
+          .print-document {
+            width: 148mm !important;
+            height: 210mm !important;
+            max-width: 148mm !important;
+            min-height: 210mm !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
-            margin: 0 !important;
-
-            /* Para A5, 10–12mm suele verse mejor que 2.5cm */
+            margin: 0 auto !important; /* Centrado en caso de imprimir en A4 */
             padding: 10mm !important;
             font-size: 10.5pt;
             line-height: 1.3;
-
-            /* Evitar forzar 100vh (a veces rompe el preview) */
-            height: auto !important;
-            min-height: auto !important;
-
-            page-break-after: always;
-            break-after: page;
+            box-sizing: border-box !important;
             position: relative !important;
             overflow: visible !important;
+          }
+
+          /* Forzar salto de página entre documentos, pero no al final */
+          .print-document:not(:last-child) {
+            page-break-after: always !important;
+            break-after: page !important;
           }
 
           .print\\:break-inside-avoid {
@@ -327,7 +395,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 

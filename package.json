@@ -8,9 +8,17 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:ci": "eslint App.tsx components/AdminDashboard.tsx components/InvitePage.tsx components/MigrationModal.tsx hooks/useAuth.ts hooks/useInvite.ts features/admin/components/ProfessionalManagement.tsx features/admin/components/WhatsappSettings.tsx features/admin/components/AdminAIUsageTab.tsx --ext .ts,.tsx --quiet",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "security:commercial": "node scripts/verify-commercial-readiness.mjs",
+    "ops:verify": "node scripts/verify-ops.mjs",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts src/test/firestore-rules.test.ts\"",
+    "test:e2e:pilot": "playwright test --project=pilot-simulated",
+    "test:e2e:real-auth": "playwright test --project=pilot-real-auth",
+    "test:e2e:invite": "playwright test --project=pilot-invite",
     "audit:run": "node scripts/audit/run-audit.cjs",
     "audit:setup:e2e": "node scripts/audit/run-audit.cjs --setup-playwright",
     "audit:superadmin": "node scripts/audit/run-audit.cjs --area superadmin",
@@ -20,7 +28,10 @@
     "audit:all": "node scripts/audit/run-audit.cjs --all",
     "audit:all:smoke": "node scripts/audit/run-audit.cjs --all --profile smoke",
     "audit:all:deep": "node scripts/audit/run-audit.cjs --all --profile deep",
-    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean"
+    "audit:all:strict": "node scripts/audit/run-audit.cjs --all --profile deep --require-playwright --enforce-clean",
+    "vademecum:generate": "python scripts/generate_vademecum_registry.py",
+    "identity:whatsapp": "node scripts/whatsapp-identity/run_identity_eval.cjs",
+    "identity:whatsapp:agent": "npm --prefix functions run build && node scripts/whatsapp-identity/run_identity_eval.cjs --mode=agent"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -38,6 +49,7 @@
     "react-google-drive-picker": "^1.2.2"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",

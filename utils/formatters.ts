@@ -64,7 +64,7 @@ export const formatPersonName = (value?: string | null): string => {
 export const normalizePhone = (phone: string): string => {
   if (!phone) return "";
   // Remove spaces, dashes, parentheses
-  const clean = phone.replace(/[\s\-\(\)]/g, "");
+  const clean = phone.replace(/[\s\-()]/g, "");
 
   // Basic validation/formatting for Chile (+569)
   // If user enters 912345678, make it +56912345678
@@ -82,7 +82,7 @@ export const normalizePhone = (phone: string): string => {
 export const sanitizeText = (text: string | undefined): string => {
   if (!text) return "";
   // Removes null bytes and trims whitespace.
-  return text.replace(/\u0000/g, "").trim();
+  return text.split(String.fromCharCode(0)).join("").trim();
 };
 
 export const getProfessionalPrefix = (role?: string): string => {
@@ -105,4 +105,37 @@ export const getProfessionalPrefix = (role?: string): string => {
   if (r === "TENS") return "TENS";
   if (r.startsWith("ADMIN")) return "Admin.";
   return "Sr(a).";
+};
+
+export const maskRUT = (rut: string): string => {
+  if (!rut) return "";
+  const formatted = formatRUT(rut);
+  const parts = formatted.split("-");
+  if (parts.length === 2) {
+    const body = parts[0];
+    const bodyParts = body.split(".");
+    if (bodyParts.length >= 3) {
+      bodyParts[bodyParts.length - 1] = "***";
+      return bodyParts.join(".") + "-*";
+    } else {
+      const maskedBody = body.slice(0, Math.max(1, body.length - 3)) + "***";
+      return maskedBody + "-*";
+    }
+  }
+  return "***.***.***-*";
+};
+
+export const maskPhone = (phone: string): string => {
+  if (!phone) return "";
+  const normalized = normalizePhone(phone);
+  if (normalized.startsWith("+569") && normalized.length === 12) {
+    return `+56 9 **** ${normalized.slice(8)}`;
+  }
+  if (normalized.startsWith("569") && normalized.length === 11) {
+    return `+56 9 **** ${normalized.slice(7)}`;
+  }
+  if (normalized.length >= 4) {
+    return `**** ${normalized.slice(-4)}`;
+  }
+  return "****";
 };

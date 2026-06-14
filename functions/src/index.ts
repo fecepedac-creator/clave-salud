@@ -6,6 +6,7 @@ if (!admin.apps.length) {
 }
 
 import * as crypto from "crypto";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 
@@ -13,9 +14,9 @@ const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
 
-const BACKUP_TOKEN = process.env.BACKUP_TOKEN || "";
-const BACKUP_BUCKET = process.env.BACKUP_BUCKET || "";
-const BACKUP_PREFIX = process.env.BACKUP_PREFIX || "backups/firestore";
+const BACKUP_TOKEN = (process.env.BACKUP_TOKEN || "").trim();
+const BACKUP_BUCKET = (process.env.BACKUP_BUCKET || "").trim();
+const BACKUP_PREFIX = (process.env.BACKUP_PREFIX || "backups/firestore").trim();
 
 const METADATA_TOKEN_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
@@ -40,6 +41,32 @@ function getBackupPrefix() {
   const month = date.slice(0, 7);
   const time = now.toISOString().replace(/[:]/g, "-").replace(/\..+/, "");
   return `${BACKUP_PREFIX}/${month}/${date}_${time}`;
+}
+
+function parsePositiveInteger(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
+}
+
+async function listBackupPrefixes(): Promise<string[]> {
+  if (!BACKUP_BUCKET) return [];
+  const normalizedPrefix = BACKUP_PREFIX.replace(/^\/+|\/+$/g, "");
+  const bucket = storage.bucket(BACKUP_BUCKET);
+  const [files] = await bucket.getFiles({ prefix: `${normalizedPrefix}/` });
+  const prefixes = new Set<string>();
+
+  for (const file of files) {
+    const parts = file.name.split("/");
+    if (parts.length < 4) continue;
+    if (parts[0] !== normalizedPrefix.split("/")[0]) continue;
+    const backupPrefix = parts.slice(0, 4).join("/");
+    if (/^\d{4}-\d{2}$/.test(parts[2]) && /^\d{4}-\d{2}-\d{2}_/.test(parts[3])) {
+      prefixes.add(backupPrefix);
+    }
+  }
+
+  return Array.from(prefixes).sort();
 }
 
 async function getAccessToken(): Promise<string> {
@@ -101,11 +128,42 @@ function normalizeString(value: unknown): string {
 
 function normalizeAccessRole(data: Record<string, any> | undefined): string {
   const accessRole = normalizeString(data?.accessRole ?? "").trim();
-  if (accessRole) return accessRole;
+  if (accessRole) return canonicalAccessRole(accessRole);
   const role = normalizeString(data?.role ?? "").trim();
-  if (role === "center_admin" || role === "doctor" || role === "admin") return role;
+  if (role) return canonicalAccessRole(role);
   if (data?.isAdmin === true) return "center_admin";
-  return "doctor";
+  return "professional";
+}
+
+function canonicalAccessRole(value: unknown): string {
+  const role = normalizeString(value)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (["center_admin", "admin_centro", "center-admin", "admin"].includes(role)) {
+    return "center_admin";
+  }
+  if (
+    ["administrative", "administrativo", "administrativa", "secretaria", "secretary"].includes(role)
+  ) {
+    return "administrative";
+  }
+  if (["professional", "profesional", "doctor", "medico"].includes(role)) {
+    return "professional";
+  }
+  if (["super_admin", "superadmin", "super-admin"].includes(role)) {
+    return "super_admin";
+  }
+  return role || "professional";
+}
+
+function isBookableServiceResource(staffUid: string, data: Record<string, any>): boolean {
+  const role = normalizeString(data?.role ?? data?.accessRole ?? data?.clinicalRole ?? "")
+    .trim()
+    .toLowerCase();
+  const email = normalizeString(data?.email ?? "").trim().toLowerCase();
+  return staffUid.startsWith("svc_") || role === "servicio" || email.startsWith("svc_");
 }
 
 function normalizeClinicalRole(data: Record<string, any> | undefined): string {
@@ -183,8 +241,8 @@ async function isCenterAdminForCenter(uid: string, centerId: string): Promise<bo
   if (!staffSnap.exists) return false;
   const active = staffSnap.get("active") === true || staffSnap.get("activo") === true;
   if (!active) return false;
-  const role = String(staffSnap.get("accessRole") || staffSnap.get("role") || "").trim();
-  return role === "center_admin";
+  const role = normalizeRoleValue(staffSnap.get("accessRole") || staffSnap.get("role"));
+  return role === "center_admin" || role === "admin_centro" || role === "admin";
 }
 
 function randToken(bytes = 24): string {
@@ -211,6 +269,194 @@ function lowerEmailFromContext(context: CallableContext): string {
   return String(raw || "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeRoleValue(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const CLINICAL_AI_PROMPTS: Record<string, { id: string; version: string; instructions: string }> = {
+  anamnesis: {
+    id: "clinical_anamnesis",
+    version: "1.1.0",
+    instructions:
+      "Redacta como anamnesis/evolucion clinica. Conserva relato, tiempo de evolucion, sintomas asociados, tratamientos usados y respuesta si fueron mencionados. No diagnostiques.",
+  },
+  physicalExam: {
+    id: "clinical_physical_exam",
+    version: "1.0.0",
+    instructions:
+      "Redacta exclusivamente hallazgos de examen fisico. No agregues signos no consignados. Si el texto contiene solo parametros o hallazgos breves, ordenalos en frases clinicas objetivas.",
+  },
+  indications: {
+    id: "clinical_indications",
+    version: "1.0.0",
+    instructions:
+      "Redacta indicaciones y plan de manejo en lenguaje claro y profesional. No agregues medicamentos, dosis, examenes ni controles que no esten mencionados. Mantiene signos de alarma solo si fueron escritos.",
+  },
+};
+
+const CLINICAL_AI_ROLE_INSTRUCTIONS: Record<string, string> = {
+  medico:
+    "Usa redaccion medica sobria. No cierres diagnosticos si el texto solo contiene sintomas o hipotesis.",
+  enfermera:
+    "Prioriza lenguaje de enfermeria, procedimientos, educacion y observaciones objetivas.",
+  tens: "Prioriza registro de procedimiento, signos observados y cuidados realizados sin formular diagnosticos medicos.",
+  kinesiologo:
+    "Prioriza evaluacion funcional, movilidad, dolor, tolerancia y plan terapeutico kinesico.",
+  psicologo:
+    "Usa lenguaje prudente: refiere, se explora, se aborda. No etiquetes diagnosticos ni afirmes hechos no relatados.",
+  nutricionista:
+    "Prioriza habitos alimentarios, adherencia, antropometria registrada y plan nutricional sin agregar indicaciones no escritas.",
+  matrona:
+    "Prioriza lenguaje gineco-obstetrico objetivo, antecedentes relevantes y educacion indicada.",
+  odontologo:
+    "Prioriza hallazgos odontologicos, piezas, procedimientos e indicaciones registradas.",
+};
+
+const CLINICAL_AI_STOPWORDS = new Set([
+  "a",
+  "al",
+  "ante",
+  "con",
+  "de",
+  "del",
+  "el",
+  "en",
+  "es",
+  "la",
+  "las",
+  "lo",
+  "los",
+  "o",
+  "por",
+  "que",
+  "se",
+  "sin",
+  "un",
+  "una",
+  "y",
+  "paciente",
+  "refiere",
+  "consulta",
+  "presenta",
+  "cuadro",
+  "segun",
+  "registro",
+]);
+
+function tokenizeClinicalText(text: string): string[] {
+  return normalizeRoleValue(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 5 && !CLINICAL_AI_STOPWORDS.has(token));
+}
+
+function detectPotentialAiAdditions(input: string, output: string): string[] {
+  const inputTokens = new Set(tokenizeClinicalText(input));
+  const outputTokens = Array.from(new Set(tokenizeClinicalText(output)));
+  const clinicallySensitive = new Set([
+    "diagnostico",
+    "infeccion",
+    "deshidratacion",
+    "neumonia",
+    "fractura",
+    "depresion",
+    "ansiedad",
+    "urgencia",
+    "antibiotico",
+    "corticoide",
+    "insulina",
+    "embarazo",
+    "cancer",
+    "derivacion",
+    "hospitalizar",
+  ]);
+  const additions = outputTokens
+    .filter((token) => !inputTokens.has(token))
+    .sort((a, b) => Number(clinicallySensitive.has(b)) - Number(clinicallySensitive.has(a)))
+    .slice(0, 8);
+  return additions;
+}
+
+function clinicalTextForField(consultation: any, field: string): string {
+  if (field === "anamnesis") return String(consultation.anamnesis || "");
+  if (field === "physicalExam") return String(consultation.physicalExam || "");
+  if (field === "indications") return String(consultation.nextControlReason || "");
+  return "";
+}
+
+async function requireActiveCenterStaff(
+  context: CallableContext,
+  centerId: string
+): Promise<FirebaseFirestore.DocumentSnapshot> {
+  requireAuth(context);
+  const uid = context.auth?.uid as string;
+  const staffSnap = await db.collection("centers").doc(centerId).collection("staff").doc(uid).get();
+  if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "No tiene permisos activos en este centro."
+    );
+  }
+  return staffSnap;
+}
+
+async function assertPatientInCenter(patientId: string, centerId: string): Promise<any> {
+  const patientSnap = await db.collection("patients").doc(patientId).get();
+  if (!patientSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
+  }
+  const patientData = patientSnap.data() || {};
+  const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+    ? patientData.accessControl.centerIds
+    : [];
+  if (patientData.centerId !== centerId && !patientCenterIds.includes(centerId)) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "El paciente no pertenece al centro indicado."
+    );
+  }
+  return patientData;
+}
+
+function isClinicalPrescriberRole(role: unknown): boolean {
+  const r = normalizeRoleValue(role);
+  return ["medico", "doctor", "odontologo", "matrona"].includes(r);
+}
+
+function isControlledPrescriberRole(role: unknown): boolean {
+  const r = normalizeRoleValue(role);
+  return ["medico", "doctor", "odontologo"].includes(r);
+}
+
+function isControlledPrescriptionType(type: unknown): boolean {
+  return String(type || "").trim() === "Receta Retenida";
+}
+
+const CONTROLLED_DRUG_PATTERNS = [
+  /\bclonazepam\b/i,
+  /\bravotril\b/i,
+  /\bdiazepam\b/i,
+  /\balprazolam\b/i,
+  /\blorazepam\b/i,
+  /\btramadol\b/i,
+  /\bcodeina\b/i,
+  /\bmetilfenidato\b/i,
+  /\bmorfina\b/i,
+  /\bfentanilo\b/i,
+  /\boxicodona\b/i,
+  /\bzolpidem\b/i,
+];
+
+function hasControlledDrugContent(prescriptions: any[]): boolean {
+  const text = prescriptions.map((p) => String(p?.content || "")).join("\n");
+  return CONTROLLED_DRUG_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 type PosterFormat = "feed" | "story" | "whatsapp" | "internal";
@@ -354,7 +600,31 @@ export const createCenterAdminInvite = (functions.https.onCall as any)(
     });
 
     const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
-    return { token, inviteUrl };
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const subject = `Invitación a ClaveSalud — Administración del centro (${centerName || "Centro"})`;
+      const text = `Hola,\n\nHas sido invitado(a) como Administrador(a) del centro:\nCentro: ${centerName || "Centro"}\n\nPara crear tu cuenta y definir tu contraseña, usa este enlace:\n${inviteUrl}\n\nEste enlace es personal y expira en 7 días.\n\nSaludos,\nEquipo ClaveSalud\n`;
+
+      await sendEmail({
+        to: emailLower,
+        subject,
+        text,
+        centerId,
+        tags: ["invite", "center-admin"],
+        type: "invite",
+      });
+      emailSent = true;
+    } catch (e: any) {
+      functions.logger.warn(
+        "Automated invite email failed to send, falling back to manual copy/paste",
+        e
+      );
+      emailError = e?.message || String(e);
+    }
+
+    return { token, inviteUrl, emailSent, emailError };
   }
 );
 
@@ -408,7 +678,31 @@ export const resendCenterAdminInvite = (functions.https.onCall as any)(
       });
 
     const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
-    return { token: newToken, inviteUrl };
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const subject = `Invitación a ClaveSalud — Administración del centro (${inv.centerName || "Centro"})`;
+      const text = `Hola,\n\nHas sido invitado(a) como Administrador(a) del centro:\nCentro: ${inv.centerName || "Centro"}\n\nPara crear tu cuenta y definir tu contraseña, usa este enlace:\n${inviteUrl}\n\nEste enlace es personal y expira en 7 días.\n\nSaludos,\nEquipo ClaveSalud\n`;
+
+      await sendEmail({
+        to: inv.emailLower,
+        subject,
+        text,
+        centerId: inv.centerId,
+        tags: ["invite", "center-admin"],
+        type: "invite",
+      });
+      emailSent = true;
+    } catch (e: any) {
+      functions.logger.warn(
+        "Automated invite email failed to send, falling back to manual copy/paste",
+        e
+      );
+      emailError = e?.message || String(e);
+    }
+
+    return { token: newToken, inviteUrl, emailSent, emailError };
   }
 );
 
@@ -708,6 +1002,8 @@ export const acceptInvite = (functions.https.onCall as any)(
         "Tu cuenta no tiene email disponible."
       );
 
+    return { ok: true, ...(await acceptInviteAtomically(token, uid, emailLower)) };
+
     const invRef = db.collection("invites").doc(token);
     const invSnap = await invRef.get();
     if (!invSnap.exists)
@@ -796,6 +1092,399 @@ export const acceptInvite = (functions.https.onCall as any)(
     });
 
     return { ok: true, centerId, role };
+  }
+);
+
+async function acceptInviteAtomically(token: string, uid: string, emailLower: string) {
+  const invRef = db.collection("invites").doc(token);
+  return db.runTransaction(async (tx) => {
+    const invSnap = await tx.get(invRef);
+    if (!invSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Invitacion no encontrada o invalida.");
+    }
+    const inv: any = invSnap.data() || {};
+    if (String(inv.status || "") !== "pending") {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Esta invitacion ya fue utilizada o no esta activa."
+      );
+    }
+    if (inv.expiresAt?.toDate && inv.expiresAt.toDate().getTime() < Date.now()) {
+      throw new functions.https.HttpsError("failed-precondition", "La invitacion expiro.");
+    }
+    if (
+      String(inv.emailLower || "")
+        .trim()
+        .toLowerCase() !== emailLower
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Este correo no coincide con el invitado."
+      );
+    }
+
+    const centerId = String(inv.centerId || "").trim();
+    if (!centerId) {
+      throw new functions.https.HttpsError("failed-precondition", "Invitacion sin centerId.");
+    }
+    const role = canonicalAccessRole(inv.role || "professional");
+    const profileData = inv.profileData || {};
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const userRef = db.collection("users").doc(uid);
+    const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
+
+    tx.set(
+      userRef,
+      {
+        uid,
+        email: emailLower,
+        activo: true,
+        updatedAt: now,
+        centros: admin.firestore.FieldValue.arrayUnion(centerId),
+        centers: admin.firestore.FieldValue.arrayUnion(centerId),
+        roles: admin.firestore.FieldValue.arrayUnion(role),
+      },
+      { merge: true }
+    );
+    tx.set(
+      staffRef,
+      {
+        uid,
+        emailLower,
+        role,
+        accessRole: role,
+        roles: [role],
+        clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+        active: true,
+        activo: true,
+        visibleInBooking: profileData.visibleInBooking === true,
+        updatedAt: now,
+        createdAt: now,
+        inviteToken: token,
+        invitedBy: inv.invitedBy ?? inv.invitedByUid ?? null,
+        invitedAt: inv.createdAt ?? null,
+        fullName: profileData.fullName ?? "",
+        rut: profileData.rut ?? "",
+        specialty: profileData.specialty ?? "",
+        photoUrl: profileData.photoUrl ?? "",
+        agendaConfig: profileData.agendaConfig ?? null,
+        professionalRole:
+          profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+        isAdmin: role === "center_admin",
+      },
+      { merge: true }
+    );
+    tx.update(invRef, {
+      status: "accepted",
+      acceptedAt: now,
+      acceptedByUid: uid,
+    });
+    return { token, centerId, role, tempStaffId: String(inv.tempStaffId || "").trim() };
+  });
+}
+
+async function migrateTempStaffReferences(params: {
+  centerId: string;
+  tempStaffId?: string;
+  realUid: string;
+}) {
+  const tempStaffId = String(params.tempStaffId || "").trim();
+  if (!tempStaffId || tempStaffId === params.realUid) return { migratedAppointments: 0 };
+  const appointments = db.collection("centers").doc(params.centerId).collection("appointments");
+  const [byDoctorId, byDoctorUid] = await Promise.all([
+    appointments.where("doctorId", "==", tempStaffId).get(),
+    appointments.where("doctorUid", "==", tempStaffId).get(),
+  ]);
+  const refs = new Map<string, admin.firestore.DocumentReference>();
+  [...byDoctorId.docs, ...byDoctorUid.docs].forEach((appointment) =>
+    refs.set(appointment.id, appointment.ref)
+  );
+  const appointmentRefs = Array.from(refs.values());
+  for (let index = 0; index < appointmentRefs.length; index += 400) {
+    const batch = db.batch();
+    appointmentRefs.slice(index, index + 400).forEach((ref) =>
+      batch.set(
+        ref,
+        {
+          doctorId: params.realUid,
+          doctorUid: params.realUid,
+          migratedFromTempId: tempStaffId,
+          migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+    await batch.commit();
+  }
+  await db
+    .batch()
+    .set(
+      db.collection("centers").doc(params.centerId).collection("staff").doc(tempStaffId),
+      {
+        active: false,
+        activo: false,
+        visibleInBooking: false,
+        migratedToUid: params.realUid,
+        migrationCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    )
+    .commit();
+  return { migratedAppointments: refs.size };
+}
+
+export const acceptInviteAtomic = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const token = String(data?.token || "").trim();
+    if (!token) throw new functions.https.HttpsError("invalid-argument", "token es requerido.");
+    const emailLower = lowerEmailFromContext(context);
+    if (!emailLower) {
+      throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email.");
+    }
+    const accepted = await acceptInviteAtomically(token, context.auth?.uid as string, emailLower);
+    return {
+      ok: true,
+      ...accepted,
+      ...(await migrateTempStaffReferences({
+        centerId: accepted.centerId,
+        tempStaffId: accepted.tempStaffId,
+        realUid: context.auth?.uid as string,
+      })),
+    };
+  }
+);
+
+export const acceptPendingInvites = (functions.https.onCall as any)(
+  async (_data: any, context: CallableContext) => {
+    requireAuth(context);
+    const emailLower = lowerEmailFromContext(context);
+    if (!emailLower) {
+      throw new functions.https.HttpsError("failed-precondition", "Tu cuenta no tiene email.");
+    }
+    const pending = await db
+      .collection("invites")
+      .where("emailLower", "==", emailLower)
+      .where("status", "==", "pending")
+      .limit(25)
+      .get();
+    const accepted = [];
+    for (const invite of pending.docs) {
+      const result = await acceptInviteAtomically(
+        invite.id,
+        context.auth?.uid as string,
+        emailLower
+      );
+      accepted.push({
+        ...result,
+        ...(await migrateTempStaffReferences({
+          centerId: result.centerId,
+          tempStaffId: result.tempStaffId,
+          realUid: context.auth?.uid as string,
+        })),
+      });
+    }
+    return { ok: true, accepted };
+  }
+);
+
+export const createProfessionalInvite = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const centerId = String(data?.centerId || "").trim();
+    const emailLower = String(data?.email || "")
+      .trim()
+      .toLowerCase();
+    const tempStaffId = String(data?.tempStaffId || "").trim();
+    if (!centerId || !emailLower || !tempStaffId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, email y tempStaffId son requeridos."
+      );
+    }
+    if (
+      !isSuperAdmin(context) &&
+      !(await isCenterAdminForCenter(context.auth?.uid as string, centerId))
+    ) {
+      throw new functions.https.HttpsError("permission-denied", "No puede invitar personal.");
+    }
+    const profileData =
+      data?.profileData && typeof data.profileData === "object" ? data.profileData : {};
+    const role = canonicalAccessRole(data?.accessRole || "professional");
+    const existing = await db
+      .collection("invites")
+      .where("emailLower", "==", emailLower)
+      .where("centerId", "==", centerId)
+      .where("status", "==", "pending")
+      .limit(1)
+      .get();
+    const token = existing.empty ? randToken(24) : existing.docs[0].id;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const batch = db.batch();
+    batch.set(
+      db.collection("invites").doc(token),
+      {
+        token,
+        emailLower,
+        email: emailLower,
+        centerId,
+        role,
+        professionalRole: profileData.clinicalRole ?? "",
+        status: "pending",
+        tempStaffId,
+        expiresAt,
+        updatedAt: now,
+        createdAt: existing.empty ? now : (existing.docs[0].get("createdAt") ?? now),
+        invitedByUid: context.auth?.uid ?? null,
+        profileData,
+      },
+      { merge: true }
+    );
+    batch.set(
+      db.collection("centers").doc(centerId).collection("staff").doc(tempStaffId),
+      {
+        uid: tempStaffId,
+        email: emailLower,
+        emailLower,
+        role,
+        accessRole: role,
+        clinicalRole: profileData.clinicalRole ?? "",
+        professionalRole: profileData.clinicalRole ?? "",
+        fullName: profileData.fullName ?? "",
+        rut: profileData.rut ?? "",
+        specialty: profileData.specialty ?? "",
+        photoUrl: profileData.photoUrl ?? "",
+        agendaConfig: profileData.agendaConfig ?? null,
+        visibleInBooking: profileData.visibleInBooking === true,
+        active: true,
+        activo: true,
+        isTemp: true,
+        updatedAt: now,
+        createdAt: now,
+      },
+      { merge: true }
+    );
+    await batch.commit();
+    return { ok: true, token, inviteUrl: `https://clavesalud-2.web.app/invite?token=${token}` };
+  }
+);
+
+export const deactivateStaff = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    const centerId = String(data?.centerId || "").trim();
+    const staffUid = String(data?.staffUid || "").trim();
+    const reason = String(data?.reason || "").trim();
+    if (!centerId || !staffUid || !reason) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, staffUid y reason son requeridos."
+      );
+    }
+    if (
+      !isSuperAdmin(context) &&
+      !(await isCenterAdminForCenter(context.auth?.uid as string, centerId))
+    ) {
+      throw new functions.https.HttpsError("permission-denied", "No puede desactivar personal.");
+    }
+    const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(staffUid);
+    const staffSnap = await staffRef.get();
+    const emailLower = String(staffSnap.get("emailLower") || "")
+      .trim()
+      .toLowerCase();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.set(
+      staffRef,
+      { active: false, activo: false, visibleInBooking: false, deletedAt: now, updatedAt: now },
+      { merge: true }
+    );
+    if (emailLower) {
+      const invites = await db
+        .collection("invites")
+        .where("emailLower", "==", emailLower)
+        .where("centerId", "==", centerId)
+        .where("status", "==", "pending")
+        .get();
+      invites.docs.forEach((invite) =>
+        batch.set(
+          invite.ref,
+          { status: "revoked", revokedAt: now, revokedByUid: context.auth?.uid ?? null },
+          { merge: true }
+        )
+      );
+    }
+    batch.set(db.collection("centers").doc(centerId).collection("auditLogs").doc(), {
+      type: "ACTION",
+      action: "STAFF_DEACTIVATE",
+      entityType: "staff",
+      entityId: staffUid,
+      actorUid: context.auth?.uid ?? "unknown",
+      actorEmail: lowerEmailFromContext(context) || null,
+      actorRole: "center_admin",
+      resourceType: "patient",
+      resourcePath: `/centers/${centerId}/staff/${staffUid}`,
+      timestamp: now,
+      details: reason,
+    });
+    await batch.commit();
+    return { ok: true, staffUid };
+  }
+);
+
+export const migrateCanonicalStaffRoles = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext) => {
+    requireAuth(context);
+    if (!isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Solo SuperAdmin puede migrar roles."
+      );
+    }
+    const requestedCenterId = String(data?.centerId || "").trim();
+    const dryRun = data?.dryRun !== false;
+    const centers = requestedCenterId
+      ? [await db.collection("centers").doc(requestedCenterId).get()]
+      : (await db.collection("centers").get()).docs;
+    let inspected = 0;
+    let changed = 0;
+    const preview: Array<{ centerId: string; staffUid: string; from: string; to: string }> = [];
+
+    for (const center of centers.filter((item) => item.exists)) {
+      const staff = await center.ref.collection("staff").get();
+      for (const member of staff.docs) {
+        inspected += 1;
+        const current = member.data() as Record<string, any>;
+        if (isBookableServiceResource(member.id, current)) continue;
+        const from = normalizeString(current.accessRole ?? current.role ?? "");
+        const to = canonicalAccessRole(from);
+        if (from === to && current.accessRole === to) continue;
+        changed += 1;
+        preview.push({ centerId: center.id, staffUid: member.id, from, to });
+        if (!dryRun) {
+          await member.ref.set(
+            {
+              accessRole: to,
+              roles: [to],
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+      }
+    }
+    await db.collection("auditLogs").add({
+      action: "migrate_canonical_staff_roles",
+      actorUid: context.auth?.uid ?? "unknown",
+      actorEmail: lowerEmailFromContext(context) || null,
+      dryRun,
+      requestedCenterId: requestedCenterId || null,
+      inspected,
+      changed,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { ok: true, dryRun, inspected, changed, preview: preview.slice(0, 250) };
   }
 );
 
@@ -1293,6 +1982,13 @@ export const logAuditEvent = (functions.https.onCall as any)(
         "centerId, action, entityType y entityId son requeridos."
       );
     }
+    const sensitiveAction = /(EXPORT|PRINT|ARCHIVE|DELETE|DEACTIVATE|RESTORE|MIGRAT)/i.test(action);
+    if (sensitiveAction && !(typeof data?.details === "string" && data.details.trim())) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Las operaciones sensibles requieren un motivo en details."
+      );
+    }
 
     const validEntityTypes = [
       "patient",
@@ -1300,6 +1996,7 @@ export const logAuditEvent = (functions.https.onCall as any)(
       "appointment",
       "document",
       "centerSettings",
+      "staff",
     ];
     if (!validEntityTypes.includes(entityType)) {
       throw new functions.https.HttpsError(
@@ -1380,7 +2077,9 @@ export const logAuditEvent = (functions.https.onCall as any)(
  * runMonthlyBackup - Ejecuta export de Firestore a GCS.
  * Diseñada para Cloud Scheduler (token) y ejecución manual por super_admin.
  */
-export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
+export const runMonthlyBackup = functions
+  .runWith({ secrets: ["BACKUP_TOKEN", "BACKUP_BUCKET"] })
+  .https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, error: "Method not allowed" });
     return;
@@ -1475,7 +2174,69 @@ export const runMonthlyBackup = functions.https.onRequest(async (req, res) => {
     functions.logger.error("runMonthlyBackup error", { error: String(error) });
     res.status(500).json({ ok: false, error: "Backup failed" });
   }
-});
+  });
+
+/**
+ * cleanupWeeklyBackups - Mantiene los ultimos N backups Firestore.
+ * Diseñada para Cloud Scheduler luego del backup semanal.
+ */
+export const cleanupWeeklyBackups = functions
+  .runWith({ secrets: ["BACKUP_TOKEN", "BACKUP_BUCKET"] })
+  .https.onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const headerToken = String(req.get("X-Backup-Token") || "").trim();
+    const schedulerAuthorized = Boolean(BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN);
+    const superAdminAuthorized = await verifySuperAdminFromRequest(req);
+
+    if (!schedulerAuthorized && !superAdminAuthorized) {
+      res.status(403).json({ ok: false, error: "Unauthorized" });
+      return;
+    }
+    if (!BACKUP_BUCKET) {
+      res.status(500).json({ ok: false, error: "Missing BACKUP_BUCKET" });
+      return;
+    }
+
+    const payload = typeof req.body === "object" ? req.body : {};
+    const keep = parsePositiveInteger(payload?.keep, 8);
+    const dryRun = Boolean(payload?.dryRun);
+
+    try {
+      const prefixes = await listBackupPrefixes();
+      const toDelete = prefixes.slice(0, Math.max(0, prefixes.length - keep));
+
+      if (!dryRun) {
+        const bucket = storage.bucket(BACKUP_BUCKET);
+        for (const prefix of toDelete) {
+          await bucket.deleteFiles({ prefix: `${prefix}/`, force: true });
+        }
+      }
+
+      functions.logger.info("cleanupWeeklyBackups completed", {
+        keep,
+        dryRun,
+        totalBackups: prefixes.length,
+        deleted: toDelete.length,
+      });
+
+      res.status(200).json({
+        ok: true,
+        dryRun,
+        keep,
+        totalBackups: prefixes.length,
+        deleted: dryRun ? 0 : toDelete.length,
+        wouldDelete: dryRun ? toDelete : undefined,
+        deletedPrefixes: dryRun ? undefined : toDelete,
+      });
+    } catch (error) {
+      functions.logger.error("cleanupWeeklyBackups error", { error: String(error) });
+      res.status(500).json({ ok: false, error: "Backup cleanup failed" });
+    }
+  });
 
 export const generateMarketingPoster = functions.https.onCall(
   async (data: any, context: CallableContext) => {
@@ -2170,6 +2931,697 @@ export const linkPatientToProfessional = (functions.https.onCall as any)(
   }
 );
 
+export const createPatientConsultation = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const consultation = data?.consultation || {};
+
+    if (!centerId || !patientId || !consultation || typeof consultation !== "object") {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, patientId y consultation son requeridos."
+      );
+    }
+
+    const staffSnap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("staff")
+      .doc(uid)
+      .get();
+    const staffData = staffSnap.data() || {};
+    const isStaffMember = staffSnap.exists && resolveActive(staffData);
+    if (!isStaffMember && !isSuperAdmin(context)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    const patientRef = db.collection("patients").doc(patientId);
+    const patientSnap = await patientRef.get();
+    if (!patientSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
+    }
+
+    const patient = patientSnap.data() || {};
+    const allowedUids = Array.isArray(patient?.accessControl?.allowedUids)
+      ? patient.accessControl.allowedUids
+      : [];
+    const careTeamUids = Array.isArray(patient?.careTeamUids) ? patient.careTeamUids : [];
+    const centerIds = Array.isArray(patient?.accessControl?.centerIds)
+      ? patient.accessControl.centerIds
+      : [];
+
+    const canAccessPatient =
+      patient.ownerUid === uid ||
+      allowedUids.includes(uid) ||
+      careTeamUids.includes(uid) ||
+      centerIds.includes(centerId) ||
+      isSuperAdmin(context);
+
+    if (!canAccessPatient) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene acceso a esta ficha clínica."
+      );
+    }
+
+    const prescriptions = Array.isArray(consultation.prescriptions)
+      ? consultation.prescriptions
+      : [];
+    const prescriptionTypes: string[] = Array.from(
+      new Set(prescriptions.map((p: any) => String(p?.type || "").trim()).filter(Boolean))
+    );
+    const hasAnyPrescription = prescriptions.length > 0;
+    const hasRecipe = prescriptionTypes.some((type) =>
+      ["Receta Médica", "Receta Medica", "Receta Retenida"].includes(type)
+    );
+    const hasRetainedRecipe = prescriptionTypes.some(isControlledPrescriptionType);
+    const hasControlledContent = hasControlledDrugContent(prescriptions);
+    const clinicalRole =
+      consultation.professionalRole ||
+      staffData.clinicalRole ||
+      staffData.professionalRole ||
+      staffData.role;
+
+    if (hasAnyPrescription && hasRecipe && !isClinicalPrescriberRole(clinicalRole)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Rol no autorizado para emitir recetas."
+      );
+    }
+
+    if ((hasRetainedRecipe || hasControlledContent) && !isControlledPrescriberRole(clinicalRole)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Rol no autorizado para medicamentos controlados."
+      );
+    }
+
+    if (hasControlledContent && !hasRetainedRecipe) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Medicamento controlado debe emitirse como Receta Retenida."
+      );
+    }
+
+    const consultationRef = patientRef.collection("consultations").doc();
+    const cleanConsultation = {
+      ...consultation,
+      id: consultation.id || consultationRef.id,
+      patientId,
+      centerId,
+      professionalId: uid,
+      professionalRole:
+        consultation.professionalRole || staffData.clinicalRole || staffData.role || "",
+      prescriptionTypes,
+      hasControlledPrescription: hasRetainedRecipe || hasControlledContent,
+      createdByUid: uid,
+      createdAt: serverTimestamp(),
+    };
+
+    await consultationRef.set(cleanConsultation);
+
+    await patientRef.set(
+      {
+        careTeamUids: admin.firestore.FieldValue.arrayUnion(uid),
+        "accessControl.allowedUids": admin.firestore.FieldValue.arrayUnion(uid),
+        "accessControl.centerIds": admin.firestore.FieldValue.arrayUnion(centerId),
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const aiClinicalUsage =
+      consultation && typeof consultation.aiClinicalUsage === "object"
+        ? consultation.aiClinicalUsage
+        : {};
+    const aiUsageEntries = Object.entries(aiClinicalUsage || {});
+    if (aiUsageEntries.length > 0) {
+      const auditBatch = db.batch();
+      for (const [field, usage] of aiUsageEntries) {
+        const usageData = usage as any;
+        const finalText = clinicalTextForField(consultation, field);
+        const outputLength = Number(usageData.outputLength || 0);
+        const finalLength = finalText.length;
+        const editDeltaPct = outputLength
+          ? Math.round((Math.abs(finalLength - outputLength) / outputLength) * 100)
+          : 0;
+        const auditRef = db.collection("centers").doc(centerId).collection("auditLogs").doc();
+        auditBatch.set(auditRef, {
+          type: "ACTION",
+          action: "AI_CLINICAL_TEXT_FINALIZED",
+          entityType: "document",
+          entityId: patientId,
+          actorUid: uid,
+          actorEmail: lowerEmailFromContext(context) || "unknown",
+          actorRole: staffData.role || staffData.clinicalRole || "unknown",
+          resourceType: "consultation",
+          resourcePath: `/patients/${patientId}/consultations/${consultationRef.id}`,
+          timestamp: serverTimestamp(),
+          details: "Consulta guardada con texto clinico asistido por IA.",
+          metadata: {
+            field,
+            patientId,
+            consultationId: consultationRef.id,
+            promptId: usageData.promptId || null,
+            promptVersion: usageData.promptVersion || null,
+            inputLength: Number(usageData.inputLength || 0),
+            outputLength,
+            finalLength,
+            editDeltaPct,
+            warningCount: Number(usageData.warningCount || 0),
+          },
+        });
+      }
+      await auditBatch.commit();
+    }
+
+    return {
+      ok: true,
+      id: consultationRef.id,
+      consultation: {
+        ...cleanConsultation,
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+);
+
+export const archiveAppointment = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const appointmentId = String(data?.appointmentId || "").trim();
+    const reason = String(data?.reason || "").trim();
+
+    if (!centerId || !appointmentId || !reason) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, appointmentId y reason son requeridos."
+      );
+    }
+
+    const staffSnap = await requireActiveCenterStaff(context, centerId);
+    const appointmentRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("appointments")
+      .doc(appointmentId);
+    const appointmentSnap = await appointmentRef.get();
+    if (!appointmentSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Cita no encontrada.");
+    }
+    const appointment = appointmentSnap.data() || {};
+
+    await appointmentRef.set(
+      {
+        active: false,
+        attendanceStatus: "cancelled",
+        status: "cancelled",
+        deletedAt: serverTimestamp(),
+        deletedBy: uid,
+        deleteReason: reason,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action: "APPOINTMENT_ARCHIVE",
+        entityType: "appointment",
+        entityId: appointmentId,
+        patientId: appointment.patientId || null,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: staffSnap.get("role") || "staff",
+        resourceType: "appointment",
+        resourcePath: `/centers/${centerId}/appointments/${appointmentId}`,
+        timestamp: serverTimestamp(),
+        details: "Archivo/cancelacion administrativa de cita.",
+        metadata: {
+          deleteReason: reason,
+          previousStatus: appointment.status || null,
+          date: appointment.date || null,
+          time: appointment.time || null,
+        },
+      });
+
+    return { ok: true };
+  }
+);
+
+export const addPatientAttachment = (functions.https.onCall as any)(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const attachment = data?.attachment || {};
+
+    if (!centerId || !patientId || !attachment?.id || !attachment?.url || !attachment?.name) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, patientId y attachment valido son requeridos."
+      );
+    }
+
+    const staffSnap = await requireActiveCenterStaff(context, centerId);
+    await assertPatientInCenter(patientId, centerId);
+
+    const safeAttachment = {
+      id: String(attachment.id),
+      name: String(attachment.name).slice(0, 180),
+      type: String(attachment.type || "other").slice(0, 40),
+      date: String(attachment.date || new Date().toISOString()),
+      url: String(attachment.url),
+      storagePath: attachment.storagePath ? String(attachment.storagePath) : null,
+      uploadedByUid: uid,
+    };
+
+    await db
+      .collection("patients")
+      .doc(patientId)
+      .set(
+        {
+          attachments: admin.firestore.FieldValue.arrayUnion(safeAttachment),
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action: "PATIENT_ATTACHMENT_ADD",
+        entityType: "patient",
+        entityId: patientId,
+        patientId,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: staffSnap.get("role") || "staff",
+        resourceType: "patient",
+        resourcePath: `/patients/${patientId}`,
+        timestamp: serverTimestamp(),
+        details: "Adjunto clinico agregado a ficha.",
+        metadata: {
+          attachmentId: safeAttachment.id,
+          fileName: safeAttachment.name,
+          fileType: safeAttachment.type,
+          storagePath: safeAttachment.storagePath,
+        },
+      });
+
+    return { ok: true, attachment: safeAttachment };
+  }
+);
+
+export const improveClinicalText = functions
+  .runWith({ secrets: ["GEMINI_API_KEY"] })
+  .https.onCall(async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const rawText = String(data?.text || "").trim();
+    const field = String(data?.field || "anamnesis").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const role = String(data?.role || "").trim();
+    const promptConfig = CLINICAL_AI_PROMPTS[field] || CLINICAL_AI_PROMPTS.anamnesis;
+    const roleInstruction = CLINICAL_AI_ROLE_INSTRUCTIONS[normalizeRoleValue(role)] || "";
+
+    if (!centerId || !rawText) {
+      throw new functions.https.HttpsError("invalid-argument", "centerId y text son requeridos.");
+    }
+
+    const staffSnap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("staff")
+      .doc(uid)
+      .get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    if (patientId) {
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      const patientData = patientSnap.data() || {};
+      const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+        ? patientData.accessControl.centerIds
+        : [];
+      if (
+        !patientSnap.exists ||
+        (patientData.centerId !== centerId && !patientCenterIds.includes(centerId))
+      ) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "El paciente no pertenece al centro indicado."
+        );
+      }
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "GEMINI_API_KEY no está configurada."
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const prompt = `
+Actúa como asistente de redacción clínica para una ficha médica electrónica en Chile.
+
+Transforma notas libres de un profesional de salud en redacción clínica clara, breve, objetiva y útil.
+
+Reglas:
+1. No diagnostiques.
+2. No inventes síntomas, signos, antecedentes, exámenes, tratamientos ni evolución.
+3. No agregues datos no mencionados.
+4. No cambies el sentido clínico.
+5. Conserva tiempo de evolución, localización, síntomas asociados, tratamientos usados, respuesta, antecedentes, alergias, contactos enfermos, factores de riesgo y signos de alarma si fueron mencionados.
+6. Si falta un dato importante, agrégalo al final como "Datos por precisar: ...".
+7. No uses Markdown, títulos ni viñetas largas.
+8. Devuelve sólo el texto final.
+
+Campo clinico: ${field}
+Rol profesional: ${role || "no informado"}
+Prompt: ${promptConfig.id}@${promptConfig.version}
+
+Instrucciones especificas:
+${promptConfig.instructions}
+${roleInstruction ? `\nInstrucciones por rol:\n${roleInstruction}` : ""}
+
+Texto original:
+"${rawText}"
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const improvedText = response.text().trim();
+    const warnings = detectPotentialAiAdditions(rawText, improvedText);
+
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action: "AI_CLINICAL_TEXT_SUGGESTED",
+        entityType: "document",
+        entityId: patientId || field,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: staffSnap.get("role") || "unknown",
+        resourceType: "consultation",
+        resourcePath: patientId ? `/patients/${patientId}` : `/centers/${centerId}/ai/${field}`,
+        timestamp: serverTimestamp(),
+        details: "Asistente IA generó una sugerencia de redacción clínica.",
+        metadata: {
+          field,
+          patientId: patientId || null,
+          role: role || null,
+          promptId: promptConfig.id,
+          promptVersion: promptConfig.version,
+          inputLength: rawText.length,
+          outputLength: improvedText.length,
+          warningCount: warnings.length,
+        },
+      });
+
+    return {
+      ok: true,
+      text: improvedText,
+      warnings,
+      promptId: promptConfig.id,
+      promptVersion: promptConfig.version,
+    };
+  });
+
+export const recordClinicalAiUsage = functions.https.onCall(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const patientId = String(data?.patientId || "").trim();
+    const field = String(data?.field || "anamnesis").trim();
+    const action = String(data?.action || "").trim();
+    const inputLength = Number(data?.inputLength || 0);
+    const outputLength = Number(data?.outputLength || 0);
+    const editedOutputLength = Number(data?.editedOutputLength || 0);
+    const warningCount = Number(data?.warningCount || 0);
+    const promptId = String(data?.promptId || "").trim();
+    const promptVersion = String(data?.promptVersion || "").trim();
+
+    if (!centerId || !["accepted", "discarded"].includes(action)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId y action validos son requeridos."
+      );
+    }
+
+    const staffSnap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("staff")
+      .doc(uid)
+      .get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    if (patientId) {
+      const patientSnap = await db.collection("patients").doc(patientId).get();
+      const patientData = patientSnap.data() || {};
+      const patientCenterIds = Array.isArray(patientData?.accessControl?.centerIds)
+        ? patientData.accessControl.centerIds
+        : [];
+      if (
+        !patientSnap.exists ||
+        (patientData.centerId !== centerId && !patientCenterIds.includes(centerId))
+      ) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "El paciente no pertenece al centro indicado."
+        );
+      }
+    }
+
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action: action === "accepted" ? "AI_CLINICAL_TEXT_ACCEPTED" : "AI_CLINICAL_TEXT_DISCARDED",
+        entityType: "document",
+        entityId: patientId || field,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: staffSnap.get("role") || "unknown",
+        resourceType: "consultation",
+        resourcePath: patientId ? `/patients/${patientId}` : `/centers/${centerId}/ai/${field}`,
+        timestamp: serverTimestamp(),
+        details:
+          action === "accepted"
+            ? "Profesional acepto una sugerencia de redaccion clinica con IA."
+            : "Profesional descarto una sugerencia de redaccion clinica con IA.",
+        metadata: {
+          field,
+          patientId: patientId || null,
+          promptId: promptId || null,
+          promptVersion: promptVersion || null,
+          inputLength: Number.isFinite(inputLength) ? inputLength : 0,
+          outputLength: Number.isFinite(outputLength) ? outputLength : 0,
+          editedOutputLength: Number.isFinite(editedOutputLength) ? editedOutputLength : 0,
+          warningCount: Number.isFinite(warningCount) ? warningCount : 0,
+        },
+      });
+
+    return { ok: true };
+  }
+);
+
+export const recordClinicalAiAlertFeedback = functions.https.onCall(
+  async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const sourceLogId = String(data?.sourceLogId || "").trim();
+    const feedback = String(data?.feedback || "").trim();
+
+    if (!centerId || !sourceLogId || !["confirmed", "false_positive"].includes(feedback)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "centerId, sourceLogId y feedback valido son requeridos."
+      );
+    }
+
+    const staffSnap = await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("staff")
+      .doc(uid)
+      .get();
+    if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permisos activos en este centro."
+      );
+    }
+
+    await db
+      .collection("centers")
+      .doc(centerId)
+      .collection("auditLogs")
+      .add({
+        type: "ACTION",
+        action:
+          feedback === "confirmed"
+            ? "AI_CLINICAL_ALERT_CONFIRMED"
+            : "AI_CLINICAL_ALERT_FALSE_POSITIVE",
+        entityType: "auditLog",
+        entityId: sourceLogId,
+        actorUid: uid,
+        actorEmail: lowerEmailFromContext(context) || "unknown",
+        actorRole: staffSnap.get("role") || "unknown",
+        resourceType: "ai_audit",
+        resourcePath: `/centers/${centerId}/auditLogs/${sourceLogId}`,
+        timestamp: serverTimestamp(),
+        details:
+          feedback === "confirmed"
+            ? "Alerta de IA clinica marcada como pertinente."
+            : "Alerta de IA clinica marcada como falso positivo.",
+        metadata: {
+          sourceLogId,
+          feedback,
+        },
+      });
+
+    return { ok: true };
+  }
+);
+
+export const generateMarketingCaption = functions
+  .runWith({ secrets: ["GEMINI_API_KEY"] })
+  .https.onCall(async (data: any, context: CallableContext): Promise<any> => {
+    requireAuth(context);
+    const uid = context.auth?.uid as string;
+    const centerId = String(data?.centerId || "").trim();
+    const idea = String(data?.idea || "").trim();
+    const type = String(data?.type || "center").trim();
+    const centerName = String(data?.centerName || "").trim();
+    const doctorName = String(data?.doctorName || "").trim();
+    const url = String(data?.url || "").trim();
+    const specialties = Array.isArray(data?.specialties) ? data.specialties.map(String) : [];
+
+    if (!idea || !url) {
+      throw new functions.https.HttpsError("invalid-argument", "idea y url son requeridos.");
+    }
+
+    if (centerId) {
+      const staffSnap = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("staff")
+        .doc(uid)
+        .get();
+      if (!isSuperAdmin(context) && (!staffSnap.exists || !resolveActive(staffSnap.data()))) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "No tiene permisos activos en este centro."
+        );
+      }
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "GEMINI_API_KEY no esta configurada."
+      );
+    }
+
+    const category =
+      type === "professional"
+        ? "Profesional de salud"
+        : type === "platform"
+          ? "Gestion Clinica"
+          : "Centro Medico";
+    const prompt = `
+Actua como redactor senior de marketing healthcare.
+Redacta un copy para redes sociales elegante, confiable y profesional.
+
+Marca/Entidad: ${doctorName || centerName || "ClaveSalud"}
+Categoria: ${category}
+Servicios: ${specialties.join(", ") || "no informado"}
+Enlace de reserva: ${url}
+Idea: "${idea}"
+
+Reglas:
+1. No prometas resultados clinicos.
+2. No inventes precios, descuentos, horarios ni prestaciones no mencionadas.
+3. Prioriza confianza, claridad y llamado a reservar.
+4. Usa emojis con moderacion y 4 a 5 hashtags.
+
+Responde solo con el copy final.
+`;
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+
+    if (centerId) {
+      await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("auditLogs")
+        .add({
+          type: "ACTION",
+          action: "AI_MARKETING_CAPTION_GENERATED",
+          entityType: "marketing",
+          entityId: type,
+          actorUid: uid,
+          actorEmail: lowerEmailFromContext(context) || "unknown",
+          actorRole: "marketing",
+          resourceType: "marketing",
+          resourcePath: `/centers/${centerId}/marketing/captions`,
+          timestamp: serverTimestamp(),
+          details: "Caption de marketing generado con IA.",
+          metadata: {
+            type,
+            inputLength: idea.length,
+            outputLength: text.length,
+          },
+        });
+    }
+
+    return { ok: true, text };
+  });
+
 export * from "./immutableAudit";
 export * from "./whatsapp";
 export * from "./performance";
@@ -2179,77 +3631,78 @@ export * from "./performance";
 // lógica AES-256 sin duplicar código.
 import { encryptToken } from "./whatsapp";
 
-export const updateWhatsappConfig = (functions.https.onCall as any)(
-  async (data: any, context: CallableContext) => {
-    requireAuth(context);
-    const uid = context.auth?.uid as string;
+export const updateWhatsappConfig = (
+  functions.runWith({ secrets: ["ENCRYPTION_KEY"] }).https.onCall as any
+)(async (data: any, context: CallableContext) => {
+  requireAuth(context);
+  const uid = context.auth?.uid as string;
 
-    const centerId = String(data?.centerId || "").trim();
-    if (!centerId) {
-      throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    }
-
-    // Verificar que el usuario es admin del centro o super_admin
-    const isAdmin = await isCenterAdminForCenter(uid, centerId);
-    if (!isAdmin && !isSuperAdmin(context)) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Solo administradores del centro pueden actualizar la configuración de WhatsApp."
-      );
-    }
-
-    const phoneNumberId = String(data?.phoneNumberId || "").trim();
-    const rawAccessToken = String(data?.accessToken || "").trim();
-    const secretaryPhone = String(data?.secretaryPhone || "").trim();
-    const verifyToken = String(data?.verifyToken || "").trim();
-
-    if (!phoneNumberId) {
-      throw new functions.https.HttpsError("invalid-argument", "phoneNumberId es requerido.");
-    }
-
-    const centerRef = db.collection("centers").doc(centerId);
-
-    const updates: Record<string, any> = {
-      "whatsappConfig.phoneNumberId": phoneNumberId,
-      "whatsappConfig.updatedAt": serverTimestamp(),
-      "whatsappConfig.updatedByUid": uid,
-    };
-
-    // Solo actualizar el token si el admin envió uno nuevo (no el placeholder "********")
-    if (rawAccessToken && rawAccessToken !== "********") {
-      // Cifrar el token antes de persistir en Firestore
-      const encryptedToken = encryptToken(rawAccessToken);
-      updates["whatsappConfig.accessToken"] = encryptedToken;
-      updates["whatsappConfig.tokenEncrypted"] = true;
-    }
-
-    if (secretaryPhone) {
-      updates["whatsappConfig.secretaryPhone"] = secretaryPhone;
-    }
-
-    if (verifyToken) {
-      updates["whatsappConfig.verifyToken"] = verifyToken;
-    }
-
-    await centerRef.update(updates);
-
-    // Registro de auditoría
-    await centerRef.collection("auditLogs").add({
-      type: "ACTION",
-      action: "WHATSAPP_CONFIG_UPDATED",
-      entityType: "centerSettings",
-      entityId: centerId,
-      actorUid: uid,
-      actorEmail: lowerEmailFromContext(context) || "unknown",
-      actorRole: isAdmin ? "center_admin" : "super_admin",
-      resourceType: "whatsappConfig",
-      resourcePath: `/centers/${centerId}`,
-      timestamp: serverTimestamp(),
-      details: "Configuración de WhatsApp actualizada con token cifrado.",
-    });
-
-    console.log(`[updateWhatsappConfig] Centro ${centerId} actualizado por ${uid}. Token cifrado: ${!!rawAccessToken && rawAccessToken !== "********"}`);
-    return { ok: true, tokenEncrypted: !!rawAccessToken && rawAccessToken !== "********" };
+  const centerId = String(data?.centerId || "").trim();
+  if (!centerId) {
+    throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
   }
-);
 
+  // Verificar que el usuario es admin del centro o super_admin
+  const isAdmin = await isCenterAdminForCenter(uid, centerId);
+  if (!isAdmin && !isSuperAdmin(context)) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Solo administradores del centro pueden actualizar la configuración de WhatsApp."
+    );
+  }
+
+  const phoneNumberId = String(data?.phoneNumberId || "").trim();
+  const rawAccessToken = String(data?.accessToken || "").trim();
+  const secretaryPhone = String(data?.secretaryPhone || "").trim();
+  const verifyToken = String(data?.verifyToken || "").trim();
+
+  if (!phoneNumberId) {
+    throw new functions.https.HttpsError("invalid-argument", "phoneNumberId es requerido.");
+  }
+
+  const centerRef = db.collection("centers").doc(centerId);
+
+  const updates: Record<string, any> = {
+    "whatsappConfig.phoneNumberId": phoneNumberId,
+    "whatsappConfig.updatedAt": serverTimestamp(),
+    "whatsappConfig.updatedByUid": uid,
+  };
+
+  // Solo actualizar el token si el admin envió uno nuevo (no el placeholder "********")
+  if (rawAccessToken && rawAccessToken !== "********") {
+    // Cifrar el token antes de persistir en Firestore
+    const encryptedToken = encryptToken(rawAccessToken);
+    updates["whatsappConfig.accessToken"] = encryptedToken;
+    updates["whatsappConfig.tokenEncrypted"] = true;
+  }
+
+  if (secretaryPhone) {
+    updates["whatsappConfig.secretaryPhone"] = secretaryPhone;
+  }
+
+  if (verifyToken) {
+    updates["whatsappConfig.verifyToken"] = verifyToken;
+  }
+
+  await centerRef.update(updates);
+
+  // Registro de auditoría
+  await centerRef.collection("auditLogs").add({
+    type: "ACTION",
+    action: "WHATSAPP_CONFIG_UPDATED",
+    entityType: "centerSettings",
+    entityId: centerId,
+    actorUid: uid,
+    actorEmail: lowerEmailFromContext(context) || "unknown",
+    actorRole: isAdmin ? "center_admin" : "super_admin",
+    resourceType: "whatsappConfig",
+    resourcePath: `/centers/${centerId}`,
+    timestamp: serverTimestamp(),
+    details: "Configuración de WhatsApp actualizada con token cifrado.",
+  });
+
+  console.log(
+    `[updateWhatsappConfig] Centro ${centerId} actualizado por ${uid}. Token cifrado: ${!!rawAccessToken && rawAccessToken !== "********"}`
+  );
+  return { ok: true, tokenEncrypted: !!rawAccessToken && rawAccessToken !== "********" };
+});

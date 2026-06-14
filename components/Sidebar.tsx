@@ -57,17 +57,21 @@ const Sidebar: React.FC<SidebarProps> = ({
               variant={active ? "glass" : "ghost"}
               onClick={() => onNavigate(i.target)}
               className={`w-full justify-start gap-4 px-4 py-3.5 rounded-2xl transition-all group ${
-                active 
-                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-lg shadow-emerald-950/40" 
+                active
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shadow-lg shadow-emerald-950/40"
                   : "hover:bg-white/5 text-slate-400 hover:text-slate-200"
               }`}
             >
               {i.icon ? (
-                <span className={`shrink-0 transition-transform duration-300 group-hover:scale-110 ${active ? "text-emerald-400" : "opacity-60"}`}>
+                <span
+                  className={`shrink-0 transition-transform duration-300 group-hover:scale-110 ${active ? "text-emerald-400" : "opacity-60"}`}
+                >
                   {i.icon}
                 </span>
               ) : null}
-              <span className={`font-bold tracking-tight text-sm ${active ? "text-emerald-500 shadow-emerald-500/20" : ""}`}>
+              <span
+                className={`font-bold tracking-tight text-sm ${active ? "text-emerald-500 shadow-emerald-500/20" : ""}`}
+              >
                 {i.label}
               </span>
             </Button>
@@ -81,9 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </nav>
 
-      <div className="p-4 border-t border-emerald-500/10 bg-slate-950/20">
-        {footer}
-      </div>
+      <div className="p-4 border-t border-emerald-500/10 bg-slate-950/20">{footer}</div>
     </aside>
   );
 };

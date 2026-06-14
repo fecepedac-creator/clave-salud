@@ -24,6 +24,7 @@ import {
 import { MedicalCenter, Doctor } from "../types";
 import { CORPORATE_LOGO, ROLE_CATALOG } from "../constants";
 import { useToast } from "./Toast";
+import { ConfirmModal } from "./ConfirmModal";
 import LogoHeader from "./LogoHeader";
 import LegalLinks from "./LegalLinks";
 import { DEFAULT_EXAM_ORDER_CATALOG, ExamOrderCatalog } from "../utils/examOrderCatalog";
@@ -51,6 +52,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -210,6 +212,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("general");
+  const [saModalConfig, setSaModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "confirm" | "text-prompt";
+    warningText?: string;
+    onConfirm: (value?: any) => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "confirm",
+    onConfirm: () => {},
+  });
   const previewRoles = useMemo(
     () => ROLE_CATALOG, // NOW INCLUDES ALL ROLES (including ADMIN_CENTRO)
     []
@@ -407,15 +423,6 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setCommCenterId(centerContextId);
   }, [centerContextId]);
 
-  const promptChangeReason = (label: string) => {
-    const reason = window.prompt(`Indica el motivo para ${label}:`);
-    if (!reason || !reason.trim()) {
-      showToast("Debes indicar un motivo para continuar.", "warning");
-      return null;
-    }
-    return reason.trim();
-  };
-
   const fetchCommHistory = async (centerId: string) => {
     if (demoMode) {
       setCommHistory([]);
@@ -575,7 +582,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (logoPreview) {
       try {
         URL.revokeObjectURL(logoPreview);
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
     setLogoFile(null);
     setLogoPreview("");
@@ -664,7 +673,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     void loadMetrics();
   }, []);
 
-  const fetchGlobalUsers = async () => {
+  const [lastUserDoc, setLastUserDoc] = useState<any>(null);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [isLoadingMoreUsers, setIsLoadingMoreUsers] = useState(false);
+
+  const fetchGlobalUsers = async (search = "", isLoadMore = false) => {
     if (demoMode) {
       setUsersLoading(true);
       setTimeout(() => {
@@ -673,28 +686,73 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           { id: "u2", email: "doctor@demo.cl", fullName: "Dr. Demo", roles: ["doctor"] },
         ]);
         setUsersLoading(false);
+        setHasMoreUsers(false);
       }, 100);
       return;
     }
-    setUsersLoading(true);
+    if (isLoadMore) {
+      setIsLoadingMoreUsers(true);
+    } else {
+      setUsersLoading(true);
+    }
     try {
-      const q = query(collection(db, "users"), orderBy("email"), limit(200));
+      let q;
+      const searchNorm = typeof search === "string" ? search.trim().toLowerCase() : "";
+      if (searchNorm) {
+        if (isLoadMore && lastUserDoc) {
+          q = query(
+            collection(db, "users"),
+            orderBy("email"),
+            where("email", ">=", searchNorm),
+            where("email", "<=", searchNorm + "\uf8ff"),
+            startAfter(lastUserDoc),
+            limit(30)
+          );
+        } else {
+          q = query(
+            collection(db, "users"),
+            orderBy("email"),
+            where("email", ">=", searchNorm),
+            where("email", "<=", searchNorm + "\uf8ff"),
+            limit(30)
+          );
+        }
+      } else {
+        if (isLoadMore && lastUserDoc) {
+          q = query(collection(db, "users"), orderBy("email"), startAfter(lastUserDoc), limit(30));
+        } else {
+          q = query(collection(db, "users"), orderBy("email"), limit(30));
+        }
+      }
+
       const snap = await getDocs(q);
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      setGlobalUsers(items);
+
+      if (isLoadMore) {
+        setGlobalUsers((prev) => [...prev, ...items]);
+      } else {
+        setGlobalUsers(items);
+      }
+
+      setLastUserDoc(snap.docs[snap.docs.length - 1] || null);
+      setHasMoreUsers(snap.docs.length === 30);
     } catch (e: any) {
       console.error("fetchGlobalUsers error", e);
       showToast("Error al cargar usuarios globales.", "error");
     } finally {
       setUsersLoading(false);
+      setIsLoadingMoreUsers(false);
     }
   };
 
   useEffect(() => {
     if (activeTab === "users") {
-      void fetchGlobalUsers();
+      const delayDebounce = setTimeout(() => {
+        void fetchGlobalUsers(userSearchTerm);
+      }, 400);
+      return () => clearTimeout(delayDebounce);
     }
-  }, [activeTab]);
+  }, [userSearchTerm, activeTab]);
 
   const handleSaveUser = async (user: any) => {
     try {
@@ -769,10 +827,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setLastInviteBody("");
   };
 
-  const handleSaveCenter = async () => {
+  const handleSaveCenter = async (confirmedReason?: string) => {
     if (!editingCenter) return;
-
-    setIsUploadingLogo(true);
 
     try {
       const name = (isCreating ? newCenterName : editingCenter.name).trim();
@@ -784,6 +840,35 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       }
 
       const centerId = isCreating ? `c_${uidShort()}` : editingCenter.id;
+
+      // Check if reason is required
+      if (!isCreating && !confirmedReason) {
+        const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
+        const finalBilling = (editingCenter as any).billing || {};
+        const previousBilling = previous?.billing || {};
+        const isActiveChanged =
+          previous && !!(previous as any).isActive !== !!(editingCenter as any).isActive;
+        const billingChanged =
+          previousBilling?.plan !== finalBilling?.plan ||
+          previousBilling?.monthlyUF !== finalBilling?.monthlyUF ||
+          previousBilling?.billingStatus !== finalBilling?.billingStatus;
+
+        if (isActiveChanged || billingChanged) {
+          setSaModalConfig({
+            isOpen: true,
+            title: "Justificación de Modificación",
+            message: "Debe indicar el motivo para modificar el estado o facturación del centro.",
+            type: "text-prompt",
+            onConfirm: (reason: string) => {
+              setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+              void handleSaveCenter(reason);
+            },
+          });
+          return;
+        }
+      }
+
+      setIsUploadingLogo(true);
 
       let finalLogoUrl = (editingCenter as any).logoUrl || "";
       const prevLogoUrl =
@@ -841,21 +926,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
           : (editingCenter as any).subscription,
       };
 
-      if (!isCreating) {
-        const previous = centers.find((c) => c.id === centerId) as CenterExt | undefined;
-        const isActiveChanged =
-          previous && !!(previous as any).isActive !== !!(finalCenter as any).isActive;
-        const billingPrev = (previous as any)?.billing || {};
-        const billingNext = (finalCenter as any)?.billing || {};
-        const billingChanged =
-          billingPrev?.plan !== billingNext?.plan ||
-          billingPrev?.monthlyUF !== billingNext?.monthlyUF ||
-          billingPrev?.billingStatus !== billingNext?.billingStatus;
-        if (isActiveChanged || billingChanged) {
-          const reason = promptChangeReason("modificar estado o facturación del centro");
-          if (!reason) return;
-          (finalCenter as any).auditReason = reason;
-        }
+      if (!isCreating && confirmedReason) {
+        (finalCenter as any).auditReason = confirmedReason;
       }
 
       await onUpdateCenters([finalCenter as any]);
@@ -887,19 +959,27 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const handleDeleteCenter = async (id: string) => {
+  const handleDeleteCenter = (id: string) => {
     if (!id) return;
-    if (!window.confirm("¿Eliminar este centro? (no se puede deshacer)")) return;
-    const reason = promptChangeReason("eliminar el centro");
-    if (!reason) return;
-    try {
-      await onDeleteCenter(id, reason);
-      showToast("Centro eliminado", "success");
-      if (financeCenterId === id) setFinanceCenterId(centers?.[0]?.id || "");
-      if (commCenterId === id) setCommCenterId(centers?.[0]?.id || "");
-    } catch (e: any) {
-      showToast(e?.message || "Error al eliminar", "error");
-    }
+    setSaModalConfig({
+      isOpen: true,
+      title: "Eliminar Centro Médico",
+      message: "¿Está seguro de que desea eliminar este centro? Esta acción no se puede deshacer.",
+      warningText:
+        "Todos los datos asociados al centro serán permanentemente archivados o eliminados.",
+      type: "text-prompt",
+      onConfirm: async (reason: string) => {
+        setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await onDeleteCenter(id, reason);
+          showToast("Centro eliminado", "success");
+          if (financeCenterId === id) setFinanceCenterId(centers?.[0]?.id || "");
+          if (commCenterId === id) setCommCenterId(centers?.[0]?.id || "");
+        } catch (e: any) {
+          showToast(e?.message || "Error al eliminar", "error");
+        }
+      },
+    });
   };
 
   const updateCenterPatch = async (
@@ -950,7 +1030,11 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const updateBilling = async (centerId: string, billingPatch: Partial<BillingInfo>) => {
+  const updateBilling = async (
+    centerId: string,
+    billingPatch: Partial<BillingInfo>,
+    confirmedReason?: string
+  ) => {
     const center = centers.find((c) => c.id === centerId) as CenterExt | undefined;
     if (!center) {
       showToast("Centro no encontrado", "error");
@@ -959,13 +1043,23 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     const requiresReason = ["plan", "monthlyUF", "billingStatus"].some(
       (key) => key in billingPatch
     );
-    let auditReason: string | null = null;
-    if (requiresReason) {
-      auditReason = promptChangeReason("cambiar información de facturación");
-      if (!auditReason) return;
+
+    if (requiresReason && !confirmedReason) {
+      setSaModalConfig({
+        isOpen: true,
+        title: "Justificación de Modificación de Facturación",
+        message: "Debe indicar el motivo para cambiar la información de facturación del centro.",
+        type: "text-prompt",
+        onConfirm: (reason: string) => {
+          setSaModalConfig((prev) => ({ ...prev, isOpen: false }));
+          void updateBilling(centerId, billingPatch, reason);
+        },
+      });
+      return;
     }
+
     const billing = { ...((center as CenterExt).billing || {}), ...billingPatch } as BillingInfo;
-    await updateCenterPatch(centerId, { billing }, auditReason ?? undefined);
+    await updateCenterPatch(centerId, { billing }, confirmedReason ?? undefined);
   };
 
   const handleSendNotification = async () => {
@@ -1138,10 +1232,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       const copyText = buildCopyEmailText(emailLower, subject, body);
       await navigator.clipboard.writeText(copyText);
 
-      showToast(
-        "Invitación generada. Copié el correo al portapapeles. Usa los botones para abrir Gmail o mailto.",
-        "success"
-      );
+      if (data?.emailSent) {
+        showToast("Invitación generada y enviada por correo electrónico.", "success");
+      } else {
+        showToast(
+          "Invitación generada. Copié el correo al portapapeles (envío automático no disponible o falló).",
+          "success"
+        );
+      }
     } catch (e: any) {
       console.error("INVITE ERROR", e);
       showToast(e?.message || "Error generando invitación", "error");
@@ -1356,54 +1454,54 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
         {/* CENTERS */}
         {activeTab === "centers" && (
-            <SuperAdminCenters
-              centers={centers}
-              editingCenter={editingCenter}
-              setEditingCenter={setEditingCenter}
-              isCreating={isCreating}
-              setIsCreating={setIsCreating}
-              handleStartCreate={handleStartCreate}
-              handleSaveCenter={handleSaveCenter}
-              handleDeleteCenter={handleDeleteCenter}
-              isUploadingLogo={isUploadingLogo}
-              logoPreview={logoPreview}
-              setLogoPreview={setLogoPreview}
-              logoFile={logoFile}
-              setLogoFile={setLogoFile}
-              resetLogoState={resetLogoState}
-              marketingSettings={marketingSettings}
-              setMarketingSettings={setMarketingSettings}
-              marketingSaving={marketingSaving}
-              handleSaveMarketingSettings={handleSaveMarketingSettings}
-              isInvitingAdmin={isInvitingAdmin}
-              setIsInvitingAdmin={setIsInvitingAdmin}
-              handleInviteCenterAdmin={handleInviteCenterAdmin}
-              lastInviteLink={lastInviteLink}
-              setLastInviteLink={setLastInviteLink}
-              lastInviteTo={lastInviteTo}
-              setLastInviteTo={setLastInviteTo}
-              lastInviteSubject={lastInviteSubject}
-              setLastInviteSubject={setLastInviteSubject}
-              lastInviteBody={lastInviteBody}
-              setLastInviteBody={setLastInviteBody}
-              invitesLoading={invitesLoading}
-              centerInvites={centerInvites}
-              hasMoreCenters={hasMoreCenters}
-              onLoadMoreCenters={onLoadMoreCenters}
-              isLoadingMoreCenters={isLoadingMoreCenters}
-              newCenterName={newCenterName}
-              setNewCenterName={setNewCenterName}
-              newCenterSlug={newCenterSlug}
-              setNewCenterSlug={setNewCenterSlug}
-              newCenterAdminEmail={newCenterAdminEmail}
-              setNewCenterAdminEmail={setNewCenterAdminEmail}
-              renderBadge={renderBadge}
-              renderHealthBadge={renderHealthBadge}
-              buildGmailComposeUrl={buildGmailComposeUrl}
-              buildCopyEmailText={buildCopyEmailText}
-              showToast={showToast}
-              fetchCenterInvites={fetchCenterInvites}
-            />
+          <SuperAdminCenters
+            centers={centers}
+            editingCenter={editingCenter}
+            setEditingCenter={setEditingCenter}
+            isCreating={isCreating}
+            setIsCreating={setIsCreating}
+            handleStartCreate={handleStartCreate}
+            handleSaveCenter={handleSaveCenter}
+            handleDeleteCenter={handleDeleteCenter}
+            isUploadingLogo={isUploadingLogo}
+            logoPreview={logoPreview}
+            setLogoPreview={setLogoPreview}
+            logoFile={logoFile}
+            setLogoFile={setLogoFile}
+            resetLogoState={resetLogoState}
+            marketingSettings={marketingSettings}
+            setMarketingSettings={setMarketingSettings}
+            marketingSaving={marketingSaving}
+            handleSaveMarketingSettings={handleSaveMarketingSettings}
+            isInvitingAdmin={isInvitingAdmin}
+            setIsInvitingAdmin={setIsInvitingAdmin}
+            handleInviteCenterAdmin={handleInviteCenterAdmin}
+            lastInviteLink={lastInviteLink}
+            setLastInviteLink={setLastInviteLink}
+            lastInviteTo={lastInviteTo}
+            setLastInviteTo={setLastInviteTo}
+            lastInviteSubject={lastInviteSubject}
+            setLastInviteSubject={setLastInviteSubject}
+            lastInviteBody={lastInviteBody}
+            setLastInviteBody={setLastInviteBody}
+            invitesLoading={invitesLoading}
+            centerInvites={centerInvites}
+            hasMoreCenters={hasMoreCenters}
+            onLoadMoreCenters={onLoadMoreCenters}
+            isLoadingMoreCenters={isLoadingMoreCenters}
+            newCenterName={newCenterName}
+            setNewCenterName={setNewCenterName}
+            newCenterSlug={newCenterSlug}
+            setNewCenterSlug={setNewCenterSlug}
+            newCenterAdminEmail={newCenterAdminEmail}
+            setNewCenterAdminEmail={setNewCenterAdminEmail}
+            renderBadge={renderBadge}
+            renderHealthBadge={renderHealthBadge}
+            buildGmailComposeUrl={buildGmailComposeUrl}
+            buildCopyEmailText={buildCopyEmailText}
+            showToast={showToast}
+            fetchCenterInvites={fetchCenterInvites}
+          />
         )}
 
         {/* FINANZAS */}
@@ -1470,6 +1568,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             editingUser={editingUser}
             setEditingUser={setEditingUser}
             handleSaveUser={handleSaveUser}
+            hasMoreUsers={hasMoreUsers}
+            onLoadMoreUsers={() => fetchGlobalUsers(userSearchTerm, true)}
+            isLoadingMoreUsers={isLoadingMoreUsers}
           />
         )}
 
@@ -1508,6 +1609,15 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         <span className="bg-red-500 rounded-full w-2 h-2 animate-pulse"></span>
         Reportar Problema
       </a>
+      <ConfirmModal
+        isOpen={saModalConfig.isOpen}
+        onClose={() => setSaModalConfig((prev) => ({ ...prev, isOpen: false }))}
+        title={saModalConfig.title}
+        message={saModalConfig.message}
+        type={saModalConfig.type}
+        onConfirm={saModalConfig.onConfirm}
+        warningText={saModalConfig.warningText}
+      />
     </div>
   );
 };

@@ -1,6 +1,18 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { ClinicalTemplate, Prescription, ProfessionalRole } from "../types";
-import { generateId } from "../utils";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { ClinicalTemplate, Prescription, ProfessionalRole, Doctor, Patient } from "../types";
+import {
+  generateId,
+  auditPrescription,
+  canRoleIssueControlledPrescription,
+  canRoleIssuePrescription,
+  getDrugSuggestions,
+  hasControlledDrug,
+  isControlledPrescriptionType,
+  isPrescriptionDocumentType,
+  VademecumItem,
+  getPosologyTemplate,
+} from "../utils";
+import { signDocument } from "../utils/signature";
 import {
   FilePlus,
   Copy,
@@ -11,6 +23,9 @@ import {
   Sparkles,
   FileText,
   CheckSquare,
+  AlertTriangle,
+  ShieldAlert,
+  Info,
 } from "lucide-react";
 import { COMMON_MEDICATIONS } from "../constants";
 import { DEFAULT_CLINICAL_TEMPLATES } from "../constants/clinicalTemplates";
@@ -26,6 +41,8 @@ interface PrescriptionManagerProps {
   templates?: ClinicalTemplate[];
   role: ProfessionalRole; // Role is required to filter options
   currentDiagnosis?: string;
+  currentUser?: Doctor;
+  patient?: Patient;
 }
 
 const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
@@ -38,14 +55,16 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   templates,
   role: roleRaw,
   currentDiagnosis,
+  currentUser,
+  patient,
 }) => {
   const role: ProfessionalRole = String(roleRaw || "").toUpperCase() as any;
 
   // Authorization Logic
   // Authorization Logic
-  const canPrescribe = ["MEDICO", "ODONTOLOGO", "MATRONA"].includes(role);
+  const canPrescribe = canRoleIssuePrescription(role);
   // Matrona cannot prescribe controlled drugs (Receta Retenida)
-  const canPrescribeControlled = ["MEDICO", "ODONTOLOGO"].includes(role);
+  const canPrescribeControlled = canRoleIssueControlledPrescription(role);
 
   // Define available types with restrictions
   const allDocTypes = [
@@ -99,6 +118,124 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
   }, [templates, currentPrescriptionType, role]);
 
   const [currentPrescriptionText, setCurrentPrescriptionText] = useState("");
+  const [activeSuggestions, setActiveSuggestions] = useState<VademecumItem[]>([]);
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState<number>(-1);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const [wordRange, setWordRange] = useState<{ start: number; end: number } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const visibleSuggestions = useMemo(() => {
+    return showAllSuggestions ? activeSuggestions : activeSuggestions.slice(0, 8);
+  }, [activeSuggestions, showAllSuggestions]);
+
+  const handleTextChange = (text: string, cursorPosition: number) => {
+    setCurrentPrescriptionText(text);
+
+    if (cursorPosition === 0) {
+      setActiveSuggestions([]);
+      setSelectedSuggestionIdx(-1);
+      setShowAllSuggestions(false);
+      setWordRange(null);
+      return;
+    }
+
+    // Encontrar límites de la palabra en la posición del cursor
+    let start = cursorPosition;
+    while (start > 0 && !/\s|,/.test(text[start - 1])) {
+      start--;
+    }
+    let end = cursorPosition;
+    while (end < text.length && !/\s|,/.test(text[end])) {
+      end++;
+    }
+
+    const partialWord = text.substring(start, end);
+    if (partialWord.length >= 3) {
+      const matches = getDrugSuggestions(partialWord);
+      setActiveSuggestions(matches);
+      setSelectedSuggestionIdx(matches.length > 0 ? 0 : -1);
+      setShowAllSuggestions(false);
+      setWordRange({ start, end });
+    } else {
+      setActiveSuggestions([]);
+      setSelectedSuggestionIdx(-1);
+      setShowAllSuggestions(false);
+      setWordRange(null);
+    }
+  };
+
+  const handleSelectSuggestion = (item: VademecumItem, cleanOnly: boolean) => {
+    if (!wordRange || !textareaRef.current) return;
+
+    const drugName = item.presentation;
+    const posology = cleanOnly ? "" : getPosologyTemplate(item);
+
+    const text = currentPrescriptionText;
+    const newText =
+      text.substring(0, wordRange.start) + drugName + posology + text.substring(wordRange.end);
+
+    setCurrentPrescriptionText(newText);
+    if (
+      item.controlled &&
+      canPrescribeControlled &&
+      !isControlledPrescriptionType(currentPrescriptionType)
+    ) {
+      setCurrentPrescriptionType("Receta Retenida" as any);
+    }
+    setActiveSuggestions([]);
+    setSelectedSuggestionIdx(-1);
+    setShowAllSuggestions(false);
+    setWordRange(null);
+
+    // Calcular posición para resaltar los primeros guiones bajos "___"
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        if (!cleanOnly) {
+          const targetOffset = posology.indexOf("___");
+          if (targetOffset !== -1) {
+            const newCursorPos = wordRange.start + drugName.length + targetOffset;
+            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos + 3);
+          }
+        } else {
+          const newCursorPos = wordRange.start + drugName.length;
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }
+    }, 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (activeSuggestions.length > 0) {
+      const visibleCount = visibleSuggestions.length;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedSuggestionIdx((prev) => (prev + 1) % visibleCount);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedSuggestionIdx((prev) => (prev - 1 + visibleCount) % visibleCount);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (selectedSuggestionIdx >= 0 && selectedSuggestionIdx < visibleCount) {
+          handleSelectSuggestion(visibleSuggestions[selectedSuggestionIdx], false);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setActiveSuggestions([]);
+        setSelectedSuggestionIdx(-1);
+        setShowAllSuggestions(false);
+      }
+    }
+  };
+
+  const clinicalAlerts = useMemo(() => {
+    return auditPrescription(
+      currentPrescriptionText,
+      patient,
+      currentDiagnosis,
+      currentPrescriptionType
+    );
+  }, [currentPrescriptionText, patient, currentDiagnosis, currentPrescriptionType]);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [templateSearchTerm, setTemplateSearchTerm] = useState("");
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
@@ -154,14 +291,44 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
     }
   }, [currentPrescriptionType, currentDiagnosis]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!currentPrescriptionText.trim()) return;
+
+    if (isPrescriptionDocumentType(currentPrescriptionType) && !canPrescribe) {
+      alert(`Su rol (${role}) no está autorizado para emitir recetas.`);
+      return;
+    }
+
+    if (isControlledPrescriptionType(currentPrescriptionType) && !canPrescribeControlled) {
+      alert(`Su rol (${role}) no está autorizado para emitir Receta Retenida.`);
+      return;
+    }
+
+    if (
+      hasControlledDrug(currentPrescriptionText) &&
+      !isControlledPrescriptionType(currentPrescriptionType)
+    ) {
+      alert(
+        "Se detectó un medicamento potencialmente controlado. Debe emitirse como Receta Retenida por profesional autorizado."
+      );
+      return;
+    }
+
+    const signature =
+      currentUser && patient
+        ? await signDocument(
+            currentPrescriptionText,
+            currentUser.fullName,
+            currentUser.rut || currentUser.id
+          )
+        : undefined;
 
     const newDoc: Prescription = {
       id: generateId(),
       type: currentPrescriptionType,
       content: currentPrescriptionText,
       createdAt: new Date().toISOString(),
+      signature,
       metadata:
         pendingExamsMetadata.length > 0 ? { selectedExams: pendingExamsMetadata } : undefined,
     };
@@ -346,6 +513,7 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
         </div>
 
         <textarea
+          ref={textareaRef}
           placeholder={
             canPrescribe
               ? "Escriba aquí los fármacos, indicaciones o el contenido del documento..."
@@ -353,10 +521,149 @@ const PrescriptionManager: React.FC<PrescriptionManagerProps> = ({
           }
           className="w-full p-4 border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-amber-100 focus:border-amber-400 outline-none resize-none h-48 text-lg text-slate-700 mb-4"
           value={currentPrescriptionText}
-          onChange={(e) => setCurrentPrescriptionText(e.target.value)}
+          onChange={(e) => handleTextChange(e.target.value, e.target.selectionStart)}
+          onKeyDown={handleKeyDown}
+          onKeyUp={(e) => {
+            if (
+              ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key) &&
+              activeSuggestions.length > 0
+            ) {
+              return;
+            }
+            handleTextChange(
+              (e.target as HTMLTextAreaElement).value,
+              (e.target as HTMLTextAreaElement).selectionStart
+            );
+          }}
+          onSelect={(e) =>
+            handleTextChange(
+              (e.target as HTMLTextAreaElement).value,
+              (e.target as HTMLTextAreaElement).selectionStart
+            )
+          }
           spellCheck={true}
           lang="es"
         />
+
+        {/* Autocomplete Suggestions */}
+        {activeSuggestions.length > 0 && (
+          <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm max-h-[320px] overflow-y-auto custom-scrollbar animate-fadeIn animate-duration-150">
+            <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200">
+              <p className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                Resultados del Vademécum ({activeSuggestions.length})
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                ↑↓ navegar · Enter inserta con posología
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {visibleSuggestions.map((item, idx) => {
+                const isHighlighted = idx === selectedSuggestionIdx;
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between gap-2 p-2 rounded-lg border transition-all ${
+                      isHighlighted
+                        ? "bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-100"
+                        : "bg-white border-slate-100 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-sm text-slate-800 truncate">
+                          {item.presentation}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            item.source === "local"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {item.source === "local" ? "Local" : "ISP"}
+                        </span>
+                        {item.controlled && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                            Controlado
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 truncate">
+                        {item.activePrinciple} · {item.form} · {item.route}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSuggestion(item, true)}
+                        className="h-7 px-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-semibold rounded-md text-[11px] transition-all active:scale-95"
+                      >
+                        + Fármaco
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSuggestion(item, false)}
+                        className="h-7 px-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-md text-[11px] transition-all active:scale-95 shadow-sm"
+                      >
+                        Posología
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {activeSuggestions.length > 8 && !showAllSuggestions && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllSuggestions(true)}
+                  className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-lg text-xs transition-colors mt-1.5 text-center"
+                >
+                  Ver más sugerencias ({activeSuggestions.length - 8})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Auditor Alerts Container */}
+        {clinicalAlerts.length > 0 && (
+          <div className="mb-4 space-y-2 animate-fadeIn">
+            <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-500 font-medium italic">
+              <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Descargo Clínico:</strong> Estas alertas son un apoyo operacional y no
+                reemplazan el criterio clínico del profesional tratante.
+              </span>
+            </div>
+            {clinicalAlerts.map((alert, idx) => {
+              let bg = "bg-blue-50/70 border-blue-200 text-blue-800";
+              let icon = <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />;
+
+              if (alert.severity === "error") {
+                bg = "bg-red-50/70 border-red-200 text-red-800";
+                icon = <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />;
+              } else if (alert.severity === "warning") {
+                bg = "bg-amber-50/70 border-amber-200 text-amber-800";
+                icon = <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />;
+              }
+
+              return (
+                <div
+                  key={idx}
+                  className={`p-3.5 border rounded-xl flex items-start gap-3 text-sm font-medium transition-all ${bg}`}
+                >
+                  {icon}
+                  <div>
+                    <strong className="block font-bold text-xs uppercase tracking-wider mb-0.5">
+                      {alert.title}
+                    </strong>
+                    <span className="text-xs leading-relaxed">{alert.message}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex justify-end">
           <button
             type="button"

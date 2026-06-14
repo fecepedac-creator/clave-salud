@@ -211,7 +211,39 @@ export function useBooking(
         await setDoc(doc(db, "patients", patientId), patientPayload);
       } catch (err) {
         console.warn("Patient already exists or creation failed (Global):", err);
-        // We don't block the booking if patient creation fails (it likely already exists)
+        try {
+          const preadmissionId = generateId();
+          await setDoc(doc(db, "centers", activeCenterId, "preadmissions", preadmissionId), {
+            id: preadmissionId,
+            centerId: activeCenterId,
+            status: "pending",
+            source: "public_booking",
+            createdAt: serverTimestamp(),
+            contact: {
+              name,
+              rut: formattedRut,
+              phone,
+              email: email || null,
+            },
+            patientDraft: patientPayload,
+            appointmentDraft: {
+              id: bookedAppointment.id,
+              centerId: activeCenterId,
+              doctorId: bookedAppointment.doctorId,
+              doctorUid: bookedAppointment.doctorUid,
+              date: bookedAppointment.date,
+              time: bookedAppointment.time,
+              patientId,
+              patientName: name,
+              patientRut: formattedRut,
+              patientPhone: phone,
+              patientEmail: email || null,
+              source: "public_booking_patient_create_failed",
+            },
+          });
+        } catch (preadmissionError) {
+          console.warn("Could not create public booking preadmission fallback:", preadmissionError);
+        }
       }
     }
 

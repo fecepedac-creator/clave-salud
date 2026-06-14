@@ -30,8 +30,14 @@ service firebase.storage {
     }
 
     function isCenterAdmin(centerId) {
-      return isStaff(centerId)
-        && get(staffPath(centerId, uid())).data.role == "center_admin";
+      let staff = get(staffPath(centerId, uid())).data;
+      let role = staff.accessRole != null ? staff.accessRole : staff.role;
+      let r = role == null ? "" : role.lower();
+      return isStaff(centerId) && (
+        r == "center_admin"
+        || r == "admin_centro"
+        || r == "admin"
+      );
     }
 
     match /centers-logos/{centerId}/{fileName} {

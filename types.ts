@@ -42,6 +42,7 @@ export interface MedicalCenter {
     dental: boolean; // Enables Odontogram
     prescriptions: boolean; // Enables Prescription Manager
     agenda: boolean; // Enables Appointment Scheduling
+    reports?: boolean;
   };
   accessMode?: "CENTER_WIDE" | "CARE_TEAM";
   features?: {
@@ -55,6 +56,14 @@ export interface MedicalCenter {
     representativePhone: string; // For WhatsApp
     email: string;
     address?: string;
+  };
+  billing?: {
+    plan?: "trial" | "basic" | "pro" | "enterprise";
+    monthlyUF?: number;
+    billingStatus?: "paid" | "due" | "overdue" | "grace" | "suspended";
+    nextDueDate?: string;
+    lastPaidAt?: string;
+    notes?: string;
   };
   subscription?: {
     planName: string;
@@ -84,7 +93,8 @@ export type AuditEntityType =
   | "consultation"
   | "appointment"
   | "document"
-  | "centerSettings";
+  | "centerSettings"
+  | "staff";
 
 export type AuditAction =
   | "ACCESS"
@@ -173,6 +183,14 @@ export interface Attachment {
   url: string;
 }
 
+export interface SignatureData {
+  hash: string;
+  signedAt: string;
+  professionalName: string;
+  professionalRut: string;
+  verificationCode: string; // 8-char short code
+}
+
 export interface Prescription {
   id: string;
   type:
@@ -199,6 +217,7 @@ export interface Prescription {
   metadata?: {
     selectedExams?: string[];
   } & JsonMap;
+  signature?: SignatureData;
 }
 
 export interface ClinicalTemplate {
@@ -313,6 +332,8 @@ export interface Consultation extends SoftDeletable {
   podogram?: NailState[];
 
   prescriptions: Prescription[];
+  prescriptionTypes?: string[];
+  hasControlledPrescription?: boolean;
   professionalName: string;
   professionalId: string;
   professionalRole: ProfessionalRole;
@@ -366,6 +387,14 @@ export interface Patient extends SoftDeletable {
 
   occupation?: string;
   livingWith?: string[];
+
+  hasAllergies?: "Si" | "No";
+  hasTobacco?: "Si" | "No";
+  tobaccoAmount?: string;
+  hasAlcohol?: "Si" | "No";
+  alcoholAmount?: string;
+  hasDrugs?: "Si" | "No";
+  pets?: string;
 
   // --- FHIR R4 / Core-CL Alignment ---
   fhirMetadata?: {
@@ -473,7 +502,7 @@ export interface Appointment extends SoftDeletable {
   patientEmail?: string;
   bookedAt?: FirestoreDateLike;
   cancelledAt?: FirestoreDateLike;
-  status: "available" | "booked";
+  status: "available" | "booked" | "cancelled" | "requires_contact";
 
   // Service/Exam Extension
   type?: "CONSULTATION" | "SERVICE";
@@ -540,7 +569,7 @@ export interface Preadmission {
   source?: "public" | "staff";
   submittedByUid?: string | null;
   createdAt?: FirestoreDateLike;
-  status?: "pending" | "approved" | "rejected";
+  status?: "pending" | "approved" | "rejected" | "requires_contact";
 }
 
 export interface AgendaConfig {
@@ -574,7 +603,14 @@ export type RoleId =
  * Roles canónicos usados por Auth Claims / Firestore Rules (snake_case).
  * Mantener compatibilidad con roles legacy definidos en RoleId.
  */
-export type CanonicalRole = "super_admin" | "center_admin" | "admin" | "doctor" | "staff";
+export type CanonicalRole =
+  | "super_admin"
+  | "center_admin"
+  | "administrative"
+  | "professional"
+  | "admin"
+  | "doctor"
+  | "staff";
 
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.

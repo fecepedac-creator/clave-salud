@@ -82,9 +82,7 @@ export const SuperAdminCommunications: React.FC<SuperAdminCommunicationsProps> =
               </select>
               <div className="text-xs text-slate-400 mt-1">
                 Admin:{" "}
-                {commCenter?.adminEmail
-                  ? commCenter.adminEmail
-                  : "— (configúralo en Centros)"}
+                {commCenter?.adminEmail ? commCenter.adminEmail : "— (configúralo en Centros)"}
               </div>
             </label>
 
@@ -166,9 +164,7 @@ export const SuperAdminCommunications: React.FC<SuperAdminCommunicationsProps> =
                 className="w-5 h-5 accent-indigo-600"
               />
               <div>
-                <span className="block font-bold text-slate-700">
-                  Generar plantilla para email
-                </span>
+                <span className="block font-bold text-slate-700">Generar plantilla para email</span>
                 <span className="text-xs text-slate-400">
                   Envío real por correo: idealmente Cloud Function.
                 </span>

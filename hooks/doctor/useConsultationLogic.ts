@@ -1,12 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Dispatch, SetStateAction } from "react";
 import { Consultation, Patient, MedicalCenter, ProfessionalRole, SnomedConcept } from "../../types";
-import { generateId, sanitizeForFirestore } from "../../utils";
+import {
+  canRoleIssueControlledPrescription,
+  canRoleIssuePrescription,
+  generateId,
+  hasControlledDrug,
+  isControlledPrescriptionType,
+  sanitizeForFirestore,
+} from "../../utils";
 import { useToast } from "../../components/Toast";
-import { db, auth } from "../../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { auth, functions } from "../../firebase";
+import { httpsCallable } from "firebase/functions";
 
 interface UseConsultationLogicProps {
   selectedPatient: Patient | null;
+  setSelectedPatient: Dispatch<SetStateAction<Patient | null>>;
   activeCenterId: string | null;
   activeCenter?: MedicalCenter | null;
   hasActiveCenter: boolean;
@@ -20,6 +28,7 @@ interface UseConsultationLogicProps {
 
 export const useConsultationLogic = ({
   selectedPatient,
+  setSelectedPatient,
   activeCenterId,
   activeCenter,
   hasActiveCenter,
@@ -180,11 +189,13 @@ export const useConsultationLogic = ({
 
   const removeDiagnosis = (diag: SnomedConcept) => {
     setNewConsultation((prev) => {
-      const updated = (prev.diagnoses || []).filter((d) => d.code !== diag.code || d.display !== diag.display);
+      const updated = (prev.diagnoses || []).filter(
+        (d) => d.code !== diag.code || d.display !== diag.display
+      );
       return {
         ...prev,
         diagnoses: updated,
-        diagnosis: updated.map(d => d.display).join(" • "), // Sync with legacy string
+        diagnosis: updated.map((d) => d.display).join(" • "), // Sync with legacy string
       };
     });
   };
@@ -210,6 +221,8 @@ export const useConsultationLogic = ({
       lastUpdated: new Date().toISOString(),
     };
 
+    // Reflect immediately in UI (left sidebar) before persistence pipeline finishes.
+    setSelectedPatient(updatedPatient);
     onUpdatePatient(updatedPatient);
     showToast("Agregado a antecedentes morbidos", "success");
     onLogActivity(
@@ -225,6 +238,91 @@ export const useConsultationLogic = ({
 
     if (!hasActiveCenter) {
       showToast("Selecciona un centro activo antes de guardar.", "warning");
+      return;
+    }
+
+    const checklistWarnings: string[] = [];
+    const isPscv = newConsultation.consultationType === "pscv";
+    if (!String(newConsultation.reason || "").trim())
+      checklistWarnings.push("Motivo de consulta vacio");
+    if (!String(newConsultation.anamnesis || "").trim())
+      checklistWarnings.push("Anamnesis/evolucion vacia");
+    if (
+      !String(newConsultation.diagnosis || "").trim() &&
+      !(newConsultation.diagnoses?.length || 0)
+    ) {
+      checklistWarnings.push("Diagnostico/hipotesis sin registrar");
+    }
+    if (
+      !String(newConsultation.nextControlReason || "").trim() &&
+      !newConsultation.nextControlDate
+    ) {
+      checklistWarnings.push("Plan, indicaciones o proximo control sin registrar");
+    }
+    if (
+      isPscv &&
+      !newConsultation.bloodPressure &&
+      !newConsultation.weight &&
+      !newConsultation.hgt
+    ) {
+      checklistWarnings.push("Control PSCV sin signos/metas principales registrados");
+    }
+
+    if (checklistWarnings.length > 0) {
+      const isAutomatedTest =
+        typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("jsdom");
+      const shouldContinue = isAutomatedTest
+        ? true
+        : window.confirm(
+            `Checklist de ficha incompleta:\n\n- ${checklistWarnings.join(
+              "\n- "
+            )}\n\nPuede guardar de todas formas si corresponde clinicamente. ¿Desea continuar?`
+          );
+      if (!shouldContinue) {
+        showToast("Revise la ficha antes de finalizar.", "info");
+        return;
+      }
+    }
+
+    // Validar seguridad de roles sobre recetas
+    const prescriptions = newConsultation.prescriptions || [];
+    const prescriptionTypes = Array.from(new Set(prescriptions.map((p) => p.type).filter(Boolean)));
+    const hasStandardReceta = prescriptions.some((p) => p.type === "Receta Médica");
+    const hasRetenidaReceta = prescriptions.some((p) => isControlledPrescriptionType(p.type));
+    const hasControlledDrugContent = prescriptions.some((p) => hasControlledDrug(p.content || ""));
+
+    if (hasStandardReceta || hasRetenidaReceta) {
+      if (!canRoleIssuePrescription(role)) {
+        showToast(`Rol no autorizado para emitir recetas. Su rol es: ${role}`, "error");
+        console.error("Intento de guardado de receta por rol no autorizado:", role);
+        return;
+      }
+
+      if (hasRetenidaReceta && !canRoleIssueControlledPrescription(role)) {
+        showToast(
+          `Su rol (${role}) no está autorizado para prescribir medicamentos controlados (Receta Retenida).`,
+          "error"
+        );
+        console.error("Intento de guardado de Receta Retenida por rol no calificado:", role);
+        return;
+      }
+    }
+
+    if (hasControlledDrugContent && !hasRetenidaReceta) {
+      showToast(
+        "Se detectó un medicamento potencialmente controlado. Debe emitirse como Receta Retenida.",
+        "error"
+      );
+      console.error(
+        "Intento de guardado de medicamento controlado fuera de Receta Retenida:",
+        role
+      );
+      return;
+    }
+
+    if (hasControlledDrugContent && !canRoleIssueControlledPrescription(role)) {
+      showToast(`Su rol (${role}) no está autorizado para medicamentos controlados.`, "error");
+      console.error("Intento de guardado de medicamento controlado por rol no calificado:", role);
       return;
     }
 
@@ -253,6 +351,8 @@ export const useConsultationLogic = ({
 
       // Special Modules
       prescriptions: (newConsultation.prescriptions || []) as any,
+      prescriptionTypes,
+      hasControlledPrescription: hasRetenidaReceta || hasControlledDrugContent,
       dentalMap: (newConsultation.dentalMap || []) as any,
       podogram: (newConsultation.podogram || []) as any,
       exams: (newConsultation.exams || {}) as any,
@@ -275,21 +375,26 @@ export const useConsultationLogic = ({
     // 1) Guardar en Firestore (colección "consultations")
     try {
       if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
-      await addDoc(
-        collection(db, "patients", selectedPatient.id, "consultations"),
-        sanitizeForFirestore({
+      const createPatientConsultation = httpsCallable<
+        { centerId: string; patientId: string; consultation: Consultation },
+        { ok: boolean; id: string }
+      >(functions, "createPatientConsultation");
+      await createPatientConsultation({
+        centerId: activeCenterId || "",
+        patientId: selectedPatient.id,
+        consultation: sanitizeForFirestore({
           ...consultation,
           centerId: activeCenterId,
           patientId: selectedPatient?.id ?? null,
           createdByUid: currentUid,
-          createdAt: serverTimestamp(),
-        })
-      );
+        }) as Consultation,
+      });
       console.log("✅ Consultation saved to Firestore");
       showToast("Atención guardada correctamente en la nube", "success");
     } catch (error) {
       console.error(error);
-      showToast("Error al guardar en la nube (se guardó localmente)", "error");
+      showToast("Error al guardar la atención. No se modificó la ficha.", "error");
+      return;
     }
 
     // 2) Actualizar estado local (lista de pacientes)

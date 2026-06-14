@@ -206,6 +206,7 @@ const MarketingFlyerModal: React.FC<MarketingFlyerModalProps> = ({
 
       const context = {
         type,
+        centerId: center?.id,
         centerName: center?.name,
         doctorName: selectedDoctor?.fullName,
         specialties,

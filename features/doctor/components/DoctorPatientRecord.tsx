@@ -11,6 +11,8 @@ import {
   SnomedConcept,
 } from "../../../types";
 import { generateId } from "../../../utils";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../../../firebase";
 
 // Components
 import PatientSidebar from "../../../components/PatientSidebar";
@@ -84,10 +86,12 @@ export interface DoctorPatientRecordProps {
   onSaveExamOrderProfile?: (profile: { label: string; exams: string[] }) => void;
   onDeleteExamOrderProfile?: (id: string) => void;
   savedExamOrderProfiles?: Array<{ id: string; label: string; exams: string[] }>;
+  isPiiMasked: boolean;
 }
 
 export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
   selectedPatient,
+  isPiiMasked,
   setSelectedPatient,
   isEditingPatient,
   setIsEditingPatient,
@@ -243,6 +247,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
 
       <DoctorPatientHeader
         selectedPatient={selectedPatient}
+        isPiiMasked={isPiiMasked}
         setSelectedPatient={setSelectedPatient}
         isEditingPatient={isEditingPatient}
         setIsEditingPatient={setIsEditingPatient}
@@ -263,6 +268,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
         <div className="h-auto lg:h-full max-w-[1800px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12">
           <PatientSidebar
             selectedPatient={selectedPatient}
+            isPiiMasked={isPiiMasked}
             isEditingPatient={isEditingPatient}
             toggleEditPatient={() => {
               if (isEditingPatient) {
@@ -281,10 +287,8 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 try {
                   const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
                   const { storage } = await import("../../../firebase");
-                  const storageRef = ref(
-                    storage,
-                    `users/${currentUser.uid}/patients/${selectedPatient.id}/${Date.now()}_${f.name}`
-                  );
+                  const storagePath = `centers/${activeCenterId}/patients/${selectedPatient.id}/attachments/${Date.now()}_${f.name}`;
+                  const storageRef = ref(storage, storagePath);
                   await uploadBytes(storageRef, f);
                   const downloadUrl = await getDownloadURL(storageRef);
 
@@ -293,13 +297,20 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                     : f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf")
                       ? "pdf"
                       : "other";
-                  const att: Attachment = {
+                  const att = {
                     id: generateId(),
                     name: f.name,
                     type: fileType,
                     date: new Date().toISOString(),
                     url: downloadUrl,
-                  };
+                    storagePath,
+                  } as Attachment & { storagePath: string };
+                  const addPatientAttachment = httpsCallable(functions, "addPatientAttachment");
+                  await addPatientAttachment({
+                    centerId: activeCenterId,
+                    patientId: selectedPatient.id,
+                    attachment: att,
+                  });
                   const up = {
                     ...selectedPatient,
                     attachments: [...(selectedPatient.attachments || []), att],
@@ -339,9 +350,14 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 </div>
                 {!isReadOnly &&
                   role !== "KINESIOLOGO" &&
-                  (["MEDICO", "ENFERMERA", "NUTRICIONISTA", "PODOLOGO", "ADMIN_CENTRO", "SUPER_ADMIN"].includes(
-                    role as string
-                  ) ||
+                  ([
+                    "MEDICO",
+                    "ENFERMERA",
+                    "NUTRICIONISTA",
+                    "PODOLOGO",
+                    "ADMIN_CENTRO",
+                    "SUPER_ADMIN",
+                  ].includes(role as string) ||
                     (role as string).includes("ADMIN")) && (
                     <div className="flex gap-4">
                       <button
@@ -350,7 +366,10 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                         className="bg-primary-600 text-white pl-6 pr-8 py-4 rounded-xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-200 flex items-center gap-2 transition-transform active:scale-95 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="btn-new-morbidity-consultation"
                         onClick={() => {
-                          setNewConsultation((prev) => ({ ...prev, consultationType: "morbidity" }));
+                          setNewConsultation((prev) => ({
+                            ...prev,
+                            consultationType: "morbidity",
+                          }));
                           setIsCreatingConsultation(true);
                         }}
                       >
@@ -404,7 +423,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 currentUser={currentUser}
                 myExamProfiles={myExamProfiles}
                 myTemplates={myTemplates}
-                diagnoses={diagnoses}
+                diagnoses={newConsultation.diagnoses || diagnoses}
                 addDiagnosis={addDiagnosis}
                 removeDiagnosis={removeDiagnosis}
                 pinDiagnosis={pinDiagnosis}

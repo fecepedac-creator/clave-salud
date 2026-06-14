@@ -17,7 +17,9 @@ async function goToPerformanceTab(page: any) {
   await page.goto(`${TEST.BASE_URL}/center/${TEST.CENTER_ID}?agent_test=true`);
 
   // Esperar a que el dashboard sea interactivo
-  const tabPerformance = page.locator('[data-testid="admin-tab-performance"]').or(page.getByText('Rendimiento'));
+  const tabPerformance = page
+    .locator('[data-testid="admin-tab-performance"]')
+    .or(page.getByText("Rendimiento"));
   await expect(tabPerformance.first()).toBeVisible({ timeout: 60000 });
 
   // Click en Rendimiento
@@ -36,7 +38,8 @@ async function goToPerformanceTab(page: any) {
   // 3. Esperar que el dato esté hidratado (o que indique que no hay datos)
   // Esto es más robusto para entornos de prueba sin pre-seed.
   await expect(
-    page.locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)
+    page
+      .locator(`[data-testid="prof-name-${TEST.DOCTOR_ID}"]`)
       .or(page.getByText(/Sin datos de rendimiento/i))
   ).toBeVisible({
     timeout: 15000,
@@ -119,7 +122,9 @@ test("T3 — Admin: Cierre contable de mes y cambio de badge a 'Mes Cerrado'", a
   await expect(closeBtn).toBeVisible();
 
   if (!(await closeBtn.isEnabled())) {
-    console.log("ℹ️  T3 — Cierre omitido (Pass por defecto): Botón deshabilitado (sin datos/stats).");
+    console.log(
+      "ℹ️  T3 — Cierre omitido (Pass por defecto): Botón deshabilitado (sin datos/stats)."
+    );
     return;
   }
 

@@ -87,6 +87,19 @@ const CENTER_BG_SRC = `${ASSET_BASE}assets/Fondo%202.webp`;
 const HOME_BG_FALLBACK_SRC = `${ASSET_BASE}assets/home-bg.png`;
 const CENTER_BG_FALLBACK_SRC = `${ASSET_BASE}assets/background.png.png`;
 const GOOGLE_ICON_SRC = "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg";
+const IS_LOCALHOST =
+  typeof window !== "undefined" &&
+  /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+const ENABLE_LOCAL_ACCESS_MODES =
+  (import.meta as any)?.env?.DEV === true ||
+  (import.meta as any)?.env?.VITE_ENABLE_LOCAL_ACCESS_MODES === "true" ||
+  IS_LOCALHOST;
+
+const queryHasLocalAccessMode = (name: string) =>
+  ENABLE_LOCAL_ACCESS_MODES && new URLSearchParams(window.location.search).has(name);
+
+const isAgentTestQueryActive = () =>
+  ENABLE_LOCAL_ACCESS_MODES && window.location.search.includes("agent_test=true");
 
 const App: React.FC = () => {
   const { showToast } = useToast();
@@ -111,39 +124,52 @@ const App: React.FC = () => {
   } = useAuth();
 
   const [demoMode, setDemoMode] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has("demo") || params.has("agent_test");
+    return queryHasLocalAccessMode("demo") || queryHasLocalAccessMode("agent_test");
   });
 
   const [masterAccess] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has("master_access") || params.has("agent_test") || params.has("demo");
+    return (
+      queryHasLocalAccessMode("master_access") ||
+      queryHasLocalAccessMode("agent_test") ||
+      queryHasLocalAccessMode("demo")
+    );
   });
 
   const demoRole = useMemo(() => {
     return new URLSearchParams(window.location.search).get("demo_role") || "admin";
   }, []);
 
-  const mockDemoUser: UserProfile = useMemo(
-    () => ({
+  const mockDemoUser: UserProfile = useMemo(() => {
+    const normalizedDemoRole = String(demoRole || "admin").toLowerCase();
+    const isDoctor = normalizedDemoRole === "doctor" || normalizedDemoRole === "professional";
+    const isAdministrative =
+      normalizedDemoRole === "administrative" ||
+      normalizedDemoRole === "administrativo" ||
+      normalizedDemoRole === "secretaria";
+    const isSuperAdmin =
+      normalizedDemoRole === "superadmin" || normalizedDemoRole === "super_admin";
+    const role = isDoctor ? "MEDICO" : isAdministrative ? "ADMINISTRATIVO" : "ADMIN_CENTRO";
+    const roles = isSuperAdmin
+      ? ["SUPER_ADMIN"]
+      : isDoctor
+        ? ["MEDICO"]
+        : isAdministrative
+          ? ["ADMINISTRATIVO"]
+          : ["ADMIN_CENTRO"];
+
+    return {
       uid: "demo_user_uid",
       id: "demo_user_uid",
       email: "demo@clavesalud.com",
       fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
-      role: demoRole === "doctor" ? "MEDICO" : "ADMIN_CENTRO",
-      roles:
-        demoRole === "superadmin"
-          ? ["SUPER_ADMIN"]
-          : demoRole === "doctor"
-            ? ["MEDICO"]
-            : ["ADMIN_CENTRO"],
+      role,
+      roles,
       centers: ["c_saludmass", "c_eji2qv61"],
       centros: ["c_saludmass", "c_eji2qv61"],
-      isAdmin: demoRole !== "doctor",
+      isAdmin: !isDoctor,
       activo: true,
-    }),
-    [demoRole]
-  );
+    };
+  }, [demoRole]);
 
   const mockMasterUser: UserProfile = useMemo(
     () => ({
@@ -178,15 +204,17 @@ const App: React.FC = () => {
   // Combined superadmin check
   const effectiveIsSuperAdmin = useMemo(() => {
     const res = (demoMode && demoRole === "superadmin") || isSuperAdminClaim;
-    process.env.NODE_ENV === "development" && console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
+    process.env.NODE_ENV === "development" &&
+      console.log("[DEBUG] effectiveIsSuperAdmin:", res, { demoMode, demoRole, isSuperAdminClaim });
     return res;
   }, [demoMode, demoRole, isSuperAdminClaim]);
 
   const [activeCenterId, setActiveCenterId] = useState(() => {
     const p = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
-    const isAgentTest = params.has("agent_test") || params.has("master_access");
-    
+    const isAgentTest =
+      queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("master_access");
+
     if (p.startsWith("/superadmin")) return "";
     if (p.startsWith("/center/")) return p.split("/")[2];
     if (isAgentTest) return "c_eji2qv61";
@@ -196,14 +224,16 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(() => {
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname;
-    const isAgentTest = params.has("agent_test") || params.has("master_access");
+    const isAgentTest =
+      queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("master_access");
 
     if (isAgentTest) {
-       if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
-       return "admin-dashboard" as ViewMode;
+      if (path.includes("pro") || path.includes("doc")) return "doctor-dashboard" as ViewMode;
+      return "admin-dashboard" as ViewMode;
     }
-    if (path.startsWith("/verify/")) return "verify-document" as ViewMode;
-    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro")) return "doctor-login" as ViewMode;
+    if (path.startsWith("/verify/") || path.startsWith("/v/")) return "verify-document" as ViewMode;
+    if (path.startsWith("/accesoprofesionales") || path.startsWith("/pro"))
+      return "doctor-login" as ViewMode;
     if (path.startsWith("/acceso-admin")) return "admin-login" as ViewMode;
     if (path.startsWith("/center/")) {
       const segments = path.split("/");
@@ -253,7 +283,7 @@ const App: React.FC = () => {
   // --- ATOMIC FIX: Force Test Center for Audit Stability ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has("agent_test") || params.has("demo")) {
+    if (queryHasLocalAccessMode("agent_test") || queryHasLocalAccessMode("demo")) {
       const TEST_ID = "c_eji2qv61";
       if (!activeCenterId) {
         console.log("[Audit] Iniciando Center ID de prueba:", TEST_ID);
@@ -625,7 +655,7 @@ const App: React.FC = () => {
   );
 
   const handleExitPreview = useCallback(() => {
-    const isAgentTest = window.location.search.includes("agent_test=true");
+    const isAgentTest = isAgentTestQueryActive();
     const demoRole = new URLSearchParams(window.location.search).get("demo_role");
 
     if (typeof window !== "undefined") {
@@ -649,9 +679,21 @@ const App: React.FC = () => {
   useEffect(() => {
     handleRedirectResult(
       () => setView("superadmin-dashboard" as any),
-      handleSuperAdminUnauthorized
+      handleSuperAdminUnauthorized,
+      (user, targetView) => {
+        setLocalCurrentUser(user);
+        setDemoMode(false);
+        const resolvedTargetView = resolveDashboardView(user, targetView);
+        setPostCenterSelectView(resolvedTargetView);
+        setView("select-center" as any);
+      }
     );
-  }, [handleRedirectResult, handleSuperAdminUnauthorized]);
+  }, [
+    handleRedirectResult,
+    handleSuperAdminUnauthorized,
+    resolveDashboardView,
+    setLocalCurrentUser,
+  ]);
 
   useEffect(() => {
     loadPreviewState();
@@ -669,8 +711,19 @@ const App: React.FC = () => {
     if (previewCenterId !== activeCenterId) setActiveCenterId(previewCenterId);
   }, [activeCenterId, previewCenterId, setActiveCenterId]);
 
+  const resolvedActiveCenter = useMemo(() => {
+    const loadedCenter = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    if (loadedCenter) return loadedCenter;
+    const localAccessMode =
+      queryHasLocalAccessMode("agent_test") ||
+      queryHasLocalAccessMode("demo") ||
+      queryHasLocalAccessMode("master_access");
+    if (!localAccessMode || !activeCenterId) return null;
+    return INITIAL_CENTERS.find((c) => c.id === activeCenterId) ?? null;
+  }, [activeCenterId, centers]);
+
   const centerCtxValue = useMemo(() => {
-    const c = (centers as any[])?.find((x: any) => x?.id === activeCenterId) ?? null;
+    const c = resolvedActiveCenter;
     const modules = (c?.modules ?? {}) as CenterModules;
     return {
       activeCenterId,
@@ -685,7 +738,7 @@ const App: React.FC = () => {
         return v === true || (typeof v === "string" && v === "enabled");
       },
     };
-  }, [activeCenterId, centers, updateModules]);
+  }, [activeCenterId, resolvedActiveCenter, updateModules]);
 
   const isApplyingPopStateRef = useRef(false);
   const lastPathRef = useRef<string | null>(null);
@@ -714,6 +767,7 @@ const App: React.FC = () => {
         pathname.startsWith("/pro/center/") ||
         pathname === "/pro" ||
         pathname === "/accesoprofesionales";
+      const isAgentTest = isAgentTestQueryActive();
 
       isApplyingPopStateRef.current = true;
 
@@ -725,8 +779,13 @@ const App: React.FC = () => {
           }
           setView("doctor-dashboard" as ViewMode);
         } else {
-          setView("doctor-login" as ViewMode);
-          if (activeCenterIdRef.current) setActiveCenterId("");
+          if (isAgentTest) {
+            if (!activeCenterIdRef.current) setActiveCenterId("c_eji2qv61");
+            setView("doctor-dashboard" as ViewMode);
+          } else {
+            setView("doctor-login" as ViewMode);
+            if (activeCenterIdRef.current) setActiveCenterId("");
+          }
         }
         setLoginViewPreference("doctor-dashboard" as ViewMode);
       }
@@ -752,9 +811,17 @@ const App: React.FC = () => {
         setView("superadmin-dashboard" as ViewMode);
         setLoginViewPreference("superadmin-dashboard" as ViewMode);
       }
+      // Handle Verification Intent
+      else if (pathname.startsWith("/verify/") || pathname.startsWith("/v/")) {
+        setView("verify-document" as ViewMode);
+      }
       // Handle Home/Empty
       else {
-        if (activeCenterIdRef.current) setActiveCenterId("");
+        if (isAgentTest && !activeCenterIdRef.current) {
+          setActiveCenterId("c_eji2qv61");
+        } else if (activeCenterIdRef.current && !isAdminEntry && !isProEntry && !isAgentTest) {
+          setActiveCenterId("");
+        }
         setLoginViewPreference(null);
         if (
           viewRef.current !== ("home" as ViewMode) &&
@@ -810,8 +877,13 @@ const App: React.FC = () => {
 
   // AGGRESSIVE E2E FORCE: Isolate from main logic to avoid breaking login
   useEffect(() => {
-    const isAgentTest = window.location.search.includes("agent_test=true");
-    if (isAgentTest && window.location.pathname.startsWith("/superadmin") && effectiveLocalCurrentUser && !isPreviewActive) {
+    const isAgentTest = isAgentTestQueryActive();
+    if (
+      isAgentTest &&
+      window.location.pathname.startsWith("/superadmin") &&
+      effectiveLocalCurrentUser &&
+      !isPreviewActive
+    ) {
       if (view !== "superadmin-dashboard") {
         setView("superadmin-dashboard" as ViewMode);
       }
@@ -821,7 +893,7 @@ const App: React.FC = () => {
   // Automatic dashboard redirection for authenticated users
   useEffect(() => {
     // 1. Case: Fully authenticated with center and data ready
-    const isAgentTest = window.location.search.includes("agent_test=true");
+    const isAgentTest = isAgentTestQueryActive();
     if (effectiveLocalCurrentUser && activeCenterId && (centers.length > 0 || isAgentTest)) {
       const isPublicView = view === ("home" as ViewMode) || view === ("center-portal" as ViewMode);
 
@@ -831,7 +903,7 @@ const App: React.FC = () => {
         view === ("select-center" as ViewMode) ||
         view === ("superadmin-login" as ViewMode);
 
-      const isAgentTest = window.location.search.includes("agent_test=true");
+      const isAgentTest = isAgentTestQueryActive();
 
       // Skip redirect if already on SuperAdmin dashboard and it's the intended view
       if (
@@ -842,14 +914,13 @@ const App: React.FC = () => {
       }
 
       // FORCING REDIRECT for E2E: If agent_test is active and we have a user, go to dashboard
-      if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
+      if (isAgentTestQueryActive() && effectiveLocalCurrentUser) {
         if (window.location.pathname.startsWith("/superadmin") && effectiveIsSuperAdmin) {
           if (view !== "superadmin-dashboard") {
             setView("superadmin-dashboard" as ViewMode);
             return;
           }
-        }
-        else if (isPublicView || isExplicitLoginView) {
+        } else if (isPublicView || isExplicitLoginView) {
           const targetView = resolveDashboardView(effectiveLocalCurrentUser);
           if (view !== targetView) {
             setView(targetView);
@@ -901,8 +972,8 @@ const App: React.FC = () => {
         }
       }
     }
-/*
-    if (window.location.search.includes("agent_test=true") && effectiveLocalCurrentUser) {
+    /*
+    if (isAgentTestQueryActive() && effectiveLocalCurrentUser) {
       console.log("[DEBUG] Auth Redirect Check:", {
         view,
         activeCenterId,
@@ -911,8 +982,14 @@ const App: React.FC = () => {
       });
     }
 */
-
-  }, [effectiveLocalCurrentUser, activeCenterId, view, centers.length, resolveDashboardView, effectiveIsSuperAdmin]);
+  }, [
+    effectiveLocalCurrentUser,
+    activeCenterId,
+    view,
+    centers.length,
+    resolveDashboardView,
+    effectiveIsSuperAdmin,
+  ]);
 
   const renderCenterPortal = () => {
     if (isLoadingCenters && activeCenterId) {
@@ -926,7 +1003,7 @@ const App: React.FC = () => {
       );
     }
 
-    if (!activeCenterId || (!isValidCenter(activeCenter) && !window.location.search.includes("agent_test=true"))) {
+    if (!activeCenterId || (!isValidCenter(resolvedActiveCenter) && !isAgentTestQueryActive())) {
       if (activeCenterId && !isLoadingCenters) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] bg-slate-50 p-6 text-center">
@@ -969,10 +1046,10 @@ const App: React.FC = () => {
 
         <div className="text-center mb-10">
           <div className="w-24 h-24 bg-blue-50 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-lg overflow-hidden">
-            {(activeCenter as any).logoUrl ? (
+            {(resolvedActiveCenter as any)?.logoUrl ? (
               <img
-                src={(activeCenter as any).logoUrl}
-                alt={`Logo de ${activeCenter.name}`}
+                src={(resolvedActiveCenter as any).logoUrl}
+                alt={`Logo de ${resolvedActiveCenter?.name ?? "Centro medico"}`}
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -980,7 +1057,7 @@ const App: React.FC = () => {
             )}
           </div>
           <h1 className="text-5xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
-            {activeCenter.name}
+            {resolvedActiveCenter?.name ?? "Centro medico"}
           </h1>
           <p className="text-slate-500 mt-3 text-xl font-medium">Plataforma Integral de Salud</p>
         </div>
@@ -1102,7 +1179,7 @@ const App: React.FC = () => {
   const renderBooking = () => (
     <BookingPortal
       activeCenterId={activeCenterId}
-      activeCenter={activeCenter}
+      activeCenter={resolvedActiveCenter}
       doctors={doctors}
       appointments={appointments}
       services={services || []}
@@ -1128,7 +1205,9 @@ const App: React.FC = () => {
 
   const renderLogin = (isDoc: boolean) => {
     const centerLogoUrl =
-      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).logoUrl : undefined;
+      activeCenterId && isValidCenter(resolvedActiveCenter)
+        ? (resolvedActiveCenter as any).logoUrl
+        : undefined;
 
     const content = (
       <div className="flex items-center justify-center p-4 min-h-[calc(100vh-80px)]">
@@ -1615,7 +1694,9 @@ const App: React.FC = () => {
   );
   const renderByView = () => {
     const activeCenterName =
-      activeCenterId && isValidCenter(activeCenter) ? (activeCenter as any).name : undefined;
+      activeCenterId && isValidCenter(resolvedActiveCenter)
+        ? (resolvedActiveCenter as any).name
+        : undefined;
 
     const handleClosePanel = () => {
       const allowed = Array.isArray(localCurrentUser?.centros)
@@ -1733,7 +1814,8 @@ const App: React.FC = () => {
           }
         : null;
 
-      const userForView = effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
+      const userForView =
+        effectiveLocalCurrentUser || previewUser || (masterAccess ? mockMasterUser : null);
 
       if (view === ("doctor-dashboard" as ViewMode) && userForView) {
         const currentUid = userForView.uid ?? userForView.id;
@@ -1933,6 +2015,10 @@ const App: React.FC = () => {
                 <p className="text-[10px] text-amber-600/80 leading-tight">
                   Todas sus acciones están siendo registradas con fines de auditoría y cumplimiento
                   legal. Asegúrese de tener una base legítima para este acceso.
+                </p>
+                <p className="text-[10px] text-rose-600 font-bold leading-tight flex items-center gap-1 mt-1">
+                  <span>⚠️</span> Las escrituras a base de datos y Cloud Functions no se ejecutarán
+                  (Vista previa de solo lectura).
                 </p>
               </div>
               <button

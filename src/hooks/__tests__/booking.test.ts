@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useBooking } from "../useBooking";
+import { useBooking } from "../../../hooks/useBooking";
 import * as firestore from "firebase/firestore";
 
 // Mocks de dependencias
+vi.mock("../../../firebase", () => ({
+  db: {},
+  auth: { currentUser: null },
+}));
 vi.mock("firebase/firestore");
+vi.mock("firebase/auth", () => ({
+  browserLocalPersistence: {},
+  getAuth: vi.fn(() => ({ currentUser: null })),
+  setPersistence: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("firebase/functions", () => ({
   getFunctions: vi.fn(),
   httpsCallable: vi.fn(),
@@ -85,7 +94,7 @@ describe("useBooking - Casos de Borde Médicos", () => {
     act(() => {
       result.current.setBookingData({
         name: "Paciente Test",
-        rut: "19.043.931-1", // RUT Válido
+        rut: "12.345.678-5", // RUT válido
         phoneDigits: "98765432",
         email: "",
       });
