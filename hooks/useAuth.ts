@@ -11,17 +11,7 @@ import {
   GoogleAuthProvider,
   User,
 } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  collection,
-  where,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ViewMode, UserProfile, AnyRole } from "../types";
 
 const SUPERADMIN_ALLOWED_EMAILS = new Set(["fecepedac@gmail.com", "dr.felipecepeda@gmail.com"]);
@@ -350,83 +340,6 @@ export function useAuth() {
               ? profile.centers
               : [];
 
-          // ── Check for pending invites even for existing users ──
-          const qPendingInv = query(
-            collection(db, "invites"),
-            where("emailLower", "==", emailUser),
-            where("status", "==", "pending")
-          );
-          const pendingInvSnap = await getDocs(qPendingInv);
-
-          if (!pendingInvSnap.empty) {
-            const pendingInvites = pendingInvSnap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as any),
-            }));
-            const newCenters = pendingInvites
-              .map((i) => String(i.centerId || "").trim())
-              .filter((cId) => cId && !centers.includes(cId));
-            const newRoles: AnyRole[] = pendingInvites
-              .map((i) => String(i.role || "").trim() as AnyRole)
-              .filter((r) => !!r);
-
-            if (newCenters.length > 0) {
-              centers = [...centers, ...newCenters];
-              const mergedRoles = Array.from(new Set([...roles, ...newRoles]));
-              const updateData: any = {
-                centros: centers,
-                centers: centers,
-                roles: mergedRoles,
-                updatedAt: serverTimestamp(),
-              };
-              const latestInvite = pendingInvites[pendingInvites.length - 1];
-              if (latestInvite?.profileData?.fullName) {
-                updateData.fullName = latestInvite.profileData.fullName;
-              }
-              await updateDoc(doc(db, "users", uid), updateData);
-              roles.push(...newRoles.filter((r) => !roles.includes(r)));
-            }
-
-            await Promise.all(
-              pendingInvites.map(async (inv) => {
-                await updateDoc(doc(db, "invites", inv.id), {
-                  status: "accepted",
-                  acceptedAt: serverTimestamp(),
-                  acceptedByUid: uid,
-                }).catch(() => {});
-                const cId = String(inv.centerId || "").trim();
-                const rId = String(inv.role || "").trim() || "staff";
-                const profileData = inv.profileData || {};
-                if (cId) {
-                  await setDoc(
-                    doc(db, "centers", cId, "staff", uid),
-                    {
-                      uid,
-                      emailLower: emailUser,
-                      role: rId,
-                      roles: [rId],
-                      active: true,
-                      activo: true,
-                      createdAt: serverTimestamp(),
-                      updatedAt: serverTimestamp(),
-                      inviteToken: inv.id,
-                      invitedBy: inv.invitedBy ?? null,
-                      invitedAt: inv.createdAt ?? null,
-                      fullName: profileData.fullName ?? "",
-                      rut: profileData.rut ?? "",
-                      specialty: profileData.specialty ?? "",
-                      photoUrl: profileData.photoUrl ?? "",
-                      agendaConfig: profileData.agendaConfig ?? null,
-                      professionalRole: profileData.role ?? inv.professionalRole ?? "",
-                      isAdmin: profileData.isAdmin ?? false,
-                    },
-                    { merge: true }
-                  );
-                }
-              })
-            );
-          }
-
           const token = await user.getIdTokenResult(true).catch(() => null as any);
           const claims: any = token?.claims ?? {};
           const isSuperAdmin =
@@ -469,13 +382,6 @@ export function useAuth() {
           return;
         }
 
-        const qInv = query(
-          collection(db, "invites"),
-          where("emailLower", "==", emailUser),
-          where("status", "==", "pending")
-        );
-        const invSnap = await getDocs(qInv);
-
         const tokenResult = await user.getIdTokenResult(true).catch(() => null);
         const claims: any = tokenResult?.claims ?? {};
         const isSuperAdminByClaim = !!(
@@ -485,27 +391,14 @@ export function useAuth() {
           SUPERADMIN_ALLOWED_EMAILS.has(emailUser)
         );
 
-        const inviteDocs = invSnap.empty
-          ? []
-          : invSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-
-        if (inviteDocs.length === 0 && !isSuperAdminByClaim) {
+        if (!isSuperAdminByClaim) {
           throw new Error(
             "No tienes invitación activa. Pide al administrador del centro que te invite con este correo."
           );
         }
 
-        const rolesFromInvites: AnyRole[] = Array.from(
-          new Set(inviteDocs.map((i) => i.role).filter(Boolean))
-        ) as AnyRole[];
-        const centersFromInvites = Array.from(
-          new Set(inviteDocs.map((i) => i.centerId).filter(Boolean))
-        );
-
-        const finalRoles: AnyRole[] = isSuperAdminByClaim
-          ? Array.from(new Set([...rolesFromInvites, "super_admin" as AnyRole]))
-          : rolesFromInvites;
-        const inviteName = inviteDocs.find((i) => i.profileData?.fullName)?.profileData?.fullName;
+        const finalRoles: AnyRole[] = ["super_admin" as AnyRole];
+        const centersFromInvites: string[] = [];
 
         await setDoc(
           doc(db, "users", uid),
@@ -514,7 +407,7 @@ export function useAuth() {
             email: emailUser,
             displayName: user.displayName ?? "",
             photoURL: user.photoURL ?? "",
-            fullName: inviteName ?? user.displayName ?? "Usuario",
+            fullName: user.displayName ?? "Usuario",
             roles: finalRoles,
             centers: centersFromInvites,
             centros: centersFromInvites,
@@ -525,54 +418,10 @@ export function useAuth() {
           { merge: true }
         );
 
-        await Promise.all(
-          inviteDocs.map(async (inv) => {
-            await updateDoc(doc(db, "invites", inv.id), {
-              status: "accepted",
-              acceptedAt: serverTimestamp(),
-              acceptedByUid: uid,
-            }).catch(() => {});
-
-            const cId = String((inv as any).centerId || "").trim();
-            const rId = String((inv as any).role || "").trim() || "staff";
-            const eLower = String((inv as any).emailLower || emailUser)
-              .trim()
-              .toLowerCase();
-            const profileData = (inv as any).profileData || {};
-
-            if (cId) {
-              await setDoc(
-                doc(db, "centers", cId, "staff", uid),
-                {
-                  uid,
-                  emailLower: eLower,
-                  role: rId,
-                  roles: [rId],
-                  active: true,
-                  activo: true,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                  inviteToken: inv.id,
-                  invitedBy: (inv as any).invitedBy ?? null,
-                  invitedAt: (inv as any).createdAt ?? null,
-                  fullName: profileData.fullName ?? "",
-                  rut: profileData.rut ?? "",
-                  specialty: profileData.specialty ?? "",
-                  photoUrl: profileData.photoUrl ?? "",
-                  agendaConfig: profileData.agendaConfig ?? null,
-                  professionalRole: profileData.role ?? (inv as any).professionalRole ?? "",
-                  isAdmin: profileData.isAdmin ?? false,
-                },
-                { merge: true }
-              );
-            }
-          })
-        );
-
         const newUser: UserProfile = {
           uid,
           email: emailUser,
-          roles: rolesFromInvites,
+          roles: finalRoles,
           centers: centersFromInvites,
           centros: centersFromInvites,
           activeCenterId: centersFromInvites?.[0] ?? null,

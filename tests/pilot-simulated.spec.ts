@@ -6,7 +6,12 @@ const centerId = TEST.CENTER_ID;
 
 async function closeOnboardingIfPresent(page: import("@playwright/test").Page) {
   const closeTutorial = page.getByRole("button", { name: /cerrar tutorial|saltar tutorial/i });
-  if (await closeTutorial.first().isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (
+    await closeTutorial
+      .first()
+      .isVisible({ timeout: 3000 })
+      .catch(() => false)
+  ) {
     await closeTutorial.first().click();
   }
 }
@@ -56,6 +61,8 @@ test.describe("Pilot simulated user experience", () => {
     await expect(page.getByRole("button", { name: /gesti.n de profesionales/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /seguridad|auditor.a/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /prestaciones|ex.menes/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^uso ia$/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /campa.as ia/i })).toHaveCount(0);
   });
 
   test("simulated professional reaches clinical workspace without admin tabs", async ({ page }) => {

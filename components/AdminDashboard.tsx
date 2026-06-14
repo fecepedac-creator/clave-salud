@@ -731,22 +731,26 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               <TrendingUp className="w-4 h-4" /> Rendimiento
             </button>
           )}
-          <button
-            onClick={() => setActiveTab("ai_usage")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "ai_usage" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Uso de IA clinica" : "Selecciona un centro activo"}
-          >
-            <Shield className="w-4 h-4" /> Uso IA
-          </button>
-          <button
-            onClick={() => setActiveTab("campaigns")}
-            disabled={!hasActiveCenter}
-            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "campaigns" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasActiveCenter ? "Campañas de Marketing" : "Selecciona un centro activo"}
-          >
-            <TrendingUp className="w-4 h-4" /> Campañas IA
-          </button>
+          {PILOT_FEATURES.aiUsage && !isSecretary && (
+            <button
+              onClick={() => setActiveTab("ai_usage")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "ai_usage" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Uso de IA clinica" : "Selecciona un centro activo"}
+            >
+              <Shield className="w-4 h-4" /> Uso IA
+            </button>
+          )}
+          {PILOT_FEATURES.campaigns && !isSecretary && (
+            <button
+              onClick={() => setActiveTab("campaigns")}
+              disabled={!hasActiveCenter}
+              className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "campaigns" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasActiveCenter ? "Campañas de Marketing" : "Selecciona un centro activo"}
+            >
+              <TrendingUp className="w-4 h-4" /> Campañas IA
+            </button>
+          )}
         </div>
       </div>
 
