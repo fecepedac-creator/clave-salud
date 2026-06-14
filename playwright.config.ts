@@ -78,7 +78,18 @@ export default defineConfig({
       },
     },
 
-    // 5. Tests de Admin (usa storageState del Admin)
+    // 5. Pilot invite flow (temporary test invite/account, cleaned up)
+    {
+      name: "pilot-invite",
+      testMatch: "**/pilot-invite.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
+    // 6. Tests de Admin (usa storageState del Admin)
     {
       name: "admin-tests",
       testDir: "./tests/admin",
@@ -90,7 +101,7 @@ export default defineConfig({
       },
     },
 
-    // 6. Tests de Doctor
+    // 7. Tests de Doctor
     {
       name: "doctor-tests",
       testDir: "./tests/doctor",
