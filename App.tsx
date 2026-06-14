@@ -139,39 +139,37 @@ const App: React.FC = () => {
     return new URLSearchParams(window.location.search).get("demo_role") || "admin";
   }, []);
 
-  const mockDemoUser: UserProfile = useMemo(
-    () => {
-      const normalizedDemoRole = String(demoRole || "admin").toLowerCase();
-      const isDoctor = normalizedDemoRole === "doctor" || normalizedDemoRole === "professional";
-      const isAdministrative =
-        normalizedDemoRole === "administrative" ||
-        normalizedDemoRole === "administrativo" ||
-        normalizedDemoRole === "secretaria";
-      const isSuperAdmin = normalizedDemoRole === "superadmin" || normalizedDemoRole === "super_admin";
-      const role = isDoctor ? "MEDICO" : isAdministrative ? "ADMINISTRATIVO" : "ADMIN_CENTRO";
-      const roles = isSuperAdmin
-        ? ["SUPER_ADMIN"]
-        : isDoctor
-          ? ["MEDICO"]
-          : isAdministrative
-            ? ["ADMINISTRATIVO"]
-            : ["ADMIN_CENTRO"];
+  const mockDemoUser: UserProfile = useMemo(() => {
+    const normalizedDemoRole = String(demoRole || "admin").toLowerCase();
+    const isDoctor = normalizedDemoRole === "doctor" || normalizedDemoRole === "professional";
+    const isAdministrative =
+      normalizedDemoRole === "administrative" ||
+      normalizedDemoRole === "administrativo" ||
+      normalizedDemoRole === "secretaria";
+    const isSuperAdmin =
+      normalizedDemoRole === "superadmin" || normalizedDemoRole === "super_admin";
+    const role = isDoctor ? "MEDICO" : isAdministrative ? "ADMINISTRATIVO" : "ADMIN_CENTRO";
+    const roles = isSuperAdmin
+      ? ["SUPER_ADMIN"]
+      : isDoctor
+        ? ["MEDICO"]
+        : isAdministrative
+          ? ["ADMINISTRATIVO"]
+          : ["ADMIN_CENTRO"];
 
-      return {
-        uid: "demo_user_uid",
-        id: "demo_user_uid",
-        email: "demo@clavesalud.com",
-        fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
-        role,
-        roles,
-        centers: ["c_saludmass", "c_eji2qv61"],
-        centros: ["c_saludmass", "c_eji2qv61"],
-        isAdmin: !isDoctor,
-        activo: true,
-      };
-    },
-    [demoRole]
-  );
+    return {
+      uid: "demo_user_uid",
+      id: "demo_user_uid",
+      email: "demo@clavesalud.com",
+      fullName: `Usuario Demo (${demoRole.toUpperCase()})`,
+      role,
+      roles,
+      centers: ["c_saludmass", "c_eji2qv61"],
+      centros: ["c_saludmass", "c_eji2qv61"],
+      isAdmin: !isDoctor,
+      activo: true,
+    };
+  }, [demoRole]);
 
   const mockMasterUser: UserProfile = useMemo(
     () => ({
