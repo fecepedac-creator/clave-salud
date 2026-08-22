@@ -884,7 +884,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   // --- RENDER PATIENT LIST / DASHBOARD LANDING ---
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 transition-all duration-300">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top_left,_rgba(209,250,229,0.42),_transparent_34%),linear-gradient(135deg,#f8fafc_0%,#fffdf8_56%,#eff6ff_100%)] transition-all duration-300 lg:flex-row">
       <DoctorSidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -902,6 +902,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
           activeCenter={activeCenter}
           appointments={appointments}
           doctorId={doctorId}
+          professionalRole={role}
           onOpenLegal={onOpenLegal}
           isPiiMasked={isPiiMasked}
           setIsPiiMasked={setIsPiiMasked}
