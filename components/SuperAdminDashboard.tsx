@@ -1252,7 +1252,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
   return (
     <div
-      className={`min-h-screen bg-slate-50 font-sans transition-all duration-300 ${isSidebarOpen ? "overflow-hidden pt-0" : "pt-16"}`}
+      className={`min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(224,231,255,0.72),_transparent_34%),linear-gradient(135deg,#f8fafc_0%,#fffdf8_52%,#eef2ff_100%)] font-sans transition-all duration-300 ${isSidebarOpen ? "overflow-hidden pt-0" : "pt-16"}`}
       data-testid="superadmin-dashboard-root"
     >
       {/* MOBILE/TABLET HEADER */}

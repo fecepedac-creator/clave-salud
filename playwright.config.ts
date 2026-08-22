@@ -59,7 +59,7 @@ export default defineConfig({
     // 3. Pilot simulated tests (local demo roles, no real credentials)
     {
       name: "pilot-simulated",
-      testMatch: "**/pilot-simulated.spec.ts",
+      testMatch: ["**/pilot-simulated.spec.ts", "**/release-a-dashboard-smoke.spec.ts"],
       use: {
         ...devices["Desktop Chrome"],
         storageState: { cookies: [], origins: [] },
