@@ -1,0 +1,125 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { httpsCallable } from "firebase/functions";
+import { AdminAgenda } from "../../features/admin/components/AdminAgenda";
+import { Appointment, Doctor } from "../../types";
+
+vi.mock("../../firebase", () => ({
+  db: {},
+  auth: { currentUser: { uid: "admin-test" } },
+  functions: {},
+}));
+
+vi.mock("firebase/functions", () => ({
+  httpsCallable: vi.fn(),
+}));
+
+vi.mock("firebase/firestore", () => ({
+  collection: vi.fn(),
+  query: vi.fn(),
+  doc: vi.fn(),
+  setDoc: vi.fn(),
+  serverTimestamp: vi.fn(() => "timestamp"),
+  where: vi.fn(),
+  getDocs: vi.fn(async () => ({ docs: [] })),
+  getDoc: vi.fn(async () => ({ exists: () => false })),
+  Timestamp: { now: vi.fn() },
+}));
+
+describe("AdminAgenda reserva manual", () => {
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-18`;
+  const doctor = {
+    id: "doctor-1",
+    centerId: "center-1",
+    rut: "10.000.000-1",
+    fullName: "Profesional Uno",
+    role: "MEDICO",
+    specialty: "Medicina General",
+    email: "profesional@example.com",
+    active: true,
+    agendaConfig: { slotDuration: 20, startTime: "16:00", endTime: "17:00" },
+  } as Doctor;
+  const availableSlot: Appointment = {
+    id: "slot-1600",
+    centerId: "center-1",
+    doctorId: doctor.id,
+    doctorUid: doctor.id,
+    date,
+    time: "16:00",
+    status: "available",
+    patientName: "",
+    patientRut: "",
+    active: true,
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  const renderAgenda = () => {
+    const onUpdateAppointments = vi.fn();
+    const onUpdatePatients = vi.fn();
+    const showToast = vi.fn();
+
+    render(
+      <AdminAgenda
+        centerId="center-1"
+        resolvedCenterId="center-1"
+        doctors={[doctor]}
+        appointments={[availableSlot]}
+        onUpdateAppointments={onUpdateAppointments}
+        patients={[]}
+        hasActiveCenter
+        onLogActivity={vi.fn()}
+        ROLE_LABELS={{ MEDICO: "Médico" }}
+        upsertStaffAndPublic={vi.fn(async () => undefined)}
+        medicalServices={[]}
+        showToast={showToast}
+        activeCenter={{ id: "center-1", name: "Centro Uno" }}
+        onUpdatePatients={onUpdatePatients}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "18" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agendar paciente 16:00" }));
+    return { onUpdateAppointments, onUpdatePatients, showToast };
+  };
+
+  it("mantiene la acción de cerrar bloque y agrega reserva explícita con continuidad", () => {
+    renderAgenda();
+    expect(screen.getByRole("button", { name: /16:00.*Abierto/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Agendamiento Manual" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agendar y finalizar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agendar y continuar" })).toBeInTheDocument();
+  });
+
+  it("reserva mediante la callable, limpia el paciente y conserva la agenda", async () => {
+    const callable = vi.fn(async () => ({ data: { success: true } }));
+    vi.mocked(httpsCallable).mockReturnValue(callable as any);
+    const { onUpdateAppointments, onUpdatePatients, showToast } = renderAgenda();
+
+    fireEvent.change(screen.getByLabelText("Nombre completo del paciente"), {
+      target: { value: "Paciente Dos" },
+    });
+    fireEvent.change(screen.getByLabelText("RUT del paciente"), {
+      target: { value: "11.111.111-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Teléfono del paciente"), {
+      target: { value: "+56911111111" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Agendar y continuar" }));
+
+    await waitFor(() => expect(callable).toHaveBeenCalledTimes(1));
+    expect(httpsCallable).toHaveBeenCalledWith({}, "bookAdministrativeAppointment");
+    expect(onUpdateAppointments).toHaveBeenCalledTimes(1);
+    expect(onUpdatePatients).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      "Cita agendada. Selecciona otro cupo para continuar.",
+      "success"
+    );
+    expect(screen.queryByRole("heading", { name: "Agendamiento Manual" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agendar paciente 16:00" }));
+    expect(screen.getByLabelText("Nombre completo del paciente")).toHaveValue("");
+    expect(screen.getByLabelText("RUT del paciente")).toHaveValue("");
+  });
+});
