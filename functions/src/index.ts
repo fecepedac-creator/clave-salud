@@ -10,6 +10,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 
+export { bookAdministrativeAppointment } from "./administrativeBooking";
+
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
