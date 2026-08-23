@@ -476,7 +476,10 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
 
   // --- RENDER ---
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
+    <div
+      className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(79,70,229,0.2),_transparent_34%),linear-gradient(145deg,#0f172a_0%,#111827_52%,#172033_100%)] font-sans text-slate-100"
+      data-testid="admin-dashboard-root"
+    >
       {!hasActiveCenter && (
         <div className="bg-amber-500/20 text-amber-200 border-b border-amber-500/40 px-6 py-3 text-sm">
           Selecciona un centro activo para habilitar la gestión de profesionales, agenda y
@@ -543,22 +546,25 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       )}
 
       {/* Header */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30 pt-16">
+      <nav
+        className="sticky top-0 z-30 flex flex-col items-center justify-between gap-4 border-b border-white/10 bg-slate-950/85 px-4 py-4 pt-16 shadow-xl shadow-slate-950/20 backdrop-blur-xl md:flex-row md:px-8"
+        data-testid="admin-dashboard-header"
+      >
         <div className="flex items-center gap-4 w-full md:w-auto justify-center md:justify-start">
           <LogoHeader size="md" showText={true} />
-          <div className="h-8 w-px bg-slate-700 hidden md:block mx-1" />
+          <div className="mx-1 hidden h-8 w-px bg-white/15 md:block" />
           <div className="hidden md:block">
-            <h1 className="text-health-400 font-black text-lg uppercase tracking-tight leading-none">
+            <h1 className="text-lg font-black uppercase leading-none tracking-tight text-emerald-300">
               {isSecretary ? "Panel Administrativo" : "Administración"}
             </h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-              Portal de Gestión
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Centro de mando operativo
             </p>
           </div>
         </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           {activeCenter?.logoUrl && (
-            <div className="hidden md:flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
+            <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 shadow-inner md:flex">
               <span className="text-slate-400 text-xs font-medium">Centro:</span>
               {!centerLogoError ? (
                 <img
@@ -574,13 +580,13 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           )}
           <button
             onClick={() => setShowShareModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-health-400 hover:text-health-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+            className="flex items-center gap-2 rounded-xl border border-indigo-400/20 bg-indigo-400/10 px-4 py-2 text-sm font-bold text-indigo-200 transition-colors hover:bg-indigo-400/20 hover:text-white"
           >
             <Share2 className="w-4 h-4" /> Compartir App
           </button>
           <button
             onClick={() => setShowPolicyModal(true)}
-            className="flex items-center gap-2 text-sm font-bold text-emerald-300 hover:text-emerald-200 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
+            className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-200 transition-colors hover:bg-emerald-400/20 hover:text-white"
           >
             <ShieldCheck className="w-4 h-4" /> Política de conservación (15 años)
           </button>
@@ -637,11 +643,11 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto p-8">
+      <div className="mx-auto max-w-7xl p-4 md:p-8">
         {/* Tabs */}
         <div
           data-testid="admin-tab-bar"
-          className="flex gap-1 bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-8 overflow-x-auto"
+          className="mb-8 flex w-full min-w-0 max-w-full gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/65 p-2 shadow-xl shadow-slate-950/20 md:w-fit"
         >
           <button
             onClick={() => setActiveTab("command_center")}

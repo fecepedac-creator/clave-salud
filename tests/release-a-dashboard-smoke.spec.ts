@@ -47,8 +47,15 @@ for (const viewport of VIEWPORTS) {
     test("center admin keeps its operational navigation", async ({ page }) => {
       await page.goto(`/center/${TEST.CENTER_ID}?agent_test=true&demo_role=admin`);
 
+      await expect(page.locator('[data-testid="admin-dashboard-root"]')).toBeVisible({
+        timeout: 30000,
+      });
+      await expect(page.locator('[data-testid="admin-dashboard-header"]')).toBeVisible();
       await expect(page.locator('[data-testid="admin-tab-bar"]')).toBeVisible({ timeout: 30000 });
-      await expect(page.locator('[data-testid="admin-tab-agenda"]')).toBeVisible();
+      const agendaTab = page.locator('[data-testid="admin-tab-agenda"]');
+      await expect(agendaTab).toBeVisible();
+      await agendaTab.click();
+      await expect(page.getByText("Selecciona una fecha", { exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
     });
 
