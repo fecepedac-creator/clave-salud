@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
+import { agendaOperationsV2Enabled } from "./agendaOperationsFeature";
+import { agendaPolicyRef, canOverrideAgenda, sanitizeAgendaPolicy } from "./agendaPolicy";
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -9,7 +11,9 @@ export interface AdministrativeBookingInput {
   centerId: string;
   appointmentId: string;
   idempotencyKey: string;
-  slot: { doctorId: string; date: string; time: string };
+  locationId?: string;
+  slot: { doctorId: string; date: string; time: string; resourceId?: string };
+  override?: { reason?: string };
   patient: {
     id: string;
     fullName: string;
@@ -26,7 +30,16 @@ interface BookingActor {
 
 export type AdministrativeBookingResult =
   | { success: true; idempotent: boolean; appointmentId: string }
-  | { success: false; error: "SLOT_TAKEN" };
+  | {
+      success: false;
+      error:
+        | "SLOT_TAKEN"
+        | "CONTACT_REQUIRED"
+        | "OUTSIDE_HOURS"
+        | "APPOINTMENT_CONFLICT"
+        | "RESOURCE_CONFLICT"
+        | "OVERRIDE_REQUIRED";
+    };
 
 const normalizeRole = (value: unknown) =>
   String(value || "")
@@ -75,6 +88,26 @@ const auditId = (appointmentId: string, requestId: string) =>
     .digest("hex")
     .slice(0, 40)}`;
 
+const lockId = (scope: string, ...parts: string[]) =>
+  `${scope}_${createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 40)}`;
+
+const isWithinAgendaHours = (
+  time: string,
+  agendaConfig: FirebaseFirestore.DocumentData | undefined
+) => {
+  const startTime = String(agendaConfig?.startTime || "");
+  const endTime = String(agendaConfig?.endTime || "");
+  return /^\d{2}:\d{2}$/.test(startTime) && /^\d{2}:\d{2}$/.test(endTime)
+    ? time >= startTime && time < endTime
+    : false;
+};
+
+const requiresOverride = (
+  mode: "block" | "require_override",
+  staff: FirebaseFirestore.DocumentData | undefined,
+  reason: string
+) => mode === "require_override" && canOverrideAgenda(staff) && reason.length >= 10;
+
 export async function bookAdministrativeAppointmentTransaction(
   input: AdministrativeBookingInput,
   actor: BookingActor
@@ -86,20 +119,49 @@ export async function bookAdministrativeAppointmentTransaction(
     .doc(input.centerId)
     .collection("appointments")
     .doc(input.appointmentId);
-  const staffRef = db
-    .collection("centers")
-    .doc(input.centerId)
-    .collection("staff")
-    .doc(actor.uid);
+  const staffRef = db.collection("centers").doc(input.centerId).collection("staff").doc(actor.uid);
   const auditRef = db
     .collection("centers")
     .doc(input.centerId)
     .collection("auditLogs")
     .doc(auditId(input.appointmentId, input.idempotencyKey));
+  const locationId = input.locationId?.trim() || "default";
+  const policyRef = agendaPolicyRef(input.centerId, locationId);
+  const doctorRef = db
+    .collection("centers")
+    .doc(input.centerId)
+    .collection("staff")
+    .doc(input.slot.doctorId);
+  const slotLockRef = db
+    .collection("centers")
+    .doc(input.centerId)
+    .collection("agendaSlotLocks")
+    .doc(lockId("slot", input.slot.doctorId, input.slot.date, input.slot.time));
+  const resourceLockRef = input.slot.resourceId
+    ? db
+        .collection("centers")
+        .doc(input.centerId)
+        .collection("agendaResourceLocks")
+        .doc(lockId("resource", input.slot.resourceId, input.slot.date, input.slot.time))
+    : null;
 
-  return db.runTransaction(async transaction => {
-    const appointmentSnapshot = await transaction.get(appointmentRef);
-    const staffSnapshot = actor.skipAuthorization ? null : await transaction.get(staffRef);
+  return db.runTransaction(async (transaction) => {
+    const policyEnabled = agendaOperationsV2Enabled();
+    const [
+      appointmentSnapshot,
+      staffSnapshot,
+      policySnapshot,
+      doctorSnapshot,
+      slotLockSnapshot,
+      resourceLockSnapshot,
+    ] = await Promise.all([
+      transaction.get(appointmentRef),
+      actor.skipAuthorization ? Promise.resolve(null) : transaction.get(staffRef),
+      policyEnabled ? transaction.get(policyRef) : Promise.resolve(null),
+      policyEnabled ? transaction.get(doctorRef) : Promise.resolve(null),
+      policyEnabled ? transaction.get(slotLockRef) : Promise.resolve(null),
+      policyEnabled && resourceLockRef ? transaction.get(resourceLockRef) : Promise.resolve(null),
+    ]);
     const current = appointmentSnapshot.data() || {};
 
     if (!actor.skipAuthorization) {
@@ -119,8 +181,76 @@ export async function bookAdministrativeAppointmentTransaction(
     ) {
       return { success: true, idempotent: true, appointmentId: input.appointmentId };
     }
-    if (appointmentSnapshot.exists && (current.status !== "available" || current.active === false)) {
+    if (
+      appointmentSnapshot.exists &&
+      (current.status !== "available" || current.active === false)
+    ) {
       return { success: false, error: "SLOT_TAKEN" };
+    }
+
+    let overrideReason = "";
+    let overrideScope: "appointment" | "resource" | "outside_hours" | "" = "";
+    let policyRevision: number | null = null;
+    if (policyEnabled) {
+      const policy = sanitizeAgendaPolicy(input.centerId, locationId, policySnapshot?.data());
+      policyRevision = policy.revision;
+      const staff = staffSnapshot?.data();
+      overrideReason = String(input.override?.reason || "")
+        .trim()
+        .slice(0, 300);
+
+      if (
+        policy.requirePatientContact &&
+        !input.patient.phone?.trim() &&
+        !input.patient.email?.trim()
+      ) {
+        return { success: false, error: "CONTACT_REQUIRED" };
+      }
+
+      if (
+        !appointmentSnapshot.exists &&
+        !policy.allowInternalOutsideHours &&
+        !isWithinAgendaHours(input.slot.time, doctorSnapshot?.data()?.agendaConfig)
+      ) {
+        if (!requiresOverride("require_override", staff, overrideReason)) {
+          return {
+            success: false,
+            error: canOverrideAgenda(staff) ? "OVERRIDE_REQUIRED" : "OUTSIDE_HOURS",
+          };
+        }
+        overrideScope = "outside_hours";
+      }
+
+      const slotConflict =
+        slotLockSnapshot?.exists && slotLockSnapshot.get("appointmentId") !== input.appointmentId;
+      if (slotConflict) {
+        if (!requiresOverride(policy.appointmentConflictMode, staff, overrideReason)) {
+          return {
+            success: false,
+            error:
+              policy.appointmentConflictMode === "require_override" && canOverrideAgenda(staff)
+                ? "OVERRIDE_REQUIRED"
+                : "APPOINTMENT_CONFLICT",
+          };
+        }
+        overrideScope = "appointment";
+      }
+
+      const resourceConflict =
+        resourceLockSnapshot?.exists &&
+        resourceLockSnapshot.get("appointmentId") !== input.appointmentId;
+      if (resourceConflict) {
+        if (!requiresOverride(policy.resourceConflictMode, staff, overrideReason)) {
+          return {
+            success: false,
+            error:
+              policy.resourceConflictMode === "require_override" && canOverrideAgenda(staff)
+                ? "OVERRIDE_REQUIRED"
+                : "RESOURCE_CONFLICT",
+          };
+        }
+        overrideScope = "resource";
+      }
     }
 
     const booking = {
@@ -141,11 +271,43 @@ export async function bookAdministrativeAppointmentTransaction(
       bookedBy: actor.uid,
       bookingSource: "administrative",
       bookingRequestId: input.idempotencyKey,
+      locationId,
+      resourceId: input.slot.resourceId || null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     if (appointmentSnapshot.exists) transaction.update(appointmentRef, booking);
     else transaction.create(appointmentRef, booking);
+    if (policyEnabled) {
+      transaction.set(
+        slotLockRef,
+        {
+          centerId: input.centerId,
+          appointmentId: input.appointmentId,
+          appointmentIds: admin.firestore.FieldValue.arrayUnion(input.appointmentId),
+          doctorId: input.slot.doctorId,
+          date: input.slot.date,
+          time: input.slot.time,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (resourceLockRef) {
+        transaction.set(
+          resourceLockRef,
+          {
+            centerId: input.centerId,
+            appointmentId: input.appointmentId,
+            appointmentIds: admin.firestore.FieldValue.arrayUnion(input.appointmentId),
+            resourceId: input.slot.resourceId,
+            date: input.slot.date,
+            time: input.slot.time,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
     transaction.create(auditRef, {
       centerId: input.centerId,
       actorUid: actor.uid,
@@ -156,6 +318,15 @@ export async function bookAdministrativeAppointmentTransaction(
       metadata: {
         bookingSource: "administrative",
         requestHash: auditId(input.appointmentId, input.idempotencyKey),
+        policyEnabled,
+        locationId,
+        overrideApplied: Boolean(overrideScope),
+        overrideScope: overrideScope || null,
+        overrideReason: overrideScope ? overrideReason : null,
+        policyRevision,
+        resourceId: input.slot.resourceId || null,
+        date: input.slot.date,
+        time: input.slot.time,
       },
     });
 
