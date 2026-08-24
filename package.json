@@ -16,6 +16,7 @@
     "security:commercial": "node scripts/verify-commercial-readiness.mjs",
     "ops:verify": "node scripts/verify-ops.mjs",
     "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts src/test/firestore-rules.test.ts\"",
+    "test:e2e:emulator-gate": "npm --prefix functions run build && firebase emulators:exec --only auth,firestore,functions \"playwright test tests/emulator/clinical-document-emulator-gate.spec.ts --project=emulator-gate\"",
     "test:e2e:pilot": "playwright test --project=pilot-simulated",
     "test:e2e:real-auth": "playwright test --project=pilot-real-auth",
     "test:e2e:invite": "playwright test --project=pilot-invite",
