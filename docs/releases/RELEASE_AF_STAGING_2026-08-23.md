@@ -27,6 +27,7 @@
 - Gate de navegador autenticado: cita → borrador → recarga → firma → adenda; recepción denegada.
 - Recorridos desktop/mobile de profesional, administración, superadmin, agenda, profesiones y recursos.
 - Escaneo local de secretos sin hallazgos y 14 controles comerciales verificados.
+- Ensayo de rollback: la base `5518680` se instaló y pasó build/TypeScript de aplicación y Functions en un worktree temporal aislado; el worktree se retiró después de validar.
 
 ## Secuencia de staging
 
