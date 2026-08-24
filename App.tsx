@@ -375,6 +375,7 @@ const App: React.FC = () => {
 
   const {
     updatePatient,
+    updatePatientDemographics,
     deletePatient,
     updateStaff,
     deleteStaff,
@@ -1953,7 +1954,11 @@ const App: React.FC = () => {
             patients={patients}
             onUpdatePatients={(newPatients: Patient[]) => {
               if (isPreviewActive) return;
-              newPatients.forEach((p) => updatePatient(p));
+              void Promise.all(
+                newPatients.map((patient) => updatePatientDemographics(patient))
+              ).catch(() => {
+                showToast("No se pudieron guardar los datos demográficos.", "error");
+              });
             }}
             preadmissions={preadmissions}
             onApprovePreadmission={(p) => {

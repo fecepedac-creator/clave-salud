@@ -362,6 +362,8 @@ export interface Consultation extends SoftDeletable {
 export interface Patient extends SoftDeletable {
   id: string;
   centerId: string; // Multi-tenant ID
+  /** Indica que esta instancia contiene solo datos operativos, no una ficha. */
+  dataScope?: "clinical" | "operational";
   createdAt?: FirestoreDateLike;
   ownerUid?: string; // UID of the professional who owns this patient
   accessControl?: {

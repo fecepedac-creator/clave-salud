@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { db, auth } from "../firebase";
+import { db, auth, functions } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   collection,
   DocumentData,
@@ -26,6 +27,9 @@ import {
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
 import { canSubscribeToClinicalPatients } from "../utils/clinicalSubscriptionPolicy";
+import { mapPatientDirectoryEntry } from "../utils/patientDirectoryProjection";
+
+const directoryEnsureRequests = new Set<string>();
 
 export function useFirestoreSync(
   activeCenterId: string,
@@ -119,6 +123,11 @@ export function useFirestoreSync(
     );
   }, [isAdmin, currentUser, isSuperAdminClaim]);
 
+  const isOperationalDirectoryReader = useMemo(
+    () => isAdmin || hasRole(currentUser?.roles, "administrative"),
+    [currentUser, isAdmin]
+  );
+
   // 1. Reset / Demo Mode Effect
   useEffect(() => {
     if (demoMode) {
@@ -155,13 +164,22 @@ export function useFirestoreSync(
       return;
     }
 
+    const usesOperationalDirectory =
+      isOperationalDirectoryReader && Boolean(activeCenterId) && portfolioMode === "center";
+
+    if (usesOperationalDirectory && !directoryEnsureRequests.has(activeCenterId)) {
+      directoryEnsureRequests.add(activeCenterId);
+      const ensureDirectory = httpsCallable(functions, "ensurePatientDirectory");
+      void ensureDirectory({ centerId: activeCenterId }).catch(() => {
+        directoryEnsureRequests.delete(activeCenterId);
+      });
+    }
+
     let patientsQuery;
-    if (isAdmin && activeCenterId && portfolioMode === "center") {
-      // Admin View: Everything in this center
+    if (usesOperationalDirectory) {
       patientsQuery = query(
-        collection(db, "patients"),
-        where("accessControl.centerIds", "array-contains", activeCenterId),
-        orderBy("lastUpdated", "desc"),
+        collection(db, "centers", activeCenterId, "patientDirectory"),
+        orderBy("updatedAt", "desc"),
         limit(400)
       );
     } else if (portfolioMode === "global") {
@@ -186,14 +204,23 @@ export function useFirestoreSync(
     const unsub = onSnapshot(
       patientsQuery,
       (snap: QuerySnapshot<DocumentData>) => {
-        const pts = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
+        const pts = usesOperationalDirectory
+          ? snap.docs.map((entry) => mapPatientDirectoryEntry(entry.id, entry.data()))
+          : (snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]);
         setPatients(pts);
       },
       () => setPatients([])
     );
 
     return () => unsub();
-  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdmin, isSuperAdminClaim]);
+  }, [
+    demoMode,
+    authUser?.uid,
+    activeCenterId,
+    portfolioMode,
+    isOperationalDirectoryReader,
+    isSuperAdminClaim,
+  ]);
 
   // 4. Center Data Effect (Staff, Appointments, Logs, Preadmissions)
   useEffect(() => {
