@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "clavesalud-2"
+    "default": "clavesalud-2",
+    "staging": "clavesalud-staging-20260824"
   }
 }

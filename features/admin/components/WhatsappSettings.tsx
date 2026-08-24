@@ -6,6 +6,7 @@ import { MessageCircle, Plus, Save, Phone, Check, Shield, Copy, Lock } from "luc
 import { Auth } from "firebase/auth";
 import { Firestore } from "firebase/firestore";
 import WhatsappTemplatesManager from "../../../components/WhatsappTemplatesManager";
+import { getFunctionsHttpUrl } from "../../../utils/publicAppUrl";
 
 interface WhatsappSettingsProps {
   db: Firestore;
@@ -22,6 +23,7 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
   resolvedCenterId,
   showToast,
 }) => {
+  const whatsappWebhookUrl = getFunctionsHttpUrl("whatsappWebhook");
   // --- WHATSAPP TEMPLATES (per center) ---
   const DEFAULT_WA_TEMPLATES: any[] = [
     {
@@ -340,13 +342,15 @@ export const WhatsappSettings: React.FC<WhatsappSettingsProps> = ({
             <p className="text-xs text-slate-500 font-mono mb-1">Callback URL (Webhook):</p>
             <div className="flex items-center gap-2">
               <code className="text-indigo-300 text-xs break-all flex-1">
-                https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook
+                {whatsappWebhookUrl || "Webhook no disponible en este entorno"}
               </code>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(
-                    "https://us-central1-clavesalud-2.cloudfunctions.net/whatsappWebhook"
-                  );
+                  if (!whatsappWebhookUrl) {
+                    showToast("Webhook no disponible en este entorno", "warning");
+                    return;
+                  }
+                  navigator.clipboard.writeText(whatsappWebhookUrl);
                   showToast("URL copiada", "info");
                 }}
                 className="p-1.5 bg-slate-700 rounded-lg hover:bg-indigo-600 text-slate-400 hover:text-white transition-colors shrink-0"

@@ -14,6 +14,7 @@ import {
   skipControlReminder,
 } from "./controlReminderJobs";
 import { redactedReminderErrorCode } from "./reminderStateMachine";
+import { resolveRuntimePublicAppUrl } from "./runtimeUrls";
 
 // Inicializar admin una sola vez
 if (admin.apps.length === 0) {
@@ -1098,7 +1099,12 @@ async function triggerHandoff(
 
   if (secretaryPhone) {
     // Generar link directo al historial en el Admin Dashboard
-    const dashboardLink = `https://clavesalud-2.web.app/center/${centerId}/admin?tab=whatsapp&chat=${patientPhone}`;
+    const publicAppUrl = resolveRuntimePublicAppUrl({
+      projectId:
+        process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId,
+      configuredUrl: process.env.PUBLIC_APP_URL,
+    });
+    const dashboardLink = `${publicAppUrl}/center/${centerId}/admin?tab=whatsapp&chat=${patientPhone}`;
     
     const notif =
       `🔔 *Nueva solicitud de atención — ${centerName}*\n\n` +

@@ -11,6 +11,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 import { sanitizeStaffMembershipProfile } from "./staffCapabilityPolicy";
+import { resolveRuntimePublicAppUrl } from "./runtimeUrls";
 import {
   canCancelPublicAppointment,
   consumeFixedWindowRateLimit,
@@ -49,6 +50,13 @@ function getProjectId(): string {
   return (
     process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId || ""
   );
+}
+
+function getPublicAppUrl(): string {
+  return resolveRuntimePublicAppUrl({
+    projectId: getProjectId(),
+    configuredUrl: process.env.PUBLIC_APP_URL,
+  });
 }
 
 type CallableContext = {
@@ -706,7 +714,7 @@ export const createCenterAdminInvite = (functions.https.onCall as any)(
       invitedByUid: context.auth?.uid,
     });
 
-    const inviteUrl = `https://clavesalud-2.web.app/invite?token=${token}`;
+    const inviteUrl = `${getPublicAppUrl()}/invite?token=${token}`;
 
     let emailSent = false;
     let emailError = null;
@@ -784,7 +792,7 @@ export const resendCenterAdminInvite = (functions.https.onCall as any)(
         invitedByUid: context.auth?.uid,
       });
 
-    const inviteUrl = `https://clavesalud-2.web.app/invite?token=${newToken}`;
+    const inviteUrl = `${getPublicAppUrl()}/invite?token=${newToken}`;
 
     let emailSent = false;
     let emailError = null;
@@ -1481,7 +1489,7 @@ export const createProfessionalInvite = (functions.https.onCall as any)(
       { merge: true }
     );
     await batch.commit();
-    return { ok: true, token, inviteUrl: `https://clavesalud-2.web.app/invite?token=${token}` };
+    return { ok: true, token, inviteUrl: `${getPublicAppUrl()}/invite?token=${token}` };
   }
 );
 

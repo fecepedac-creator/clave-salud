@@ -6,6 +6,7 @@ import { Printer, FileText, X } from "lucide-react";
 import QRCode from "qrcode";
 import { logAuditEventRequired } from "../hooks/useAuditLog";
 import { useToast } from "./Toast";
+import { getPublicAppUrl } from "../utils/publicAppUrl";
 
 const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
   const [qrSrc, setQrSrc] = React.useState<string>("");
@@ -62,10 +63,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     year: "numeric",
   });
 
-  const origin =
-    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-      ? window.location.origin
-      : "https://clavesalud-2.web.app";
+  const origin = getPublicAppUrl();
 
   const downloadPDF = async () => {
     try {

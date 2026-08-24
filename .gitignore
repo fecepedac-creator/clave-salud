@@ -45,6 +45,7 @@ pilot-screenshot.png
 .env.*
 !.env.example
 !.env.test.example
+!.env.staging.example
 
 # Playwright artifacts
 tests/auth/.auth/

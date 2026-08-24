@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { MedicalCenter, Doctor, Appointment } from "../types";
+import { getPublicAppUrl } from "./publicAppUrl";
 
 export type FlyerFormat = "instagram-post" | "instagram-story" | "facebook-post";
 export type FlyerType = "platform" | "center" | "professional";
@@ -163,7 +164,7 @@ ${generateHashtags(type, doctorSpecialty).join(" ")}`;
  * Genera la URL de agendamiento según el contexto
  */
 export function generateBookingURL(centerId: string, doctorId?: string): string {
-  const baseURL = "https://clavesalud-2.web.app";
+  const baseURL = getPublicAppUrl();
 
   if (doctorId) {
     return `${baseURL}?center=${centerId}&doctor=${doctorId}`;

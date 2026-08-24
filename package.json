@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:staging": "node scripts/release/build-staging.mjs",
     "preview": "vite preview",
     "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "lint:ci": "eslint App.tsx components/AdminDashboard.tsx components/InvitePage.tsx components/MigrationModal.tsx hooks/useAuth.ts hooks/useInvite.ts features/admin/components/ProfessionalManagement.tsx features/admin/components/WhatsappSettings.tsx features/admin/components/AdminAIUsageTab.tsx --ext .ts,.tsx --quiet",
@@ -16,7 +17,7 @@
     "security:commercial": "node scripts/verify-commercial-readiness.mjs",
     "test:release-policy": "node --test scripts/release/staging-policy.test.mjs",
     "release:staging:preflight": "node scripts/release/preflight-staging.mjs --project staging",
-    "release:staging:hosting": "npm run release:staging:preflight && npm run build && firebase deploy --only hosting --project staging",
+    "release:staging:hosting": "npm run release:staging:preflight && npm run build:staging && firebase deploy --only hosting --project staging",
     "release:staging:rules": "npm run release:staging:preflight && npm run test:rules && firebase deploy --only firestore:rules --project staging",
     "release:staging:functions": "npm run release:staging:preflight && npm --prefix functions run build && firebase deploy --only functions --project staging",
     "ops:verify": "node scripts/verify-ops.mjs",

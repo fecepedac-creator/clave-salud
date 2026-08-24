@@ -3,7 +3,7 @@
 ## Alcance
 
 - Rama local: `codex/release-integration-af`
-- Tag local del candidato: `codex-release-af-staging-candidate-20260824`
+- Tag local del candidato: `codex-release-af-staging-candidate-20260824-v2`
 - Base reversible: `5518680c770c6b18924dfe95b057535387c977d5`
 - Candidato funcional A-F: `89f6508b9414a38b2acdc31f8c6ec655c6024878`; los commits posteriores agregan únicamente manifiesto y guardrails de liberación.
 - Estado: solo local; sin push, PR ni despliegue a producción.
@@ -34,13 +34,14 @@
 ## Secuencia de staging
 
 1. Configurar en `.firebaserc` un alias `staging` que apunte a un proyecto distinto de `clavesalud-2`.
-2. Ejecutar `npm run release:staging:preflight`; debe rechazar un worktree sucio, otra rama, el alias `default` y cualquier destino de producción.
-3. Crear staging desde este commit exacto, sin mezclar cambios de otros worktrees.
-4. Aplicar primero Hosting con `npm run release:staging:hosting` y ejecutar los recorridos públicos y simulados.
-5. Aplicar Rules y Functions, en ese orden, con los comandos `release:staging:*`; todos incluyen el mismo preflight.
-6. Repetir Rules, integraciones y gate autenticado contra staging con cuentas sintéticas.
-7. Mantener deshabilitados Calendar y el portal privado hasta provisionar identidad o grants seguros.
-8. Observar errores, latencia y auditoría antes de promover por tren; no promover A-F en un único salto.
+2. Registrar una sola aplicación web en el proyecto staging. El build obtiene su configuración con Firebase CLI únicamente en memoria y fuerza inicialmente las integraciones de riesgo a `false`; no usa ni persiste `.env.staging.local`.
+3. Ejecutar `npm run release:staging:preflight`; debe rechazar un worktree sucio, otra rama, el alias `default`, cualquier destino de producción y una aplicación web que no pertenezca a staging.
+4. Crear staging desde este commit exacto, sin mezclar cambios de otros worktrees.
+5. Aplicar primero Hosting con `npm run release:staging:hosting`; este usa `vite build --mode staging`, y después ejecutar los recorridos públicos y simulados.
+6. Aplicar Rules y Functions, en ese orden, con los comandos `release:staging:*`; todos incluyen el mismo preflight.
+7. Repetir Rules, integraciones y gate autenticado contra staging con cuentas sintéticas.
+8. Mantener deshabilitados Calendar y el portal privado hasta provisionar identidad o grants seguros.
+9. Observar errores, latencia y auditoría antes de promover por tren; no promover A-F en un único salto.
 
 ## Rollback
 

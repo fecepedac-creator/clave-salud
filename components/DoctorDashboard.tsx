@@ -42,6 +42,7 @@ import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatient
 import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
 import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
 import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
+import { getPublicAppUrl } from "../utils/publicAppUrl";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -551,8 +552,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const doctorDisplayName = doctorFormattedName
     ? `el/la ${getProfessionalPrefix(role)} ${doctorFormattedName}`
     : "el profesional asignado";
-  const bookingUrl =
-    typeof window !== "undefined" ? window.location.origin : "https://clavesalud-2.web.app";
+  const bookingUrl = getPublicAppUrl();
   const cancelWhatsappMessage = slotModal.appointment
     ? `Estimado/a ${patientDisplayName}, le escribimos desde ${centerName}. Por motivos de fuerza mayor, ${doctorDisplayName} no podrá asistir a la consulta del ${slotDateLabel} a las ${slotModal.appointment.time}. Pedimos disculpas e invitamos a reagendar su hora por los canales habituales: teléfono del centro médico o por esta misma vía. Puedes solicitar una nueva hora aquí: ${bookingUrl}`
     : "";
