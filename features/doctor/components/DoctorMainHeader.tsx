@@ -10,6 +10,7 @@ interface Appointment {
 
 interface DoctorMainHeaderProps {
   doctorName: string;
+  professionalRole?: string;
   activeCenter?: {
     logoUrl?: string;
     name?: string;
@@ -23,6 +24,7 @@ interface DoctorMainHeaderProps {
 
 const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
   doctorName,
+  professionalRole,
   activeCenter,
   appointments,
   doctorId,
@@ -31,6 +33,8 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
   setIsPiiMasked,
 }) => {
   const [centerLogoError, setCenterLogoError] = useState(false);
+  const firstName = doctorName.trim().split(/\s+/)[0] || "Profesional";
+  const professionalLabel = getProfessionalPanelLabel(professionalRole);
 
   // Count today's booked appointments for this doctor
   const todayCount = appointments.filter(
@@ -42,9 +46,11 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
 
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-health-100/50 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-20 flex-shrink-0 gap-4 transition-all duration-300">
-      <div className="flex items-center gap-3 w-full md:w-auto">
-        <h1 className="text-xl font-bold text-slate-800">Panel Médico</h1>
-        <p className="text-xs text-slate-400 font-medium">Bienvenido, {doctorName}</p>
+      <div className="w-full md:w-auto">
+        <h1 className="text-xl font-bold text-slate-800">Buenos días, {firstName}</h1>
+        <p className="mt-0.5 text-xs font-medium text-slate-500">
+          Panel clínico · {professionalLabel}
+        </p>
       </div>
 
       <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-center">
@@ -100,6 +106,29 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
       </div>
     </header>
   );
+};
+
+export const getProfessionalPanelLabel = (role?: string): string => {
+  const normalized = String(role || "").trim().toUpperCase();
+  const labels: Record<string, string> = {
+    MEDICO: "Médico",
+    KINESIOLOGO: "Kinesiólogo",
+    ENFERMERA: "Enfermería",
+    ENFERMERO: "Enfermería",
+    MATRONA: "Matrona",
+    NUTRICIONISTA: "Nutricionista",
+    PSICOLOGO: "Psicólogo",
+    ODONTOLOGO: "Odontólogo",
+    FONOAUDIOLOGO: "Fonoaudiólogo",
+    TERAPEUTA_OCUPACIONAL: "Terapeuta ocupacional",
+    PODOLOGO: "Podólogo",
+    TECNOLOGO_MEDICO: "Tecnólogo médico",
+    PREPARADOR_FISICO: "Preparador físico",
+    QUIMICO_FARMACEUTICO: "Químico farmacéutico",
+    ASISTENTE_SOCIAL: "Asistente social",
+    TENS: "TENS",
+  };
+  return labels[normalized] || "Profesional de salud";
 };
 
 export default DoctorMainHeader;
