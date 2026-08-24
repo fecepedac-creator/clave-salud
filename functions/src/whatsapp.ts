@@ -1,5 +1,5 @@
 import * as functions from "firebase-functions/v1";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import {
   GoogleGenerativeAI,
   SchemaType,
