@@ -10,6 +10,11 @@ on:
         description: "Escribe DEPLOY_CLAVESALUD_2 para autorizar Hosting live"
         required: true
         type: string
+      release_ref:
+        description: "main o SHA de una versión ya validada (permite reversión de Hosting)"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: read
@@ -59,8 +64,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Validate release reference
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          if [[ "$RELEASE_REF" != "main" && ! "$RELEASE_REF" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "release_ref debe ser main o un SHA de Git de 7 a 40 caracteres hexadecimales."
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
