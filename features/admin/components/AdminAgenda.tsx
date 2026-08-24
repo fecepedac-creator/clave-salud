@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Doctor,
   Appointment,
@@ -32,11 +32,18 @@ import {
   doc,
   setDoc,
   serverTimestamp,
+  onSnapshot,
   where,
   getDocs,
   getDoc,
   Timestamp,
 } from "firebase/firestore";
+import {
+  isAgendaResource,
+  mergeAgendaResources,
+  toAgendaAssignment,
+  type AgendaResource,
+} from "../../../domain/agendaResource";
 
 interface AdminAgendaProps {
   centerId: string;
@@ -75,6 +82,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
 }) => {
   // --- STATE FOR AGENDA MANAGEMENT ---
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>(doctors[0]?.id || "");
+  const [storedAgendaResources, setStoredAgendaResources] = useState<AgendaResource[]>([]);
   const [bookingSlotId, setBookingSlotId] = useState<string | null>(null);
   const [bookingRut, setBookingRut] = useState("");
   const [bookingName, setBookingName] = useState("");
@@ -134,8 +142,18 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
     endTime: "21:00",
   });
 
-  const selectedDoctor = doctors.find((d) => d.id === selectedDoctorId);
-  const savedConfig = selectedDoctor?.agendaConfig;
+  const agendaResources = useMemo(
+    () => mergeAgendaResources(storedAgendaResources, doctors),
+    [storedAgendaResources, doctors]
+  );
+  const selectedDoctor = doctors.find(
+    (doctor) => doctor.id === selectedDoctorId && doctor.role !== "SERVICIO"
+  );
+  const selectedAgendaResource = agendaResources.find(
+    (resource) => resource.id === selectedDoctorId
+  );
+  const selectedAgendaEntity = selectedDoctor ?? selectedAgendaResource;
+  const savedConfig = selectedAgendaEntity?.agendaConfig;
 
   const isConfigEqual = (a?: AgendaConfig, b?: AgendaConfig) =>
     !!a &&
@@ -148,13 +166,37 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
 
   // Effects
   useEffect(() => {
-    const doc = doctors.find((d) => d.id === selectedDoctorId);
-    if (doc && doc.agendaConfig) {
-      setTempConfig(doc.agendaConfig);
+    const resourcesRef = collection(db, "centers", resolvedCenterId, "agendaResources");
+    return onSnapshot(
+      resourcesRef,
+      (snapshot) => {
+        setStoredAgendaResources(
+          snapshot.docs
+            .map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }))
+            .filter(isAgendaResource)
+        );
+      },
+      () => setStoredAgendaResources([])
+    );
+  }, [resolvedCenterId]);
+
+  useEffect(() => {
+    const availableIds = [
+      ...doctors.filter((doctor) => doctor.role !== "SERVICIO").map((doctor) => doctor.id),
+      ...agendaResources.map((resource) => resource.id),
+    ];
+    if (!availableIds.includes(selectedDoctorId)) {
+      setSelectedDoctorId(availableIds[0] ?? "");
+    }
+  }, [agendaResources, doctors, selectedDoctorId]);
+
+  useEffect(() => {
+    if (selectedAgendaEntity?.agendaConfig) {
+      setTempConfig(selectedAgendaEntity.agendaConfig);
     } else {
       setTempConfig({ slotDuration: 20, startTime: "08:00", endTime: "21:00" });
     }
-  }, [selectedDoctorId, doctors]);
+  }, [selectedAgendaEntity]);
 
   useEffect(() => {
     setPendingAdds(new Set());
@@ -173,6 +215,28 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   // --- FUNCTIONS ---
 
   const handleSaveConfig = async () => {
+    if (selectedAgendaResource) {
+      const isStored = storedAgendaResources.some(
+        (resource) => resource.id === selectedAgendaResource.id
+      );
+      try {
+        await setDoc(
+          doc(db, "centers", resolvedCenterId, "agendaResources", selectedAgendaResource.id),
+          {
+            ...selectedAgendaResource,
+            agendaConfig: tempConfig,
+            ...(!isStored ? { createdAt: serverTimestamp() } : {}),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        showToast("Configuración del recurso guardada correctamente", "success");
+      } catch {
+        showToast("Error al guardar la configuración del recurso.", "error");
+      }
+      return;
+    }
+
     let updatedDoctor: Doctor | null = null;
     doctors.forEach((d) => {
       if (d.id === selectedDoctorId) {
@@ -270,13 +334,16 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       showToast("Selecciona un centro activo.", "warning");
       return;
     }
+    if (!selectedAgendaEntity) {
+      showToast("Selecciona una agenda válida.", "warning");
+      return;
+    }
     setIsSavingSlots(true);
     try {
       const newSlots: Appointment[] = Array.from(pendingAdds).map((time) => ({
         id: generateSlotId(resolvedCenterId, selectedDoctorId!, selectedDate!, time as string),
         centerId: resolvedCenterId,
-        doctorId: selectedDoctorId,
-        doctorUid: selectedDoctorId,
+        ...toAgendaAssignment(selectedAgendaEntity),
         date: selectedDate!,
         time: time as string,
         status: "available",
@@ -302,7 +369,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   };
 
   const handleGenerateSlots = async () => {
-    if (!selectedDoctorId || !hasActiveCenter || isGenerating) return;
+    if (!selectedDoctorId || !selectedAgendaEntity || !hasActiveCenter || isGenerating) return;
     setIsGenerating(true);
     try {
       const from = new Date(genFrom + "T00:00:00");
@@ -345,8 +412,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       const newSlots: Appointment[] = slotsToCreate.map((slot) => ({
         id: generateSlotId(resolvedCenterId, selectedDoctorId, slot.date, slot.time),
         centerId: resolvedCenterId,
-        doctorId: selectedDoctorId,
-        doctorUid: selectedDoctorId,
+        ...toAgendaAssignment(selectedAgendaEntity),
         date: slot.date,
         time: slot.time,
         status: "available",
@@ -393,14 +459,19 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
 
     if (notify) {
       const apt = cancelModal.appointment;
-      const doctor = doctors.find((d) => d.id === ((apt as any).doctorUid ?? apt.doctorId));
+      const professional = doctors.find(
+        (doctor) => doctor.id === ((apt as any).doctorUid ?? apt.doctorId)
+      );
+      const resource = agendaResources.find(
+        (agendaResource) => agendaResource.id === (apt.resourceId ?? apt.doctorId)
+      );
       const rawPhone = apt.patientPhone || "";
       const cleanPhone = rawPhone.replace(/\D/g, "");
       let waNumber = cleanPhone;
       if (cleanPhone.length === 9 && cleanPhone.startsWith("9")) waNumber = `56${cleanPhone}`;
 
       const centerName = activeCenter?.name || "nuestro centro";
-      const message = `Hola ${apt.patientName}, le escribimos de ${centerName}. Lamentamos informar que su hora agendada para el día ${apt.date} a las ${apt.time} hrs con ${doctor?.fullName || "el especialista"} ha tenido que ser suspendida por motivos de fuerza mayor. Por favor contáctenos para reagendar.`;
+      const message = `Hola ${apt.patientName}, le escribimos de ${centerName}. Lamentamos informar que su hora agendada para el día ${apt.date} a las ${apt.time} hrs con ${professional?.fullName || resource?.displayName || "el especialista"} ha tenido que ser suspendida por motivos de fuerza mayor. Por favor contáctenos para reagendar.`;
 
       const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
       window.open(url, "_blank");
@@ -738,7 +809,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
           </div>
         )}
         <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
-          <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
+          <h3 className="font-bold text-white mb-4">Seleccionar agenda</h3>
           <select
             data-testid="select-agenda-prof"
             className="w-full bg-slate-900 text-white border border-slate-700 p-3 rounded-xl outline-none"
@@ -754,14 +825,12 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   </option>
                 ))}
             </optgroup>
-            <optgroup label="Agendas de Servicio">
-              {doctors
-                .filter((d) => d.role === "SERVICIO")
-                .map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.fullName}
-                  </option>
-                ))}
+            <optgroup label="Recursos operativos">
+              {agendaResources.map((resource) => (
+                <option key={resource.id} value={resource.id}>
+                  {resource.displayName}
+                </option>
+              ))}
             </optgroup>
           </select>
         </div>

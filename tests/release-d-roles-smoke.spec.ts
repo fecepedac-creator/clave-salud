@@ -72,4 +72,22 @@ for (const viewport of viewports) {
     );
     expect(hasHorizontalOverflow).toBe(false);
   });
+
+  test(`agenda separates professionals from operational resources on ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto(`/center/${TEST.CENTER_ID}?agent_test=true&demo_role=admin`);
+
+    await page.locator('[data-testid="admin-tab-agenda"]').click();
+    await expect(page.getByRole("heading", { name: "Seleccionar agenda" })).toBeVisible();
+    const selector = page.locator('[data-testid="select-agenda-prof"]');
+    await expect(selector.locator('optgroup[label="Médicos / Profesionales"]')).toHaveCount(1);
+    await expect(selector.locator('optgroup[label="Recursos operativos"]')).toHaveCount(1);
+
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+  });
 }
