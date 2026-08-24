@@ -527,17 +527,14 @@ service cloud.firestore {
 
       match /patients/{patientId} {
         allow read: if signedIn()
-          && (
-            isCenterAdmin(centerId)
-            || (isStaff(centerId) && (
+          && (hasClinicalRole(centerId) && (
               !isCareTeamMode(centerId)
               || isCareTeamMemberFromResource()
-            ))
-          );
-        allow create: if (signedIn() && isStaff(centerId))
+            ));
+        allow create: if (signedIn() && hasClinicalRole(centerId))
           || isPublicPatientCreate(centerId);
         allow update: if signedIn()
-          && isStaff(centerId)
+          && hasClinicalRole(centerId)
           && (
             !careTeamKeysChanged()
             || (

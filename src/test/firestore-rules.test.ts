@@ -361,6 +361,7 @@ describe("Firestore security rules - pilot RBAC", () => {
 
   it("blocks a non-clinical center admin from reading clinical consultations", async () => {
     const db = authedDb("adminA");
+    await assertFails(getDoc(doc(db, "centers", CENTER_A, "patients", "patientA")));
     await expect(
       getDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
     ).rejects.toThrow();
