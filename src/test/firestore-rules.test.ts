@@ -122,6 +122,7 @@ async function seedBaseData() {
       professionalId: "doctorA",
       professionalName: "Doctor A",
       professionalRole: "medico",
+      professionalRut: "1-9",
       evolution: "Contenido clínico privado",
       prescriptions: [],
       prescriptionTypes: [],
@@ -135,7 +136,44 @@ async function seedBaseData() {
         professionalId: "doctorA",
         professionalName: "Doctor A",
         professionalRole: "medico",
+        professionalRut: "1-9",
         evolution: "Evolucion clinica privada",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      }
+    );
+    await setDoc(
+      doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "signedConsultA"),
+      {
+        centerId: CENTER_A,
+        patientId: "patientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        professionalRut: "1-9",
+        authorUid: "doctorA",
+        recordStatus: "signed",
+        revision: 2,
+        diagnosis: "Registro firmado",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      }
+    );
+    await setDoc(
+      doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "draftConsultA"),
+      {
+        centerId: CENTER_A,
+        patientId: "patientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        professionalRut: "1-9",
+        authorUid: "doctorA",
+        recordStatus: "draft",
+        revision: 1,
+        diagnosis: "Borrador de servidor",
         prescriptions: [],
         prescriptionTypes: [],
         hasControlledPrescription: false,
@@ -293,6 +331,80 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
+  it("blocks direct creation of a lifecycle document from the client", async () => {
+    const db = authedDb("doctorA");
+    await assertFails(
+      setDoc(
+        doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "clientDraft"),
+        {
+          centerId: CENTER_A,
+          patientId: "patientA",
+          professionalId: "doctorA",
+          professionalName: "Doctor A",
+          professionalRole: "medico",
+          professionalRut: "1-9",
+          authorUid: "doctorA",
+          recordStatus: "draft",
+          revision: 1,
+          prescriptions: [],
+          prescriptionTypes: [],
+          hasControlledPrescription: false,
+        }
+      )
+    );
+  });
+
+  it("blocks direct modification of a signed clinical record", async () => {
+    await assertFails(
+      updateDoc(
+        doc(
+          authedDb("doctorA"),
+          "centers",
+          CENTER_A,
+          "patients",
+          "patientA",
+          "consultations",
+          "signedConsultA"
+        ),
+        { diagnosis: "Intento de sobrescritura" }
+      )
+    );
+  });
+
+  it("blocks direct draft edits so they cannot bypass server audit", async () => {
+    await assertFails(
+      updateDoc(
+        doc(
+          authedDb("doctorA"),
+          "centers",
+          CENTER_A,
+          "patients",
+          "patientA",
+          "consultations",
+          "draftConsultA"
+        ),
+        { diagnosis: "Cambio directo no auditado" }
+      )
+    );
+  });
+
+  it("preserves direct updates for legacy consultations during migration", async () => {
+    await assertSucceeds(
+      updateDoc(
+        doc(
+          authedDb("doctorA"),
+          "centers",
+          CENTER_A,
+          "patients",
+          "patientA",
+          "consultations",
+          "consultA"
+        ),
+        { evolution: "Evolución legacy actualizada" }
+      )
+    );
+  });
+
   it("blocks appointment changes in a closed month", async () => {
     const db = authedDb("secretaryA");
     await assertFails(
@@ -357,6 +469,45 @@ describe("Firestore security rules - pilot RBAC", () => {
       getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
     );
     await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "staff", "doctorA")));
+  });
+
+  it("keeps signed root consultations immutable from the client", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "patients", "rootSignedPatient"), {
+        centerId: CENTER_A,
+        fullName: "Root Paciente Firmado",
+        accessControl: { centerIds: [CENTER_A], allowedUids: ["doctorA"] },
+        careTeamUids: ["doctorA"],
+      });
+      await setDoc(doc(db, "patients", "rootSignedPatient", "consultations", "signedRoot"), {
+        centerId: CENTER_A,
+        patientId: "rootSignedPatient",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        professionalRut: "1-9",
+        authorUid: "doctorA",
+        recordStatus: "signed",
+        revision: 1,
+        diagnosis: "Registro firmado",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      });
+    });
+    await assertFails(
+      updateDoc(
+        doc(
+          authedDb("doctorA"),
+          "patients",
+          "rootSignedPatient",
+          "consultations",
+          "signedRoot"
+        ),
+        { diagnosis: "Intento de cambio" }
+      )
+    );
   });
 
   it("blocks a non-clinical center admin from reading clinical consultations", async () => {

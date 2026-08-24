@@ -477,6 +477,23 @@ service cloud.firestore {
           && request.resource.data.professionalRut == resource.data.professionalRut;
       }
 
+      function clinicalLifecycleKeys() {
+        return [
+          "recordStatus", "authorUid", "signedAt", "signedByUid",
+          "revision", "addendumOf", "contentHashSha256"
+        ];
+      }
+
+      function clinicalDocumentClientCreateValid() {
+        return !request.resource.data.keys().hasAny(clinicalLifecycleKeys());
+      }
+
+      function clinicalDocumentClientUpdateValid() {
+        let status = resource.data.get("recordStatus", "legacy");
+        return status == "legacy"
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(clinicalLifecycleKeys());
+      }
+
       function hasPrescriptionDocuments() {
         return request.resource.data.prescriptions is list
           && request.resource.data.prescriptions.size() > 0;
@@ -564,9 +581,11 @@ service cloud.firestore {
                 || isCareTeamMember(centerId, patientId)
               ));
           allow create: if signedIn() && hasClinicalRole(centerId)
+          && clinicalDocumentClientCreateValid()
           && consultationPrescriptionSecurityValid(centerId);
           allow update: if signedIn() && hasClinicalRole(centerId)
           && professionalFieldsUnchanged()
+          && clinicalDocumentClientUpdateValid()
           && consultationPrescriptionSecurityValid(centerId)
           && (
             !softDeleteKeysChanged()
@@ -909,6 +928,22 @@ service cloud.firestore {
           && request.resource.data.professionalRole == resource.data.professionalRole;
       }
 
+      function rootClinicalDocumentClientCreateValid() {
+        return !request.resource.data.keys().hasAny([
+          "recordStatus", "authorUid", "signedAt", "signedByUid",
+          "revision", "addendumOf", "contentHashSha256"
+        ]);
+      }
+
+      function rootClinicalDocumentClientUpdateValid() {
+        let status = resource.data.get("recordStatus", "legacy");
+        return status == "legacy"
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "recordStatus", "authorUid", "signedAt", "signedByUid",
+            "revision", "addendumOf", "contentHashSha256"
+          ]);
+      }
+
     // Read: owner, allowed professional (including care team), or superadmin
     allow read: if canReadRootPatient();
 
@@ -927,9 +962,11 @@ service cloud.firestore {
       match /consultations/{consultationId} {
         allow read: if canAccessRootConsultationParent();
         allow create: if canAccessRootConsultationParent()
+          && rootClinicalDocumentClientCreateValid()
           && rootConsultationPrescriptionSecurityValid();
         allow update: if canAccessRootConsultationParent()
           && rootConsultationProfessionalFieldsUnchanged()
+          && rootClinicalDocumentClientUpdateValid()
           && rootConsultationPrescriptionSecurityValid();
         // Delete físico prohibido para mantener trazabilidad clínica.
         // Usar archivado lógico y retención.
