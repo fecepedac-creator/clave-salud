@@ -31,12 +31,14 @@
 
 ## Secuencia de staging
 
-1. Crear staging desde este commit exacto, sin mezclar cambios de otros worktrees.
-2. Aplicar primero Hosting en staging y ejecutar los recorridos públicos y simulados.
-3. Aplicar Rules y Functions únicamente al proyecto de staging.
-4. Repetir Rules, integraciones y gate autenticado contra staging con cuentas sintéticas.
-5. Mantener deshabilitados Calendar y el portal privado hasta provisionar identidad o grants seguros.
-6. Observar errores, latencia y auditoría antes de promover por tren; no promover A-F en un único salto.
+1. Configurar en `.firebaserc` un alias `staging` que apunte a un proyecto distinto de `clavesalud-2`.
+2. Ejecutar `npm run release:staging:preflight`; debe rechazar un worktree sucio, otra rama, el alias `default` y cualquier destino de producción.
+3. Crear staging desde este commit exacto, sin mezclar cambios de otros worktrees.
+4. Aplicar primero Hosting con `npm run release:staging:hosting` y ejecutar los recorridos públicos y simulados.
+5. Aplicar Rules y Functions, en ese orden, con los comandos `release:staging:*`; todos incluyen el mismo preflight.
+6. Repetir Rules, integraciones y gate autenticado contra staging con cuentas sintéticas.
+7. Mantener deshabilitados Calendar y el portal privado hasta provisionar identidad o grants seguros.
+8. Observar errores, latencia y auditoría antes de promover por tren; no promover A-F en un único salto.
 
 ## Rollback
 
