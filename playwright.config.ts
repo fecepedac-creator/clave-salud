@@ -63,6 +63,7 @@ export default defineConfig({
         "**/pilot-simulated.spec.ts",
         "**/release-a-dashboard-smoke.spec.ts",
         "**/release-b-agenda-smoke.spec.ts",
+        "**/release-d-roles-smoke.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
