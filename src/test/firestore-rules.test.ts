@@ -100,6 +100,16 @@ async function seedBaseData() {
       accessControl: { centerIds: [CENTER_B], allowedUids: ["doctorB"] },
       active: true,
     });
+    await setDoc(doc(db, "centers", CENTER_A, "patientDirectory", "patientA"), {
+      id: "patientA",
+      patientId: "patientA",
+      centerId: CENTER_A,
+      entityType: "patient_directory_entry",
+      fullName: "Paciente A",
+      rut: "12.345.678-9",
+      active: true,
+      directoryVersion: 1,
+    });
     await setDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"), {
       centerId: CENTER_A,
       patientId: "patientA",
@@ -461,6 +471,29 @@ describe("Firestore security rules - pilot RBAC", () => {
       getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
     );
     await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "staff", "doctorA")));
+  });
+
+  it("exposes the operational patient directory only to same-center staff", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const secretaryDb = authedDb("secretaryA");
+    const doctorDb = authedDb("doctorA");
+    const otherCenterDb = authedDb("doctorB");
+
+    await assertSucceeds(getDoc(doc(adminDb, "centers", CENTER_A, "patientDirectory", "patientA")));
+    await assertSucceeds(
+      getDoc(doc(secretaryDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertSucceeds(
+      getDoc(doc(doctorDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertFails(
+      getDoc(doc(otherCenterDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertFails(
+      setDoc(doc(adminDb, "centers", CENTER_A, "patientDirectory", "manual"), {
+        fullName: "Paciente manual",
+      })
+    );
   });
 
   it("keeps signed root consultations immutable from the client", async () => {

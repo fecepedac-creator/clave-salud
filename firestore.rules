@@ -531,6 +531,12 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /patientDirectory/{patientId} {
+        // Proyección demográfica operativa mantenida exclusivamente por Functions.
+        allow read: if signedIn() && isStaff(centerId);
+        allow create, update, delete: if false;
+      }
+
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));

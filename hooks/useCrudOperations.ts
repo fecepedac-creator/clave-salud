@@ -119,6 +119,29 @@ export function useCrudOperations(
     [activeCenterId, updateAuditLog]
   );
 
+  const updatePatientDemographics = useCallback(
+    async (payload: Patient) => {
+      if (!requireCenter("guardar datos demográficos")) return;
+      const patientId = payload?.id ?? generateId();
+      const command = httpsCallable(getFunctions(), "upsertPatientDemographics");
+      await command({
+        centerId: activeCenterId,
+        patientId,
+        demographics: {
+          fullName: payload.fullName,
+          rut: payload.rut,
+          birthDate: payload.birthDate,
+          gender: payload.gender,
+          phone: payload.phone,
+          email: payload.email,
+          address: payload.address,
+          commune: payload.commune,
+        },
+      });
+    },
+    [activeCenterId, requireCenter]
+  );
+
   const deletePatient = useCallback(
     async (id: string, reason: string) => {
       if (!reason || !reason.trim()) {
@@ -603,6 +626,7 @@ export function useCrudOperations(
 
   return {
     updatePatient,
+    updatePatientDemographics,
     deletePatient,
     updateStaff,
     deleteStaff,

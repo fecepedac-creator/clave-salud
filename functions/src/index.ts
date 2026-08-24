@@ -24,6 +24,7 @@ export {
 } from "./appointmentAdministrativeActions";
 
 export * from "./superAdminOperationalMetrics";
+export * from "./patientDirectory";
 
 const db = admin.firestore();
 const serverTimestamp = ModularFieldValue.serverTimestamp;
