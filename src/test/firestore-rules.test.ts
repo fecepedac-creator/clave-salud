@@ -389,4 +389,23 @@ describe("Firestore security rules - pilot RBAC", () => {
       })
     );
   });
+
+  it("keeps temporary support-session state server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "centers", CENTER_A, "supportSessions", "session-a"), {
+        centerId: CENTER_A,
+        granteeUid: "support-a",
+        permissions: ["support.diagnostics"],
+        status: "active",
+        expiresAt: new Date("2026-08-23T14:00:00.000Z"),
+      });
+    });
+    const adminDb = authedDb("adminA", "admin@example.test");
+    await assertFails(getDoc(doc(adminDb, "centers", CENTER_A, "supportSessions", "session-a")));
+    await assertFails(
+      setDoc(doc(adminDb, "centers", CENTER_A, "supportSessions", "manual"), {
+        status: "active",
+      })
+    );
+  });
 });

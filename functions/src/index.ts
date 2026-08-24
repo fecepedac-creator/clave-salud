@@ -24,6 +24,7 @@ export {
 
 export * from "./superAdminOperationalMetrics";
 export * from "./patientDirectory";
+export * from "./supportAccess";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;

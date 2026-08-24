@@ -520,6 +520,11 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /supportSessions/{sessionId} {
+        // Las sesiones de soporte son creadas, leídas y revocadas solo por Functions.
+        allow read, create, update, delete: if false;
+      }
+
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
