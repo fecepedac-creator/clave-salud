@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import * as functions from "firebase-functions/v1";
 
 if (!admin.apps.length) admin.initializeApp();
@@ -106,7 +107,7 @@ export const syncPatientDirectory = functions.firestore
             .doc(context.params.patientId),
           {
             ...buildPatientDirectoryProjection(context.params.patientId, centerId, after),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           }
         );
       });
@@ -166,7 +167,7 @@ export const ensurePatientDirectory = functions
       let patientQuery = db
         .collection("patients")
         .where("accessControl.centerIds", "array-contains", centerId)
-        .orderBy(admin.firestore.FieldPath.documentId())
+        .orderBy(FieldPath.documentId())
         .limit(400);
       if (cursor) patientQuery = patientQuery.startAfter(cursor);
       const snapshot = await patientQuery.get();
@@ -186,7 +187,7 @@ export const ensurePatientDirectory = functions
               centerId,
               patientSnapshot.data()
             ),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           }
         );
       });
@@ -196,7 +197,7 @@ export const ensurePatientDirectory = functions
       if (snapshot.size < 400) break;
     } while (cursor);
 
-    const completedAt = admin.firestore.FieldValue.serverTimestamp();
+    const completedAt = FieldValue.serverTimestamp();
     const finalBatch = db.batch();
     finalBatch.set(stateRef, { status: "ready", version: DIRECTORY_VERSION, completedAt });
     finalBatch.set(db.collection("centers").doc(centerId).collection("auditLogs").doc(), {
@@ -230,7 +231,7 @@ export const executePatientDemographicsUpsert = async (params: {
       throw new functions.https.HttpsError("permission-denied", "Acceso no autorizado.");
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     const patientPayload: PatientData = existing
       ? { ...demographics, lastUpdated: now }
       : {
