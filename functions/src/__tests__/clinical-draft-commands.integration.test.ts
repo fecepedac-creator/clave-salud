@@ -14,6 +14,7 @@ const integration = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.sk
 integration("documentos clínicos transaccionales (Firestore Emulator)", () => {
   jest.setTimeout(20000);
   const actor = { uid: "doctor-r2", skipAuthorization: true };
+  const authenticatedActor = { uid: "doctor-r2" };
   let centerId: string;
   let patientId: string;
   let appointmentId: string;
@@ -38,6 +39,23 @@ integration("documentos clínicos transaccionales (Firestore Emulator)", () => {
         doctorId: actor.uid,
         status: "booked",
       }),
+      db
+        .collection("centers")
+        .doc(centerId)
+        .collection("staff")
+        .doc(actor.uid)
+        .set({
+          active: true,
+          clinicalRole: "MEDICO",
+          fullName: "Profesional Sintético",
+          rut: "11.111.111-1",
+          capabilities: [
+            "clinical_draft.create",
+            "clinical_draft.edit_own",
+            "clinical_record.sign",
+            "clinical_record.addendum",
+          ],
+        }),
     ]);
   });
 
@@ -53,7 +71,27 @@ integration("documentos clínicos transaccionales (Firestore Emulator)", () => {
       ...audits.docs.map((document) => document.ref.delete()),
       db.collection("patients").doc(patientId).delete(),
       db.collection("centers").doc(centerId).collection("appointments").doc(appointmentId).delete(),
+      db.collection("centers").doc(centerId).collection("staff").doc(actor.uid).delete(),
     ]);
+  });
+
+  it("toma la identidad profesional del perfil autorizado del servidor", async () => {
+    const created = await createDraftFromAppointmentTransaction(
+      { centerId, patientId, appointmentId, requestId: "authorized-draft-request-0001" },
+      authenticatedActor
+    );
+    const saved = await db
+      .collection("patients")
+      .doc(patientId)
+      .collection("consultations")
+      .doc(created.documentId)
+      .get();
+    expect(saved.data()).toMatchObject({
+      professionalId: actor.uid,
+      professionalName: "Profesional Sintético",
+      professionalRole: "MEDICO",
+      professionalRut: "11.111.111-1",
+    });
   });
 
   it("crea un único borrador por cita incluso con otra clave de solicitud", async () => {
