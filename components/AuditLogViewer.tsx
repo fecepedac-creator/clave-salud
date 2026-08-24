@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { AuditLogEntry, AuditAction, Doctor, Patient } from "../types";
-import { Download, Filter, RefreshCw } from "lucide-react";
+import { Filter, RefreshCw } from "lucide-react";
 
 const RANGE_OPTIONS = [
   { label: "7 días", days: 7 },
@@ -47,11 +47,6 @@ function toDate(value: AuditLogEntry["timestamp"]): Date | null {
     return (value as Timestamp).toDate();
   }
   return null;
-}
-
-function formatCsvValue(value: string) {
-  const escaped = value.replace(/"/g, '""');
-  return `"${escaped}"`;
 }
 
 interface AuditLogViewerProps {
@@ -132,33 +127,6 @@ const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ centerId, staff, patien
     });
   }, [logs, patientQuery, patientLookup]);
 
-  const exportCsv = () => {
-    const headers = ["Fecha", "Actor", "Acción", "Entidad", "Paciente", "Detalles"];
-    const rows = filteredLogs.map((log) => {
-      const date = toDate(log.timestamp)?.toLocaleString("es-CL") ?? "";
-      const actor = log.actorName || log.actorUid || "-";
-      const action = log.action || log.metadata?.action || log.type || "-";
-      const entity = log.entityType ? `${log.entityType}:${log.entityId}` : log.entityId || "-";
-      const patient =
-        (log.patientId && patientLookup.get(log.patientId)?.fullName) || log.patientId || "-";
-      const details = log.details || (log.metadata?.details as string) || "";
-      return [date, actor, action, entity, patient, details];
-    });
-
-    const csv = [
-      headers.map(formatCsvValue).join(","),
-      ...rows.map((row) => row.map((cell) => formatCsvValue(String(cell))).join(",")),
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `audit-logs-${centerId}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -176,12 +144,6 @@ const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ centerId, staff, patien
             className="flex items-center gap-2 text-xs font-bold text-slate-200 bg-slate-700 px-3 py-2 rounded-lg hover:bg-slate-600"
           >
             <RefreshCw className="w-4 h-4" /> Recargar
-          </button>
-          <button
-            onClick={exportCsv}
-            className="flex items-center gap-2 text-xs font-bold text-emerald-200 bg-emerald-700/40 px-3 py-2 rounded-lg hover:bg-emerald-600/60"
-          >
-            <Download className="w-4 h-4" /> Exportar CSV
           </button>
         </div>
       </div>
