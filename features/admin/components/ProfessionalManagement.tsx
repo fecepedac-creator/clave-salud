@@ -26,7 +26,14 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { Doctor, ProfessionalRole, RoleId } from "../../../types";
+import {
+  AccessRole,
+  Capability,
+  ClinicalProfession,
+  Doctor,
+  ProfessionalRole,
+  RoleId,
+} from "../../../types";
 import {
   normalizeRut,
   formatRUT,
@@ -36,6 +43,61 @@ import {
 } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 import { PILOT_FEATURES } from "../../../config/pilot";
+import {
+  adaptLegacyAccess,
+  getDefaultCapabilities,
+  getGrantableCapabilities,
+  normalizeAccessRole,
+  normalizeClinicalProfession,
+  sanitizeCapabilitiesForAccessRole,
+} from "../../../utils/roles";
+import { getCreatableClinicalRoleOptions } from "../utils/staffRoleOptions";
+
+const ACCESS_ROLE_LABELS: Record<
+  Extract<AccessRole, "center_admin" | "administrative" | "professional">,
+  string
+> = {
+  professional: "Profesional clínico",
+  administrative: "Administrativo / recepción",
+  center_admin: "Administrador del centro",
+};
+
+const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
+  "agenda.read": "Ver agenda",
+  "agenda.manage": "Gestionar reservas",
+  "agenda.block": "Abrir y cerrar bloques",
+  "agenda.override": "Autorizar excepciones de agenda",
+  "agenda.contact": "Contactar desde agenda",
+  "agenda.check_in": "Registrar llegada",
+  "agenda.attendance": "Registrar asistencia",
+  "agenda.rebook": "Reagendar citas",
+  "operational.export": "Exportar información operativa",
+  "patient.demographics.read": "Ver datos demográficos",
+  "patient.demographics.write": "Editar datos demográficos",
+  "clinical_record.read": "Leer ficha clínica",
+  "clinical_draft.create": "Crear borrador clínico",
+  "clinical_draft.edit_own": "Editar borradores propios",
+  "clinical_record.sign": "Firmar atenciones",
+  "clinical_record.addendum": "Agregar adendas",
+  "clinical_record.export": "Exportar documentos clínicos",
+  "center.configure": "Configurar el centro",
+  "users.manage": "Gestionar equipo",
+};
+
+const editableDoctor = (doctor: Partial<Doctor>): Partial<Doctor> => {
+  const profile = adaptLegacyAccess(doctor);
+  const accessRole =
+    profile.accessRole === "center_admin" || profile.accessRole === "administrative"
+      ? profile.accessRole
+      : "professional";
+  return {
+    ...doctor,
+    accessRole,
+    clinicalRole: accessRole === "professional" ? profile.clinicalProfession || "MEDICO" : "",
+    capabilities: profile.capabilities,
+    isAdmin: accessRole === "center_admin",
+  };
+};
 
 interface ProfessionalManagementProps {
   doctors: Doctor[];
@@ -60,7 +122,6 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
   doctors,
   onUpdateDoctors,
   centerId,
-  activeCenter,
   hasActiveCenter,
   onLogActivity,
   ROLE_LABELS,
@@ -78,14 +139,33 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
   const [isEditingDoctor, setIsEditingDoctor] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<Partial<Doctor>>({
     role: "MEDICO" as ProfessionalRole,
+    accessRole: "professional",
     clinicalRole: "MEDICO",
+    capabilities: getDefaultCapabilities("professional", "MEDICO"),
     visibleInBooking: true,
     active: true,
   });
+  const selectedAccessRole = (
+    ["center_admin", "administrative", "professional"].includes(String(currentDoctor.accessRole))
+      ? currentDoctor.accessRole
+      : "professional"
+  ) as "center_admin" | "administrative" | "professional";
+  const grantableCapabilities = getGrantableCapabilities(selectedAccessRole);
 
   const upsertStaffAndPublic = async (staffId: string, doctor: Partial<Doctor>) => {
     if (!db || !centerId) return;
     const isTemp = (doctor as any).isTemp ?? false;
+    const accessRole = normalizeAccessRole(doctor.accessRole) || "professional";
+    const clinicalProfession =
+      accessRole === "professional"
+        ? normalizeClinicalProfession(doctor.clinicalRole || doctor.role)
+        : null;
+    const capabilities = sanitizeCapabilitiesForAccessRole(
+      accessRole,
+      Array.isArray(doctor.capabilities)
+        ? doctor.capabilities
+        : getDefaultCapabilities(accessRole, clinicalProfession)
+    );
     const payload = {
       fullName: doctor.fullName ?? "",
       rut: doctor.rut ?? "",
@@ -94,9 +174,15 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
       specialty: doctor.specialty ?? "",
       photoUrl: doctor.photoUrl ?? "",
       agendaConfig: doctor.agendaConfig ?? null,
-      role: doctor.role ?? "Medico",
-      accessRole: doctor.isAdmin ? "center_admin" : "doctor",
-      clinicalRole: doctor.clinicalRole || doctor.role || "",
+      role:
+        accessRole === "professional"
+          ? clinicalProfession || "MEDICO"
+          : accessRole === "center_admin"
+            ? "ADMIN_CENTRO"
+            : "ADMINISTRATIVO",
+      accessRole,
+      clinicalRole: clinicalProfession || "",
+      capabilities,
       visibleInBooking: doctor.visibleInBooking === true,
       active: doctor.active ?? true,
       activo: doctor.active ?? true,
@@ -116,7 +202,6 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
         photoUrl: payload.photoUrl,
         role: payload.clinicalRole,
         clinicalRole: payload.clinicalRole,
-        accessRole: payload.accessRole,
         agendaConfig: payload.agendaConfig,
         visibleInBooking: payload.visibleInBooking,
         active: payload.active,
@@ -133,33 +218,59 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
       showToast("Selecciona un centro activo para crear profesionales.", "warning");
       return;
     }
+    const accessRole = normalizeAccessRole(currentDoctor.accessRole) || "professional";
+    const clinicalProfession =
+      accessRole === "professional"
+        ? normalizeClinicalProfession(currentDoctor.clinicalRole || currentDoctor.role)
+        : null;
     if (
       !currentDoctor.fullName ||
       !currentDoctor.rut ||
       !currentDoctor.email ||
-      !(currentDoctor.clinicalRole || currentDoctor.role)
+      (accessRole === "professional" && !clinicalProfession)
     ) {
       showToast("Por favor complete todos los campos obligatorios.", "error");
       return;
     }
 
-    const normalizedRut = normalizeRut(currentDoctor.rut);
+    const capabilities = sanitizeCapabilitiesForAccessRole(
+      accessRole,
+      Array.isArray(currentDoctor.capabilities)
+        ? currentDoctor.capabilities
+        : getDefaultCapabilities(accessRole, clinicalProfession)
+    );
+    const doctorForSave: Partial<Doctor> = {
+      ...currentDoctor,
+      accessRole,
+      clinicalRole: clinicalProfession || "",
+      role:
+        accessRole === "professional"
+          ? clinicalProfession || "MEDICO"
+          : accessRole === "center_admin"
+            ? "ADMIN_CENTRO"
+            : "ADMINISTRATIVO",
+      isAdmin: accessRole === "center_admin",
+      capabilities,
+      visibleInBooking: accessRole === "professional" && currentDoctor.visibleInBooking === true,
+    };
+
+    const normalizedRut = normalizeRut(doctorForSave.rut || "");
     const duplicateRut = doctors.find(
-      (doctor) => normalizeRut(doctor.rut ?? "") === normalizedRut && doctor.id !== currentDoctor.id
+      (doctor) => normalizeRut(doctor.rut ?? "") === normalizedRut && doctor.id !== doctorForSave.id
     );
     if (duplicateRut) {
       showToast("Ya existe un profesional con este RUT.", "error");
       return;
     }
 
-    if (currentDoctor.id) {
+    if (doctorForSave.id) {
       // Edit existing staff member
       const updated = doctors.map((d) =>
-        d.id === currentDoctor.id ? (currentDoctor as Doctor) : d
+        d.id === doctorForSave.id ? (doctorForSave as Doctor) : d
       );
       onUpdateDoctors(updated);
       try {
-        await upsertStaffAndPublic(currentDoctor.id, currentDoctor);
+        await upsertStaffAndPublic(doctorForSave.id, doctorForSave);
         showToast("Profesional actualizado.", "success");
       } catch (e: any) {
         console.error("updateStaffDocument", e);
@@ -167,13 +278,13 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
       }
     } else {
       const newDoc: Doctor = {
-        ...(currentDoctor as Doctor),
+        ...(doctorForSave as Doctor),
         id: generateId(),
         centerId: centerId!,
         active: true,
         agendaConfig: { slotDuration: 20, startTime: "08:00", endTime: "21:00" },
-        clinicalRole: currentDoctor.clinicalRole || currentDoctor.role,
-        visibleInBooking: currentDoctor.visibleInBooking === true,
+        clinicalRole: clinicalProfession || "",
+        visibleInBooking: accessRole === "professional" && currentDoctor.visibleInBooking === true,
       };
 
       try {
@@ -198,7 +309,9 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
     setIsEditingDoctor(false);
     setCurrentDoctor({
       role: "MEDICO" as ProfessionalRole,
+      accessRole: "professional",
       clinicalRole: "MEDICO",
+      capabilities: getDefaultCapabilities("professional", "MEDICO"),
       visibleInBooking: true,
       active: true,
     });
@@ -434,9 +547,9 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
           {doctors.map((docObj) => (
             <div
               key={docObj.id}
-              className="bg-slate-800 p-6 rounded-2xl border border-slate-700 flex justify-between items-center group hover:border-indigo-500 transition-all"
+              className="group flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-slate-700 bg-slate-800 p-6 transition-all hover:border-indigo-500 sm:flex-row sm:items-center"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex min-w-0 items-center gap-4">
                 <div
                   className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden border-2 ${docObj.isAdmin ? "border-indigo-500" : "border-slate-600"} bg-slate-700`}
                 >
@@ -450,7 +563,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                     <span className="text-slate-300">{docObj.fullName?.charAt(0) ?? "?"}</span>
                   )}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-bold text-white text-lg flex items-center gap-2">
                     {formatPersonName(docObj.fullName)}
                     {docObj.isAdmin && (
@@ -482,7 +595,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity items-center">
+              <div className="flex w-full items-center gap-2 opacity-100 transition-opacity group-hover:opacity-100 sm:w-auto sm:opacity-50">
                 <button
                   onClick={() =>
                     handleToggleVisibleInBooking(docObj, !(docObj.visibleInBooking === true))
@@ -493,7 +606,7 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    setCurrentDoctor(docObj);
+                    setCurrentDoctor(editableDoctor(docObj));
                     setIsEditingDoctor(true);
                   }}
                   className="p-2 bg-slate-700 rounded-lg hover:bg-indigo-600 text-white"
@@ -550,35 +663,78 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase">Profesión / Rol</label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Tipo de acceso</label>
               <div className="relative">
                 <select
+                  aria-label="Tipo de acceso del miembro"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500 appearance-none font-medium"
-                  value={currentDoctor.role || "MEDICO"}
-                  onChange={(e) =>
+                  value={selectedAccessRole}
+                  onChange={(event) => {
+                    const accessRole = event.target.value as typeof selectedAccessRole;
+                    const clinicalProfession = normalizeClinicalProfession(
+                      currentDoctor.clinicalRole || currentDoctor.role
+                    );
                     setCurrentDoctor({
                       ...currentDoctor,
-                      role: e.target.value as ProfessionalRole,
-                      clinicalRole: e.target.value,
-                    })
-                  }
+                      accessRole,
+                      role:
+                        accessRole === "professional"
+                          ? clinicalProfession || "MEDICO"
+                          : accessRole === "center_admin"
+                            ? "ADMIN_CENTRO"
+                            : "ADMINISTRATIVO",
+                      clinicalRole:
+                        accessRole === "professional" ? clinicalProfession || "MEDICO" : "",
+                      isAdmin: accessRole === "center_admin",
+                      visibleInBooking:
+                        accessRole === "professional" && currentDoctor.visibleInBooking === true,
+                      capabilities: getDefaultCapabilities(
+                        accessRole,
+                        accessRole === "professional" ? clinicalProfession || "MEDICO" : null
+                      ),
+                    });
+                  }}
                 >
-                  {Object.entries(ROLE_LABELS)
-                    .filter(([key]) => {
-                      if (key === "ADMIN_CENTRO" || key === "ADMINISTRATIVO") return true;
-                      const allowed = activeCenter?.allowedRoles;
-                      if (!allowed || allowed.length === 0) return true;
-                      return allowed.includes(key as any);
-                    })
-                    .map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
+                  {Object.entries(ACCESS_ROLE_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
                 <Briefcase className="absolute right-3 top-3 w-5 h-5 text-slate-500 pointer-events-none" />
               </div>
             </div>
+
+            {selectedAccessRole === "professional" && (
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Profesión clínica
+                </label>
+                <div className="relative">
+                  <select
+                    aria-label="Profesión clínica"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-indigo-500 appearance-none font-medium"
+                    value={currentDoctor.clinicalRole || "MEDICO"}
+                    onChange={(event) => {
+                      const clinicalRole = event.target.value as ClinicalProfession;
+                      setCurrentDoctor({
+                        ...currentDoctor,
+                        role: clinicalRole,
+                        clinicalRole,
+                        capabilities: getDefaultCapabilities("professional", clinicalRole),
+                      });
+                    }}
+                  >
+                    {getCreatableClinicalRoleOptions(ROLE_LABELS).map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Briefcase className="absolute right-3 top-3 w-5 h-5 text-slate-500 pointer-events-none" />
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase">Nombre Completo</label>
               <input
@@ -645,51 +801,71 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
               </p>
             </div>
 
-            <label
-              className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.isAdmin ? "bg-indigo-900/30 border-indigo-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
-            >
-              <div
-                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${currentDoctor.isAdmin ? "bg-indigo-500 border-indigo-500" : "border-slate-500"}`}
-              >
-                {currentDoctor.isAdmin && <Check className="w-3.5 h-3.5 text-white" />}
+            <fieldset className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+              <legend className="px-1 text-xs font-bold uppercase text-slate-400">
+                Capacidades de esta membresía
+              </legend>
+              <p className="mb-3 text-xs text-slate-500">
+                Se aplican al centro actual y nunca se derivan de la profesión.
+              </p>
+              <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                {grantableCapabilities.map((capability) => {
+                  const checked = (currentDoctor.capabilities || []).includes(capability);
+                  return (
+                    <label
+                      key={capability}
+                      className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-indigo-500"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => {
+                          const requested = event.target.checked
+                            ? [...(currentDoctor.capabilities || []), capability]
+                            : (currentDoctor.capabilities || []).filter(
+                                (item) => item !== capability
+                              );
+                          setCurrentDoctor({
+                            ...currentDoctor,
+                            capabilities: sanitizeCapabilitiesForAccessRole(
+                              selectedAccessRole,
+                              requested
+                            ),
+                          });
+                        }}
+                      />
+                      <span>{CAPABILITY_LABELS[capability] || capability}</span>
+                    </label>
+                  );
+                })}
               </div>
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={currentDoctor.isAdmin || false}
-                onChange={(e) => setCurrentDoctor({ ...currentDoctor, isAdmin: e.target.checked })}
-              />
-              <div>
-                <span className="block font-bold text-white text-sm">Acceso Administrativo</span>
-                <span className="block text-xs text-slate-400">
-                  Permite gestionar agenda y usuarios
-                </span>
-              </div>
-            </label>
+            </fieldset>
 
-            <label
-              className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-900/20 border-emerald-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
-            >
-              <div
-                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}
+            {selectedAccessRole === "professional" && (
+              <label
+                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-900/20 border-emerald-500" : "bg-slate-900 border-slate-700 hover:border-slate-500"}`}
               >
-                {currentDoctor.visibleInBooking && <Check className="w-3.5 h-3.5 text-white" />}
-              </div>
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={currentDoctor.visibleInBooking || false}
-                onChange={(e) =>
-                  setCurrentDoctor({ ...currentDoctor, visibleInBooking: e.target.checked })
-                }
-              />
-              <div>
-                <span className="block font-bold text-white text-sm">Visible para pacientes</span>
-                <span className="block text-xs text-slate-400">
-                  Controla si aparece en la agenda pública.
-                </span>
-              </div>
-            </label>
+                <div
+                  className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${currentDoctor.visibleInBooking ? "bg-emerald-500 border-emerald-500" : "border-slate-500"}`}
+                >
+                  {currentDoctor.visibleInBooking && <Check className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <input
+                  type="checkbox"
+                  className="hidden"
+                  checked={currentDoctor.visibleInBooking || false}
+                  onChange={(e) =>
+                    setCurrentDoctor({ ...currentDoctor, visibleInBooking: e.target.checked })
+                  }
+                />
+                <div>
+                  <span className="block font-bold text-white text-sm">Visible para pacientes</span>
+                  <span className="block text-xs text-slate-400">
+                    Controla si aparece en la agenda pública.
+                  </span>
+                </div>
+              </label>
+            )}
 
             <div className="flex gap-3 mt-6">
               {isEditingDoctor && (
@@ -698,7 +874,9 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                     setIsEditingDoctor(false);
                     setCurrentDoctor({
                       role: "MEDICO" as ProfessionalRole,
+                      accessRole: "professional",
                       clinicalRole: "MEDICO",
+                      capabilities: getDefaultCapabilities("professional", "MEDICO"),
                       visibleInBooking: true,
                       active: true,
                     });
