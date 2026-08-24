@@ -458,6 +458,23 @@ describe("Firestore security rules - pilot RBAC", () => {
     await assertFails(setDoc(doc(db, "_publicCallableRateLimits", "opaque"), { count: 1 }));
   });
 
+  it("keeps patient portal identities and published material server-only", async () => {
+    const db = authedDb("doctorA");
+    const protectedPaths = [
+      ["patientPortalIdentities", "doctorA"],
+      ["centers", CENTER_A, "patientPortalGrants", "grant"],
+      ["centers", CENTER_A, "portalConsents", "consent"],
+      ["centers", CENTER_A, "patients", "patientA", "portalDocuments", "document"],
+      ["centers", CENTER_A, "patients", "patientA", "consentAcceptances", "acceptance"],
+    ];
+
+    for (const path of protectedPaths) {
+      const reference = doc(db, path.join("/"));
+      await assertFails(getDoc(reference));
+      await assertFails(setDoc(reference, { unsafeClientWrite: true }));
+    }
+  });
+
   it("keeps root patients clinical-only and blocks administrative reads", async () => {
     await assertSucceeds(getDoc(doc(authedDb("doctorA"), "patients", "rootPatientA")));
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));
