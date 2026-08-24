@@ -13,6 +13,7 @@ const PatientForm = React.lazy(() => import("./components/PatientForm"));
 const ProfessionalDashboard = React.lazy(() => import("./components/DoctorDashboard"));
 const AdminDashboard = React.lazy(() => import("./components/AdminDashboard"));
 const SuperAdminDashboard = React.lazy(() => import("./components/SuperAdminDashboard"));
+const PatientDocumentsPortal = React.lazy(() => import("./components/PatientDocumentsPortal"));
 
 // Fallback Loading Component
 const PageLoader = () => (
@@ -242,6 +243,7 @@ const App: React.FC = () => {
       if (subPath === "agendar") return "patient-booking" as ViewMode;
       if (subPath === "cancelar") return "patient-cancel" as ViewMode;
       if (subPath === "paciente") return "patient-menu" as ViewMode;
+      if (subPath === "mi-clavesalud") return "patient-portal" as ViewMode;
       return "center-portal" as ViewMode;
     }
     if (path.startsWith("/superadmin")) return "superadmin-dashboard" as ViewMode;
@@ -800,6 +802,7 @@ const App: React.FC = () => {
         else if (subPath === "agendar") setView("patient-booking" as ViewMode);
         else if (subPath === "cancelar") setView("patient-cancel" as ViewMode);
         else if (subPath === "paciente") setView("patient-menu" as ViewMode);
+        else if (subPath === "mi-clavesalud") setView("patient-portal" as ViewMode);
         else if (
           viewRef.current === ("home" as ViewMode) ||
           viewRef.current === ("select-center" as ViewMode)
@@ -863,6 +866,7 @@ const App: React.FC = () => {
       else if (view === "patient-booking") pathSuffix = "/agendar";
       else if (view === "patient-cancel") pathSuffix = "/cancelar";
       else if (view === "patient-menu") pathSuffix = "/paciente";
+      else if (view === "patient-portal") pathSuffix = "/mi-clavesalud";
 
       nextPath =
         view === ("home" as ViewMode) || !activeCenterId
@@ -1127,6 +1131,14 @@ const App: React.FC = () => {
       renderCenterBackdrop={renderCenterBackdrop}
     />
   );
+
+  const renderPatientDocumentsPortal = () =>
+    renderCenterBackdrop(
+      <PatientDocumentsPortal
+        centerId={activeCenterId}
+        onBack={() => setView("patient-menu" as ViewMode)}
+      />
+    );
 
   const renderPatientForm = () =>
     renderCenterBackdrop(
@@ -1741,6 +1753,8 @@ const App: React.FC = () => {
       if (view === ("center-portal" as ViewMode)) return wrapView(renderCenterPortal(), true);
       if (view === ("patient-menu" as ViewMode)) return wrapView(renderPatientMenu(), true);
       if (view === ("patient-cancel" as ViewMode)) return wrapView(renderPatientCancel(), true);
+      if (view === ("patient-portal" as ViewMode))
+        return wrapView(renderPatientDocumentsPortal(), true);
       if (view === ("patient-form" as ViewMode)) return wrapView(renderPatientForm(), true);
       if (view === ("patient-booking" as ViewMode)) return wrapView(renderBooking(), true);
       if (view === ("doctor-login" as ViewMode)) return wrapView(renderLogin(true), false);
