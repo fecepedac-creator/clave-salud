@@ -73,3 +73,16 @@ export const mergeAgendaResources = (
 
 export const canEntityOpenClinicalRecord = (entity: Doctor | AgendaResource): boolean =>
   !isAgendaResource(entity) && entity.role !== "SERVICIO";
+
+export const toAgendaAssignment = (entity: Doctor | AgendaResource) =>
+  isAgendaResource(entity)
+    ? {
+        doctorId: entity.id,
+        resourceId: entity.id,
+        assignedEntityType: "agenda_resource" as const,
+      }
+    : {
+        doctorId: entity.id,
+        doctorUid: entity.id,
+        assignedEntityType: "professional" as const,
+      };

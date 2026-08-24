@@ -3,6 +3,7 @@ import {
   adaptLegacyServiceProfile,
   canEntityOpenClinicalRecord,
   mergeAgendaResources,
+  toAgendaAssignment,
   type AgendaResource,
 } from "../../domain/agendaResource";
 import type { Doctor } from "../../types";
@@ -53,5 +54,14 @@ describe("AgendaResource", () => {
 
   it("prioriza la entidad nueva sobre la proyección legacy", () => {
     expect(mergeAgendaResources([resource], [legacy])).toEqual([resource]);
+  });
+
+  it("asigna un recurso sin inventar una identidad de usuario", () => {
+    expect(toAgendaAssignment(resource)).toEqual({
+      doctorId: "legacy-lab",
+      resourceId: "legacy-lab",
+      assignedEntityType: "agenda_resource",
+    });
+    expect(toAgendaAssignment(resource)).not.toHaveProperty("doctorUid");
   });
 });

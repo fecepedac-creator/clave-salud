@@ -501,6 +501,9 @@ export interface Appointment extends SoftDeletable {
   createdAt?: FirestoreDateLike;
   doctorId: string;
   doctorUid?: string;
+  /** Recurso operativo asignado. Nunca representa una cuenta de usuario. */
+  resourceId?: string;
+  assignedEntityType?: "professional" | "agenda_resource";
   date: string;
   time: string;
   patientName: string;
