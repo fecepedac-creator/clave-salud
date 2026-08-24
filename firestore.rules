@@ -443,6 +443,10 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      match /reminderJobs/{jobId} {
+        allow read, write: if false;
+      }
+
       function onlyAllowedFieldsChanged() {
         let allowedFields = ['fullName', 'photoUrl', 'phone', 'specialty', 'professionalRole', 'clinicalRole', 'visibleInBooking', 'bio', 'agendaConfig'];
         let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
