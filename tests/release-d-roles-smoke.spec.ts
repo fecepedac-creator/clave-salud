@@ -49,4 +49,27 @@ for (const viewport of viewports) {
     );
     expect(hasHorizontalOverflow).toBe(false);
   });
+
+  test(`agenda resources remain operational and non-clinical on ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto(`/center/${TEST.CENTER_ID}?agent_test=true&demo_role=admin`);
+
+    await page.locator('[data-testid="admin-tab-services"]').click();
+    await expect(page.getByRole("heading", { name: "Recursos de agenda" })).toBeVisible();
+    await expect(page.getByText(/sin crear cuentas de usuario ni acceso cl.nico/i)).toBeVisible();
+    await page.getByRole("button", { name: "Crear recurso" }).click();
+    const resourceType = page.getByLabel("Tipo");
+    await expect(resourceType).toBeVisible();
+    const resourceTypes = await resourceType
+      .locator("option")
+      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+    expect(resourceTypes).toEqual(["service", "room", "equipment"]);
+
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+  });
 }
