@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   ImageIcon,
   RefreshCw,
-  Upload,
   Check,
   Phone,
 } from "lucide-react";
@@ -114,7 +113,6 @@ interface ProfessionalManagementProps {
   handleAnthropometryToggle: (enabled: boolean) => void;
   setShowMarketingModal: (show: boolean) => void;
   setMarketingFlyerType: (type: "center" | "professional") => void;
-  setShowMigrationModal: (show: boolean) => void;
   persistDoctorToFirestore: (doctor: Doctor) => Promise<void>;
 }
 
@@ -132,7 +130,6 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
   handleAnthropometryToggle,
   setShowMarketingModal,
   setMarketingFlyerType,
-  setShowMigrationModal,
   persistDoctorToFirestore,
 }) => {
   const { showToast } = useToast();
@@ -514,28 +511,6 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
                   </span>
                 </button>
               </div>
-            </div>
-          </>
-        )}
-
-        {PILOT_FEATURES.browserClinicalMigration && (
-          <>
-            {/* Migration Tool */}
-            <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
-              <div>
-                <p className="text-sm font-bold text-slate-200">Migración de Fichas</p>
-                <p className="text-xs text-slate-400">
-                  Importa fichas clínicas desde JSON (Piloto).
-                </p>
-              </div>
-              <button
-                onClick={() => setShowMigrationModal(true)}
-                disabled={!hasActiveCenter}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Upload className="w-4 h-4" />
-                <span className="text-sm font-semibold">Importar</span>
-              </button>
             </div>
           </>
         )}
