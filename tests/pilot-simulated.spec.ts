@@ -26,7 +26,7 @@ test.describe("Pilot simulated user experience", () => {
     await closeOnboardingIfPresent(page);
 
     const centerCard = page.locator('[data-testid^="center-card-"]').filter({
-      hasText: /centro medico los andes/i,
+      hasText: /centro m[eé]dico los andes/i,
     });
     await expect(centerCard.first()).toBeVisible({ timeout: 30000 });
     await centerCard.first().click();
@@ -34,7 +34,9 @@ test.describe("Pilot simulated user experience", () => {
     await expect(page.locator('[data-testid="view-container-center-portal"]')).toBeVisible({
       timeout: 20000,
     });
-    await expect(page.getByRole("heading", { name: /centro medico los andes/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /centro m[eé]dico los andes/i })
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: /soy paciente/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /soy profesional/i })).toBeVisible();
     await expect(page.locator('[data-testid="admin-tab-bar"]')).not.toBeVisible();
