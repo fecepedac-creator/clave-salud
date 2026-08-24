@@ -40,6 +40,15 @@
 5. Aplicar primero Hosting con `npm run release:staging:hosting`; este usa `vite build --mode staging`, y después ejecutar los recorridos públicos y simulados.
 6. Aplicar Rules y Functions, en ese orden, con los comandos `release:staging:*`; todos incluyen el mismo preflight.
 7. Repetir Rules, integraciones y gate autenticado contra staging con cuentas sintéticas.
+
+## Estado real de staging — 2026-08-24
+
+- Proyecto aislado creado: `clavesalud-staging-20260824`; producción `clavesalud-2` no fue modificada.
+- Firestore vacío creado en `nam5`; Rules desplegadas después de 24/24 pruebas aprobadas.
+- Hosting desplegado y verificado en `https://clavesalud-staging-20260824.web.app`.
+- Authentication inicializado con correo/contraseña habilitado; Google permanece sin configurar.
+- Functions no desplegadas: Firebase exige asociar el proyecto al plan Blaze antes de habilitar Artifact Registry.
+- El smoke remoto se detuvo al comprobar que el entorno todavía no posee el centro ni las cuentas sintéticas; no se reutilizarán datos productivos.
 8. Mantener deshabilitados Calendar y el portal privado hasta provisionar identidad o grants seguros.
 9. Observar errores, latencia y auditoría antes de promover por tren; no promover A-F en un único salto.
 
