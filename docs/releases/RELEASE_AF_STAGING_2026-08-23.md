@@ -3,7 +3,7 @@
 ## Alcance
 
 - Rama local: `codex/release-integration-af`
-- Tag local del candidato: `codex-release-af-staging-candidate-20260824-v3`
+- Tag local del candidato: `codex-release-af-staging-candidate-20260824-v4`
 - Base reversible: `5518680c770c6b18924dfe95b057535387c977d5`
 - Candidato funcional A-F: `89f6508b9414a38b2acdc31f8c6ec655c6024878`; los commits posteriores agregan únicamente manifiesto y guardrails de liberación.
 - Estado: solo local; sin push, PR ni despliegue a producción.

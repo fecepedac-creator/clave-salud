@@ -12,6 +12,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env.test") });
 const IS_CI = Boolean(process.env.CI);
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5175";
 const FORCE_FRESH_SERVER = process.env.PLAYWRIGHT_FORCE_FRESH_SERVER === "1";
+const IS_REMOTE_BASE_URL = BASE_URL.startsWith("https://");
 const BASE_URL_PORT = new URL(BASE_URL).port || (BASE_URL.startsWith("https:") ? "443" : "80");
 
 export default defineConfig({
@@ -134,10 +135,12 @@ export default defineConfig({
   ],
 
   // Auto-inicia el dev server si no está corriendo
-  webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${BASE_URL_PORT} --strictPort`,
-    url: BASE_URL,
-    reuseExistingServer: !IS_CI && !FORCE_FRESH_SERVER,
-    timeout: 120000,
-  },
+  webServer: IS_REMOTE_BASE_URL
+    ? undefined
+    : {
+        command: `npm run dev -- --host 127.0.0.1 --port ${BASE_URL_PORT} --strictPort`,
+        url: BASE_URL,
+        reuseExistingServer: !IS_CI && !FORCE_FRESH_SERVER,
+        timeout: 120000,
+      },
 });

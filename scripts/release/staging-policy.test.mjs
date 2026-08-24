@@ -233,3 +233,9 @@ test("release browser gates always request a fresh isolated server", () => {
   assert.match(runner, /--project=pilot-simulated/);
   assert.match(runner, /--project=emulator-gate/);
 });
+
+test("Playwright does not start a local server for an HTTPS staging target", () => {
+  const configSource = readFileSync(resolve(repoRoot, "playwright.config.ts"), "utf8");
+  assert.match(configSource, /const IS_REMOTE_BASE_URL = BASE_URL\.startsWith\("https:\/\/"\)/);
+  assert.match(configSource, /webServer: IS_REMOTE_BASE_URL\s*\? undefined/);
+});
