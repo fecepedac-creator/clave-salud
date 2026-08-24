@@ -751,6 +751,7 @@ export type ViewMode =
   | "patient-form"
   | "patient-upload"
   | "patient-booking"
+  | "patient-portal"
   | "doctor-login"
   | "doctor-dashboard"
   | "admin-login"

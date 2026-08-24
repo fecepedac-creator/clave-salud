@@ -39,6 +39,9 @@ const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ view, centerName, onNavigate 
     } else if (view === "patient-cancel") {
       items.push({ label: "Pacientes", view: "patient-menu" as ViewMode, icon: UserRound });
       items.push({ label: "Anulaciones", view: "patient-cancel" as ViewMode, icon: null });
+    } else if (view === "patient-portal") {
+      items.push({ label: "Pacientes", view: "patient-menu" as ViewMode, icon: UserRound });
+      items.push({ label: "Mi ClaveSalud", view: "patient-portal" as ViewMode, icon: Lock });
     } else if (view === "superadmin-dashboard") {
       items.push({ label: "SuperAdmin", view: "superadmin-dashboard" as ViewMode, icon: Lock });
     } else if (view === "select-center") {
