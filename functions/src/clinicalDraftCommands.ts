@@ -169,8 +169,8 @@ async function authorizeClinicalActor(
   centerId: string,
   actor: ClinicalActor,
   capability: ClinicalCapability
-) {
-  if (actor.skipAuthorization) return;
+): Promise<Record<string, unknown>> {
+  if (actor.skipAuthorization) return {};
   const staff = await db
     .collection("centers")
     .doc(centerId)
@@ -192,6 +192,7 @@ async function authorizeClinicalActor(
       "No tiene la capacidad clínica requerida en este centro."
     );
   }
+  return data;
 }
 
 const patientBelongsToCenter = (patient: Record<string, unknown>, centerId: string) => {
@@ -252,7 +253,7 @@ export async function createDraftFromAppointmentTransaction(
   if (input.consultationType && !["morbidity", "pscv"].includes(input.consultationType)) {
     throw new functions.https.HttpsError("invalid-argument", "Tipo de consulta inválido.");
   }
-  await authorizeClinicalActor(input.centerId, actor, "clinical_draft.create");
+  const staffData = await authorizeClinicalActor(input.centerId, actor, "clinical_draft.create");
   const auditId = commandId("clinical_draft_create", input.requestId);
   const { patientRef, consultations, auditRef } = refs(input.centerId, input.patientId, auditId);
   const draftSeed = input.appointmentId
@@ -326,6 +327,11 @@ export async function createDraftFromAppointmentTransaction(
       ...(input.appointmentId ? { appointmentId: input.appointmentId } : {}),
       consultationType: input.consultationType || "morbidity",
       date: new Date().toISOString(),
+      professionalId: actor.uid,
+      professionalName: staffData.fullName || staffData.name || "",
+      professionalRole:
+        staffData.clinicalRole || staffData.professionalRole || staffData.role || "",
+      professionalRut: staffData.rut || "",
       recordStatus: "draft",
       authorUid: actor.uid,
       createdBy: actor.uid,
