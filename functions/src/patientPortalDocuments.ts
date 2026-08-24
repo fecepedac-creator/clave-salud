@@ -14,8 +14,7 @@ export interface PatientPortalGrant {
 
 export interface VerifiedPatientIdentity {
   uid: string;
-  centerIds: string[];
-  patientIds: string[];
+  scopes: Array<{ centerId: string; patientId: string }>;
 }
 
 export type PatientPortalCredential =
@@ -227,8 +226,9 @@ export class PatientPortalDocumentService {
       const { identity } = params.credential;
       if (
         identity.uid.trim() &&
-        identity.centerIds.includes(params.centerId) &&
-        identity.patientIds.includes(params.patientId)
+        identity.scopes.some(
+          (scope) => scope.centerId === params.centerId && scope.patientId === params.patientId
+        )
       ) {
         return { actorUid: identity.uid, grantId: null };
       }

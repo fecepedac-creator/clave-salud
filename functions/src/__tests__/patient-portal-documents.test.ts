@@ -234,7 +234,13 @@ describe("patient portal document contract", () => {
     const service = new PatientPortalDocumentService(repository, () => new Date(NOW));
     const credential = {
       kind: "identity" as const,
-      identity: { uid: "patient-user", centerIds: ["center-a"], patientIds: ["patient-a"] },
+      identity: {
+        uid: "patient-user",
+        scopes: [
+          { centerId: "center-a", patientId: "patient-a" },
+          { centerId: "center-b", patientId: "patient-b" },
+        ],
+      },
     };
 
     await expect(

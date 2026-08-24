@@ -46,6 +46,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // La identidad del portal se resuelve exclusivamente con Admin SDK.
+    match /patientPortalIdentities/{userId} {
+      allow read, write: if false;
+    }
+
     function staffPath(centerId, staffUid) {
       return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
     }
@@ -429,6 +434,15 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Tokens, consentimientos y publicaciones del portal son server-only.
+      match /patientPortalGrants/{grantId} {
+        allow read, write: if false;
+      }
+
+      match /portalConsents/{consentId} {
+        allow read, write: if false;
+      }
+
       function onlyAllowedFieldsChanged() {
         let allowedFields = ['fullName', 'photoUrl', 'phone', 'specialty', 'professionalRole', 'clinicalRole', 'visibleInBooking', 'bio', 'agendaConfig'];
         let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
@@ -578,6 +592,14 @@ service cloud.firestore {
             )
           );
         allow delete: if false;
+
+        match /portalDocuments/{documentId} {
+          allow read, write: if false;
+        }
+
+        match /consentAcceptances/{acceptanceId} {
+          allow read, write: if false;
+        }
 
         match /consultations/{consultationId} {
           allow read: if signedIn()

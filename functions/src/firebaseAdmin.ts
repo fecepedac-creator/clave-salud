@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp, type App } from "firebase-admin/app";
 import {
   FieldValue,
+  Timestamp,
   getFirestore,
   type DocumentReference,
   type DocumentSnapshot,
@@ -13,5 +14,5 @@ export function ensureApp(): App {
 export const app = ensureApp();
 export const db = getFirestore(app);
 
-export { FieldValue };
+export { FieldValue, Timestamp };
 export type { DocumentReference, DocumentSnapshot };
