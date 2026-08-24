@@ -8,6 +8,12 @@ import {
 } from "@google/generative-ai";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import {
+  claimControlReminder,
+  completeControlReminder,
+  skipControlReminder,
+} from "./controlReminderJobs";
+import { redactedReminderErrorCode } from "./reminderStateMachine";
 
 // Inicializar admin una sola vez
 if (admin.apps.length === 0) {
@@ -409,9 +415,19 @@ async function resolveWhatsappToken(phoneNumberId: string): Promise<string> {
   return globalToken; // Fallback al token global
 }
 
-async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any, overrideToken?: string) {
-  const WHATSAPP_TOKEN = overrideToken || await resolveWhatsappToken(phoneNumberId);
-  if (!WHATSAPP_TOKEN || !phoneNumberId) return;
+interface WhatsAppSendResult {
+  ok: boolean;
+  providerMessageId?: string;
+  errorCode?: string;
+}
+
+async function sendRawWhatsAppPayload(
+  phoneNumberId: string,
+  payload: any,
+  overrideToken?: string
+): Promise<WhatsAppSendResult> {
+  const WHATSAPP_TOKEN = overrideToken || (await resolveWhatsappToken(phoneNumberId));
+  if (!WHATSAPP_TOKEN || !phoneNumberId) return { ok: false, errorCode: "CONFIG_MISSING" };
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   try {
     const res = await fetch(url, {
@@ -423,11 +439,18 @@ async function sendRawWhatsAppPayload(phoneNumberId: string, payload: any, overr
       body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      console.error("[WA API Error]", res.status, err);
+      await res.text();
+      console.error("[WA API Error]", { status: res.status });
+      return { ok: false, errorCode: `HTTP_${res.status}` };
     }
+    const response = (await res.json().catch(() => ({}))) as {
+      messages?: Array<{ id?: string }>;
+    };
+    return { ok: true, providerMessageId: response.messages?.[0]?.id };
   } catch (err) {
-    console.error("[sendRawWhatsAppPayload] Error de red:", err);
+    const errorCode = redactedReminderErrorCode(err);
+    console.error("[sendRawWhatsAppPayload] Error de red", { errorCode });
+    return { ok: false, errorCode };
   }
 }
 
@@ -2813,6 +2836,9 @@ export const dailyControlRescuer = functions
   .onRun(async () => {
     console.log("[AutoRescate] Iniciando búsqueda de pacientes con control a 7 días...");
     const targetDate = format(new Date(Date.now() + 7 * 86400000), "yyyy-MM-dd");
+    const leaseOwner = `control-rescuer-${cryptoNode.randomUUID()}`;
+    let sentCount = 0;
+    let failedCount = 0;
 
     try {
       const centersSnap = await db.collection("centers").where("isActive", "==", true).get();
@@ -2833,15 +2859,6 @@ export const dailyControlRescuer = functions
 
         for (const patientDoc of patientsSnap.docs) {
           const patient = patientDoc.data();
-          const phone = patient.phone;
-          if (!phone) continue;
-
-          let waPhone = phone.replace(/\D/g, "");
-          if (waPhone.length === 8) waPhone = "569" + waPhone;
-          else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
-          else if (waPhone.length === 11 && waPhone.startsWith("569")) {
-          } else continue;
-
           const activeConsultations = (patient.consultations || []).filter(
             (c: any) => c.active !== false
           );
@@ -2855,6 +2872,12 @@ export const dailyControlRescuer = functions
           if (!lastConsult.nextControlDate || lastConsult.nextControlDate !== targetDate) continue;
 
           const targetDoctorId = lastConsult.professionalId || "";
+          const reminderIdentity = {
+            centerId,
+            patientId: patientDoc.id,
+            consultationId: String(lastConsult.id || lastConsult.date || "legacy-consultation"),
+            targetDate,
+          };
           const targetDoctorName = lastConsult.professionalName || "su médico tratante";
 
           // Verificar si ya tiene cita futura
@@ -2869,10 +2892,23 @@ export const dailyControlRescuer = functions
               .get();
 
             if (existingApps.docs.some((doc) => doc.data().doctorId === targetDoctorId)) {
-              console.log(`[AutoRescate] Paciente ${patient.id} ya tiene cita futura.`);
+              await skipControlReminder(reminderIdentity, "future_appointment");
               continue;
             }
           }
+
+          const phone = String(patient.phone || "");
+          let waPhone = phone.replace(/\D/g, "");
+          if (waPhone.length === 8) waPhone = "569" + waPhone;
+          else if (waPhone.length === 9 && waPhone.startsWith("9")) waPhone = "56" + waPhone;
+          else if (waPhone.length === 11 && waPhone.startsWith("569")) {
+          } else {
+            await skipControlReminder(reminderIdentity, "missing_channel");
+            continue;
+          }
+
+          const claim = await claimControlReminder(reminderIdentity, leaseOwner);
+          if (!claim.claimed) continue;
 
           const hasPendingExams = (lastConsult.prescriptions || []).some(
             (p: any) => p.type === "OrdenExamenes" || p.type === "Solicitud de Examen"
@@ -2911,7 +2947,7 @@ export const dailyControlRescuer = functions
             },
           ];
 
-          await sendRawWhatsAppPayload(phoneNumberId, {
+          const sendResult = await sendRawWhatsAppPayload(phoneNumberId, {
             to: waPhone,
             type: "template",
             template: {
@@ -2940,11 +2976,24 @@ export const dailyControlRescuer = functions
               ],
             },
           });
-          console.log(`[AutoRescate] Template enviado a ${waPhone}`);
+          await completeControlReminder({
+            centerId,
+            jobId: claim.jobId,
+            leaseOwner,
+            outcome: sendResult.ok ? "sent" : "failed",
+            providerMessageId: sendResult.providerMessageId,
+            errorCode: sendResult.errorCode,
+          });
+          if (sendResult.ok) sentCount += 1;
+          else failedCount += 1;
         }
       }
-      console.log("[AutoRescate] Proceso finalizado.");
+      console.log("[AutoRescate] Proceso finalizado", { sentCount, failedCount });
+      if (failedCount > 0) throw new Error("CONTROL_REMINDER_BATCH_PARTIAL_FAILURE");
     } catch (error) {
-      console.error("[AutoRescate] Error en el cron job:", error);
+      console.error("[AutoRescate] Error en el cron job", {
+        errorCode: redactedReminderErrorCode(error),
+      });
+      throw error;
     }
   });
