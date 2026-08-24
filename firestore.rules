@@ -41,6 +41,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Contadores opacos administrados exclusivamente por Cloud Functions.
+    match /_publicCallableRateLimits/{limitId} {
+      allow read, write: if false;
+    }
+
     function staffPath(centerId, staffUid) {
       return /databases/$(database)/documents/centers/$(centerId)/staff/$(staffUid);
     }

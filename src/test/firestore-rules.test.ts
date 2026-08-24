@@ -452,6 +452,12 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
+  it("keeps public callable rate counters server-only", async () => {
+    const db = authedDb("doctorA");
+    await assertFails(getDoc(doc(db, "_publicCallableRateLimits", "opaque")));
+    await assertFails(setDoc(doc(db, "_publicCallableRateLimits", "opaque"), { count: 1 }));
+  });
+
   it("keeps root patients clinical-only and blocks administrative reads", async () => {
     await assertSucceeds(getDoc(doc(authedDb("doctorA"), "patients", "rootPatientA")));
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));

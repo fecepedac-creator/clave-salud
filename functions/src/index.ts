@@ -11,6 +11,12 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 import { sanitizeStaffMembershipProfile } from "./staffCapabilityPolicy";
+import {
+  canCancelPublicAppointment,
+  consumeFixedWindowRateLimit,
+  hashPublicRateLimitKey,
+  type PublicRateLimitState,
+} from "./publicAppointmentProtection";
 
 export { bookAdministrativeAppointment } from "./administrativeBooking";
 export {
@@ -50,7 +56,76 @@ type CallableContext = {
     uid?: string;
     token?: Record<string, any>;
   } | null;
+  rawRequest?: {
+    ip?: string;
+  };
 };
+
+const PUBLIC_APPOINTMENT_RATE_WINDOW_MS = 15 * 60 * 1000;
+
+async function enforcePublicAppointmentRateLimit(params: {
+  operation: "list" | "cancel";
+  centerId: string;
+  patientRut: string;
+  phone: string;
+  context: CallableContext;
+}): Promise<void> {
+  const nowMs = Date.now();
+  const operationLimit = params.operation === "list" ? 8 : 6;
+  const network = String(params.context.rawRequest?.ip || "unknown");
+  const keys = [
+    {
+      id: hashPublicRateLimitKey([
+        params.operation,
+        "identity",
+        params.centerId,
+        params.patientRut,
+        params.phone,
+      ]),
+      limit: operationLimit,
+    },
+    {
+      id: hashPublicRateLimitKey([params.operation, "network", params.centerId, network]),
+      limit: 30,
+    },
+  ];
+  const refs = keys.map(({ id }) => db.collection("_publicCallableRateLimits").doc(id));
+  const allowed = await db.runTransaction(async (tx) => {
+    const snapshots = await Promise.all(refs.map((ref) => tx.get(ref)));
+    const decisions = snapshots.map((snapshot, index) => {
+      const data = snapshot.data();
+      const startedAt = data?.windowStartedAt?.toMillis?.() ?? Number(data?.windowStartedAtMs || 0);
+      return consumeFixedWindowRateLimit({
+        current: data
+          ? ({
+              count: Number(data.count || 0),
+              windowStartedAtMs: startedAt,
+            } satisfies PublicRateLimitState)
+          : null,
+        nowMs,
+        windowMs: PUBLIC_APPOINTMENT_RATE_WINDOW_MS,
+        limit: keys[index].limit,
+      });
+    });
+    decisions.forEach((decision, index) => {
+      tx.set(refs[index], {
+        count: decision.next.count,
+        windowStartedAt: admin.firestore.Timestamp.fromMillis(decision.next.windowStartedAtMs),
+        expiresAt: admin.firestore.Timestamp.fromMillis(
+          decision.next.windowStartedAtMs + PUBLIC_APPOINTMENT_RATE_WINDOW_MS * 2
+        ),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    return decisions.every((decision) => decision.allowed);
+  });
+  if (!allowed) {
+    throw new functions.https.HttpsError(
+      "resource-exhausted",
+      "No fue posible procesar la solicitud. Intenta nuevamente más tarde."
+    );
+  }
+}
 
 function getBackupPrefix() {
   const now = new Date();
@@ -279,6 +354,21 @@ function formatChileanPhone(raw: string): string {
     return `+569${digits}`;
   }
   return `+56${digits}`;
+}
+
+function normalizeRutForComparison(value: unknown): string {
+  return String(value || "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+function getCurrentDateInChileIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function lowerEmailFromContext(context: CallableContext): string {
@@ -1514,47 +1604,82 @@ export const migrateCanonicalStaffRoles = (functions.https.onCall as any)(
 );
 
 export const listPatientAppointments = (functions.https.onCall as any)(
-  async (data: any, _context: CallableContext) => {
+  async (data: any, context: CallableContext) => {
     const centerId = String(data?.centerId || "").trim();
-    const patientRut = String(data?.rut || "").trim();
+    const patientRut = normalizeRutForComparison(data?.rut);
     const phone = formatChileanPhone(String(data?.phone || ""));
 
-    if (!centerId)
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(centerId))
       throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
     if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
     if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+
+    await enforcePublicAppointmentRateLimit({
+      operation: "list",
+      centerId,
+      patientRut,
+      phone,
+      context,
+    });
 
     const snap = await db
       .collection("centers")
       .doc(centerId)
       .collection("appointments")
       .where("status", "==", "booked")
-      .where("patientRut", "==", patientRut)
       .where("patientPhone", "==", phone)
-      .limit(25)
       .get();
 
-    const appointments = snap.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...(docSnap.data() as any),
-    }));
+    const today = getCurrentDateInChileIso();
+    const appointments = snap.docs
+      .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }))
+      .filter((appointment) => {
+        const sameRut = normalizeRutForComparison(appointment.patientRut) === patientRut;
+        return appointment.active !== false && sameRut && String(appointment.date || "") >= today;
+      })
+      .sort((left, right) =>
+        `${left.date} ${left.time}`.localeCompare(`${right.date} ${right.time}`)
+      )
+      .slice(0, 25)
+      .map((appointment) => ({
+        id: appointment.id,
+        centerId,
+        doctorId: String(appointment.doctorId || appointment.doctorUid || ""),
+        doctorUid: String(appointment.doctorUid || appointment.doctorId || ""),
+        date: String(appointment.date || ""),
+        time: String(appointment.time || ""),
+        status: "booked",
+        patientName: String(appointment.patientName || ""),
+        patientRut: "",
+        patientPhone: "",
+        serviceId: appointment.serviceId ? String(appointment.serviceId) : undefined,
+        serviceName: appointment.serviceName ? String(appointment.serviceName) : undefined,
+      }));
     return { appointments };
   }
 );
 
 export const cancelPatientAppointment = (functions.https.onCall as any)(
-  async (data: any, _context: CallableContext) => {
+  async (data: any, context: CallableContext) => {
     const centerId = String(data?.centerId || "").trim();
     const appointmentId = String(data?.appointmentId || "").trim();
-    const patientRut = String(data?.rut || "").trim();
+    const patientRut = normalizeRutForComparison(data?.rut);
     const phone = formatChileanPhone(String(data?.phone || ""));
 
-    if (!centerId)
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(centerId))
       throw new functions.https.HttpsError("invalid-argument", "centerId es requerido.");
-    if (!appointmentId)
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(appointmentId))
       throw new functions.https.HttpsError("invalid-argument", "appointmentId es requerido.");
     if (!patientRut) throw new functions.https.HttpsError("invalid-argument", "RUT es requerido.");
     if (!phone) throw new functions.https.HttpsError("invalid-argument", "Teléfono es requerido.");
+
+    await enforcePublicAppointmentRateLimit({
+      operation: "cancel",
+      centerId,
+      patientRut,
+      phone,
+      context,
+    });
 
     const ref = db
       .collection("centers")
@@ -1563,26 +1688,22 @@ export const cancelPatientAppointment = (functions.https.onCall as any)(
       .doc(appointmentId);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      if (!snap.exists) {
-        throw new functions.https.HttpsError("not-found", "La cita no existe.");
-      }
-      const data = snap.data() as any;
-      if (data.status !== "booked") {
-        throw new functions.https.HttpsError("failed-precondition", "La cita no está reservada.");
-      }
+      const appointment = snap.data() as Record<string, unknown> | undefined;
       if (
-        String(data.patientRut || "") !== patientRut ||
-        String(data.patientPhone || "") !== phone
-      ) {
-        throw new functions.https.HttpsError("permission-denied", "Los datos no coinciden.");
-      }
+        !snap.exists ||
+        !canCancelPublicAppointment(appointment, patientRut, phone, normalizeRutForComparison)
+      )
+        return;
 
       tx.update(ref, {
         status: "available",
         patientName: "",
         patientRut: "",
         patientPhone: "",
+        patientId: admin.firestore.FieldValue.delete(),
+        patientEmail: admin.firestore.FieldValue.delete(),
         cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancellationSource: "patient_portal",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
