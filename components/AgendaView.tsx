@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Appointment, AgendaConfig } from "../types";
 import { getStandardSlots, getDaysInMonth, maskRUT, maskPhone } from "../utils";
 import { ChevronLeft, ChevronRight, Calendar, Zap, Info } from "lucide-react";
+import { getAppointmentStatePresentation } from "../features/doctor/utils/appointmentOperationalState";
 
 interface AgendaViewProps {
   isPiiMasked?: boolean;
@@ -312,6 +313,11 @@ const AgendaView: React.FC<AgendaViewProps> = ({
                               <div>
                                 <h4 className="font-bold text-lg text-slate-800 flex flex-wrap items-center gap-2 leading-none">
                                   {apt.patientName}
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${getAppointmentStatePresentation(apt).className}`}
+                                  >
+                                    {getAppointmentStatePresentation(apt).label}
+                                  </span>
                                   {apt.type === "SERVICE" ? (
                                     <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
                                       Servicio: {apt.serviceName}

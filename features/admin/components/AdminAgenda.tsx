@@ -22,6 +22,10 @@ import {
 import { useToast } from "../../../components/Toast";
 import { db, auth, functions } from "../../../firebase";
 import { httpsCallable } from "firebase/functions";
+import { upsertTelephoneBooking } from "../../doctor/utils/telephoneBooking";
+import AgendaPolicyManager from "../../../components/AgendaPolicyManager";
+import { AGENDA_OPERATIONS_V2_ENABLED } from "../../../utils/agendaOperationsFeature";
+import { applyAppointmentRebooking } from "../utils/appointmentRebooking";
 import {
   collection,
   query,
@@ -75,6 +79,23 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   const [bookingRut, setBookingRut] = useState("");
   const [bookingName, setBookingName] = useState("");
   const [bookingPhone, setBookingPhone] = useState("");
+  const [bookingOverrideReason, setBookingOverrideReason] = useState("");
+  const [requiresBookingOverride, setRequiresBookingOverride] = useState(false);
+  const [isManualBooking, setIsManualBooking] = useState(false);
+  const bookingRequestIdRef = useRef("");
+  const operationRequestIdsRef = useRef(new Map<string, string>());
+  const [updatingOperationId, setUpdatingOperationId] = useState("");
+  const [showAgendaPolicies, setShowAgendaPolicies] = useState(false);
+  const [rebookingAppointmentId, setRebookingAppointmentId] = useState("");
+
+  useEffect(() => {
+    bookingRequestIdRef.current = bookingSlotId
+      ? globalThis.crypto?.randomUUID?.() ||
+        `booking_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      : "";
+    setBookingOverrideReason("");
+    setRequiresBookingOverride(false);
+  }, [bookingSlotId]);
 
   const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">(
     "CONSULTATION"
@@ -398,7 +419,149 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
 
   const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, "").toUpperCase();
 
-  const handleManualBooking = () => {
+  const operationRequestId = (action: string, appointmentId: string) => {
+    const key = `${action}:${appointmentId}`;
+    const existing = operationRequestIdsRef.current.get(key);
+    if (existing) return { key, requestId: existing };
+    const requestId =
+      globalThis.crypto?.randomUUID?.() ||
+      `operation_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    operationRequestIdsRef.current.set(key, requestId);
+    return { key, requestId };
+  };
+
+  const handleArrival = async (appointment: Appointment, arrived: boolean) => {
+    const operation = operationRequestId("arrival", appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "updateAppointmentArrival"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        arrived,
+      });
+      const updated = appointments.map((item) =>
+        item.id === appointment.id
+          ? ({
+              ...item,
+              arrivalStatus: arrived ? "arrived" : null,
+            } as Appointment)
+          : item
+      );
+      onUpdateAppointments(updated);
+      operationRequestIdsRef.current.delete(operation.key);
+      showToast(arrived ? "Llegada registrada." : "Llegada revertida.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible actualizar la llegada.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleOperationalAttendance = async (
+    appointment: Appointment,
+    attendanceStatus: "completed" | "no-show"
+  ) => {
+    const operation = operationRequestId(`attendance-${attendanceStatus}`, appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "updateAppointmentOperationalAttendance"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        attendanceStatus,
+      });
+      onUpdateAppointments(
+        appointments.map((item) =>
+          item.id === appointment.id ? { ...item, attendanceStatus } : item
+        )
+      );
+      operationRequestIdsRef.current.delete(operation.key);
+      showToast(
+        attendanceStatus === "completed" ? "Atención registrada." : "Ausencia registrada.",
+        "success"
+      );
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible actualizar la asistencia.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleContact = async (appointment: Appointment, channel: "call" | "whatsapp") => {
+    const phone = String(appointment.patientPhone || "").replace(/\D/g, "");
+    if (!phone) {
+      showToast("La cita no tiene un teléfono de contacto registrado.", "warning");
+      return;
+    }
+    const operation = operationRequestId(`contact-${channel}`, appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "recordAppointmentContactAttempt"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        channel,
+      });
+      operationRequestIdsRef.current.delete(operation.key);
+      const normalizedPhone = phone.length === 9 && phone.startsWith("9") ? `56${phone}` : phone;
+      const url =
+        channel === "whatsapp" ? `https://wa.me/${normalizedPhone}` : `tel:+${normalizedPhone}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible iniciar el contacto.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleRebookingTarget = async (target: Appointment) => {
+    const source = appointments.find((item) => item.id === rebookingAppointmentId);
+    if (!source) {
+      setRebookingAppointmentId("");
+      showToast("La cita de origen ya no está disponible.", "warning");
+      return;
+    }
+    const operation = operationRequestId("rebook", source.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      const response = await httpsCallable(
+        functions,
+        "rebookAdministrativeAppointment"
+      )({
+        centerId: resolvedCenterId || centerId,
+        sourceAppointmentId: source.id,
+        targetAppointmentId: target.id,
+        requestId: operation.requestId,
+      });
+      const result = response.data as { success: boolean; error?: "TARGET_TAKEN" };
+      if (!result.success) {
+        showToast("El cupo de destino acaba de ser ocupado. Selecciona otro.", "warning");
+        return;
+      }
+      onUpdateAppointments(
+        applyAppointmentRebooking(appointments, source.id, target.id, new Date().toISOString())
+      );
+      operationRequestIdsRef.current.delete(operation.key);
+      setRebookingAppointmentId("");
+      showToast("Cita reagendada correctamente.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible reagendar la cita.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleManualBooking = async (continueBooking = false) => {
     if (!hasActiveCenter) {
       showToast("Selecciona un centro activo para agendar citas.", "warning");
       return;
@@ -408,27 +571,16 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       return;
     }
 
+    const selectedSlot = appointments.find((appointment) => appointment.id === bookingSlotId);
+    if (!selectedSlot || !selectedDoctorId) {
+      showToast("El cupo seleccionado ya no está disponible.", "warning");
+      return;
+    }
+
     const selectedService =
       manualBookingType === "SERVICE"
         ? medicalServices.find((s) => s.id === manualBookingServiceId)
         : null;
-
-    const updated = appointments.map((a) => {
-      if (a.id === bookingSlotId) {
-        return {
-          ...a,
-          status: "booked" as const,
-          patientName: bookingName,
-          patientRut: bookingRut,
-          patientPhone: bookingPhone,
-          type: manualBookingType,
-          serviceId: manualBookingType === "SERVICE" ? manualBookingServiceId : undefined,
-          serviceName: manualBookingType === "SERVICE" ? selectedService?.name : undefined,
-        };
-      }
-      return a;
-    });
-    onUpdateAppointments(updated);
 
     const normalizedRutString = normalizeRut(bookingRut);
     const patientId = getPatientIdByRut(normalizedRutString);
@@ -460,29 +612,131 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
           lastUpdated: new Date().toISOString(),
           active: true,
         };
-    onUpdatePatients([patientPayload]);
+    const requestId = bookingRequestIdRef.current;
+    if (!requestId) {
+      showToast("No fue posible identificar el intento de reserva.", "error");
+      return;
+    }
 
-    onLogActivity({
-      action: "APPOINTMENT_UPDATE",
-      entityType: "appointment",
-      entityId: bookingSlotId,
-      patientId: patientPayload.id,
-      details: `Agendamiento manual Admin para ${bookingName}.`,
-    });
+    setIsManualBooking(true);
+    try {
+      const reserveAppointment = httpsCallable(functions, "bookAdministrativeAppointment");
+      const result = await reserveAppointment({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: bookingSlotId,
+        idempotencyKey: requestId,
+        slot: {
+          doctorId: selectedSlot.doctorUid || selectedSlot.doctorId || selectedDoctorId,
+          date: selectedSlot.date,
+          time: selectedSlot.time,
+        },
+        patient: {
+          id: patientPayload.id,
+          fullName: patientPayload.fullName,
+          rut: patientPayload.rut,
+          phone: patientPayload.phone || "",
+          email: patientPayload.email || "",
+        },
+        ...(bookingOverrideReason.trim()
+          ? { override: { reason: bookingOverrideReason.trim() } }
+          : {}),
+      });
+      const reservation = result.data as {
+        success: boolean;
+        error?:
+          | "SLOT_TAKEN"
+          | "CONTACT_REQUIRED"
+          | "OUTSIDE_HOURS"
+          | "APPOINTMENT_CONFLICT"
+          | "RESOURCE_CONFLICT"
+          | "OVERRIDE_REQUIRED";
+      };
+      if (!reservation.success) {
+        if (reservation.error === "OVERRIDE_REQUIRED") {
+          setRequiresBookingOverride(true);
+          showToast("Esta reserva requiere un motivo de excepción autorizado.", "warning");
+          return;
+        }
+        const policyMessage: Record<string, string> = {
+          CONTACT_REQUIRED: "La política exige teléfono o correo del paciente.",
+          OUTSIDE_HOURS: "El horario está fuera de la agenda y no puede ser forzado.",
+          APPOINTMENT_CONFLICT: "Existe otra cita para el profesional en ese horario.",
+          RESOURCE_CONFLICT: "El recurso seleccionado ya está ocupado en ese horario.",
+          SLOT_TAKEN: "Este cupo acaba de ser reservado. Selecciona otro horario.",
+        };
+        showToast(
+          policyMessage[reservation.error || ""] || "La política de agenda rechazó la reserva.",
+          "warning"
+        );
+        if (reservation.error === "SLOT_TAKEN") setBookingSlotId(null);
+        return;
+      }
 
-    setBookingSlotId(null);
-    setBookingRut("");
-    setBookingName("");
-    setBookingPhone("");
-    setManualBookingType("CONSULTATION");
-    setManualBookingServiceId("");
-    showToast("Cita agendada manualmente.", "success");
+      const bookingSlot: Appointment = {
+        ...selectedSlot,
+        type: manualBookingType,
+        serviceId: manualBookingType === "SERVICE" ? manualBookingServiceId : undefined,
+        serviceName: manualBookingType === "SERVICE" ? selectedService?.name : undefined,
+      };
+      onUpdateAppointments(
+        upsertTelephoneBooking(appointments, bookingSlot, patientPayload, new Date().toISOString())
+      );
+      onUpdatePatients([patientPayload]);
+      onLogActivity({
+        action: "APPOINTMENT_UPDATE",
+        entityType: "appointment",
+        entityId: bookingSlotId,
+        patientId: patientPayload.id,
+        details: `Agendamiento manual Admin para ${bookingName}.`,
+      });
+
+      setBookingSlotId(null);
+      setBookingRut("");
+      setBookingName("");
+      setBookingPhone("");
+      setBookingOverrideReason("");
+      setRequiresBookingOverride(false);
+      setManualBookingType("CONSULTATION");
+      setManualBookingServiceId("");
+      showToast(
+        continueBooking
+          ? "Cita agendada. Selecciona otro cupo para continuar."
+          : "Cita agendada manualmente.",
+        "success"
+      );
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible agendar la cita.", "error");
+    } finally {
+      setIsManualBooking(false);
+    }
   };
 
   return (
     <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* Sidebar Config */}
       <div className="lg:col-span-4 space-y-6">
+        {AGENDA_OPERATIONS_V2_ENABLED && (
+          <div className="rounded-3xl border border-slate-700 bg-slate-800 p-4">
+            <button
+              type="button"
+              aria-expanded={showAgendaPolicies}
+              onClick={() => setShowAgendaPolicies((current) => !current)}
+              className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left font-bold text-white hover:bg-slate-700"
+            >
+              <span className="flex items-center gap-2">
+                <Settings className="h-5 w-5" /> Políticas avanzadas
+              </span>
+              <span className="text-xs text-slate-400">
+                {showAgendaPolicies ? "Ocultar" : "Configurar"}
+              </span>
+            </button>
+            {showAgendaPolicies && (
+              <div className="mt-4">
+                <AgendaPolicyManager centerId={resolvedCenterId || centerId} />
+              </div>
+            )}
+          </div>
+        )}
         <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
           <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
           <select
@@ -760,6 +1014,25 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
               </div>
             )}
 
+            {rebookingAppointmentId && (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 p-4 text-sm text-indigo-100">
+                <span>
+                  Selecciona un cupo disponible para mover la cita de{" "}
+                  <strong>
+                    {appointments.find((item) => item.id === rebookingAppointmentId)?.patientName}
+                  </strong>
+                  .
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRebookingAppointmentId("")}
+                  className="rounded-lg border border-indigo-300/40 px-3 py-1.5 font-bold"
+                >
+                  Cancelar reagendamiento
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
               {getStandardSlots(
                 selectedDate,
@@ -792,28 +1065,124 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   bgColor = "bg-red-600/20 border-red-500 text-red-100 line-through opacity-50";
 
                 return (
-                  <button
-                    key={slot.time}
-                    onClick={() => toggleSlot(slot.time)}
-                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all relative ${bgColor}`}
-                  >
-                    <span className="text-lg font-black">{slot.time}</span>
-                    <span className="text-[10px] uppercase font-bold opacity-60">
-                      {isBooked
-                        ? "Ocupado"
-                        : realSlot
-                          ? "Abierto"
-                          : isPendingAdd
-                            ? "Por Abrir"
-                            : "Cerrado"}
-                    </span>
-                    {isBooked && (
-                      <div className="mt-1 flex items-center gap-1 overflow-hidden w-full justify-center">
-                        <User className="w-2 h-2 shrink-0" />
-                        <span className="text-[8px] truncate">{realSlot.patientName}</span>
+                  <div key={slot.time} className="space-y-1">
+                    <button
+                      onClick={() => toggleSlot(slot.time)}
+                      className={`relative flex w-full flex-col items-center justify-center rounded-2xl border p-3 transition-all ${bgColor}`}
+                    >
+                      <span className="text-lg font-black">{slot.time}</span>
+                      <span className="text-[10px] font-bold uppercase opacity-60">
+                        {isBooked
+                          ? "Ocupado"
+                          : realSlot
+                            ? "Abierto"
+                            : isPendingAdd
+                              ? "Por Abrir"
+                              : "Cerrado"}
+                      </span>
+                      {isBooked && (
+                        <div className="mt-1 flex w-full items-center justify-center gap-1 overflow-hidden">
+                          <User className="h-2 w-2 shrink-0" />
+                          <span className="truncate text-[8px]">{realSlot.patientName}</span>
+                        </div>
+                      )}
+                    </button>
+                    {realSlot && !isBooked && !isPendingDelete && (
+                      <button
+                        type="button"
+                        aria-label={
+                          rebookingAppointmentId
+                            ? `Mover cita aquí ${slot.time}`
+                            : `Agendar paciente ${slot.time}`
+                        }
+                        disabled={Boolean(updatingOperationId)}
+                        onClick={() =>
+                          rebookingAppointmentId
+                            ? void handleRebookingTarget(realSlot)
+                            : setBookingSlotId(realSlot.id)
+                        }
+                        className="w-full rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-2 py-1.5 text-[10px] font-bold text-indigo-200 hover:bg-indigo-500/20"
+                      >
+                        {rebookingAppointmentId ? "Mover aquí" : "Agendar paciente"}
+                      </button>
+                    )}
+                    {realSlot && isBooked && (
+                      <div className="space-y-1">
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Marcar llegada ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() =>
+                              void handleArrival(
+                                realSlot,
+                                (realSlot as Appointment & { arrivalStatus?: string })
+                                  .arrivalStatus !== "arrived"
+                              )
+                            }
+                            className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-1 py-1.5 text-[9px] font-bold text-amber-200 disabled:opacity-50"
+                          >
+                            {(realSlot as Appointment & { arrivalStatus?: string })
+                              .arrivalStatus === "arrived"
+                              ? "Deshacer llegada"
+                              : "Llegó"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Marcar atendido ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() => void handleOperationalAttendance(realSlot, "completed")}
+                            className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-1 py-1.5 text-[9px] font-bold text-emerald-200 disabled:opacity-50"
+                          >
+                            Atendido
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Marcar ausente ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() => void handleOperationalAttendance(realSlot, "no-show")}
+                            className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-1 py-1.5 text-[9px] font-bold text-rose-200 disabled:opacity-50"
+                          >
+                            Ausente
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Llamar paciente ${slot.time}`}
+                            disabled={Boolean(updatingOperationId) || !realSlot.patientPhone}
+                            onClick={() => void handleContact(realSlot, "call")}
+                            className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-1 py-1.5 text-[9px] font-bold text-sky-200 disabled:opacity-40"
+                          >
+                            Llamar
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Contactar por WhatsApp ${slot.time}`}
+                            disabled={Boolean(updatingOperationId) || !realSlot.patientPhone}
+                            onClick={() => void handleContact(realSlot, "whatsapp")}
+                            className="rounded-lg border border-green-400/40 bg-green-500/10 px-1 py-1.5 text-[9px] font-bold text-green-200 disabled:opacity-40"
+                          >
+                            WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Reagendar cita ${slot.time}`}
+                            disabled={
+                              Boolean(updatingOperationId) ||
+                              realSlot.attendanceStatus === "completed" ||
+                              realSlot.billable === true ||
+                              (typeof realSlot.amount === "number" && realSlot.amount > 0)
+                            }
+                            onClick={() => setRebookingAppointmentId(realSlot.id)}
+                            className="rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-1 py-1.5 text-[9px] font-bold text-indigo-200 disabled:opacity-40"
+                          >
+                            Reagendar
+                          </button>
+                        </div>
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -872,6 +1241,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                 <input
                   type="text"
                   autoFocus
+                  aria-label="Nombre completo del paciente"
                   className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
                   value={bookingName}
                   onChange={(e) => setBookingName(e.target.value)}
@@ -884,6 +1254,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   </label>
                   <input
                     type="text"
+                    aria-label="RUT del paciente"
                     className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
                     value={bookingRut}
                     onChange={(e) => setBookingRut(e.target.value)}
@@ -895,24 +1266,55 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   </label>
                   <input
                     type="tel"
+                    aria-label="Teléfono del paciente"
                     className="w-full bg-slate-800 text-white border border-slate-700 p-3 rounded-xl"
                     value={bookingPhone}
                     onChange={(e) => setBookingPhone(e.target.value)}
                   />
                 </div>
               </div>
-              <div className="flex gap-4 mt-6">
+              {requiresBookingOverride && (
+                <label className="block rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs font-bold uppercase text-amber-100">
+                  Motivo de excepción
+                  <textarea
+                    aria-label="Motivo de excepción de agenda"
+                    required
+                    minLength={10}
+                    maxLength={300}
+                    value={bookingOverrideReason}
+                    onChange={(event) => setBookingOverrideReason(event.target.value)}
+                    className="mt-2 min-h-20 w-full rounded-lg border border-amber-400/30 bg-slate-900 p-3 text-sm font-normal normal-case text-white"
+                    placeholder="Explique por qué corresponde autorizar esta excepción"
+                  />
+                </label>
+              )}
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <button
                   onClick={() => setBookingSlotId(null)}
-                  className="flex-1 bg-slate-700 text-white font-bold py-3 rounded-xl"
+                  disabled={isManualBooking}
+                  className="rounded-xl bg-slate-700 py-3 font-bold text-white disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleManualBooking}
-                  className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700"
+                  onClick={() => void handleManualBooking()}
+                  disabled={
+                    isManualBooking ||
+                    (requiresBookingOverride && bookingOverrideReason.trim().length < 10)
+                  }
+                  className="rounded-xl border border-indigo-400 bg-slate-900 py-3 font-bold text-indigo-200 hover:bg-indigo-950 disabled:opacity-50"
                 >
-                  Confirmar
+                  Agendar y finalizar
+                </button>
+                <button
+                  onClick={() => void handleManualBooking(true)}
+                  disabled={
+                    isManualBooking ||
+                    (requiresBookingOverride && bookingOverrideReason.trim().length < 10)
+                  }
+                  className="rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {isManualBooking ? "Agendando…" : "Agendar y continuar"}
                 </button>
               </div>
             </div>

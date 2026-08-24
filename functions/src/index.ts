@@ -10,6 +10,17 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 
+export { bookAdministrativeAppointment } from "./administrativeBooking";
+export {
+  updateAppointmentArrival,
+  updateAppointmentOperationalAttendance,
+} from "./appointmentOperations";
+export { getAgendaPolicy, previewAgendaPolicyImpact, updateAgendaPolicy } from "./agendaPolicy";
+export {
+  recordAppointmentContactAttempt,
+  rebookAdministrativeAppointment,
+} from "./appointmentAdministrativeActions";
+
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();

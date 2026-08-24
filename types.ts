@@ -515,6 +515,9 @@ export interface Appointment extends SoftDeletable {
   amount?: number | null;
   attendanceUpdatedAt?: FirestoreDateLike;
   attendanceUpdatedBy?: string;
+  rescheduledFromAppointmentId?: string;
+  rescheduledToAppointmentId?: string;
+  rescheduledAt?: FirestoreDateLike;
 }
 
 export interface MonthlyProfessionalStats {
