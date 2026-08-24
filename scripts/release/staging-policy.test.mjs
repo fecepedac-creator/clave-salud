@@ -104,3 +104,11 @@ test("all staging deploy commands fail through preflight and pin the staging ali
     assert.doesNotMatch(script, /--project (default|prod|production|clavesalud-2)/);
   });
 });
+
+test("release browser gates always request a fresh isolated server", () => {
+  const runner = readFileSync(resolve(repoRoot, "scripts/release/run-playwright-gate.mjs"), "utf8");
+  assert.match(runner, /PLAYWRIGHT_FORCE_FRESH_SERVER: "1"/);
+  assert.match(runner, /PLAYWRIGHT_BASE_URL: `http:\/\/127\.0\.0\.1:\$\{requestedPort\}`/);
+  assert.match(runner, /--project=pilot-simulated/);
+  assert.match(runner, /--project=emulator-gate/);
+});

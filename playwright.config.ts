@@ -10,6 +10,9 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, ".env.test") });
 
 const IS_CI = Boolean(process.env.CI);
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5175";
+const FORCE_FRESH_SERVER = process.env.PLAYWRIGHT_FORCE_FRESH_SERVER === "1";
+const BASE_URL_PORT = new URL(BASE_URL).port || (BASE_URL.startsWith("https:") ? "443" : "80");
 
 export default defineConfig({
   testDir: "./tests",
@@ -28,7 +31,7 @@ export default defineConfig({
     : [["html", { outputFolder: "playwright-report", open: "never" }], ["line"]],
 
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5175",
+    baseURL: BASE_URL,
     trace: "on-first-retry", // Genera trace solo en el primer reintento
     screenshot: "only-on-failure", // Captura solo en fallo
     video: "retain-on-failure", // Video solo en fallo
@@ -132,9 +135,9 @@ export default defineConfig({
 
   // Auto-inicia el dev server si no está corriendo
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5175",
-    reuseExistingServer: !IS_CI, // En CI siempre levantar servidor fresco
+    command: `npm run dev -- --host 127.0.0.1 --port ${BASE_URL_PORT} --strictPort`,
+    url: BASE_URL,
+    reuseExistingServer: !IS_CI && !FORCE_FRESH_SERVER,
     timeout: 120000,
   },
 });
