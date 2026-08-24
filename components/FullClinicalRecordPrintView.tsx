@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { Consultation, MedicalCenter, Patient, Prescription, SnomedConcept } from "../types";
 import { calculateAge, openEmailCompose } from "../utils";
 import { Printer, Mail, X } from "lucide-react";
-import { logAuditEventSafe } from "../hooks/useAuditLog";
+import { logAuditEventRequired } from "../hooks/useAuditLog";
+import { useToast } from "./Toast";
 
 interface GeneratedByInfo {
   name: string;
@@ -49,6 +50,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
   generatedAt,
   generatedBy,
 }) => {
+  const { showToast } = useToast();
   const sortedConsultations = useMemo(
     () =>
       [...(consultations || [])].sort(
@@ -65,17 +67,22 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
 
   // Las recetas se renderizan directamente debajo de cada consulta
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     if (!patient) return;
-    void logAuditEventSafe({
-      centerId: center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
-      action: "FULL_CLINICAL_RECORD_EMAIL_EXPORT",
-      entityType: "patient",
-      entityId: patient.id,
-      patientId: patient.id,
-      details: "Envio/exportacion por email de ficha clinica completa.",
-      metadata: { consultationCount: sortedConsultations.length },
-    });
+    try {
+      await logAuditEventRequired({
+        centerId: center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+        action: "FULL_CLINICAL_RECORD_EMAIL_EXPORT",
+        entityType: "patient",
+        entityId: patient.id,
+        patientId: patient.id,
+        details: "Envio/exportacion por email de ficha clinica completa.",
+        metadata: { consultationCount: sortedConsultations.length },
+      });
+    } catch {
+      showToast("El correo no se abrió porque no pudo registrarse la auditoría.", "error");
+      return;
+    }
 
     const subject = `Ficha Clínica Completa - ${patient.fullName}`;
     const lines: string[] = [];
@@ -143,17 +150,24 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
           <div className="flex gap-2">
             <button
               onClick={async () => {
-                await logAuditEventSafe({
-                  centerId:
-                    center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
-                  action: "FULL_CLINICAL_RECORD_PRINT",
-                  entityType: "patient",
-                  entityId: patient.id,
-                  patientId: patient.id,
-                  details: "Impresion/exportacion PDF de ficha clinica completa.",
-                  metadata: { consultationCount: sortedConsultations.length },
-                });
-                window.print();
+                try {
+                  await logAuditEventRequired({
+                    centerId:
+                      center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                    action: "FULL_CLINICAL_RECORD_PRINT",
+                    entityType: "patient",
+                    entityId: patient.id,
+                    patientId: patient.id,
+                    details: "Impresion/exportacion PDF de ficha clinica completa.",
+                    metadata: { consultationCount: sortedConsultations.length },
+                  });
+                  window.print();
+                } catch {
+                  showToast(
+                    "La ficha no se imprimió porque no pudo registrarse la auditoría.",
+                    "error"
+                  );
+                }
               }}
               className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm shadow-md active:scale-95"
             >

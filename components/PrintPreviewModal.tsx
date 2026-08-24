@@ -4,7 +4,8 @@ import { Prescription, Patient } from "../types";
 import { calculateAge } from "../utils";
 import { Printer, FileText, X } from "lucide-react";
 import QRCode from "qrcode";
-import { logAuditEventSafe } from "../hooks/useAuditLog";
+import { logAuditEventRequired } from "../hooks/useAuditLog";
+import { useToast } from "./Toast";
 
 const QRCodeComponent = ({ value, size }: { value: string; size: number }) => {
   const [qrSrc, setQrSrc] = React.useState<string>("");
@@ -52,6 +53,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   centerLogoUrl,
   selectedPatient,
 }) => {
+  const { showToast } = useToast();
   if (!isOpen || !selectedPatient || docs.length === 0) return null;
 
   const today = new Date().toLocaleDateString("es-CL", {
@@ -66,15 +68,20 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
       : "https://clavesalud-2.web.app";
 
   const downloadPDF = async () => {
-    await logAuditEventSafe({
-      centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
-      action: "CLINICAL_DOCUMENT_DOWNLOAD",
-      entityType: "prescription",
-      entityId: docs.map((doc) => doc.id).join(","),
-      patientId: selectedPatient.id,
-      details: "Descarga PDF de receta/documento clinico.",
-      metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
-    });
+    try {
+      await logAuditEventRequired({
+        centerId: selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
+        action: "CLINICAL_DOCUMENT_DOWNLOAD",
+        entityType: "prescription",
+        entityId: docs.map((doc) => doc.id).join(","),
+        patientId: selectedPatient.id,
+        details: "Descarga PDF de receta/documento clinico.",
+        metadata: { documentCount: docs.length, documentTypes: docs.map((doc) => doc.type) },
+      });
+    } catch {
+      showToast("La descarga no se realizó porque no pudo registrarse la auditoría.", "error");
+      return;
+    }
     const { jsPDF } = await import("jspdf");
     const html2canvas = (await import("html2canvas")).default;
     const pdf = new jsPDF("p", "mm", "a5");
@@ -126,20 +133,29 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             </button>
             <button
               onClick={async () => {
-                await logAuditEventSafe({
-                  centerId:
-                    selectedPatient.centerId || selectedPatient.accessControl?.centerIds?.[0] || "",
-                  action: "CLINICAL_DOCUMENT_PRINT",
-                  entityType: "prescription",
-                  entityId: docs.map((doc) => doc.id).join(","),
-                  patientId: selectedPatient.id,
-                  details: "Impresion de receta/documento clinico.",
-                  metadata: {
-                    documentCount: docs.length,
-                    documentTypes: docs.map((doc) => doc.type),
-                  },
-                });
-                window.print();
+                try {
+                  await logAuditEventRequired({
+                    centerId:
+                      selectedPatient.centerId ||
+                      selectedPatient.accessControl?.centerIds?.[0] ||
+                      "",
+                    action: "CLINICAL_DOCUMENT_PRINT",
+                    entityType: "prescription",
+                    entityId: docs.map((doc) => doc.id).join(","),
+                    patientId: selectedPatient.id,
+                    details: "Impresion de receta/documento clinico.",
+                    metadata: {
+                      documentCount: docs.length,
+                      documentTypes: docs.map((doc) => doc.type),
+                    },
+                  });
+                  window.print();
+                } catch {
+                  showToast(
+                    "La impresión no se realizó porque no pudo registrarse la auditoría.",
+                    "error"
+                  );
+                }
               }}
               className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold transition-colors"
             >
