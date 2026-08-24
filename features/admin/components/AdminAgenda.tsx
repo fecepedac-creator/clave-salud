@@ -78,6 +78,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   const [bookingPhone, setBookingPhone] = useState("");
   const [isManualBooking, setIsManualBooking] = useState(false);
   const bookingRequestIdRef = useRef("");
+  const operationRequestIdsRef = useRef(new Map<string, string>());
+  const [updatingOperationId, setUpdatingOperationId] = useState("");
 
   useEffect(() => {
     bookingRequestIdRef.current = bookingSlotId
@@ -407,6 +409,81 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   };
 
   const normalizeRut = (rut: string) => rut.replace(/[^0-9kK]/g, "").toUpperCase();
+
+  const operationRequestId = (action: string, appointmentId: string) => {
+    const key = `${action}:${appointmentId}`;
+    const existing = operationRequestIdsRef.current.get(key);
+    if (existing) return { key, requestId: existing };
+    const requestId =
+      globalThis.crypto?.randomUUID?.() ||
+      `operation_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    operationRequestIdsRef.current.set(key, requestId);
+    return { key, requestId };
+  };
+
+  const handleArrival = async (appointment: Appointment, arrived: boolean) => {
+    const operation = operationRequestId("arrival", appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "updateAppointmentArrival"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        arrived,
+      });
+      const updated = appointments.map((item) =>
+        item.id === appointment.id
+          ? ({
+              ...item,
+              arrivalStatus: arrived ? "arrived" : null,
+            } as Appointment)
+          : item
+      );
+      onUpdateAppointments(updated);
+      operationRequestIdsRef.current.delete(operation.key);
+      showToast(arrived ? "Llegada registrada." : "Llegada revertida.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible actualizar la llegada.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleOperationalAttendance = async (
+    appointment: Appointment,
+    attendanceStatus: "completed" | "no-show"
+  ) => {
+    const operation = operationRequestId(`attendance-${attendanceStatus}`, appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "updateAppointmentOperationalAttendance"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        attendanceStatus,
+      });
+      onUpdateAppointments(
+        appointments.map(item =>
+          item.id === appointment.id ? { ...item, attendanceStatus } : item
+        )
+      );
+      operationRequestIdsRef.current.delete(operation.key);
+      showToast(
+        attendanceStatus === "completed" ? "Atención registrada." : "Ausencia registrada.",
+        "success"
+      );
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible actualizar la asistencia.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
 
   const handleManualBooking = async (continueBooking = false) => {
     if (!hasActiveCenter) {
@@ -873,6 +950,46 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                       >
                         Agendar paciente
                       </button>
+                    )}
+                    {realSlot && isBooked && (
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          type="button"
+                          aria-label={`Marcar llegada ${slot.time}`}
+                          disabled={Boolean(updatingOperationId)}
+                          onClick={() =>
+                            void handleArrival(
+                              realSlot,
+                              (realSlot as Appointment & { arrivalStatus?: string }).arrivalStatus !==
+                                "arrived"
+                            )
+                          }
+                          className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-1 py-1.5 text-[9px] font-bold text-amber-200 disabled:opacity-50"
+                        >
+                          {(realSlot as Appointment & { arrivalStatus?: string }).arrivalStatus ===
+                          "arrived"
+                            ? "Deshacer llegada"
+                            : "Llegó"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Marcar atendido ${slot.time}`}
+                          disabled={Boolean(updatingOperationId)}
+                          onClick={() => void handleOperationalAttendance(realSlot, "completed")}
+                          className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-1 py-1.5 text-[9px] font-bold text-emerald-200 disabled:opacity-50"
+                        >
+                          Atendido
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Marcar ausente ${slot.time}`}
+                          disabled={Boolean(updatingOperationId)}
+                          onClick={() => void handleOperationalAttendance(realSlot, "no-show")}
+                          className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-1 py-1.5 text-[9px] font-bold text-rose-200 disabled:opacity-50"
+                        >
+                          Ausente
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
