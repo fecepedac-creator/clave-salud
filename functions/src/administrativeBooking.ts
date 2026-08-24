@@ -91,6 +91,12 @@ const auditId = (appointmentId: string, requestId: string) =>
 const lockId = (scope: string, ...parts: string[]) =>
   `${scope}_${createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 40)}`;
 
+export const agendaSlotLockDocumentId = (doctorId: string, date: string, time: string) =>
+  lockId("slot", doctorId, date, time);
+
+export const agendaResourceLockDocumentId = (resourceId: string, date: string, time: string) =>
+  lockId("resource", resourceId, date, time);
+
 const isWithinAgendaHours = (
   time: string,
   agendaConfig: FirebaseFirestore.DocumentData | undefined
@@ -136,13 +142,13 @@ export async function bookAdministrativeAppointmentTransaction(
     .collection("centers")
     .doc(input.centerId)
     .collection("agendaSlotLocks")
-    .doc(lockId("slot", input.slot.doctorId, input.slot.date, input.slot.time));
+    .doc(agendaSlotLockDocumentId(input.slot.doctorId, input.slot.date, input.slot.time));
   const resourceLockRef = input.slot.resourceId
     ? db
         .collection("centers")
         .doc(input.centerId)
         .collection("agendaResourceLocks")
-        .doc(lockId("resource", input.slot.resourceId, input.slot.date, input.slot.time))
+        .doc(agendaResourceLockDocumentId(input.slot.resourceId, input.slot.date, input.slot.time))
     : null;
 
   return db.runTransaction(async (transaction) => {

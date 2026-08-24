@@ -16,6 +16,10 @@ export {
   updateAppointmentOperationalAttendance,
 } from "./appointmentOperations";
 export { getAgendaPolicy, previewAgendaPolicyImpact, updateAgendaPolicy } from "./agendaPolicy";
+export {
+  recordAppointmentContactAttempt,
+  rebookAdministrativeAppointment,
+} from "./appointmentAdministrativeActions";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
