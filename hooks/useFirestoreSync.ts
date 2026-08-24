@@ -190,7 +190,6 @@ export function useFirestoreSync(
       patientsQuery = query(
         collection(db, "patients"),
         where("accessControl.allowedUids", "array-contains", currentUid),
-        where("accessControl.centerIds", "array-contains", activeCenterId),
         orderBy("lastUpdated", "desc"),
         limit(400)
       );
@@ -201,7 +200,16 @@ export function useFirestoreSync(
       (snap: QuerySnapshot<DocumentData>) => {
         const pts = usesOperationalDirectory
           ? snap.docs.map((entry) => mapPatientDirectoryEntry(entry.id, entry.data()))
-          : (snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]);
+          : (snap.docs
+              .map((d) => ({ id: d.id, ...(d.data() as any) }))
+              .filter((patient) => {
+                if (portfolioMode === "global") return true;
+                const patientCenterIds = patient.accessControl?.centerIds;
+                return (
+                  patient.centerId === activeCenterId ||
+                  (Array.isArray(patientCenterIds) && patientCenterIds.includes(activeCenterId))
+                );
+              }) as Patient[]);
         setPatients(pts);
       },
       () => setPatients([])
