@@ -182,7 +182,6 @@ export function useFirestoreSync(
       patientsQuery = query(
         collection(db, "patients"),
         where("accessControl.allowedUids", "array-contains", currentUid),
-        orderBy("lastUpdated", "desc"),
         limit(400)
       );
     } else {
@@ -190,7 +189,6 @@ export function useFirestoreSync(
       patientsQuery = query(
         collection(db, "patients"),
         where("accessControl.allowedUids", "array-contains", currentUid),
-        orderBy("lastUpdated", "desc"),
         limit(400)
       );
     }
@@ -209,6 +207,16 @@ export function useFirestoreSync(
                   patient.centerId === activeCenterId ||
                   (Array.isArray(patientCenterIds) && patientCenterIds.includes(activeCenterId))
                 );
+              })
+              .sort((a, b) => {
+                const toUpdatedAt = (patient: { lastUpdated?: unknown }) => {
+                  const value = patient.lastUpdated;
+                  const timestamp = value as { toMillis?: () => number } | undefined;
+                  return typeof timestamp?.toMillis === "function"
+                    ? timestamp.toMillis()
+                    : Date.parse(String(value ?? "")) || 0;
+                };
+                return toUpdatedAt(b) - toUpdatedAt(a);
               }) as Patient[]);
         setPatients(pts);
       },
