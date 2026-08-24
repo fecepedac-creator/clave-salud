@@ -3,7 +3,7 @@ import { MedicalCenter, Patient, Consultation, Doctor } from "../types";
 import { auth, db } from "../firebase";
 import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAuditLog";
 import { ChevronDown, FileText, Users } from "lucide-react";
-import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
 import { ConfirmModal } from "./ConfirmModal";
 
@@ -59,7 +59,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     const loadStaff = async () => {
       if (!centerId) return;
       try {
-        const snap = await getDocs(collection(db, "centers", centerId, "staff"));
+        const snap = await getDocs(collection(db, "centers", centerId, "publicStaff"));
         const list = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as Doctor);
         const activeList = list.filter(
           (member) => (member as any).active !== false && (member as any).activo !== false
@@ -76,9 +76,17 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     let mounted = true;
     const resolveAdmin = async () => {
       const uid = auth.currentUser?.uid;
-      const staff = staffMembers.find((member) => member.id === uid);
-      const staffAdmin =
-        staff?.isAdmin === true || String(staff?.role || "").toLowerCase() === "center_admin";
+      let staffAdmin = false;
+      if (uid && centerId) {
+        try {
+          const staffSnap = await getDoc(doc(db, "centers", centerId, "staff", uid));
+          const staff = staffSnap.exists() ? (staffSnap.data() as Doctor) : null;
+          staffAdmin =
+            staff?.isAdmin === true || String(staff?.role || "").toLowerCase() === "center_admin";
+        } catch {
+          staffAdmin = false;
+        }
+      }
       let superAdminClaim = false;
       try {
         const token = await auth.currentUser?.getIdTokenResult();
@@ -95,7 +103,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     return () => {
       mounted = false;
     };
-  }, [staffMembers]);
+  }, [centerId]);
 
   const filteredConsultations = useMemo(() => {
     const activeOnly = (consultations || []).filter((c) => c.active !== false);
