@@ -41,28 +41,33 @@ export const useConsultationLogic = ({
 }: UseConsultationLogicProps) => {
   const { showToast } = useToast();
 
-  const getEmptyConsultation = (): Partial<Consultation> => ({
-    weight: "",
-    height: "",
-    bmi: "",
-    bloodPressure: "",
-    hgt: "",
-    waist: "",
-    hip: "",
-    reason: "",
-    anamnesis: "",
-    physicalExam: "",
-    diagnosis: "",
-    diagnoses: [],
-    prescriptions: [],
-    dentalMap: [],
-    exams: {},
-    examSheets: [],
-    nextControlDate: "",
-    nextControlReason: "",
-    reminderActive: false,
-    consultationType: "morbidity", // Default to morbidity
-  });
+  const getEmptyConsultation = useCallback(
+    (): Partial<Consultation> => ({
+      weight: "",
+      height: "",
+      bmi: "",
+      bloodPressure: "",
+      hgt: "",
+      waist: "",
+      hip: "",
+      reason: "",
+      anamnesis: "",
+      physicalExam: "",
+      diagnosis: "",
+      diagnoses: [],
+      prescriptions: [],
+      dentalMap: [],
+      podogram: [],
+      exams: {},
+      examSheets: [],
+      nextControlDate: "",
+      nextControlReason: "",
+      reminderActive: false,
+      consultationType: "morbidity",
+      recordStatus: "draft",
+    }),
+    []
+  );
 
   const [newConsultation, setNewConsultation] =
     useState<Partial<Consultation>>(getEmptyConsultation());
