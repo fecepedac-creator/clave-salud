@@ -10,7 +10,8 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "test:agent": "jest src/__tests__/whatsapp-agent.test.ts --runInBand",
     "test:integration": "jest --runInBand",
-    "test:patient-directory-integration": "jest --config jest.config.json src/__tests__/patient-directory.integration.test.ts --runInBand"
+    "test:patient-directory-integration": "jest --config jest.config.json src/__tests__/patient-directory.integration.test.ts --runInBand",
+    "test:clinical:integration": "jest src/__tests__/clinical-draft-commands.integration.test.ts --runInBand"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
