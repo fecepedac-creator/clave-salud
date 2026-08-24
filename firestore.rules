@@ -153,6 +153,12 @@ service cloud.firestore {
         && r != "secretaria";
     }
 
+    function hasStaffCapability(centerId, capability) {
+      return isStaff(centerId)
+        && staffDoc(centerId).data.capabilities is list
+        && capability in staffDoc(centerId).data.capabilities;
+    }
+
     function centerDoc(centerId) {
       return get(/databases/$(database)/documents/centers/$(centerId));
     }
@@ -193,7 +199,8 @@ service cloud.firestore {
     }
 
     function canViewAudit(centerId) {
-      return isSuperAdmin() || isCenterAdmin(centerId);
+      return isCenterAdmin(centerId)
+        || hasStaffCapability(centerId, "audit.read");
     }
 
     function canUpdateMarketingRetention(centerId) {
@@ -736,7 +743,7 @@ service cloud.firestore {
       }
 
       match /auditLogs/{logId} {
-        // Only staff and superadmins can read audit logs
+        // Lectura acotada al centro: administración o capacidad explícita de auditoría.
         allow read: if signedIn() && canViewAudit(centerId);
         // No direct writes from client - only through Cloud Functions
         allow create, update, delete: if false;
