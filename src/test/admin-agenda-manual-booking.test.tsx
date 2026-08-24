@@ -161,4 +161,36 @@ describe("AdminAgenda reserva manual", () => {
       amount: 25000,
     });
   });
+
+  it("conserva la solicitud y exige motivo cuando el backend autoriza una excepción", async () => {
+    const callable = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { success: false, error: "OVERRIDE_REQUIRED" } })
+      .mockResolvedValueOnce({ data: { success: true, idempotent: false } });
+    vi.mocked(httpsCallable).mockReturnValue(callable as any);
+    const { onUpdateAppointments } = renderAgenda();
+
+    fireEvent.change(screen.getByLabelText("Nombre completo del paciente"), {
+      target: { value: "Paciente Excepción" },
+    });
+    fireEvent.change(screen.getByLabelText("RUT del paciente"), {
+      target: { value: "11.111.111-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Teléfono del paciente"), {
+      target: { value: "+56911111111" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Agendar y finalizar" }));
+
+    const reason = await screen.findByLabelText("Motivo de excepción de agenda");
+    expect(screen.getByRole("button", { name: "Agendar y finalizar" })).toBeDisabled();
+    fireEvent.change(reason, { target: { value: "Autorizado por coordinación del centro" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agendar y finalizar" }));
+
+    await waitFor(() => expect(onUpdateAppointments).toHaveBeenCalledTimes(1));
+    expect(callable).toHaveBeenCalledTimes(2);
+    expect(callable.mock.calls[1][0]).toMatchObject({
+      idempotencyKey: callable.mock.calls[0][0].idempotencyKey,
+      override: { reason: "Autorizado por coordinación del centro" },
+    });
+  });
 });
