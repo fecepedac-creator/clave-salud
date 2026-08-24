@@ -23,6 +23,8 @@ import { useToast } from "../../../components/Toast";
 import { db, auth, functions } from "../../../firebase";
 import { httpsCallable } from "firebase/functions";
 import { upsertTelephoneBooking } from "../../doctor/utils/telephoneBooking";
+import AgendaPolicyManager from "../../../components/AgendaPolicyManager";
+import { AGENDA_OPERATIONS_V2_ENABLED } from "../../../utils/agendaOperationsFeature";
 import {
   collection,
   query,
@@ -76,16 +78,21 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   const [bookingRut, setBookingRut] = useState("");
   const [bookingName, setBookingName] = useState("");
   const [bookingPhone, setBookingPhone] = useState("");
+  const [bookingOverrideReason, setBookingOverrideReason] = useState("");
+  const [requiresBookingOverride, setRequiresBookingOverride] = useState(false);
   const [isManualBooking, setIsManualBooking] = useState(false);
   const bookingRequestIdRef = useRef("");
   const operationRequestIdsRef = useRef(new Map<string, string>());
   const [updatingOperationId, setUpdatingOperationId] = useState("");
+  const [showAgendaPolicies, setShowAgendaPolicies] = useState(false);
 
   useEffect(() => {
     bookingRequestIdRef.current = bookingSlotId
       ? globalThis.crypto?.randomUUID?.() ||
         `booking_${Date.now()}_${Math.random().toString(36).slice(2)}`
       : "";
+    setBookingOverrideReason("");
+    setRequiresBookingOverride(false);
   }, [bookingSlotId]);
 
   const [manualBookingType, setManualBookingType] = useState<"CONSULTATION" | "SERVICE">(
@@ -469,7 +476,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
         attendanceStatus,
       });
       onUpdateAppointments(
-        appointments.map(item =>
+        appointments.map((item) =>
           item.id === appointment.id ? { ...item, attendanceStatus } : item
         )
       );
@@ -561,11 +568,38 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
           phone: patientPayload.phone || "",
           email: patientPayload.email || "",
         },
+        ...(bookingOverrideReason.trim()
+          ? { override: { reason: bookingOverrideReason.trim() } }
+          : {}),
       });
-      const reservation = result.data as { success: boolean; error?: "SLOT_TAKEN" };
+      const reservation = result.data as {
+        success: boolean;
+        error?:
+          | "SLOT_TAKEN"
+          | "CONTACT_REQUIRED"
+          | "OUTSIDE_HOURS"
+          | "APPOINTMENT_CONFLICT"
+          | "RESOURCE_CONFLICT"
+          | "OVERRIDE_REQUIRED";
+      };
       if (!reservation.success) {
-        showToast("Este cupo acaba de ser reservado. Selecciona otro horario.", "warning");
-        setBookingSlotId(null);
+        if (reservation.error === "OVERRIDE_REQUIRED") {
+          setRequiresBookingOverride(true);
+          showToast("Esta reserva requiere un motivo de excepción autorizado.", "warning");
+          return;
+        }
+        const policyMessage: Record<string, string> = {
+          CONTACT_REQUIRED: "La política exige teléfono o correo del paciente.",
+          OUTSIDE_HOURS: "El horario está fuera de la agenda y no puede ser forzado.",
+          APPOINTMENT_CONFLICT: "Existe otra cita para el profesional en ese horario.",
+          RESOURCE_CONFLICT: "El recurso seleccionado ya está ocupado en ese horario.",
+          SLOT_TAKEN: "Este cupo acaba de ser reservado. Selecciona otro horario.",
+        };
+        showToast(
+          policyMessage[reservation.error || ""] || "La política de agenda rechazó la reserva.",
+          "warning"
+        );
+        if (reservation.error === "SLOT_TAKEN") setBookingSlotId(null);
         return;
       }
 
@@ -591,6 +625,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       setBookingRut("");
       setBookingName("");
       setBookingPhone("");
+      setBookingOverrideReason("");
+      setRequiresBookingOverride(false);
       setManualBookingType("CONSULTATION");
       setManualBookingServiceId("");
       showToast(
@@ -610,6 +646,28 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
     <div className="animate-fadeIn grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* Sidebar Config */}
       <div className="lg:col-span-4 space-y-6">
+        {AGENDA_OPERATIONS_V2_ENABLED && (
+          <div className="rounded-3xl border border-slate-700 bg-slate-800 p-4">
+            <button
+              type="button"
+              aria-expanded={showAgendaPolicies}
+              onClick={() => setShowAgendaPolicies((current) => !current)}
+              className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left font-bold text-white hover:bg-slate-700"
+            >
+              <span className="flex items-center gap-2">
+                <Settings className="h-5 w-5" /> Políticas avanzadas
+              </span>
+              <span className="text-xs text-slate-400">
+                {showAgendaPolicies ? "Ocultar" : "Configurar"}
+              </span>
+            </button>
+            {showAgendaPolicies && (
+              <div className="mt-4">
+                <AgendaPolicyManager centerId={resolvedCenterId || centerId} />
+              </div>
+            )}
+          </div>
+        )}
         <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
           <h3 className="font-bold text-white mb-4">Seleccionar Profesional</h3>
           <select
@@ -960,8 +1018,8 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                           onClick={() =>
                             void handleArrival(
                               realSlot,
-                              (realSlot as Appointment & { arrivalStatus?: string }).arrivalStatus !==
-                                "arrived"
+                              (realSlot as Appointment & { arrivalStatus?: string })
+                                .arrivalStatus !== "arrived"
                             )
                           }
                           className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-1 py-1.5 text-[9px] font-bold text-amber-200 disabled:opacity-50"
@@ -1082,6 +1140,21 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                   />
                 </div>
               </div>
+              {requiresBookingOverride && (
+                <label className="block rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs font-bold uppercase text-amber-100">
+                  Motivo de excepción
+                  <textarea
+                    aria-label="Motivo de excepción de agenda"
+                    required
+                    minLength={10}
+                    maxLength={300}
+                    value={bookingOverrideReason}
+                    onChange={(event) => setBookingOverrideReason(event.target.value)}
+                    className="mt-2 min-h-20 w-full rounded-lg border border-amber-400/30 bg-slate-900 p-3 text-sm font-normal normal-case text-white"
+                    placeholder="Explique por qué corresponde autorizar esta excepción"
+                  />
+                </label>
+              )}
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <button
                   onClick={() => setBookingSlotId(null)}
@@ -1092,14 +1165,20 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                 </button>
                 <button
                   onClick={() => void handleManualBooking()}
-                  disabled={isManualBooking}
+                  disabled={
+                    isManualBooking ||
+                    (requiresBookingOverride && bookingOverrideReason.trim().length < 10)
+                  }
                   className="rounded-xl border border-indigo-400 bg-slate-900 py-3 font-bold text-indigo-200 hover:bg-indigo-950 disabled:opacity-50"
                 >
                   Agendar y finalizar
                 </button>
                 <button
                   onClick={() => void handleManualBooking(true)}
-                  disabled={isManualBooking}
+                  disabled={
+                    isManualBooking ||
+                    (requiresBookingOverride && bookingOverrideReason.trim().length < 10)
+                  }
                   className="rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {isManualBooking ? "Agendando…" : "Agendar y continuar"}
