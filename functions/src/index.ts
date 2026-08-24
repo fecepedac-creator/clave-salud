@@ -11,6 +11,10 @@ import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
 
 export { bookAdministrativeAppointment } from "./administrativeBooking";
+export {
+  updateAppointmentArrival,
+  updateAppointmentOperationalAttendance,
+} from "./appointmentOperations";
 
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;

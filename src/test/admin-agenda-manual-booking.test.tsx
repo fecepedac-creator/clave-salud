@@ -55,7 +55,10 @@ describe("AdminAgenda reserva manual", () => {
 
   beforeEach(() => vi.clearAllMocks());
 
-  const renderAgenda = () => {
+  const renderAgenda = (
+    agendaAppointments: Appointment[] = [availableSlot],
+    openManualBooking = true
+  ) => {
     const onUpdateAppointments = vi.fn();
     const onUpdatePatients = vi.fn();
     const showToast = vi.fn();
@@ -65,7 +68,7 @@ describe("AdminAgenda reserva manual", () => {
         centerId="center-1"
         resolvedCenterId="center-1"
         doctors={[doctor]}
-        appointments={[availableSlot]}
+        appointments={agendaAppointments}
         onUpdateAppointments={onUpdateAppointments}
         patients={[]}
         hasActiveCenter
@@ -80,7 +83,9 @@ describe("AdminAgenda reserva manual", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "18" }));
-    fireEvent.click(screen.getByRole("button", { name: "Agendar paciente 16:00" }));
+    if (openManualBooking) {
+      fireEvent.click(screen.getByRole("button", { name: "Agendar paciente 16:00" }));
+    }
     return { onUpdateAppointments, onUpdatePatients, showToast };
   };
 
@@ -121,5 +126,39 @@ describe("AdminAgenda reserva manual", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agendar paciente 16:00" }));
     expect(screen.getByLabelText("Nombre completo del paciente")).toHaveValue("");
     expect(screen.getByLabelText("RUT del paciente")).toHaveValue("");
+  });
+
+  it("registra llegada mediante un comando operativo sin tocar cobros", async () => {
+    const callable = vi.fn(async () => ({ data: { success: true, idempotent: false } }));
+    vi.mocked(httpsCallable).mockReturnValue(callable as any);
+    const bookedSlot: Appointment = {
+      ...availableSlot,
+      status: "booked",
+      patientId: "patient-1",
+      patientName: "Paciente Uno",
+      patientRut: "22.222.222-2",
+      billable: true,
+      amount: 25000,
+    };
+    const { onUpdateAppointments } = renderAgenda([bookedSlot], false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Marcar llegada 16:00" }));
+    await waitFor(() => expect(callable).toHaveBeenCalledTimes(1));
+
+    expect(httpsCallable).toHaveBeenCalledWith({}, "updateAppointmentArrival");
+    expect(callable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        centerId: "center-1",
+        appointmentId: bookedSlot.id,
+        arrived: true,
+      })
+    );
+    const updated = onUpdateAppointments.mock.calls[0][0] as Appointment[];
+    expect(updated[0]).toMatchObject({
+      id: bookedSlot.id,
+      arrivalStatus: "arrived",
+      billable: true,
+      amount: 25000,
+    });
   });
 });
