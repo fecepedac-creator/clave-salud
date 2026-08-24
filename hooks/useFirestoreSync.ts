@@ -25,6 +25,7 @@ import {
 } from "../types";
 import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
+import { canSubscribeToClinicalPatients } from "../utils/clinicalSubscriptionPolicy";
 
 export function useFirestoreSync(
   activeCenterId: string,
@@ -145,7 +146,7 @@ export function useFirestoreSync(
   useEffect(() => {
     if (demoMode) return;
     const currentUid = authUser?.uid;
-    if (!currentUid) {
+    if (!canSubscribeToClinicalPatients(currentUid, isSuperAdminClaim)) {
       setPatients([]);
       return;
     }
@@ -192,7 +193,7 @@ export function useFirestoreSync(
     );
 
     return () => unsub();
-  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdmin]);
+  }, [demoMode, authUser?.uid, activeCenterId, portfolioMode, isAdmin, isSuperAdminClaim]);
 
   // 4. Center Data Effect (Staff, Appointments, Logs, Preadmissions)
   useEffect(() => {

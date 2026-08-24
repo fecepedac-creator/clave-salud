@@ -436,6 +436,33 @@ describe("Firestore security rules - pilot RBAC", () => {
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));
   });
 
+  it("keeps global super admin out of clinical records while preserving staff metadata", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "patients", "rootPatientA", "consultations", "rootConsultA"), {
+        centerId: CENTER_A,
+        patientId: "rootPatientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        evolution: "Contenido clínico privado",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      });
+    });
+
+    const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
+    await assertFails(getDoc(doc(superDb, "patients", "rootPatientA")));
+    await assertFails(
+      getDoc(doc(superDb, "patients", "rootPatientA", "consultations", "rootConsultA"))
+    );
+    await assertFails(getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA")));
+    await assertFails(
+      getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
+    );
+    await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "staff", "doctorA")));
+  });
+
   it("keeps signed root consultations immutable from the client", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();

@@ -23,6 +23,8 @@ export {
   rebookAdministrativeAppointment,
 } from "./appointmentAdministrativeActions";
 
+export * from "./superAdminOperationalMetrics";
+
 const db = admin.firestore();
 const serverTimestamp = ModularFieldValue.serverTimestamp;
 const storage = admin.storage();
