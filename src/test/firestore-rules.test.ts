@@ -15,7 +15,11 @@ const CENTER_B = "centerB";
 
 let testEnv: RulesTestEnvironment;
 
-function authedDb(uid: string, email = `${uid}@example.test`, claims: Record<string, unknown> = {}) {
+function authedDb(
+  uid: string,
+  email = `${uid}@example.test`,
+  claims: Record<string, unknown> = {}
+) {
   return testEnv.authenticatedContext(uid, { email, ...claims }).firestore();
 }
 
@@ -80,17 +84,20 @@ async function seedBaseData() {
       accessControl: { centerIds: [CENTER_B], allowedUids: ["doctorB"] },
       active: true,
     });
-    await setDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"), {
-      centerId: CENTER_A,
-      patientId: "patientA",
-      professionalId: "doctorA",
-      professionalName: "Doctor A",
-      professionalRole: "medico",
-      evolution: "Evolucion clinica privada",
-      prescriptions: [],
-      prescriptionTypes: [],
-      hasControlledPrescription: false,
-    });
+    await setDoc(
+      doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"),
+      {
+        centerId: CENTER_A,
+        patientId: "patientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        evolution: "Evolucion clinica privada",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      }
+    );
     await setDoc(doc(db, "centers", CENTER_A, "appointments", "openAppt"), {
       centerId: CENTER_A,
       status: "booked",
@@ -139,6 +146,79 @@ describe("Firestore security rules - pilot RBAC", () => {
 
   afterAll(async () => {
     await testEnv.cleanup();
+  });
+
+  const agendaResource = (overrides: Record<string, unknown> = {}) => ({
+    id: "roomA",
+    centerId: CENTER_A,
+    entityType: "agenda_resource",
+    resourceType: "room",
+    displayName: "Sala de procedimientos",
+    description: "Sala 1",
+    agendaConfig: { slotDuration: 30, startTime: "08:00", endTime: "18:00" },
+    visibleInBooking: false,
+    active: true,
+    createdAt: new Date("2026-08-23T10:00:00.000Z"),
+    updatedAt: new Date("2026-08-23T10:00:00.000Z"),
+    ...overrides,
+  });
+
+  it("allows a center admin to manage a valid agenda resource", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const resourceRef = doc(adminDb, "centers", CENTER_A, "agendaResources", "roomA");
+
+    await assertSucceeds(setDoc(resourceRef, agendaResource()));
+    await assertSucceeds(getDoc(resourceRef));
+    await assertSucceeds(
+      updateDoc(resourceRef, {
+        description: "Sala habilitada",
+        updatedAt: new Date("2026-08-23T10:05:00.000Z"),
+      })
+    );
+  });
+
+  it("rejects identity or clinical fields in an agenda resource", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const resourceRef = doc(adminDb, "centers", CENTER_A, "agendaResources", "roomA");
+
+    await assertFails(
+      setDoc(
+        resourceRef,
+        agendaResource({
+          role: "MEDICO",
+          email: "resource@example.test",
+          capabilities: ["clinical_record.read"],
+        })
+      )
+    );
+  });
+
+  it("rejects resource writes from administrative and professional staff", async () => {
+    const secretaryDb = authedDb("secretaryA");
+    const doctorDb = authedDb("doctorA");
+
+    await assertFails(
+      setDoc(doc(secretaryDb, "centers", CENTER_A, "agendaResources", "roomA"), agendaResource())
+    );
+    await assertFails(
+      setDoc(doc(doctorDb, "centers", CENTER_A, "agendaResources", "roomA"), agendaResource())
+    );
+  });
+
+  it("prevents staff from reading agenda resources in another center", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "centers", CENTER_A, "agendaResources", "roomA"),
+        agendaResource()
+      );
+    });
+
+    await assertSucceeds(
+      getDoc(doc(authedDb("doctorA"), "centers", CENTER_A, "agendaResources", "roomA"))
+    );
+    await assertFails(
+      getDoc(doc(authedDb("doctorB"), "centers", CENTER_A, "agendaResources", "roomA"))
+    );
   });
 
   it("prevents a professional from reading another center patient by changing ids", async () => {

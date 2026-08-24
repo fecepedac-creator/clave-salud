@@ -710,6 +710,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           )}
           {!isSecretary && (
             <button
+              data-testid="admin-tab-services"
               onClick={() => setActiveTab("services")}
               disabled={!hasActiveCenter}
               className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "services" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -902,11 +903,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       {activeTab === "services" && (
         <div className="space-y-8 animate-fadeIn">
           <ServicesManager centerId={resolvedCenterId} />
-          <ServiceAgendasManager
-            centerId={resolvedCenterId}
-            doctors={doctors}
-            onUpdateDoctors={onUpdateDoctors}
-          />
+          <ServiceAgendasManager centerId={resolvedCenterId} doctors={doctors} />
         </div>
       )}
 
