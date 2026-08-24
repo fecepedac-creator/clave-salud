@@ -113,15 +113,10 @@ export function useFirestoreSync(
     );
   }, [currentUser]);
 
-  const isAdminOrStaff = useMemo(() => {
-    if (!currentUser && !isSuperAdminClaim) return false;
-    return (
-      isAdmin ||
-      hasRole(currentUser?.roles, "doctor") ||
-      hasRole(currentUser?.roles, "staff") ||
-      isSuperAdminClaim
-    );
-  }, [isAdmin, currentUser, isSuperAdminClaim]);
+  const canReadPrivateStaff = useMemo(
+    () => isAdmin || isSuperAdminClaim,
+    [isAdmin, isSuperAdminClaim]
+  );
 
   const isOperationalDirectoryReader = useMemo(
     () => isAdmin || hasRole(currentUser?.roles, "administrative"),
@@ -226,7 +221,7 @@ export function useFirestoreSync(
   useEffect(() => {
     if (demoMode || !activeCenterId) return;
 
-    const doctorsCollection = isAdminOrStaff
+    const doctorsCollection = canReadPrivateStaff
       ? collection(db, "centers", activeCenterId, "staff")
       : collection(db, "centers", activeCenterId, "publicStaff");
 
@@ -329,7 +324,7 @@ export function useFirestoreSync(
       unsubPreadmissions();
       unsubServices();
     };
-  }, [demoMode, activeCenterId, isAdminOrStaff, mapStaffToDoctor]);
+  }, [demoMode, activeCenterId, canReadPrivateStaff, mapStaffToDoctor]);
 
   return {
     patients,
