@@ -100,6 +100,23 @@ async function seedBaseData() {
       accessControl: { centerIds: [CENTER_B], allowedUids: ["doctorB"] },
       active: true,
     });
+    await setDoc(doc(db, "patients", "rootPatientA"), {
+      centerId: CENTER_A,
+      fullName: "Root Paciente A",
+      accessControl: { centerIds: [CENTER_A], allowedUids: ["doctorA"] },
+      careTeamUids: ["doctorA"],
+    });
+    await setDoc(doc(db, "patients", "rootPatientA", "consultations", "rootConsultA"), {
+      centerId: CENTER_A,
+      patientId: "rootPatientA",
+      professionalId: "doctorA",
+      professionalName: "Doctor A",
+      professionalRole: "medico",
+      evolution: "Contenido clínico privado",
+      prescriptions: [],
+      prescriptionTypes: [],
+      hasControlledPrescription: false,
+    });
     await setDoc(
       doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"),
       {
@@ -314,18 +331,22 @@ describe("Firestore security rules - pilot RBAC", () => {
   });
 
   it("keeps root patients clinical-only and blocks administrative reads", async () => {
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const db = context.firestore();
-      await setDoc(doc(db, "patients", "rootPatientA"), {
-        centerId: CENTER_A,
-        fullName: "Root Paciente A",
-        accessControl: { centerIds: [CENTER_A], allowedUids: ["doctorA"] },
-        careTeamUids: ["doctorA"],
-      });
-    });
-
     await assertSucceeds(getDoc(doc(authedDb("doctorA"), "patients", "rootPatientA")));
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));
+  });
+
+  it("keeps global super admin out of clinical records while preserving staff metadata", async () => {
+    const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
+
+    await assertFails(getDoc(doc(superDb, "patients", "rootPatientA")));
+    await assertFails(
+      getDoc(doc(superDb, "patients", "rootPatientA", "consultations", "rootConsultA"))
+    );
+    await assertFails(getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA")));
+    await assertFails(
+      getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
+    );
+    await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "staff", "doctorA")));
   });
 
   it("blocks a non-clinical center admin from reading clinical consultations", async () => {

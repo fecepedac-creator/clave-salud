@@ -22,6 +22,8 @@ export {
   rebookAdministrativeAppointment,
 } from "./appointmentAdministrativeActions";
 
+export * from "./superAdminOperationalMetrics";
+
 const db = admin.firestore();
 const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
 const storage = admin.storage();
