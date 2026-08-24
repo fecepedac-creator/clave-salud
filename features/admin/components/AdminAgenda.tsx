@@ -25,6 +25,7 @@ import { httpsCallable } from "firebase/functions";
 import { upsertTelephoneBooking } from "../../doctor/utils/telephoneBooking";
 import AgendaPolicyManager from "../../../components/AgendaPolicyManager";
 import { AGENDA_OPERATIONS_V2_ENABLED } from "../../../utils/agendaOperationsFeature";
+import { applyAppointmentRebooking } from "../utils/appointmentRebooking";
 import {
   collection,
   query,
@@ -85,6 +86,7 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
   const operationRequestIdsRef = useRef(new Map<string, string>());
   const [updatingOperationId, setUpdatingOperationId] = useState("");
   const [showAgendaPolicies, setShowAgendaPolicies] = useState(false);
+  const [rebookingAppointmentId, setRebookingAppointmentId] = useState("");
 
   useEffect(() => {
     bookingRequestIdRef.current = bookingSlotId
@@ -487,6 +489,73 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
       );
     } catch (error: any) {
       showToast(error?.message || "No fue posible actualizar la asistencia.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleContact = async (appointment: Appointment, channel: "call" | "whatsapp") => {
+    const phone = String(appointment.patientPhone || "").replace(/\D/g, "");
+    if (!phone) {
+      showToast("La cita no tiene un teléfono de contacto registrado.", "warning");
+      return;
+    }
+    const operation = operationRequestId(`contact-${channel}`, appointment.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      await httpsCallable(
+        functions,
+        "recordAppointmentContactAttempt"
+      )({
+        centerId: resolvedCenterId || centerId,
+        appointmentId: appointment.id,
+        requestId: operation.requestId,
+        channel,
+      });
+      operationRequestIdsRef.current.delete(operation.key);
+      const normalizedPhone = phone.length === 9 && phone.startsWith("9") ? `56${phone}` : phone;
+      const url =
+        channel === "whatsapp" ? `https://wa.me/${normalizedPhone}` : `tel:+${normalizedPhone}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible iniciar el contacto.", "error");
+    } finally {
+      setUpdatingOperationId("");
+    }
+  };
+
+  const handleRebookingTarget = async (target: Appointment) => {
+    const source = appointments.find((item) => item.id === rebookingAppointmentId);
+    if (!source) {
+      setRebookingAppointmentId("");
+      showToast("La cita de origen ya no está disponible.", "warning");
+      return;
+    }
+    const operation = operationRequestId("rebook", source.id);
+    setUpdatingOperationId(operation.key);
+    try {
+      const response = await httpsCallable(
+        functions,
+        "rebookAdministrativeAppointment"
+      )({
+        centerId: resolvedCenterId || centerId,
+        sourceAppointmentId: source.id,
+        targetAppointmentId: target.id,
+        requestId: operation.requestId,
+      });
+      const result = response.data as { success: boolean; error?: "TARGET_TAKEN" };
+      if (!result.success) {
+        showToast("El cupo de destino acaba de ser ocupado. Selecciona otro.", "warning");
+        return;
+      }
+      onUpdateAppointments(
+        applyAppointmentRebooking(appointments, source.id, target.id, new Date().toISOString())
+      );
+      operationRequestIdsRef.current.delete(operation.key);
+      setRebookingAppointmentId("");
+      showToast("Cita reagendada correctamente.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "No fue posible reagendar la cita.", "error");
     } finally {
       setUpdatingOperationId("");
     }
@@ -945,6 +1014,25 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
               </div>
             )}
 
+            {rebookingAppointmentId && (
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-400/40 bg-indigo-500/10 p-4 text-sm text-indigo-100">
+                <span>
+                  Selecciona un cupo disponible para mover la cita de{" "}
+                  <strong>
+                    {appointments.find((item) => item.id === rebookingAppointmentId)?.patientName}
+                  </strong>
+                  .
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRebookingAppointmentId("")}
+                  className="rounded-lg border border-indigo-300/40 px-3 py-1.5 font-bold"
+                >
+                  Cancelar reagendamiento
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
               {getStandardSlots(
                 selectedDate,
@@ -1002,51 +1090,96 @@ export const AdminAgenda: React.FC<AdminAgendaProps> = ({
                     {realSlot && !isBooked && !isPendingDelete && (
                       <button
                         type="button"
-                        aria-label={`Agendar paciente ${slot.time}`}
-                        onClick={() => setBookingSlotId(realSlot.id)}
+                        aria-label={
+                          rebookingAppointmentId
+                            ? `Mover cita aquí ${slot.time}`
+                            : `Agendar paciente ${slot.time}`
+                        }
+                        disabled={Boolean(updatingOperationId)}
+                        onClick={() =>
+                          rebookingAppointmentId
+                            ? void handleRebookingTarget(realSlot)
+                            : setBookingSlotId(realSlot.id)
+                        }
                         className="w-full rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-2 py-1.5 text-[10px] font-bold text-indigo-200 hover:bg-indigo-500/20"
                       >
-                        Agendar paciente
+                        {rebookingAppointmentId ? "Mover aquí" : "Agendar paciente"}
                       </button>
                     )}
                     {realSlot && isBooked && (
-                      <div className="grid grid-cols-3 gap-1">
-                        <button
-                          type="button"
-                          aria-label={`Marcar llegada ${slot.time}`}
-                          disabled={Boolean(updatingOperationId)}
-                          onClick={() =>
-                            void handleArrival(
-                              realSlot,
-                              (realSlot as Appointment & { arrivalStatus?: string })
-                                .arrivalStatus !== "arrived"
-                            )
-                          }
-                          className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-1 py-1.5 text-[9px] font-bold text-amber-200 disabled:opacity-50"
-                        >
-                          {(realSlot as Appointment & { arrivalStatus?: string }).arrivalStatus ===
-                          "arrived"
-                            ? "Deshacer llegada"
-                            : "Llegó"}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Marcar atendido ${slot.time}`}
-                          disabled={Boolean(updatingOperationId)}
-                          onClick={() => void handleOperationalAttendance(realSlot, "completed")}
-                          className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-1 py-1.5 text-[9px] font-bold text-emerald-200 disabled:opacity-50"
-                        >
-                          Atendido
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Marcar ausente ${slot.time}`}
-                          disabled={Boolean(updatingOperationId)}
-                          onClick={() => void handleOperationalAttendance(realSlot, "no-show")}
-                          className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-1 py-1.5 text-[9px] font-bold text-rose-200 disabled:opacity-50"
-                        >
-                          Ausente
-                        </button>
+                      <div className="space-y-1">
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Marcar llegada ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() =>
+                              void handleArrival(
+                                realSlot,
+                                (realSlot as Appointment & { arrivalStatus?: string })
+                                  .arrivalStatus !== "arrived"
+                              )
+                            }
+                            className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-1 py-1.5 text-[9px] font-bold text-amber-200 disabled:opacity-50"
+                          >
+                            {(realSlot as Appointment & { arrivalStatus?: string })
+                              .arrivalStatus === "arrived"
+                              ? "Deshacer llegada"
+                              : "Llegó"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Marcar atendido ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() => void handleOperationalAttendance(realSlot, "completed")}
+                            className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-1 py-1.5 text-[9px] font-bold text-emerald-200 disabled:opacity-50"
+                          >
+                            Atendido
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Marcar ausente ${slot.time}`}
+                            disabled={Boolean(updatingOperationId)}
+                            onClick={() => void handleOperationalAttendance(realSlot, "no-show")}
+                            className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-1 py-1.5 text-[9px] font-bold text-rose-200 disabled:opacity-50"
+                          >
+                            Ausente
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Llamar paciente ${slot.time}`}
+                            disabled={Boolean(updatingOperationId) || !realSlot.patientPhone}
+                            onClick={() => void handleContact(realSlot, "call")}
+                            className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-1 py-1.5 text-[9px] font-bold text-sky-200 disabled:opacity-40"
+                          >
+                            Llamar
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Contactar por WhatsApp ${slot.time}`}
+                            disabled={Boolean(updatingOperationId) || !realSlot.patientPhone}
+                            onClick={() => void handleContact(realSlot, "whatsapp")}
+                            className="rounded-lg border border-green-400/40 bg-green-500/10 px-1 py-1.5 text-[9px] font-bold text-green-200 disabled:opacity-40"
+                          >
+                            WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Reagendar cita ${slot.time}`}
+                            disabled={
+                              Boolean(updatingOperationId) ||
+                              realSlot.attendanceStatus === "completed" ||
+                              realSlot.billable === true ||
+                              (typeof realSlot.amount === "number" && realSlot.amount > 0)
+                            }
+                            onClick={() => setRebookingAppointmentId(realSlot.id)}
+                            className="rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-1 py-1.5 text-[9px] font-bold text-indigo-200 disabled:opacity-40"
+                          >
+                            Reagendar
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

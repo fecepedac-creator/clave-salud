@@ -193,4 +193,81 @@ describe("AdminAgenda reserva manual", () => {
       override: { reason: "Autorizado por coordinación del centro" },
     });
   });
+
+  it("registra el canal de contacto sin enviar el teléfono al backend", async () => {
+    const callable = vi.fn(async (_payload: unknown) => ({
+      data: { success: true, idempotent: false },
+    }));
+    vi.mocked(httpsCallable).mockReturnValue(callable as any);
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const bookedSlot: Appointment = {
+      ...availableSlot,
+      status: "booked",
+      patientId: "patient-1",
+      patientName: "Paciente Uno",
+      patientRut: "22.222.222-2",
+      patientPhone: "+56922222222",
+    };
+    renderAgenda([bookedSlot], false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Contactar por WhatsApp 16:00" }));
+    await waitFor(() => expect(callable).toHaveBeenCalledTimes(1));
+
+    expect(httpsCallable).toHaveBeenCalledWith({}, "recordAppointmentContactAttempt");
+    expect(callable.mock.calls[0][0]).toMatchObject({
+      centerId: "center-1",
+      appointmentId: bookedSlot.id,
+      channel: "whatsapp",
+    });
+    expect(JSON.stringify(callable.mock.calls[0][0])).not.toContain("+56922222222");
+    expect(open).toHaveBeenCalledWith("https://wa.me/56922222222", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
+  it("reagenda hacia un cupo disponible mediante una única operación backend", async () => {
+    const callable = vi.fn(async (_payload: unknown) => ({
+      data: { success: true, idempotent: false },
+    }));
+    vi.mocked(httpsCallable).mockReturnValue(callable as any);
+    const bookedSlot: Appointment = {
+      ...availableSlot,
+      status: "booked",
+      patientId: "patient-1",
+      patientName: "Paciente Uno",
+      patientRut: "22.222.222-2",
+      patientPhone: "+56922222222",
+      billable: false,
+      amount: null,
+    };
+    const targetSlot: Appointment = {
+      ...availableSlot,
+      id: "slot-1620",
+      time: "16:20",
+    };
+    const { onUpdateAppointments } = renderAgenda([bookedSlot, targetSlot], false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reagendar cita 16:00" }));
+    expect(screen.getByText(/Selecciona un cupo disponible/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mover cita aquí 16:20" }));
+
+    await waitFor(() => expect(onUpdateAppointments).toHaveBeenCalledTimes(1));
+    expect(httpsCallable).toHaveBeenCalledWith({}, "rebookAdministrativeAppointment");
+    expect(callable.mock.calls[0][0]).toMatchObject({
+      centerId: "center-1",
+      sourceAppointmentId: bookedSlot.id,
+      targetAppointmentId: targetSlot.id,
+    });
+    const updated = onUpdateAppointments.mock.calls[0][0] as Appointment[];
+    expect(updated.find((item) => item.id === bookedSlot.id)).toMatchObject({
+      status: "cancelled",
+      billable: false,
+      amount: null,
+    });
+    expect(updated.find((item) => item.id === targetSlot.id)).toMatchObject({
+      status: "booked",
+      patientId: "patient-1",
+      billable: undefined,
+      amount: undefined,
+    });
+  });
 });
