@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import * as functions from "firebase-functions/v1";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -76,45 +77,45 @@ const patientCenterIds = (patient: PatientData | undefined): string[] => {
   return [...new Set([...centerIds, ...(directCenterId ? [directCenterId] : [])])];
 };
 
-export const syncPatientDirectory = functions.firestore
-  .document("patients/{patientId}")
-  .onWrite(async (change, context) => {
-    const before = change.before.exists ? (change.before.data() as PatientData) : undefined;
-    const after = change.after.exists ? (change.after.data() as PatientData) : undefined;
-    const beforeCenters = patientCenterIds(before);
-    const afterCenters = patientCenterIds(after);
-    const batch = db.batch();
+export const syncPatientDirectory = onDocumentWritten("patients/{patientId}", async (event) => {
+  const beforeSnapshot = event.data?.before;
+  const afterSnapshot = event.data?.after;
+  const before = beforeSnapshot?.exists ? (beforeSnapshot.data() as PatientData) : undefined;
+  const after = afterSnapshot?.exists ? (afterSnapshot.data() as PatientData) : undefined;
+  const beforeCenters = patientCenterIds(before);
+  const afterCenters = patientCenterIds(after);
+  const batch = db.batch();
 
-    beforeCenters
-      .filter((centerId) => !afterCenters.includes(centerId))
-      .forEach((centerId) => {
-        batch.delete(
-          db
-            .collection("centers")
-            .doc(centerId)
-            .collection("patientDirectory")
-            .doc(context.params.patientId)
-        );
-      });
+  beforeCenters
+    .filter((centerId) => !afterCenters.includes(centerId))
+    .forEach((centerId) => {
+      batch.delete(
+        db
+          .collection("centers")
+          .doc(centerId)
+          .collection("patientDirectory")
+          .doc(String(event.params.patientId))
+      );
+    });
 
-    if (after) {
-      afterCenters.forEach((centerId) => {
-        batch.set(
-          db
-            .collection("centers")
-            .doc(centerId)
-            .collection("patientDirectory")
-            .doc(context.params.patientId),
-          {
-            ...buildPatientDirectoryProjection(context.params.patientId, centerId, after),
-            updatedAt: FieldValue.serverTimestamp(),
-          }
-        );
-      });
-    }
+  if (after) {
+    afterCenters.forEach((centerId) => {
+      batch.set(
+        db
+          .collection("centers")
+          .doc(centerId)
+          .collection("patientDirectory")
+          .doc(String(event.params.patientId)),
+        {
+          ...buildPatientDirectoryProjection(String(event.params.patientId), centerId, after),
+          updatedAt: FieldValue.serverTimestamp(),
+        }
+      );
+    });
+  }
 
-    await batch.commit();
-  });
+  await batch.commit();
+});
 
 const isOperationalDirectoryManager = (staff: PatientData | undefined): boolean => {
   if (!staff || (staff.active !== true && staff.activo !== true)) return false;
