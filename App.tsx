@@ -483,7 +483,9 @@ const App: React.FC = () => {
     (user: UserProfile | null, targetView?: ViewMode): ViewMode => {
       // 0. SuperAdmin Path Priority
       if (window.location.pathname.startsWith("/superadmin")) {
-        return "superadmin-dashboard" as ViewMode;
+        return effectiveIsSuperAdmin || masterAccess
+          ? ("superadmin-dashboard" as ViewMode)
+          : ("superadmin-login" as ViewMode);
       }
 
       // 1. Explicit preference from URL/Path
@@ -812,7 +814,7 @@ const App: React.FC = () => {
       }
       // Handle SuperAdmin Intent
       else if (pathname.startsWith("/superadmin")) {
-        setView("superadmin-dashboard" as ViewMode);
+        setView("superadmin-login" as ViewMode);
         setLoginViewPreference("superadmin-dashboard" as ViewMode);
       }
       // Handle Verification Intent
@@ -846,6 +848,16 @@ const App: React.FC = () => {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []); // REMOVED dependency on setActiveCenterId to prevent race conditions
+
+  useEffect(() => {
+    if (
+      window.location.pathname.startsWith("/superadmin") &&
+      (effectiveIsSuperAdmin || masterAccess) &&
+      view === ("superadmin-login" as ViewMode)
+    ) {
+      setView("superadmin-dashboard" as ViewMode);
+    }
+  }, [effectiveIsSuperAdmin, masterAccess, view]);
 
   useEffect(() => {
     if (isApplyingPopStateRef.current) return;
@@ -1762,6 +1774,9 @@ const App: React.FC = () => {
         return wrapView(renderSuperAdminLogin(), false);
 
       if (view === ("superadmin-dashboard" as ViewMode)) {
+        if (!effectiveIsSuperAdmin && !masterAccess) {
+          return wrapView(renderSuperAdminLogin(), false);
+        }
         return wrapView(
           <SuperAdminDashboard
             centers={centers}
