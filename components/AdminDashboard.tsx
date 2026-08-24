@@ -282,7 +282,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       centerId,
       email: doctor.email,
       tempStaffId: doctor.id,
-      accessRole: doctor.isAdmin ? "center_admin" : "professional",
+      accessRole: doctor.accessRole || (doctor.isAdmin ? "center_admin" : "professional"),
       profileData: {
         fullName: doctor.fullName,
         rut: doctor.rut,
@@ -292,6 +292,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         clinicalRole: doctor.clinicalRole ?? doctor.role,
         visibleInBooking: doctor.visibleInBooking === true,
         isAdmin: doctor.isAdmin || false,
+        capabilities: doctor.capabilities || [],
       },
     });
     return;
@@ -659,6 +660,7 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           {!isSecretary && (
             <button
               onClick={() => setActiveTab("doctors")}
+              data-testid="admin-tab-professionals"
               className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "doctors" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
             >
               <Users className="w-4 h-4" /> Gestión de Profesionales

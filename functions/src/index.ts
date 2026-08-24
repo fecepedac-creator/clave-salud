@@ -9,6 +9,7 @@ import * as crypto from "crypto";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sendEmail } from "./email";
 import { AuditLogData } from "./types";
+import { sanitizeStaffMembershipProfile } from "./staffCapabilityPolicy";
 
 export { bookAdministrativeAppointment } from "./administrativeBooking";
 export {
@@ -1138,8 +1139,9 @@ async function acceptInviteAtomically(token: string, uid: string, emailLower: st
     if (!centerId) {
       throw new functions.https.HttpsError("failed-precondition", "Invitacion sin centerId.");
     }
-    const role = canonicalAccessRole(inv.role || "professional");
     const profileData = inv.profileData || {};
+    const membership = sanitizeStaffMembershipProfile(inv.role || "professional", profileData);
+    const role = membership.accessRole;
     const now = admin.firestore.FieldValue.serverTimestamp();
     const userRef = db.collection("users").doc(uid);
     const staffRef = db.collection("centers").doc(centerId).collection("staff").doc(uid);
@@ -1165,10 +1167,11 @@ async function acceptInviteAtomically(token: string, uid: string, emailLower: st
         role,
         accessRole: role,
         roles: [role],
-        clinicalRole: profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
+        clinicalRole: membership.clinicalRole,
+        capabilities: membership.capabilities,
         active: true,
         activo: true,
-        visibleInBooking: profileData.visibleInBooking === true,
+        visibleInBooking: membership.visibleInBooking,
         updatedAt: now,
         createdAt: now,
         inviteToken: token,
@@ -1179,9 +1182,8 @@ async function acceptInviteAtomically(token: string, uid: string, emailLower: st
         specialty: profileData.specialty ?? "",
         photoUrl: profileData.photoUrl ?? "",
         agendaConfig: profileData.agendaConfig ?? null,
-        professionalRole:
-          profileData.clinicalRole ?? profileData.role ?? inv.professionalRole ?? "",
-        isAdmin: role === "center_admin",
+        professionalRole: membership.clinicalRole,
+        isAdmin: membership.isAdmin,
       },
       { merge: true }
     );
@@ -1319,9 +1321,14 @@ export const createProfessionalInvite = (functions.https.onCall as any)(
     ) {
       throw new functions.https.HttpsError("permission-denied", "No puede invitar personal.");
     }
-    const profileData =
+    const rawProfileData =
       data?.profileData && typeof data.profileData === "object" ? data.profileData : {};
-    const role = canonicalAccessRole(data?.accessRole || "professional");
+    const membership = sanitizeStaffMembershipProfile(
+      data?.accessRole || "professional",
+      rawProfileData
+    );
+    const role = membership.accessRole;
+    const profileData = { ...rawProfileData, ...membership };
     const existing = await db
       .collection("invites")
       .where("emailLower", "==", emailLower)
@@ -1341,7 +1348,7 @@ export const createProfessionalInvite = (functions.https.onCall as any)(
         email: emailLower,
         centerId,
         role,
-        professionalRole: profileData.clinicalRole ?? "",
+        professionalRole: membership.clinicalRole,
         status: "pending",
         tempStaffId,
         expiresAt,
@@ -1360,17 +1367,19 @@ export const createProfessionalInvite = (functions.https.onCall as any)(
         emailLower,
         role,
         accessRole: role,
-        clinicalRole: profileData.clinicalRole ?? "",
-        professionalRole: profileData.clinicalRole ?? "",
+        clinicalRole: membership.clinicalRole,
+        professionalRole: membership.clinicalRole,
+        capabilities: membership.capabilities,
         fullName: profileData.fullName ?? "",
         rut: profileData.rut ?? "",
         specialty: profileData.specialty ?? "",
         photoUrl: profileData.photoUrl ?? "",
         agendaConfig: profileData.agendaConfig ?? null,
-        visibleInBooking: profileData.visibleInBooking === true,
+        visibleInBooking: membership.visibleInBooking,
         active: true,
         activo: true,
         isTemp: true,
+        isAdmin: membership.isAdmin,
         updatedAt: now,
         createdAt: now,
       },
