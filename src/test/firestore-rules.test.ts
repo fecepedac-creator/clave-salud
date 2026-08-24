@@ -60,6 +60,22 @@ async function seedBaseData() {
       clinicalRole: "medico",
       email: "doctor@example.test",
     });
+    await setDoc(doc(db, "centers", CENTER_A, "staff", "auditorA"), {
+      active: true,
+      accessRole: "auditor",
+      role: "auditor",
+      clinicalRole: "",
+      capabilities: ["audit.read"],
+      email: "auditor@example.test",
+    });
+    await setDoc(doc(db, "centers", CENTER_A, "staff", "auditorWithoutCapability"), {
+      active: true,
+      accessRole: "auditor",
+      role: "auditor",
+      clinicalRole: "",
+      capabilities: [],
+      email: "auditor-no-capability@example.test",
+    });
     await setDoc(doc(db, "centers", CENTER_B, "staff", "doctorB"), {
       active: true,
       accessRole: "professional",
@@ -376,11 +392,30 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
-  it("allows super admin to read audit logs but blocks client writes", async () => {
+  it("blocks global super admin audit access without scoped center membership", async () => {
     const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
-    await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "missing-ok")));
+    await assertFails(getDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "missing")));
     await assertFails(
       setDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "manual"), {
+        action: "manual",
+      })
+    );
+  });
+
+  it("allows only center-scoped audit readers and keeps writes server-only", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const auditorDb = authedDb("auditorA", "auditor@example.test");
+    const auditorWithoutCapabilityDb = authedDb("auditorWithoutCapability");
+    const otherCenterDb = authedDb("doctorB");
+
+    await assertSucceeds(getDoc(doc(adminDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertSucceeds(getDoc(doc(auditorDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertFails(
+      getDoc(doc(auditorWithoutCapabilityDb, "centers", CENTER_A, "auditLogs", "missing"))
+    );
+    await assertFails(getDoc(doc(otherCenterDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertFails(
+      setDoc(doc(auditorDb, "centers", CENTER_A, "auditLogs", "manual"), {
         action: "manual",
       })
     );
