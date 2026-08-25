@@ -14,6 +14,7 @@ import { Patient, Doctor } from "../../../types";
 import { formatPersonName, generateId, calculateAge, maskRUT } from "../../../utils";
 import { useToast } from "../../../components/Toast";
 import DrivePicker from "../../../components/DrivePicker";
+import { RECENT_PATIENTS_LIMIT, visiblePatientList } from "../utils/visiblePatientList";
 
 interface DoctorPatientsListTabProps {
   isPiiMasked: boolean;
@@ -65,6 +66,8 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   openWhatsApp,
 }) => {
   const { showToast } = useToast();
+  const visiblePatients = visiblePatientList<Patient>(filteredPatients, searchTerm);
+  const isRecentListTruncated = !searchTerm.trim() && filteredPatients.length > visiblePatients.length;
 
   const safeAgeLabel = (birthDate?: string) => {
     if (!birthDate) return "-";
@@ -183,10 +186,17 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
         </div>
       </div>
 
+      {isRecentListTruncated && (
+        <p className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-sm text-slate-500">
+          Mostrando los {RECENT_PATIENTS_LIMIT} pacientes más recientes. Usa el buscador para ver
+          cualquier paciente de tu cartera.
+        </p>
+      )}
+
       {/* Table */}
       {/* Desktop Table View */}
       <div className="hidden md:block flex-1 overflow-y-auto">
-        {filteredPatients.length === 0 ? (
+        {visiblePatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
             <UsersRound className="w-16 h-16 mb-4 opacity-20" />
             <p className="font-medium">No se encontraron pacientes</p>
@@ -203,7 +213,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredPatients.map((p) => {
+              {visiblePatients.map((p) => {
                 const patientConsultations = getActiveConsultations(p);
                 const lastConsult =
                   patientConsultations.length > 0 ? patientConsultations[0] : null;
@@ -319,12 +329,12 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
 
       {/* Mobile Card View */}
       <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4">
-        {filteredPatients.length === 0 ? (
+        {visiblePatients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
             <p>No se encontraron pacientes</p>
           </div>
         ) : (
-          filteredPatients.map((p) => {
+          visiblePatients.map((p) => {
             const patientConsultations = getActiveConsultations(p);
             const lastConsult = patientConsultations.length > 0 ? patientConsultations[0] : null;
             const nextCtrl = lastConsult?.nextControlDate
