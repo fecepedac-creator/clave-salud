@@ -66,7 +66,7 @@ export const DoctorPatientsListTab: React.FC<DoctorPatientsListTabProps> = ({
   openWhatsApp,
 }) => {
   const { showToast } = useToast();
-  const visiblePatients = visiblePatientList(filteredPatients, searchTerm);
+  const visiblePatients = visiblePatientList<Patient>(filteredPatients, searchTerm);
   const isRecentListTruncated = !searchTerm.trim() && filteredPatients.length > visiblePatients.length;
 
   const safeAgeLabel = (birthDate?: string) => {
