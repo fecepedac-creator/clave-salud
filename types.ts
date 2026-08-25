@@ -47,6 +47,8 @@ export interface MedicalCenter {
   accessMode?: "CENTER_WIDE" | "CARE_TEAM";
   features?: {
     anthropometryEnabled?: boolean;
+    /** Activa la matriz longitudinal de exámenes para un centro piloto. */
+    examTimelineMatrixEnabled?: boolean;
   };
 
   // --- CRM & Legal ---
@@ -271,6 +273,7 @@ export interface ExamProfile {
   label: string;
   exams: string[]; // IDs from TRACKED_EXAMS_OPTIONS
   description?: string;
+  summary?: string;
 }
 
 export interface ToothState {
@@ -296,6 +299,9 @@ export interface ExamSheet {
   id: string;
   date: string; // YYYY-MM-DD
   exams: Record<string, string>;
+  customExamLabels?: Record<string, string>;
+  source?: "patient_provided" | "laboratory_report" | "other";
+  sourceDetails?: string;
 }
 
 export interface Consultation extends SoftDeletable {

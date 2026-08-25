@@ -111,6 +111,9 @@ interface ProfessionalManagementProps {
   anthropometryEnabled: boolean;
   anthropometrySaving: boolean;
   handleAnthropometryToggle: (enabled: boolean) => void;
+  examTimelineMatrixEnabled: boolean;
+  examTimelineMatrixSaving: boolean;
+  handleExamTimelineMatrixToggle: (enabled: boolean) => void;
   setShowMarketingModal: (show: boolean) => void;
   setMarketingFlyerType: (type: "center" | "professional") => void;
   persistDoctorToFirestore: (doctor: Doctor) => Promise<void>;
@@ -128,6 +131,9 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
   anthropometryEnabled,
   anthropometrySaving,
   handleAnthropometryToggle,
+  examTimelineMatrixEnabled,
+  examTimelineMatrixSaving,
+  handleExamTimelineMatrixToggle,
   setShowMarketingModal,
   setMarketingFlyerType,
   persistDoctorToFirestore,
@@ -473,6 +479,27 @@ export const ProfessionalManagement: React.FC<ProfessionalManagementProps> = ({
           >
             {anthropometryEnabled ? "Activo" : "Inactivo"}
           </span>
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/40 px-4 py-3">
+          <div>
+            <p className="text-sm font-bold text-slate-200">Matriz de exámenes en seguimiento</p>
+            <p className="text-xs text-slate-400">
+              Muestra resultados por fecha y perfiles clínicos. Se mantiene apagada hasta que el
+              centro la habilite.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleExamTimelineMatrixToggle(!examTimelineMatrixEnabled)}
+            disabled={!hasActiveCenter || examTimelineMatrixSaving}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${examTimelineMatrixEnabled ? "bg-emerald-500" : "bg-slate-600"} ${!hasActiveCenter || examTimelineMatrixSaving ? "cursor-not-allowed opacity-50" : ""}`}
+            aria-pressed={examTimelineMatrixEnabled}
+            aria-label="Activar matriz de exámenes en seguimiento"
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${examTimelineMatrixEnabled ? "translate-x-6" : "translate-x-1"}`}
+            />
+          </button>
         </div>
 
         {PILOT_FEATURES.marketing && (

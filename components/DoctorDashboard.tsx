@@ -455,6 +455,17 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     lines.push(`Diagnóstico / Hipótesis: ${consultation.diagnosis || "-"}`);
     lines.push("");
 
+    const issuedDocuments = consultation.prescriptions || [];
+    if (issuedDocuments.length > 0) {
+      lines.push("DOCUMENTOS / RECETAS EMITIDAS");
+      lines.push("");
+      issuedDocuments.forEach((document, index) => {
+        lines.push(`${index + 1}. ${document.type || "Documento clínico"}`);
+        lines.push(document.content || "Sin contenido registrado.");
+        lines.push("");
+      });
+    }
+
     // Datos breves si existen
     const vitals: string[] = [];
     if (consultation.weight) vitals.push(`Peso: ${consultation.weight} kg`);
@@ -489,10 +500,11 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       prescriptions: isModuleEnabled ? isModuleEnabled("prescriptions") : true,
       vitals: vitalsEffective,
       exams: isModuleEnabled ? isModuleEnabled("exams") : true,
+      examTimelineMatrix: Boolean(activeCenter?.features?.examTimelineMatrixEnabled),
       dental: isModuleEnabled ? isModuleEnabled("dental") : true,
       settings: isModuleEnabled ? isModuleEnabled("settings") : true,
     };
-  }, [isModuleEnabled, currentUser]);
+  }, [isModuleEnabled, currentUser, activeCenter?.features?.examTimelineMatrixEnabled]);
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedAgendaDate, setSelectedAgendaDate] = useState<string>("");
