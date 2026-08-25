@@ -28,6 +28,7 @@ import {
   Home,
   Briefcase,
   MapPin,
+  Mail,
   Phone,
 } from "lucide-react";
 import AutocompleteInput from "./AutocompleteInput";
@@ -54,6 +55,12 @@ const BTN_SURGICAL_HISTORY = [
 ];
 
 const LIVING_WITH_BTN_OPTIONS = ["Sola", "Pareja", "Hijos", "Padres", "Otros familiares"];
+
+const maskEmail = (email: string) => {
+  const [localPart, domain] = email.split("@");
+  if (!domain || !localPart) return "—";
+  return `${localPart.slice(0, 2)}${"*".repeat(Math.max(2, localPart.length - 2))}@${domain}`;
+};
 
 interface PatientSidebarProps {
   selectedPatient: Patient;
@@ -1160,6 +1167,34 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
                   : selectedPatient.phone || "-"}
               </span>
             )}
+          </div>
+
+          <div className="text-xs text-slate-700 space-y-1">
+            <span className="font-bold block text-[11px] text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-slate-400" /> Correo electrónico
+            </span>
+            {isEditingPatient && !readOnly ? (
+              <input
+                type="email"
+                className="w-full p-2.5 border border-slate-350 rounded-xl outline-none focus:border-blue-500 bg-white"
+                placeholder="correo@ejemplo.com"
+                value={selectedPatient.email || ""}
+                onChange={(e) =>
+                  handleEditPatientField("email", e.target.value.trim().toLowerCase())
+                }
+              />
+            ) : (
+              <span className="text-slate-800 font-semibold text-sm bg-slate-50 p-2.5 rounded-xl block border border-slate-100 break-all">
+                {selectedPatient.email
+                  ? isPiiMasked
+                    ? maskEmail(selectedPatient.email)
+                    : selectedPatient.email
+                  : "No registrado"}
+              </span>
+            )}
+            <p className="text-[10px] leading-tight text-slate-400">
+              Contacto para envío manual de información o documentos solicitados por el paciente.
+            </p>
           </div>
 
           {/* Mascotas */}

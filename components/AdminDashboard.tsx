@@ -144,11 +144,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [anthropometryEnabled, setAnthropometryEnabled] = useState(false);
   const [anthropometrySaving, setAnthropometrySaving] = useState(false);
+  const [examTimelineMatrixEnabled, setExamTimelineMatrixEnabled] = useState(false);
+  const [examTimelineMatrixSaving, setExamTimelineMatrixSaving] = useState(false);
   const [accessMode, setAccessMode] = useState<"CENTER_WIDE" | "CARE_TEAM">("CENTER_WIDE");
 
   useEffect(() => {
     setAnthropometryEnabled(Boolean(activeCenter?.features?.anthropometryEnabled));
   }, [activeCenter?.features?.anthropometryEnabled]);
+
+  useEffect(() => {
+    setExamTimelineMatrixEnabled(Boolean(activeCenter?.features?.examTimelineMatrixEnabled));
+  }, [activeCenter?.features?.examTimelineMatrixEnabled]);
 
   useEffect(() => {
     setAccessMode(activeCenter?.accessMode ?? "CENTER_WIDE");
@@ -189,6 +195,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast("No se pudo actualizar Antropometría.", "error");
     } finally {
       setAnthropometrySaving(false);
+    }
+  };
+
+  const handleExamTimelineMatrixToggle = async (nextValue: boolean) => {
+    if (!db || !resolvedCenterId) return;
+    const previousValue = examTimelineMatrixEnabled;
+    setExamTimelineMatrixEnabled(nextValue);
+    setExamTimelineMatrixSaving(true);
+    try {
+      await setDoc(
+        doc(db, "centers", resolvedCenterId),
+        { features: { examTimelineMatrixEnabled: nextValue } },
+        { merge: true }
+      );
+      showToast(
+        nextValue
+          ? "Matriz de exámenes activada para el centro."
+          : "Matriz de exámenes desactivada para el centro.",
+        "success"
+      );
+    } catch (e) {
+      console.error("update exam timeline matrix flag", e);
+      setExamTimelineMatrixEnabled(previousValue);
+      showToast("No se pudo actualizar la matriz de exámenes.", "error");
+    } finally {
+      setExamTimelineMatrixSaving(false);
     }
   };
 
@@ -745,6 +777,9 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           anthropometryEnabled={anthropometryEnabled}
           anthropometrySaving={anthropometrySaving}
           handleAnthropometryToggle={handleAnthropometryToggle}
+          examTimelineMatrixEnabled={examTimelineMatrixEnabled}
+          examTimelineMatrixSaving={examTimelineMatrixSaving}
+          handleExamTimelineMatrixToggle={handleExamTimelineMatrixToggle}
           setShowMarketingModal={setShowMarketingModal}
           setMarketingFlyerType={setMarketingFlyerType}
           persistDoctorToFirestore={persistDoctorToFirestore}

@@ -27,12 +27,13 @@ import {
   ClinicalTemplate,
   Doctor,
 } from "../../../types";
-import { COMMON_DIAGNOSES } from "../../../constants";
+import { COMMON_DIAGNOSES, EXAM_PROFILES } from "../../../constants";
 import PSCVForm from "../../../components/PSCVForm";
 import VitalsForm from "../../../components/VitalsForm";
 import Odontogram from "../../../components/Odontogram";
 import Podogram from "../../../components/Podogram";
 import { ExamSheetsSection } from "../../../components/ExamSheetsSection";
+import { ExamTimelineMatrix } from "../../../components/ExamTimelineMatrix";
 import AutocompleteInput from "../../../components/AutocompleteInput";
 import PrescriptionManager from "../../../components/PrescriptionManager";
 import { httpsCallable } from "firebase/functions";
@@ -806,20 +807,36 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
                   )}
                   {moduleGuards.exams && (
                     <div className="pt-4 border-t border-slate-200">
-                      <ExamSheetsSection
-                        examSheets={newConsultation.examSheets || []}
-                        onChange={(sheets) =>
-                          setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))
-                        }
-                        examOptions={allExamOptions}
-                        availableProfiles={
-                          currentUser?.savedExamProfiles?.length
-                            ? currentUser.savedExamProfiles
-                            : myExamProfiles
-                        }
-                        consultationHistory={selectedPatientConsultations}
-                        legacyExams={newConsultation.exams}
-                      />
+                      {moduleGuards.examTimelineMatrix ? (
+                        <ExamTimelineMatrix
+                          examSheets={newConsultation.examSheets || []}
+                          onChange={(sheets) =>
+                            setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))
+                          }
+                          examOptions={allExamOptions}
+                          availableProfiles={Array.from(
+                            new Map(
+                              [
+                                ...EXAM_PROFILES,
+                                ...(currentUser?.savedExamProfiles || myExamProfiles),
+                              ].map((profile) => [profile.id, profile])
+                            ).values()
+                          )}
+                          consultationHistory={selectedPatientConsultations}
+                          legacyExams={newConsultation.exams}
+                        />
+                      ) : (
+                        <ExamSheetsSection
+                          examSheets={newConsultation.examSheets || []}
+                          onChange={(sheets) =>
+                            setNewConsultation((prev) => ({ ...prev, examSheets: sheets }))
+                          }
+                          examOptions={allExamOptions}
+                          availableProfiles={myExamProfiles}
+                          consultationHistory={selectedPatientConsultations}
+                          legacyExams={newConsultation.exams}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
