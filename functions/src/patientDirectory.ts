@@ -1,5 +1,6 @@
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v1";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -75,45 +76,46 @@ const patientCenterIds = (patient: PatientData | undefined): string[] => {
   return [...new Set([...centerIds, ...(directCenterId ? [directCenterId] : [])])];
 };
 
-export const syncPatientDirectory = functions.firestore
-  .document("patients/{patientId}")
-  .onWrite(async (change, context) => {
-    const before = change.before.exists ? (change.before.data() as PatientData) : undefined;
-    const after = change.after.exists ? (change.after.data() as PatientData) : undefined;
-    const beforeCenters = patientCenterIds(before);
-    const afterCenters = patientCenterIds(after);
-    const batch = db.batch();
+// This trigger remains Gen 2 to match its existing staging deployment. Mixing a
+// Gen 1 definition with that deployed trigger makes Firebase CLI attempt an
+// unsupported CPU configuration change instead of updating the implementation.
+export const syncPatientDirectory = onDocumentWritten("patients/{patientId}", async (event) => {
+  const before = event.data?.before.exists ? (event.data.before.data() as PatientData) : undefined;
+  const after = event.data?.after.exists ? (event.data.after.data() as PatientData) : undefined;
+  const beforeCenters = patientCenterIds(before);
+  const afterCenters = patientCenterIds(after);
+  const batch = db.batch();
 
-    beforeCenters
-      .filter((centerId) => !afterCenters.includes(centerId))
-      .forEach((centerId) => {
-        batch.delete(
-          db
-            .collection("centers")
-            .doc(centerId)
-            .collection("patientDirectory")
-            .doc(context.params.patientId)
-        );
-      });
+  beforeCenters
+    .filter((centerId) => !afterCenters.includes(centerId))
+    .forEach((centerId) => {
+      batch.delete(
+        db
+          .collection("centers")
+          .doc(centerId)
+          .collection("patientDirectory")
+          .doc(event.params.patientId)
+      );
+    });
 
-    if (after) {
-      afterCenters.forEach((centerId) => {
-        batch.set(
-          db
-            .collection("centers")
-            .doc(centerId)
-            .collection("patientDirectory")
-            .doc(context.params.patientId),
-          {
-            ...buildPatientDirectoryProjection(context.params.patientId, centerId, after),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }
-        );
-      });
-    }
+  if (after) {
+    afterCenters.forEach((centerId) => {
+      batch.set(
+        db
+          .collection("centers")
+          .doc(centerId)
+          .collection("patientDirectory")
+          .doc(event.params.patientId),
+        {
+          ...buildPatientDirectoryProjection(event.params.patientId, centerId, after),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+      );
+    });
+  }
 
-    await batch.commit();
-  });
+  await batch.commit();
+});
 
 const isOperationalDirectoryManager = (staff: PatientData | undefined): boolean => {
   if (!staff || (staff.active !== true && staff.activo !== true)) return false;
