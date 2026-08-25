@@ -1,5 +1,9 @@
 import * as admin from "firebase-admin";
-import { executePatientDemographicsUpsert, sanitizePatientDemographics } from "../patientDirectory";
+import {
+  executePatientDemographicsUpsert,
+  rebuildPatientDirectory,
+  sanitizePatientDemographics,
+} from "../patientDirectory";
 
 const emulatorDescribe = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip;
 
@@ -63,5 +67,41 @@ emulatorDescribe("patient directory Firestore integration", () => {
       action: "PATIENT_DEMOGRAPHICS_UPDATE",
       containsClinicalContent: false,
     });
+  });
+
+  it("backfills the directory from legacy center and root patient records without clinical data", async () => {
+    const centerId = `center-${Date.now()}`;
+    await firestore.collection("centers").doc(centerId).collection("patients").doc("legacy").set({
+      centerId,
+      fullName: "Paciente histórico",
+      rut: "11.111.111-1",
+      phone: "+56911111111",
+      diagnosis: "No debe proyectarse",
+      consultations: [{ evolution: "Privado" }],
+    });
+    await firestore.collection("patients").doc("root-direct").set({
+      centerId,
+      fullName: "Paciente raíz",
+      rut: "22.222.222-2",
+      diagnosis: "No debe proyectarse",
+    });
+    await firestore.collection("patients").doc("root-access").set({
+      accessControl: { centerIds: [centerId] },
+      fullName: "Paciente con acceso",
+      rut: "33.333.333-3",
+      medications: ["Privado"],
+    });
+
+    await expect(rebuildPatientDirectory({ firestore, centerId })).resolves.toEqual({ processed: 3 });
+    const directory = await firestore.collection("centers").doc(centerId).collection("patientDirectory").get();
+    expect(directory.docs.map((entry) => entry.id).sort()).toEqual([
+      "legacy",
+      "root-access",
+      "root-direct",
+    ]);
+    const legacy = directory.docs.find((entry) => entry.id === "legacy")?.data();
+    expect(legacy).toMatchObject({ fullName: "Paciente histórico", rut: "11.111.111-1" });
+    expect(JSON.stringify(legacy)).not.toContain("No debe proyectarse");
+    expect(JSON.stringify(legacy)).not.toContain("Privado");
   });
 });
