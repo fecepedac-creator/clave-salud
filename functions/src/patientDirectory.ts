@@ -5,7 +5,10 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 if (!admin.apps.length) admin.initializeApp();
 
 const db = admin.firestore();
-const DIRECTORY_VERSION = 1;
+// Version 2 includes historical center-scoped records as well as the newer
+// root patient model. Bumping it makes the safe operational backfill run once
+// for centers that were marked ready by version 1 with an incomplete source.
+const DIRECTORY_VERSION = 2;
 
 type PatientData = Record<string, unknown>;
 
@@ -133,6 +136,73 @@ const isOperationalDirectoryManager = (staff: PatientData | undefined): boolean 
   ].includes(role);
 };
 
+const collectPatientSource = async (
+  patientQuery: FirebaseFirestore.Query,
+  target: Map<string, PatientData>
+) => {
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  do {
+    let page = patientQuery.limit(400);
+    if (cursor) page = page.startAfter(cursor);
+    const snapshot = await page.get();
+    snapshot.docs.forEach((patientSnapshot) => {
+      target.set(patientSnapshot.id, patientSnapshot.data());
+    });
+    cursor = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < 400) break;
+  } while (cursor);
+};
+
+export const rebuildPatientDirectory = async (params: {
+  firestore: FirebaseFirestore.Firestore;
+  centerId: string;
+}) => {
+  const { firestore, centerId } = params;
+  const patients = new Map<string, PatientData>();
+
+  // Historical records were stored under the center. Root records are newer
+  // and deliberately take precedence when an id exists in both locations.
+  await collectPatientSource(
+    firestore
+      .collection("centers")
+      .doc(centerId)
+      .collection("patients")
+      .orderBy(admin.firestore.FieldPath.documentId()),
+    patients
+  );
+  await collectPatientSource(
+    firestore.collection("patients").where("centerId", "==", centerId),
+    patients
+  );
+  await collectPatientSource(
+    firestore
+      .collection("patients")
+      .where("accessControl.centerIds", "array-contains", centerId),
+    patients
+  );
+
+  const entries = [...patients.entries()];
+  for (let start = 0; start < entries.length; start += 400) {
+    const batch = firestore.batch();
+    entries.slice(start, start + 400).forEach(([patientId, patient]) => {
+      batch.set(
+        firestore
+          .collection("centers")
+          .doc(centerId)
+          .collection("patientDirectory")
+          .doc(patientId),
+        {
+          ...buildPatientDirectoryProjection(patientId, centerId, patient),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+      );
+    });
+    await batch.commit();
+  }
+
+  return { processed: entries.length };
+};
+
 export const ensurePatientDirectory = functions
   .region("us-central1")
   .https.onCall(async (data, context) => {
@@ -162,41 +232,7 @@ export const ensurePatientDirectory = functions
       return { ready: true, processed: 0, version: DIRECTORY_VERSION };
     }
 
-    let processed = 0;
-    let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
-    do {
-      let patientQuery = db
-        .collection("patients")
-        .where("accessControl.centerIds", "array-contains", centerId)
-        .orderBy(admin.firestore.FieldPath.documentId())
-        .limit(400);
-      if (cursor) patientQuery = patientQuery.startAfter(cursor);
-      const snapshot = await patientQuery.get();
-      if (snapshot.empty) break;
-
-      const batch = db.batch();
-      snapshot.docs.forEach((patientSnapshot) => {
-        batch.set(
-          db
-            .collection("centers")
-            .doc(centerId)
-            .collection("patientDirectory")
-            .doc(patientSnapshot.id),
-          {
-            ...buildPatientDirectoryProjection(
-              patientSnapshot.id,
-              centerId,
-              patientSnapshot.data()
-            ),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }
-        );
-      });
-      await batch.commit();
-      processed += snapshot.size;
-      cursor = snapshot.docs[snapshot.docs.length - 1];
-      if (snapshot.size < 400) break;
-    } while (cursor);
+    const { processed } = await rebuildPatientDirectory({ firestore: db, centerId });
 
     const completedAt = admin.firestore.FieldValue.serverTimestamp();
     const finalBatch = db.batch();
