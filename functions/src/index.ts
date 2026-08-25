@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions/v1";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
+import { FieldValue as ModularFieldValue } from "firebase-admin/firestore";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -22,7 +23,7 @@ export {
 } from "./appointmentAdministrativeActions";
 
 const db = admin.firestore();
-const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
+const serverTimestamp = ModularFieldValue.serverTimestamp;
 const storage = admin.storage();
 
 const BACKUP_TOKEN = (process.env.BACKUP_TOKEN || "").trim();
@@ -3636,6 +3637,7 @@ Responde solo con el copy final.
 export * from "./immutableAudit";
 export * from "./whatsapp";
 export * from "./performance";
+export * from "./clinicalDraftCommands";
 
 // ─── WHATSAPP CONFIG (con cifrado de Access Token) ───────────────────────────
 // Importamos la función de cifrado desde whatsapp.ts para reutilizar la misma

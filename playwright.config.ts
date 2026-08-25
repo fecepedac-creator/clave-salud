@@ -82,6 +82,17 @@ export default defineConfig({
       },
     },
 
+    // Gate local autenticado del ciclo documental. Solo se ejecuta con emuladores.
+    {
+      name: "emulator-gate",
+      testMatch: "**/clinical-document-emulator-gate.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+
     // 5. Pilot invite flow (temporary test invite/account, cleaned up)
     {
       name: "pilot-invite",

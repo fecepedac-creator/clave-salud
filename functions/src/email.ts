@@ -1,4 +1,4 @@
-import * as admin from "firebase-admin";
+import { FieldValue, db } from "./firebaseAdmin";
 
 export type SendEmailParams = {
   to: string;
@@ -19,8 +19,7 @@ type SendEmailResult = {
   messageId?: string;
 };
 
-const db = admin.firestore();
-const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
+const serverTimestamp = FieldValue.serverTimestamp;
 
 function requiredEnv(name: string): string {
   const value = String(process.env[name] || "").trim();

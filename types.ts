@@ -305,6 +305,14 @@ export interface Consultation extends SoftDeletable {
   patientId?: string;
   centerId?: string;
   createdBy?: string;
+  appointmentId?: string;
+  recordStatus?: "draft" | "signed" | "entered_in_error";
+  authorUid?: string;
+  signedAt?: FirestoreDateLike;
+  signedByUid?: string;
+  revision?: number;
+  addendumOf?: string;
+  contentHashSha256?: string;
   consultationType?: "morbidity" | "pscv"; // New field to distinguish visit types
 
   weight?: string;

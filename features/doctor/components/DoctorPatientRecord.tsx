@@ -40,6 +40,7 @@ export interface DoctorPatientRecordProps {
   activeCenterId: string;
   activeCenter: any;
   hasActiveCenter: boolean;
+  appointmentContextId?: string | null;
   moduleGuards: any;
 
   doctorName: string;
@@ -59,6 +60,7 @@ export interface DoctorPatientRecordProps {
   handleVitalsChange: (f: any, v: any) => void;
   handleExamChange: (f: any, v: any) => void;
   handleCreateConsultation: () => Promise<Patient>;
+  clearDraft: () => void;
   selectedPatientConsultations: Consultation[];
   isUsingLegacyConsultations: boolean;
 
@@ -101,6 +103,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
   activeCenterId,
   activeCenter,
   hasActiveCenter,
+  appointmentContextId,
   moduleGuards,
   doctorName,
   doctorId,
@@ -118,6 +121,7 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
   handleVitalsChange,
   handleExamChange,
   handleCreateConsultation,
+  clearDraft,
   selectedPatientConsultations,
   isUsingLegacyConsultations,
   docsToPrint,
@@ -415,8 +419,6 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 setNewConsultation={setNewConsultation}
                 role={role}
                 selectedPatient={selectedPatient}
-                onUpdatePatient={onUpdatePatient}
-                setSelectedPatient={setSelectedPatient}
                 selectedPatientConsultations={selectedPatientConsultations}
                 allExamOptions={allExamOptions}
                 moduleGuards={moduleGuards}
@@ -429,13 +431,15 @@ export const DoctorPatientRecord: React.FC<DoctorPatientRecordProps> = ({
                 pinDiagnosis={pinDiagnosis}
                 handleVitalsChange={handleVitalsChange}
                 handleExamChange={handleExamChange}
-                handleCreateConsultation={handleCreateConsultation}
                 setIsPrintModalOpen={setIsPrintModalOpen}
                 setDocsToPrint={setDocsToPrint}
                 setIsClinicalReportOpen={setIsClinicalReportOpen}
                 setIsExamOrderModalOpen={setIsExamOrderModalOpen}
                 setIsCreatingConsultation={setIsCreatingConsultation}
                 hasActiveCenter={hasActiveCenter}
+                activeCenterId={activeCenterId}
+                appointmentContextId={appointmentContextId}
+                clearDraft={clearDraft}
               />
             ) : (
               <>

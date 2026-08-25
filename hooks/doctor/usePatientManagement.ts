@@ -30,6 +30,7 @@ export const usePatientManagement = ({
   const [isEditingPatient, setIsEditingPatient] = useState(false);
   const [consultationsFromDb, setConsultationsFromDb] = useState<Consultation[]>([]);
   const [isUsingLegacyConsultations, setIsUsingLegacyConsultations] = useState(false);
+  const [appointmentContextId, setAppointmentContextId] = useState<string | null>(null);
 
   const getActiveConsultations = (p: Patient) =>
     (p.consultations || []).filter((consultation) => consultation.active !== false);
@@ -66,8 +67,12 @@ export const usePatientManagement = ({
   }, [patients, searchTerm, filterNextControl]);
 
   // Handle Patient Selection with Audit Log
-  const handleSelectPatient = async (patient: Patient) => {
+  const handleSelectPatient = async (
+    patient: Patient,
+    sourceAppointmentId: string | null = null
+  ) => {
     setSelectedPatient(patient);
+    setAppointmentContextId(sourceAppointmentId);
 
     // Log patient access for audit trail (DS 41 MINSAL)
     if (activeCenterId && patient.id) {
@@ -123,7 +128,7 @@ export const usePatientManagement = ({
     const resolvedPatient = foundById ?? foundByRut ?? null;
 
     if (resolvedPatient) {
-      handleSelectPatient(resolvedPatient);
+      handleSelectPatient(resolvedPatient, appointment.id);
       setActiveTab("patients");
       return;
     }
@@ -143,7 +148,7 @@ export const usePatientManagement = ({
         if (patSnap.exists()) {
           const linkedPatient = { id: patSnap.id, ...(patSnap.data() as any) };
           // Optionally update local state or just select it
-          handleSelectPatient(linkedPatient);
+          handleSelectPatient(linkedPatient, appointment.id);
           setActiveTab("patients");
           showToast("Acceso sincronizado correctamente.", "success");
           return;
@@ -164,14 +169,7 @@ export const usePatientManagement = ({
       return;
     }
 
-    const consultationsRef = collection(
-      db,
-      "centers",
-      activeCenterId,
-      "patients",
-      selectedPatient.id,
-      "consultations"
-    );
+    const consultationsRef = collection(db, "patients", selectedPatient.id, "consultations");
 
     const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
 
@@ -209,6 +207,7 @@ export const usePatientManagement = ({
     handleSelectPatient,
     handleSavePatient,
     handleOpenPatientFromAppointment,
+    appointmentContextId,
     consultations:
       consultationsFromDb.length > 0
         ? consultationsFromDb

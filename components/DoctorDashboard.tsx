@@ -163,6 +163,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     handleOpenPatientFromAppointment,
     consultations,
     isUsingLegacyConsultations,
+    appointmentContextId,
   } = usePatientManagement({
     patients,
     activeCenterId,
@@ -189,6 +190,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     pinDiagnosis,
     handleCreateConsultation,
     getEmptyConsultation,
+    clearDraft,
   } = useConsultationLogic({
     selectedPatient,
     setSelectedPatient,
@@ -356,6 +358,36 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const selectedPatientConsultations = useMemo(() => {
     return consultations;
   }, [consultations]);
+
+  useEffect(() => {
+    if (!appointmentContextId || !selectedPatient) return;
+    const existingDocument = selectedPatientConsultations.find(
+      (consultation) => consultation.appointmentId === appointmentContextId
+    );
+    setNewConsultation((previous) => {
+      if (previous.id && previous.appointmentId === appointmentContextId) return previous;
+      const hasUnsavedContent = Boolean(
+        previous.reason?.trim() ||
+          previous.anamnesis?.trim() ||
+          previous.physicalExam?.trim() ||
+          previous.diagnosis?.trim() ||
+          previous.diagnoses?.length
+      );
+      if (previous.appointmentId === appointmentContextId && hasUnsavedContent) return previous;
+      if (existingDocument) return existingDocument;
+      return {
+        ...getEmptyConsultation(),
+        appointmentId: appointmentContextId,
+        recordStatus: "draft",
+      };
+    });
+  }, [
+    appointmentContextId,
+    selectedPatient?.id,
+    selectedPatientConsultations,
+    setNewConsultation,
+    getEmptyConsultation,
+  ]);
 
   const buildWhatsAppText = (templateBody: string, p: Patient) => {
     const centerName = activeCenter?.name ?? "Centro Médico";
@@ -965,6 +997,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   activeCenterId={activeCenterId ?? ""}
                   activeCenter={activeCenter}
                   hasActiveCenter={hasActiveCenter}
+                  appointmentContextId={appointmentContextId}
                   moduleGuards={moduleGuards}
                   doctorName={doctorName}
                   doctorId={doctorId}
@@ -981,6 +1014,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                   removeDiagnosis={removeDiagnosis}
                   pinDiagnosis={pinDiagnosis}
                   handleCreateConsultation={handleCreateConsultation}
+                  clearDraft={clearDraft}
                   selectedPatientConsultations={selectedPatientConsultations}
                   isUsingLegacyConsultations={isUsingLegacyConsultations}
                   docsToPrint={docsToPrint}
