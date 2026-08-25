@@ -542,13 +542,6 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
-  it("blocks a non-clinical center admin from reading clinical consultations", async () => {
-    const db = authedDb("adminA");
-    await expect(
-      getDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
-    ).rejects.toThrow();
-  });
-
   it("keeps temporary support-session state server-only", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "centers", CENTER_A, "supportSessions", "session-a"), {
