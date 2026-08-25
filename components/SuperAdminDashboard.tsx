@@ -42,9 +42,7 @@ import { db, auth, storage } from "../firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import {
   collection,
-  collectionGroup,
   doc,
-  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -531,15 +529,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     setMetricsLoading(true);
     setMetricsError("");
     try {
-      // Intentamos obtener conteos uno por uno para mejor diagnóstico
-      const patientsSnap = await getCountFromServer(collection(db, "patients"));
-      const staffSnap = await getCountFromServer(collectionGroup(db, "staff"));
+      const loadOperationalMetrics = httpsCallable<
+        Record<string, never>,
+        { patients: number; professionals: number; generatedAt: string }
+      >(getFunctions(), "getSuperAdminOperationalMetrics");
+      const result = await loadOperationalMetrics({});
 
       setMetrics({
-        patients: Number(patientsSnap.data().count ?? 0),
-        professionals: Number(staffSnap.data().count ?? 0),
+        patients: Number(result.data.patients ?? 0),
+        professionals: Number(result.data.professionals ?? 0),
       });
-      setMetricsUpdatedAt(new Date().toISOString());
+      setMetricsUpdatedAt(result.data.generatedAt || new Date().toISOString());
     } catch (error: any) {
       console.error("load metrics error", error);
       const errorMsg = error?.message || String(error);

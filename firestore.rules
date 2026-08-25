@@ -25,15 +25,9 @@ service cloud.firestore {
       );
     }
 
-    // 🔥 REGLAS PARA CONSULTAS DE GRUPO DE COLECCIONES (Collection Group)
-    // Permite que el SuperAdmin cuente registros en todas las profundidades
-    match /{path=**}/patients/{id} {
-        allow read: if isSuperAdmin();
-    }
+    // El superadmin puede inspeccionar membresías operativas, pero no fichas ni
+    // consultas clínicas. Los conteos de pacientes se obtienen vía Functions.
     match /{path=**}/staff/{id} {
-        allow read: if isSuperAdmin();
-    }
-    match /{path=**}/consultations/{id} {
         allow read: if isSuperAdmin();
     }
 
@@ -153,6 +147,12 @@ service cloud.firestore {
         && r != "secretaria";
     }
 
+    function hasStaffCapability(centerId, capability) {
+      return isStaff(centerId)
+        && staffDoc(centerId).data.capabilities is list
+        && capability in staffDoc(centerId).data.capabilities;
+    }
+
     function centerDoc(centerId) {
       return get(/databases/$(database)/documents/centers/$(centerId));
     }
@@ -193,7 +193,8 @@ service cloud.firestore {
     }
 
     function canViewAudit(centerId) {
-      return isSuperAdmin() || isCenterAdmin(centerId);
+      return isCenterAdmin(centerId)
+        || hasStaffCapability(centerId, "audit.read");
     }
 
     function canUpdateMarketingRetention(centerId) {
@@ -530,6 +531,17 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /patientDirectory/{patientId} {
+        // Proyección demográfica operativa mantenida exclusivamente por Functions.
+        allow read: if signedIn() && isStaff(centerId);
+        allow create, update, delete: if false;
+      }
+
+      match /supportSessions/{sessionId} {
+        // Las sesiones de soporte son creadas, leídas y revocadas solo por Functions.
+        allow read, create, update, delete: if false;
+      }
+
       match /settings/{settingId} {
         allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
         allow create, update, delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
@@ -537,29 +549,25 @@ service cloud.firestore {
 
       match /patients/{patientId} {
         allow read: if signedIn()
-          && (
-            isSuperAdmin()
-            || isCenterAdmin(centerId)
-            || (isStaff(centerId) && (
+          && (hasClinicalRole(centerId) && (
               !isCareTeamMode(centerId)
               || isCareTeamMemberFromResource()
-            ))
-          );
-        allow create: if (signedIn() && (isSuperAdmin() || isStaff(centerId)))
+            ));
+        allow create: if (signedIn() && hasClinicalRole(centerId))
           || isPublicPatientCreate(centerId);
         allow update: if signedIn()
-          && (isSuperAdmin() || isStaff(centerId))
+          && hasClinicalRole(centerId)
           && (
             !careTeamKeysChanged()
             || (
-              (isSuperAdmin() || isCenterAdmin(centerId))
+              isCenterAdmin(centerId)
               && isCareTeamUpdateValid()
             )
           )
           && (
             !softDeleteKeysChanged()
             || (
-              (isSuperAdmin() || isCenterAdmin(centerId))
+              isCenterAdmin(centerId)
               && isSoftDeleteValid()
               && canArchiveByRetention()
             )
@@ -568,23 +576,14 @@ service cloud.firestore {
 
         match /consultations/{consultationId} {
           allow read: if signedIn()
-            && (
-              isSuperAdmin()
-              || (hasClinicalRole(centerId) && (
+            && (hasClinicalRole(centerId) && (
                 !isCareTeamMode(centerId)
                 || isCareTeamMember(centerId, patientId)
-              ))
-            );
-          allow create: if signedIn() && (
-            isSuperAdmin()
-            || hasClinicalRole(centerId)
-          )
+              ));
+          allow create: if signedIn() && hasClinicalRole(centerId)
           && clinicalDocumentClientCreateValid()
           && consultationPrescriptionSecurityValid(centerId);
-          allow update: if signedIn() && (
-            isSuperAdmin()
-            || hasClinicalRole(centerId)
-          )
+          allow update: if signedIn() && hasClinicalRole(centerId)
           && professionalFieldsUnchanged()
           && clinicalDocumentClientUpdateValid()
           && consultationPrescriptionSecurityValid(centerId)
@@ -600,9 +599,10 @@ service cloud.firestore {
         }
 
         match /notes/{noteId} {
-          allow read: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-          allow create, update: if signedIn() && (isSuperAdmin() || isStaff(centerId));
-          allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
+          allow read, create, update: if signedIn()
+            && hasClinicalRole(centerId)
+            && (!isCareTeamMode(centerId) || isCareTeamMember(centerId, patientId));
+          allow delete: if false;
         }
       }
 
@@ -755,7 +755,7 @@ service cloud.firestore {
       }
 
       match /auditLogs/{logId} {
-        // Only staff and superadmins can read audit logs
+        // Lectura acotada al centro: administración o capacidad explícita de auditoría.
         allow read: if signedIn() && canViewAudit(centerId);
         // No direct writes from client - only through Cloud Functions
         allow create, update, delete: if false;
@@ -869,21 +869,16 @@ service cloud.firestore {
 
       function canReadRootPatient() {
         return isAllowedProfessional()
-          || isClinicalStaffForPatient(resource.data)
-          || isSuperAdmin();
+          || isClinicalStaffForPatient(resource.data);
       }
 
       function canWriteRootPatient() {
         return isAllowedProfessional()
-          || isClinicalStaffForPatient(resource.data)
-          || isSuperAdmin();
+          || isClinicalStaffForPatient(resource.data);
       }
 
       function canCreateRootPatient() {
-        return signedIn() && (
-          isClinicalStaffForPatient(request.resource.data)
-          || isSuperAdmin()
-        );
+        return signedIn() && isClinicalStaffForPatient(request.resource.data);
       }
 
       function rootHasPrescriptionDocuments() {
@@ -924,7 +919,6 @@ service cloud.firestore {
           uid() in patient.accessControl.allowedUids
           || (patient.careTeamUids is list && uid() in patient.careTeamUids)
           || isClinicalStaffForPatient(patient)
-          || isSuperAdmin()
         );
       }
 

@@ -99,3 +99,23 @@ export async function logAuditEventSafe(request: LogAuditEventRequest) {
     console.error("Failed to log audit event:", error);
   }
 }
+
+export const ensureAuditLogResult = (
+  result: LogAuditEventResult | null | undefined
+): LogAuditEventResult => {
+  if (!result?.ok || !result.logged) {
+    throw new Error("AUDIT_REQUIRED");
+  }
+  return result;
+};
+
+/** Las acciones sensibles deben abortar si no existe evidencia de auditoría. */
+export async function logAuditEventRequired(request: LogAuditEventRequest) {
+  const functions = getFunctions();
+  const logAuditEventFn = httpsCallable<LogAuditEventRequest, LogAuditEventResult>(
+    functions,
+    "logAuditEvent"
+  );
+  const result = await logAuditEventFn(request);
+  return ensureAuditLogResult(result.data);
+}

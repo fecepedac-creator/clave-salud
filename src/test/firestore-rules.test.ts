@@ -60,6 +60,22 @@ async function seedBaseData() {
       clinicalRole: "medico",
       email: "doctor@example.test",
     });
+    await setDoc(doc(db, "centers", CENTER_A, "staff", "auditorA"), {
+      active: true,
+      accessRole: "auditor",
+      role: "auditor",
+      clinicalRole: "",
+      capabilities: ["audit.read"],
+      email: "auditor@example.test",
+    });
+    await setDoc(doc(db, "centers", CENTER_A, "staff", "auditorWithoutCapability"), {
+      active: true,
+      accessRole: "auditor",
+      role: "auditor",
+      clinicalRole: "",
+      capabilities: [],
+      email: "auditor-no-capability@example.test",
+    });
     await setDoc(doc(db, "centers", CENTER_B, "staff", "doctorB"), {
       active: true,
       accessRole: "professional",
@@ -83,6 +99,16 @@ async function seedBaseData() {
       careTeamUids: ["doctorB"],
       accessControl: { centerIds: [CENTER_B], allowedUids: ["doctorB"] },
       active: true,
+    });
+    await setDoc(doc(db, "centers", CENTER_A, "patientDirectory", "patientA"), {
+      id: "patientA",
+      patientId: "patientA",
+      centerId: CENTER_A,
+      entityType: "patient_directory_entry",
+      fullName: "Paciente A",
+      rut: "12.345.678-9",
+      active: true,
+      directoryVersion: 1,
     });
     await setDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"), {
       centerId: CENTER_A,
@@ -376,11 +402,30 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
-  it("allows super admin to read audit logs but blocks client writes", async () => {
+  it("blocks global super admin audit access without scoped center membership", async () => {
     const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
-    await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "missing-ok")));
+    await assertFails(getDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "missing")));
     await assertFails(
       setDoc(doc(superDb, "centers", CENTER_A, "auditLogs", "manual"), {
+        action: "manual",
+      })
+    );
+  });
+
+  it("allows only center-scoped audit readers and keeps writes server-only", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const auditorDb = authedDb("auditorA", "auditor@example.test");
+    const auditorWithoutCapabilityDb = authedDb("auditorWithoutCapability");
+    const otherCenterDb = authedDb("doctorB");
+
+    await assertSucceeds(getDoc(doc(adminDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertSucceeds(getDoc(doc(auditorDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertFails(
+      getDoc(doc(auditorWithoutCapabilityDb, "centers", CENTER_A, "auditLogs", "missing"))
+    );
+    await assertFails(getDoc(doc(otherCenterDb, "centers", CENTER_A, "auditLogs", "missing")));
+    await assertFails(
+      setDoc(doc(auditorDb, "centers", CENTER_A, "auditLogs", "manual"), {
         action: "manual",
       })
     );
@@ -399,6 +444,63 @@ describe("Firestore security rules - pilot RBAC", () => {
 
     await assertSucceeds(getDoc(doc(authedDb("doctorA"), "patients", "rootPatientA")));
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));
+  });
+
+  it("keeps global super admin out of clinical records while preserving staff metadata", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "patients", "rootPatientA", "consultations", "rootConsultA"), {
+        centerId: CENTER_A,
+        patientId: "rootPatientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        evolution: "Contenido clínico privado",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      });
+    });
+
+    const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
+    await assertFails(getDoc(doc(superDb, "patients", "rootPatientA")));
+    await assertFails(
+      getDoc(doc(superDb, "patients", "rootPatientA", "consultations", "rootConsultA"))
+    );
+    await assertFails(getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA")));
+    await assertFails(
+      getDoc(doc(superDb, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
+    );
+    await assertSucceeds(getDoc(doc(superDb, "centers", CENTER_A, "staff", "doctorA")));
+  });
+
+  it("blocks a non-clinical center admin from reading clinical consultations", async () => {
+    const db = authedDb("adminA");
+    await assertFails(getDoc(doc(db, "centers", CENTER_A, "patients", "patientA")));
+    await expect(
+      getDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
+    ).rejects.toThrow();
+  });
+  it("exposes the operational patient directory only to same-center staff", async () => {
+    const adminDb = authedDb("adminA", "admin@example.test");
+    const secretaryDb = authedDb("secretaryA");
+    const doctorDb = authedDb("doctorA");
+    const otherCenterDb = authedDb("doctorB");
+
+    await assertSucceeds(getDoc(doc(adminDb, "centers", CENTER_A, "patientDirectory", "patientA")));
+    await assertSucceeds(
+      getDoc(doc(secretaryDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertSucceeds(
+      getDoc(doc(doctorDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertFails(
+      getDoc(doc(otherCenterDb, "centers", CENTER_A, "patientDirectory", "patientA"))
+    );
+    await assertFails(
+      setDoc(doc(adminDb, "centers", CENTER_A, "patientDirectory", "manual"), {
+        fullName: "Paciente manual",
+      })
+    );
   });
 
   it("keeps signed root consultations immutable from the client", async () => {
@@ -440,10 +542,22 @@ describe("Firestore security rules - pilot RBAC", () => {
     );
   });
 
-  it("blocks a non-clinical center admin from reading clinical consultations", async () => {
-    const db = authedDb("adminA");
-    await expect(
-      getDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
-    ).rejects.toThrow();
+  it("keeps temporary support-session state server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "centers", CENTER_A, "supportSessions", "session-a"), {
+        centerId: CENTER_A,
+        granteeUid: "support-a",
+        permissions: ["support.diagnostics"],
+        status: "active",
+        expiresAt: new Date("2026-08-23T14:00:00.000Z"),
+      });
+    });
+    const adminDb = authedDb("adminA", "admin@example.test");
+    await assertFails(getDoc(doc(adminDb, "centers", CENTER_A, "supportSessions", "session-a")));
+    await assertFails(
+      setDoc(doc(adminDb, "centers", CENTER_A, "supportSessions", "manual"), {
+        status: "active",
+      })
+    );
   });
 });

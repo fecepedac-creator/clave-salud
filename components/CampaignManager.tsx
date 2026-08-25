@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { collection, getDocs, query, where, onSnapshot } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { Patient, WhatsappTemplate } from "../types";
+import { mapPatientDirectoryEntry } from "../utils/patientDirectoryProjection";
 import {
   Users,
   MessageSquare,
@@ -18,7 +19,6 @@ const CampaignManager: React.FC<{ centerId: string }> = ({ centerId }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [templates, setTemplates] = useState<WhatsappTemplate[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "no-control">("all");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedPatients, setSelectedPatients] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -30,8 +30,8 @@ const CampaignManager: React.FC<{ centerId: string }> = ({ centerId }) => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const pSnap = await getDocs(collection(db, "centers", centerId, "patients"));
-        setPatients(pSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Patient));
+        const pSnap = await getDocs(collection(db, "centers", centerId, "patientDirectory"));
+        setPatients(pSnap.docs.map((entry) => mapPatientDirectoryEntry(entry.id, entry.data())));
 
         const tSnap = await getDocs(collection(db, "centers", centerId, "whatsappTemplates"));
         setTemplates(tSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as WhatsappTemplate));
@@ -51,14 +51,9 @@ const CampaignManager: React.FC<{ centerId: string }> = ({ centerId }) => {
         p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.rut && p.rut.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      if (filterType === "no-control") {
-        // Mock logic: patients without consultations in last 6 months
-        return matchesSearch && (!p.consultations || p.consultations.length === 0);
-      }
-
       return matchesSearch;
     });
-  }, [patients, searchTerm, filterType]);
+  }, [patients, searchTerm]);
 
   const togglePatient = (id: string) => {
     const next = new Set(selectedPatients);
@@ -141,14 +136,6 @@ const CampaignManager: React.FC<{ centerId: string }> = ({ centerId }) => {
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2 pl-10 pr-4 text-white outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
-              className="bg-slate-900 border border-slate-700 rounded-xl px-4 text-white text-sm outline-none focus:border-indigo-500"
-            >
-              <option value="all">Todos</option>
-              <option value="no-control">Sin Control {" > "} 6 meses</option>
-            </select>
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2 space-y-2">

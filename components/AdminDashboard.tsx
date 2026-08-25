@@ -9,15 +9,12 @@ import {
   Preadmission,
   MedicalService,
 } from "../types";
-import { downloadJSON } from "../utils";
 import {
   X,
   QrCode,
   Share2,
   Copy,
   ShieldCheck,
-  Upload,
-  Download,
   LogOut,
   Activity,
   Users,
@@ -60,7 +57,6 @@ import auditLogPolicy from "../docs/politicas/POLITICA_CONSERVACION_FICHA_CLINIC
 import AuditLogViewer from "./AuditLogViewer";
 import MarketingPosterModule from "./MarketingPosterModule";
 import MarketingFlyerModal from "./MarketingFlyerModal";
-import { MigrationModal } from "./MigrationModal";
 import { ROLE_CATALOG } from "../constants";
 import ServicesManager from "./ServicesManager";
 import ServiceAgendasManager from "./ServiceAgendasManager";
@@ -161,7 +157,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Marketing Flyer
   const [showMarketingModal, setShowMarketingModal] = useState(false);
   const [marketingFlyerType, setMarketingFlyerType] = useState<"center" | "professional">("center");
-  const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [centerLogoError, setCenterLogoError] = useState(false);
   const [isSyncingPublic, setIsSyncingPublic] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -401,38 +396,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   };
 
-  // --- BACKUP & RESTORE FUNCTIONS ---
-  const handleRestoreBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const json = e.target?.result as string;
-        const data = JSON.parse(json);
-
-        if (data.patients && Array.isArray(data.patients)) {
-          onUpdatePatients(data.patients);
-        }
-        if (data.doctors && Array.isArray(data.doctors)) {
-          onUpdateDoctors(data.doctors);
-        }
-        if (data.appointments && Array.isArray(data.appointments)) {
-          onUpdateAppointments(data.appointments);
-        }
-
-        showToast("Base de datos restaurada correctamente.", "success");
-      } catch (error) {
-        console.error(error);
-        showToast("Error al leer el archivo de respaldo.", "error");
-      }
-    };
-    reader.readAsText(file);
-    // Reset input
-    event.target.value = "";
-  };
-
   const handleSyncPublicStaff = async () => {
     if (!db || !centerId || doctors.length === 0) {
       showToast("No hay especialistas cargados para sincronizar.", "info");
@@ -593,28 +556,6 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           </button>
 
           <div className="flex gap-2 w-full md:w-auto justify-center">
-            {!isSecretary && PILOT_FEATURES.browserClinicalMigration && (
-              <label className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700 cursor-pointer">
-                <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Restaurar</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  onChange={handleRestoreBackup}
-                />
-              </label>
-            )}
-            {!isSecretary && PILOT_FEATURES.manualClinicalBackup && (
-              <button
-                onClick={() => {
-                  downloadJSON({ patients, doctors, appointments }, "backup-clinica.json");
-                  showToast("Descargando backup...", "info");
-                }}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors bg-slate-900 px-4 py-2 rounded-lg border border-slate-700"
-              >
-                <Download className="w-4 h-4" /> <span className="hidden sm:inline">Backup</span>
-              </button>
-            )}
             {onClosePanel && (
               <button
                 onClick={onClosePanel}
@@ -806,7 +747,6 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           handleAnthropometryToggle={handleAnthropometryToggle}
           setShowMarketingModal={setShowMarketingModal}
           setMarketingFlyerType={setMarketingFlyerType}
-          setShowMigrationModal={setShowMigrationModal}
           persistDoctorToFirestore={persistDoctorToFirestore}
         />
       )}
@@ -1103,11 +1043,6 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             }
           }}
         />
-      )}
-
-      {/* MIGRATION */}
-      {PILOT_FEATURES.browserClinicalMigration && showMigrationModal && activeCenter && (
-        <MigrationModal center={activeCenter} onClose={() => setShowMigrationModal(false)} />
       )}
 
       {/* FEEDBACK BUTTON */}
