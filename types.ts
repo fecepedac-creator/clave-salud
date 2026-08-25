@@ -501,6 +501,9 @@ export interface Appointment extends SoftDeletable {
   createdAt?: FirestoreDateLike;
   doctorId: string;
   doctorUid?: string;
+  /** Recurso operativo asignado. Nunca representa una cuenta de usuario. */
+  resourceId?: string;
+  assignedEntityType?: "professional" | "agenda_resource";
   date: string;
   time: string;
   patientName: string;
@@ -623,6 +626,47 @@ export type CanonicalRole =
   | "doctor"
   | "staff";
 
+/** Rol de acceso a la plataforma. No representa una profesión clínica. */
+export type AccessRole =
+  | "super_admin"
+  | "center_admin"
+  | "administrative"
+  | "professional"
+  | "auditor"
+  | "support"
+  | "patient"
+  | "system";
+
+/** Profesiones que pueden habilitar capacidades clínicas según el centro. */
+export type ClinicalProfession = Exclude<
+  RoleId,
+  "ADMIN_CENTRO" | "ADMINISTRATIVO" | "SERVICIO" | "SUPER_ADMIN"
+>;
+
+/** Capacidades canónicas. Toda capacidad no concedida se considera denegada. */
+export type Capability =
+  | "agenda.read"
+  | "agenda.manage"
+  | "agenda.block"
+  | "agenda.override"
+  | "agenda.contact"
+  | "agenda.check_in"
+  | "agenda.attendance"
+  | "agenda.rebook"
+  | "operational.export"
+  | "patient.demographics.read"
+  | "patient.demographics.write"
+  | "clinical_record.read"
+  | "clinical_draft.create"
+  | "clinical_draft.edit_own"
+  | "clinical_record.sign"
+  | "clinical_record.addendum"
+  | "clinical_record.export"
+  | "audit.read"
+  | "support.diagnostics"
+  | "center.configure"
+  | "users.manage";
+
 /**
  * AnyRole permite convivir con strings legacy (UI antigua) y roles canónicos.
  * Útil mientras migramos componentes gradualmente.
@@ -648,6 +692,7 @@ export interface Doctor {
   photoUrl?: string; // NEW: Profile photo for booking
   accessRole?: string;
   clinicalRole?: string;
+  capabilities?: Capability[];
   role: AnyRole;
   specialty: string;
   visibleInBooking?: boolean;

@@ -329,6 +329,53 @@ service cloud.firestore {
         allow delete: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
       }
 
+      function validAgendaResource(resourceId) {
+        let data = request.resource.data;
+        return data.keys().hasOnly([
+            "id", "centerId", "entityType", "resourceType", "displayName",
+            "description", "agendaConfig", "visibleInBooking", "active",
+            "legacySourceId", "createdAt", "updatedAt"
+          ])
+          && data.keys().hasAll([
+            "id", "centerId", "entityType", "resourceType", "displayName",
+            "description", "agendaConfig", "visibleInBooking", "active",
+            "createdAt", "updatedAt"
+          ])
+          && data.id == resourceId
+          && data.centerId == centerId
+          && data.entityType == "agenda_resource"
+          && data.resourceType in ["service", "room", "equipment"]
+          && data.displayName is string
+          && data.displayName.size() > 0
+          && data.displayName.size() <= 120
+          && data.description is string
+          && data.description.size() <= 500
+          && data.agendaConfig is map
+          && data.agendaConfig.keys().hasOnly(["slotDuration", "startTime", "endTime"])
+          && data.agendaConfig.keys().hasAll(["slotDuration", "startTime", "endTime"])
+          && data.agendaConfig.slotDuration is int
+          && data.agendaConfig.slotDuration >= 5
+          && data.agendaConfig.slotDuration <= 480
+          && data.agendaConfig.startTime is string
+          && data.agendaConfig.endTime is string
+          && data.visibleInBooking is bool
+          && data.active is bool
+          && data.createdAt is timestamp
+          && data.updatedAt is timestamp
+          && (!data.keys().hasAny(["legacySourceId"]) || data.legacySourceId is string);
+      }
+
+      match /agendaResources/{resourceId} {
+        allow read: if signedIn() && isStaff(centerId);
+        allow create: if isCenterAdmin(centerId) && validAgendaResource(resourceId);
+        allow update: if isCenterAdmin(centerId)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.centerId == resource.data.centerId
+          && request.resource.data.entityType == resource.data.entityType
+          && validAgendaResource(resourceId);
+        allow delete: if isCenterAdmin(centerId);
+      }
+
       match /stats/postersMonthly/{monthKey} {
         allow read: if signedIn() && (isSuperAdmin() || isCenterAdmin(centerId));
         allow create, update, delete: if false;
