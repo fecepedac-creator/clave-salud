@@ -4,7 +4,6 @@ import {
   Doctor,
   Appointment,
   AuditLogEvent,
-  AuditLogEntry,
   Patient,
   Preadmission,
   MedicalService,
@@ -85,7 +84,6 @@ interface AdminDashboardProps {
   onUpdatePatients: (patients: Patient[]) => void;
   preadmissions: Preadmission[];
   onApprovePreadmission: (item: Preadmission) => void;
-  logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
   onLogActivity: (event: AuditLogEvent) => void;
   currentUser?: any; // Role-based customization
   onClosePanel?: () => void;
@@ -109,7 +107,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdatePatients,
   preadmissions,
   onApprovePreadmission,
-  logs,
   onLogActivity,
   currentUser,
   onClosePanel,
@@ -207,41 +204,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [resolvedCenterId]);
 
   // Agenda State and Logic moved to AdminAgenda component
-
-  // --- STATE FOR AUDIT LOGS (LAZY LOADED) ---
-  const [displayLogs, setDisplayLogs] = useState<AuditLogEntry[]>(logs || []);
-  useEffect(() => {
-    if (db && activeCenterId && activeTab === "audit") {
-      const q = query(
-        collection(db, "centers", activeCenterId, "auditLogs"),
-        orderBy("timestamp", "desc"),
-        limit(100)
-      );
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedLogs: AuditLogEntry[] = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            centerId: resolvedCenterId, // Added required property
-            action: data.action,
-            actorUid: data.actorUid,
-            actorName: data.actorName,
-            actorRole: data.actorRole,
-            entityType: data.entityType,
-            entityId: data.entityId,
-            details: data.details,
-            timestamp: data.timestamp?.toDate().toISOString() || new Date().toISOString(),
-            patientId: data.patientId || null,
-            metadata: data.metadata || {},
-          };
-        });
-        setDisplayLogs(fetchedLogs);
-      });
-      return () => unsubscribe();
-    } else if (logs) {
-      setDisplayLogs(logs);
-    }
-  }, [db, activeCenterId, activeTab, logs, resolvedCenterId]);
 
   const resolvePreadmissionDate = (item: Preadmission) => {
     const raw = (item as any).createdAt;
@@ -835,7 +797,11 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       {/* AUDIT LOGS */}
       {activeTab === "audit" && (
         <div className="animate-fadeIn">
-          <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
+          <AuditLogViewer
+            centerId={resolvedCenterId}
+            staff={doctors ?? []}
+            patients={patients ?? []}
+          />
         </div>
       )}
 

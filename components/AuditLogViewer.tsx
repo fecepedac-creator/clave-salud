@@ -51,11 +51,15 @@ function toDate(value: AuditLogEntry["timestamp"]): Date | null {
 
 interface AuditLogViewerProps {
   centerId: string;
-  staff: Doctor[];
-  patients: Patient[];
+  staff?: Doctor[];
+  patients?: Patient[];
 }
 
-const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ centerId, staff, patients }) => {
+const AuditLogViewer: React.FC<AuditLogViewerProps> = ({
+  centerId,
+  staff = [],
+  patients = [],
+}) => {
   const [rangeDays, setRangeDays] = useState(RANGE_OPTIONS[1].days);
   const [actionFilter, setActionFilter] = useState<string>("");
   const [actorFilter, setActorFilter] = useState<string>("");

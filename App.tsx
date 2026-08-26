@@ -332,7 +332,6 @@ const App: React.FC = () => {
     setDoctors,
     appointments,
     setAppointments,
-    auditLogs,
     preadmissions,
     services,
   } = useFirestoreSync(
@@ -1968,7 +1967,6 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             onClosePanel={handleClosePanel}
             onOpenLegal={openLegal}
-            logs={auditLogs}
             onLogActivity={(event) => {
               if (isPreviewActive) return;
               const log: AuditLogEntry = {
