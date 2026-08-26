@@ -3853,3 +3853,5 @@ export const updateWhatsappConfig = (
   );
   return { ok: true, tokenEncrypted: !!rawAccessToken && rawAccessToken !== "********" };
 });
+
+export { appendClinicalCorrection, getClinicalCorrections } from "./clinicalCorrections";

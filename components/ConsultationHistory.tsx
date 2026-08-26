@@ -10,8 +10,12 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  MessageSquarePlus,
+  Loader2,
 } from "lucide-react";
-import { auth } from "../firebase";
+import { auth, functions } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 import { logAccessSafe, useAuditLog } from "../hooks/useAuditLog";
 import { getCategoryLabel } from "../utils/examOrderCatalog";
 
@@ -23,6 +27,16 @@ interface ConsultationHistoryProps {
   onOpen: (consultation: Consultation) => void;
   onSendEmail: (consultation: Consultation) => void;
 }
+
+type ClinicalCorrection = {
+  id: string;
+  consultationId: string;
+  documentId?: string;
+  kind: "clinical_note" | "new_information" | "document_correction";
+  text: string;
+  professionalName?: string;
+  createdAt?: string | { toDate?: () => Date };
+};
 
 const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   consultations,
@@ -36,6 +50,16 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [correctionsByConsultation, setCorrectionsByConsultation] = useState<
+    Record<string, ClinicalCorrection[]>
+  >({});
+  const [correctionTarget, setCorrectionTarget] = useState<{
+    consultation: Consultation;
+    documentId?: string;
+  } | null>(null);
+  const [correctionKind, setCorrectionKind] = useState<ClinicalCorrection["kind"]>("clinical_note");
+  const [correctionText, setCorrectionText] = useState("");
+  const [isSavingCorrection, setIsSavingCorrection] = useState(false);
 
   // Efecto de Debounce para aligerar la búsqueda
   useEffect(() => {
@@ -48,13 +72,91 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
     [consultations]
   );
 
+  const loadCorrections = async (consultationId: string) => {
+    if (!centerId || !patientId || correctionsByConsultation[consultationId]) return;
+    try {
+      const getCorrections = httpsCallable<
+        { centerId: string; patientId: string; consultationId: string },
+        { corrections: ClinicalCorrection[] }
+      >(functions, "getClinicalCorrections");
+      const result = await getCorrections({ centerId, patientId, consultationId });
+      setCorrectionsByConsultation((previous) => ({
+        ...previous,
+        [consultationId]: result.data.corrections || [],
+      }));
+    } catch {
+      // La lectura de correcciones nunca debe bloquear la visualización del historial.
+      setCorrectionsByConsultation((previous) => ({ ...previous, [consultationId]: [] }));
+    }
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {
+        next.add(id);
+        void loadCorrections(id);
+      }
       return next;
     });
+  };
+
+  const openCorrection = (consultation: Consultation, documentId?: string) => {
+    setCorrectionTarget({ consultation, documentId });
+    setCorrectionKind(documentId ? "document_correction" : "clinical_note");
+    setCorrectionText("");
+  };
+
+  const saveCorrection = async () => {
+    if (!centerId || !patientId || !correctionTarget || !correctionText.trim()) return;
+    setIsSavingCorrection(true);
+    try {
+      const appendCorrection = httpsCallable<
+        {
+          centerId: string;
+          patientId: string;
+          consultationId: string;
+          documentId?: string;
+          requestId: string;
+          kind: ClinicalCorrection["kind"];
+          text: string;
+        },
+        { success: true; correction: ClinicalCorrection }
+      >(functions, "appendClinicalCorrection");
+      const requestId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID().replace(/-/g, "")
+          : `${Date.now()}${Math.random().toString(36).slice(2)}`.padEnd(16, "0");
+      const result = await appendCorrection({
+        centerId,
+        patientId,
+        consultationId: correctionTarget.consultation.id,
+        ...(correctionTarget.documentId ? { documentId: correctionTarget.documentId } : {}),
+        requestId,
+        kind: correctionKind,
+        text: correctionText.trim(),
+      });
+      setCorrectionsByConsultation((previous) => ({
+        ...previous,
+        [correctionTarget.consultation.id]: [
+          ...(previous[correctionTarget.consultation.id] || []),
+          result.data.correction,
+        ],
+      }));
+      setCorrectionTarget(null);
+      setCorrectionText("");
+    } catch (error) {
+      console.error("No se pudo guardar la corrección clínica", error);
+      alert("No se pudo guardar la corrección. La atención original no fue modificada.");
+    } finally {
+      setIsSavingCorrection(false);
+    }
+  };
+
+  const correctionDate = (value: ClinicalCorrection["createdAt"]) => {
+    const date = typeof value === "object" && value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "Recién agregada";
   };
 
   const expandAll = () => {
@@ -221,6 +323,15 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                           Reimprimir
                         </button>
                         <button
+                          type="button"
+                          onClick={() => openCorrection(c)}
+                          className="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-700 rounded-xl transition-colors"
+                          title="Agregar corrección a esta atención"
+                          aria-label="Agregar corrección a esta atención"
+                        >
+                          <Pencil className="w-5 h-5" />
+                        </button>
+                        <button
                           onClick={() => onSendEmail(c)}
                           className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-colors"
                           title="Enviar mail"
@@ -298,9 +409,34 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
                               >
                                 <Printer className="w-4 h-4" /> Ver
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => openCorrection(c, doc.id)}
+                                className="text-amber-700 hover:bg-amber-50 px-2 py-2 rounded-lg"
+                                title="Corregir este documento mediante una adenda"
+                                aria-label={`Corregir ${doc.type}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+
+                    {(correctionsByConsultation[c.id] || []).length > 0 && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 space-y-3">
+                        <p className="text-xs font-black uppercase tracking-wider text-amber-800 flex items-center gap-2">
+                          <MessageSquarePlus className="w-4 h-4" /> Correcciones posteriores
+                        </p>
+                        {(correctionsByConsultation[c.id] || []).map((correction) => (
+                          <div key={correction.id} className="rounded-xl border border-amber-100 bg-white p-3">
+                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{correction.text}</p>
+                            <p className="mt-2 text-xs text-slate-500">
+                              {correction.professionalName || "Profesional"} · {correctionDate(correction.createdAt)}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -368,6 +504,35 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
             </div>
           );
         })
+      )}
+      {correctionTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-label="Agregar corrección clínica">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Agregar corrección</h3>
+                <p className="mt-1 text-sm text-slate-500">La atención original no se modifica. Esta nota queda vinculada y auditada.</p>
+              </div>
+              <button type="button" onClick={() => setCorrectionTarget(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Cerrar corrección">
+                <ChevronUp className="w-5 h-5 rotate-45" />
+              </button>
+            </div>
+            <label className="mb-2 block text-sm font-bold text-slate-700">Motivo</label>
+            <select value={correctionKind} onChange={(event) => setCorrectionKind(event.target.value as ClinicalCorrection["kind"])} className="mb-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <option value="clinical_note">Corrección clínica</option>
+              <option value="new_information">Nueva información posterior</option>
+              <option value="document_correction">Corrección de documento emitido</option>
+            </select>
+            <label className="mb-2 block text-sm font-bold text-slate-700">Detalle de la corrección</label>
+            <textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} maxLength={10000} rows={7} placeholder="Describa con precisión qué información se agrega o corrige." className="w-full resize-y rounded-xl border border-slate-200 p-3 text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100" />
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setCorrectionTarget(null)} disabled={isSavingCorrection} className="rounded-xl px-4 py-2.5 font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
+              <button type="button" onClick={saveCorrection} disabled={isSavingCorrection || !correctionText.trim()} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {isSavingCorrection && <Loader2 className="h-4 w-4 animate-spin" />} Guardar corrección
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
