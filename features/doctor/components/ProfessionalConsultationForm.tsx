@@ -7,6 +7,7 @@ import {
   Edit,
   Plus,
   Calendar,
+  Save,
   ExternalLink,
   Sparkles,
   Loader2,
@@ -35,11 +36,6 @@ import Podogram from "../../../components/Podogram";
 import { ExamSheetsSection } from "../../../components/ExamSheetsSection";
 import AutocompleteInput from "../../../components/AutocompleteInput";
 import PrescriptionManager from "../../../components/PrescriptionManager";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../../../firebase";
-import { useToast } from "../../../components/Toast";
-import { ClinicalDocumentStatusActions } from "./ClinicalDocumentStatusActions";
-import { ClinicalAddendumComposer } from "./ClinicalAddendumComposer";
 
 interface ProfessionalConsultationFormProps {
   newConsultation: Partial<Consultation>;
@@ -58,15 +54,13 @@ interface ProfessionalConsultationFormProps {
   pinDiagnosis?: (d: SnomedConcept) => void;
   handleVitalsChange: (field: string, value: any) => void;
   handleExamChange: (field: string, value: any) => void;
+  handleCreateConsultation: () => Promise<Patient | null>;
   setIsPrintModalOpen: (s: boolean) => void;
   setDocsToPrint: (docs: any[]) => void;
   setIsClinicalReportOpen: (s: boolean) => void;
   setIsExamOrderModalOpen: (s: boolean) => void;
   setIsCreatingConsultation: (s: boolean) => void;
   hasActiveCenter: boolean;
-  activeCenterId: string;
-  appointmentContextId?: string | null;
-  clearDraft: () => void;
 }
 
 type AiSuggestionState = ClinicalAiResult & {
@@ -79,6 +73,8 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
   setNewConsultation,
   role,
   selectedPatient,
+  _onUpdatePatient,
+  setSelectedPatient,
   selectedPatientConsultations,
   allExamOptions,
   moduleGuards,
@@ -91,187 +87,14 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
   pinDiagnosis,
   handleVitalsChange,
   handleExamChange,
+  handleCreateConsultation,
   setIsPrintModalOpen,
   setDocsToPrint,
   setIsClinicalReportOpen,
   setIsExamOrderModalOpen,
   setIsCreatingConsultation,
   hasActiveCenter,
-  activeCenterId,
-  appointmentContextId,
-  clearDraft,
 }) => {
-  const { showToast } = useToast();
-  const [isSavingDocument, setIsSavingDocument] = useState(false);
-  const spontaneousRequestId = useRef(
-    `spontaneous_${Date.now()}_${Math.random().toString(36).slice(2)}`
-  );
-  const documentIsSigned = newConsultation.recordStatus === "signed";
-
-  const requestId = (prefix: string, stableSeed?: string) => {
-    const seed = stableSeed || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    return `${prefix}_${seed}`
-      .replace(/[^A-Za-z0-9_-]/g, "_")
-      .slice(0, 128)
-      .padEnd(16, "0");
-  };
-
-  const editablePatch = () => {
-    const allowed = [
-      "consultationType",
-      "reason",
-      "anamnesis",
-      "physicalExam",
-      "diagnosis",
-      "diagnoses",
-      "prescriptions",
-      "prescriptionTypes",
-      "hasControlledPrescription",
-      "weight",
-      "height",
-      "bmi",
-      "bloodPressure",
-      "heartRate",
-      "hgt",
-      "waist",
-      "hip",
-      "dentalMap",
-      "podogram",
-      "exams",
-      "examSheets",
-      "nextControlDate",
-      "nextControlReason",
-      "reminderActive",
-      "encounterMetadata",
-    ] as const;
-    return Object.fromEntries(
-      allowed
-        .filter((field) => newConsultation[field] !== undefined)
-        .map((field) => [field, newConsultation[field]])
-    );
-  };
-
-  const saveServerDraft = async (): Promise<string | null> => {
-    if (!activeCenterId || documentIsSigned) return newConsultation.id || null;
-    setIsSavingDocument(true);
-    try {
-      let draftId = newConsultation.id;
-      if (!draftId) {
-        const createDraft = httpsCallable<
-          {
-            centerId: string;
-            patientId: string;
-            appointmentId?: string;
-            requestId: string;
-            consultationType?: "morbidity" | "pscv";
-          },
-          { success: true; documentId: string }
-        >(functions, "createDraftFromAppointment");
-        const stableSeed = appointmentContextId || spontaneousRequestId.current;
-        const created = await createDraft({
-          centerId: activeCenterId,
-          patientId: selectedPatient.id,
-          ...(appointmentContextId ? { appointmentId: appointmentContextId } : {}),
-          requestId: requestId("create_draft", stableSeed),
-          consultationType: newConsultation.consultationType || "morbidity",
-        });
-        draftId = created.data.documentId;
-      }
-      const updateDraft = httpsCallable(functions, "updateOwnDraft");
-      await updateDraft({
-        centerId: activeCenterId,
-        patientId: selectedPatient.id,
-        draftId,
-        requestId: requestId("update_draft"),
-        patch: editablePatch(),
-      });
-      setNewConsultation((previous) => ({
-        ...previous,
-        id: draftId,
-        appointmentId: appointmentContextId || previous.appointmentId,
-        recordStatus: "draft",
-      }));
-      showToast("Borrador clínico guardado", "success");
-      return draftId || null;
-    } catch (error) {
-      console.error("No se pudo guardar el borrador clínico", error);
-      showToast("No se pudo guardar el borrador. La atención sigue abierta.", "error");
-      return null;
-    } finally {
-      setIsSavingDocument(false);
-    }
-  };
-
-  const signServerDraft = async () => {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(
-        "Al firmar, el contenido quedará bloqueado. Las correcciones posteriores requieren una adenda. ¿Desea continuar?"
-      )
-    ) {
-      return;
-    }
-    const draftId = await saveServerDraft();
-    if (!draftId) return;
-    setIsSavingDocument(true);
-    try {
-      const sign = httpsCallable(functions, "signDraft");
-      await sign({
-        centerId: activeCenterId,
-        patientId: selectedPatient.id,
-        draftId,
-        requestId: requestId("sign_draft"),
-      });
-      clearDraft();
-      setNewConsultation((previous) => ({ ...previous, id: draftId, recordStatus: "signed" }));
-      showToast("Atención firmada. El contenido quedó bloqueado.", "success");
-    } catch (error) {
-      console.error("No se pudo firmar la atención", error);
-      showToast("No se pudo firmar. El documento permanece como borrador.", "error");
-    } finally {
-      setIsSavingDocument(false);
-    }
-  };
-
-  const clinicalAddendumRoles = new Set([
-    "MEDICO",
-    "ENFERMERA",
-    "TENS",
-    "NUTRICIONISTA",
-    "PSICOLOGO",
-    "KINESIOLOGO",
-    "TERAPEUTA_OCUPACIONAL",
-    "FONOAUDIOLOGO",
-    "PODOLOGO",
-    "TECNOLOGO_MEDICO",
-    "ASISTENTE_SOCIAL",
-    "PREPARADOR_FISICO",
-    "MATRONA",
-    "ODONTOLOGO",
-    "QUIMICO_FARMACEUTICO",
-  ]);
-  const canAppendAddendum = clinicalAddendumRoles.has(String(role || "").toUpperCase());
-
-  const appendClinicalAddendum = async (text: string) => {
-    if (!activeCenterId || !newConsultation.id || !documentIsSigned || !canAppendAddendum) {
-      throw new Error("Documento firmado o capacidad clínica no disponible.");
-    }
-    const append = httpsCallable(functions, "appendAddendum");
-    await append({
-      centerId: activeCenterId,
-      patientId: selectedPatient.id,
-      signedDocumentId: newConsultation.id,
-      requestId: requestId("append_addendum"),
-      text,
-    });
-    showToast("Adenda firmada y vinculada a la atención.", "success");
-  };
-
-  const closeSignedDocument = () => {
-    clearDraft();
-    setNewConsultation({ consultationType: "morbidity", recordStatus: "draft" });
-    setIsCreatingConsultation(false);
-  };
   const [expandedSection, setExpandedSection] = useState<string>("anamnesis");
   const [chronicDecisions, setChronicDecisions] = useState<Record<string, "yes" | "no">>({});
   const [showLicenciaOptions, setShowLicenciaOptions] = useState(false);
@@ -565,32 +388,6 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
         };
     }
   }, [role]);
-
-  if (documentIsSigned) {
-    return (
-      <section
-        data-testid="clinical-document-signed"
-        className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <ClinicalDocumentStatusActions
-            status="signed"
-            onSaveDraft={() => undefined}
-            onSign={() => undefined}
-          />
-          <button
-            type="button"
-            onClick={closeSignedDocument}
-            className="rounded-lg p-2 text-emerald-900 hover:bg-emerald-100"
-            aria-label="Cerrar atención firmada"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <ClinicalAddendumComposer allowed={canAppendAddendum} onAppend={appendClinicalAddendum} />
-      </section>
-    );
-  }
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-slate-200 animate-slideUp">
@@ -1120,13 +917,24 @@ export const ProfessionalConsultationForm: React.FC<ProfessionalConsultationForm
               )}
             </div>
           )}
-          <ClinicalDocumentStatusActions
-            status="draft"
-            busy={isSavingDocument}
+          <button
+            data-testid="btn-finalizar-consulta"
+            onClick={async () => {
+              const updatedPatient = await handleCreateConsultation();
+              if (updatedPatient) setSelectedPatient(updatedPatient);
+            }}
             disabled={!hasActiveCenter}
-            onSaveDraft={() => void saveServerDraft()}
-            onSign={() => void signServerDraft()}
-          />
+            className={`px-10 py-5 rounded-2xl font-bold transition-all flex items-center gap-3 text-xl disabled:opacity-50 disabled:cursor-not-allowed shadow-xl ${
+              newConsultation.consultationType === "pscv"
+                ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 text-white"
+                : "bg-primary-600 hover:bg-primary-700 shadow-primary-200 text-white"
+            }`}
+          >
+            <Save className="w-7 h-7" />{" "}
+            {newConsultation.consultationType === "pscv"
+              ? "Finalizar Control PSCV"
+              : "Guardar Atención"}
+          </button>
         </div>
       </div>
     </div>
