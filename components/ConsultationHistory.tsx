@@ -127,7 +127,9 @@ const ConsultationHistory: React.FC<ConsultationHistoryProps> = ({
       const requestId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID().replace(/-/g, "")
-          : `${Date.now()}${Math.random().toString(36).slice(2)}`.padEnd(16, "0");
+          : `${Date.now()}${Math.random().toString(36).slice(2)}`
+              .replace(/[^A-Za-z0-9_-]/g, "")
+              .padEnd(16, "0");
       const result = await appendCorrection({
         centerId,
         patientId,
