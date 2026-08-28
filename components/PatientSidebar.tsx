@@ -31,6 +31,7 @@ import {
   Phone,
 } from "lucide-react";
 import AutocompleteInput from "./AutocompleteInput";
+import { getHistoryCode, getHistoryDisplay } from "../features/doctor/utils/patientHistory";
 
 const BTN_MEDICAL_HISTORY = [
   { id: "HTA", display: "HTA", code: "38341003" },
@@ -172,7 +173,7 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
 
     const normalValue = value.trim().toLowerCase();
     const alreadyExists = list.some((item) => {
-      const label = typeof item === "string" ? item : item.display;
+      const label = getHistoryDisplay(item);
       return label.toLowerCase() === normalValue;
     });
 
@@ -220,16 +221,16 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
   };
 
   const customMedicalItems = medicalHistory.filter((x) => {
-    const display = typeof x === "string" ? x : x.display;
-    const code = typeof x === "string" ? "" : x.code;
+    const display = getHistoryDisplay(x);
+    const code = getHistoryCode(x);
     return !BTN_MEDICAL_HISTORY.some(
       (btn) => btn.code === code || btn.display.toLowerCase() === display.toLowerCase()
     );
   });
 
   const customSurgicalItems = surgicalHistory.filter((x) => {
-    const display = typeof x === "string" ? x : x.display;
-    const code = typeof x === "string" ? "" : x.code;
+    const display = getHistoryDisplay(x);
+    const code = getHistoryCode(x);
     return !BTN_SURGICAL_HISTORY.some(
       (btn) => btn.code === code || btn.display.toLowerCase() === display.toLowerCase()
     );
@@ -467,8 +468,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           /* Read Mode */
           <div className="flex flex-wrap gap-1.5">
             {medicalHistory.map((h, idx) => {
-              const label = typeof h === "string" ? h : h.display;
-              const code = typeof h === "string" ? "" : h.code;
+              const label = getHistoryDisplay(h);
+              const code = getHistoryCode(h);
               const isPredef = BTN_MEDICAL_HISTORY.some(
                 (b) => b.display.toLowerCase() === label.toLowerCase() || b.code === code
               );
@@ -602,8 +603,8 @@ const PatientSidebar: React.FC<PatientSidebarProps> = ({
           /* Read Mode */
           <div className="flex flex-wrap gap-1.5">
             {surgicalHistory.map((h, idx) => {
-              const label = typeof h === "string" ? h : h.display;
-              const code = typeof h === "string" ? "" : h.code;
+              const label = getHistoryDisplay(h);
+              const code = getHistoryCode(h);
               const isPredef = BTN_SURGICAL_HISTORY.some(
                 (b) => b.display.toLowerCase() === label.toLowerCase() || b.code === code
               );
