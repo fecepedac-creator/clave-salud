@@ -4,6 +4,7 @@ import { Patient, Consultation, Doctor, RoleId } from "../../../types";
 import { formatPersonName, maskRUT } from "../../../utils";
 import BioMarkers from "../../../components/BioMarkers";
 import PatientDetail from "../../../components/PatientDetail";
+import { isProfilePictureAttachment } from "../utils/profilePicture";
 
 interface DoctorPatientHeaderProps {
   selectedPatient: Patient;
@@ -65,21 +66,9 @@ export const DoctorPatientHeader: React.FC<DoctorPatientHeaderProps> = ({
           >
             <ChevronRight className="w-5 h-5 rotate-180" />
           </button>
-          {selectedPatient.attachments?.filter(
-            (a) =>
-              a.type === "profile_picture" ||
-              (a.type === "image" && a.name.toLowerCase().includes("perfil"))
-          ).length ? (
+          {selectedPatient.attachments?.filter(isProfilePictureAttachment).length ? (
             <img
-              src={
-                selectedPatient.attachments
-                  .filter(
-                    (a) =>
-                      a.type === "profile_picture" ||
-                      (a.type === "image" && a.name.toLowerCase().includes("perfil"))
-                  )
-                  .pop()?.url
-              }
+              src={selectedPatient.attachments.filter(isProfilePictureAttachment).pop()?.url}
               alt="Profile"
               className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 shadow-sm"
             />

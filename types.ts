@@ -178,7 +178,7 @@ export interface Allergy {
 export interface Attachment {
   id: string;
   name: string;
-  type: "image" | "pdf" | "other";
+  type: "image" | "pdf" | "other" | "profile_picture";
   date: string;
   url: string;
 }
