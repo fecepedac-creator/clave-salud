@@ -3108,8 +3108,24 @@ export const createPatientConsultation = (functions.https.onCall as any)(
       );
     }
 
-    const patientRef = db.collection("patients").doc(patientId);
-    const patientSnap = await patientRef.get();
+    const rootPatientRef = db.collection("patients").doc(patientId);
+    const legacyPatientRef = db
+      .collection("centers")
+      .doc(centerId)
+      .collection("patients")
+      .doc(patientId);
+    let patientRef = rootPatientRef;
+    let patientSnap = await rootPatientRef.get();
+    let isLegacyCenterPatient = false;
+
+    if (!patientSnap.exists) {
+      patientSnap = await legacyPatientRef.get();
+      if (patientSnap.exists) {
+        patientRef = legacyPatientRef;
+        isLegacyCenterPatient = true;
+      }
+    }
+
     if (!patientSnap.exists) {
       throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
     }
@@ -3123,12 +3139,13 @@ export const createPatientConsultation = (functions.https.onCall as any)(
       ? patient.accessControl.centerIds
       : [];
 
-    const canAccessPatient =
-      patient.ownerUid === uid ||
-      allowedUids.includes(uid) ||
-      careTeamUids.includes(uid) ||
-      centerIds.includes(centerId) ||
-      isSuperAdmin(context);
+    const canAccessPatient = isLegacyCenterPatient
+      ? isStaffMember || isSuperAdmin(context)
+      : patient.ownerUid === uid ||
+        allowedUids.includes(uid) ||
+        careTeamUids.includes(uid) ||
+        centerIds.includes(centerId) ||
+        isSuperAdmin(context);
 
     if (!canAccessPatient) {
       throw new functions.https.HttpsError(
@@ -3228,7 +3245,9 @@ export const createPatientConsultation = (functions.https.onCall as any)(
           actorEmail: lowerEmailFromContext(context) || "unknown",
           actorRole: staffData.role || staffData.clinicalRole || "unknown",
           resourceType: "consultation",
-          resourcePath: `/patients/${patientId}/consultations/${consultationRef.id}`,
+          resourcePath: isLegacyCenterPatient
+            ? `/centers/${centerId}/patients/${patientId}/consultations/${consultationRef.id}`
+            : `/patients/${patientId}/consultations/${consultationRef.id}`,
           timestamp: serverTimestamp(),
           details: "Consulta guardada con texto clinico asistido por IA.",
           metadata: {
