@@ -206,7 +206,7 @@ export function useFirestoreSync(
       (snap: QuerySnapshot<DocumentData>) => {
         const pts = usesOperationalDirectory
           ? snap.docs.map((entry) => mapPatientDirectoryEntry(entry.id, entry.data()))
-          : (snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[]);
+          : (snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as Patient[]);
         setPatients(pts);
       },
       () => setPatients([])

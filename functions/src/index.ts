@@ -3127,8 +3127,49 @@ export const createPatientConsultation = (functions.https.onCall as any)(
     }
 
     if (!patientSnap.exists) {
+      const rootAliasMatches = await db
+        .collection("patients")
+        .where("id", "==", patientId)
+        .limit(2)
+        .get();
+      if (rootAliasMatches.size > 1) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Identificador histórico de paciente ambiguo."
+        );
+      }
+      if (rootAliasMatches.size === 1) {
+        patientSnap = rootAliasMatches.docs[0];
+        patientRef = patientSnap.ref;
+      }
+    }
+
+    if (!patientSnap.exists) {
+      const legacyAliasMatches = await db
+        .collection("centers")
+        .doc(centerId)
+        .collection("patients")
+        .where("id", "==", patientId)
+        .limit(2)
+        .get();
+      if (legacyAliasMatches.size > 1) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Identificador histórico de paciente ambiguo."
+        );
+      }
+      if (legacyAliasMatches.size === 1) {
+        patientSnap = legacyAliasMatches.docs[0];
+        patientRef = patientSnap.ref;
+        isLegacyCenterPatient = true;
+      }
+    }
+
+    if (!patientSnap.exists) {
       throw new functions.https.HttpsError("not-found", "Paciente no encontrado.");
     }
+
+    const resolvedPatientId = patientRef.id;
 
     const patient = patientSnap.data() || {};
     const allowedUids = Array.isArray(patient?.accessControl?.allowedUids)
@@ -3197,7 +3238,7 @@ export const createPatientConsultation = (functions.https.onCall as any)(
     const cleanConsultation = {
       ...consultation,
       id: consultation.id || consultationRef.id,
-      patientId,
+      patientId: resolvedPatientId,
       centerId,
       professionalId: uid,
       professionalRole:
@@ -3240,19 +3281,19 @@ export const createPatientConsultation = (functions.https.onCall as any)(
           type: "ACTION",
           action: "AI_CLINICAL_TEXT_FINALIZED",
           entityType: "document",
-          entityId: patientId,
+          entityId: resolvedPatientId,
           actorUid: uid,
           actorEmail: lowerEmailFromContext(context) || "unknown",
           actorRole: staffData.role || staffData.clinicalRole || "unknown",
           resourceType: "consultation",
           resourcePath: isLegacyCenterPatient
-            ? `/centers/${centerId}/patients/${patientId}/consultations/${consultationRef.id}`
-            : `/patients/${patientId}/consultations/${consultationRef.id}`,
+            ? `/centers/${centerId}/patients/${resolvedPatientId}/consultations/${consultationRef.id}`
+            : `/patients/${resolvedPatientId}/consultations/${consultationRef.id}`,
           timestamp: serverTimestamp(),
           details: "Consulta guardada con texto clinico asistido por IA.",
           metadata: {
             field,
-            patientId,
+            patientId: resolvedPatientId,
             consultationId: consultationRef.id,
             promptId: usageData.promptId || null,
             promptVersion: usageData.promptVersion || null,
