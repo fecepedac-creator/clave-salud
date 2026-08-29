@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Patient, Consultation, ProfessionalRole, ExamDefinition } from "../types";
 import { calculateAge, formatPersonName } from "../utils";
 import { TRACKED_EXAMS_OPTIONS } from "../constants";
-import { FileText, Printer, X } from "lucide-react";
+import { Download, FileText, Printer, X } from "lucide-react";
 import { logAuditEventRequired } from "../hooks/useAuditLog";
+import { downloadClinicalReportWord } from "../utils/clinicalDocumentExport";
 import { useToast } from "./Toast";
 
 type Props = {
@@ -188,9 +190,6 @@ const buildKinesiologyReport = (params: {
   encounters: ReturnType<typeof buildClinicalEncountersJSON>;
   kinePrograms?: any[];
 }) => {
-  const age = calculateAge(params.patient.birthDate);
-  const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
-
   // Try to find the active program or the most recent one
   // In a real scenario, we might want to let the user select the program,
   // but for now we take the one that overlaps with the report dates.
@@ -215,14 +214,10 @@ const buildKinesiologyReport = (params: {
 
   const lines: string[] = [];
 
-  // HEADER
-  lines.push(`INFORME KINÉSICO`);
-  lines.push("");
-  lines.push(`Nombre Paciente: ${formatPersonName(params.patient.fullName)}`);
-  lines.push(`Edad: ${ageLabel}`);
-  lines.push(`Rut: ${params.patient.rut}`);
+  // Los datos identificatorios y el objetivo se presentan en la cabecera del documento.
+  lines.push("Resumen del tratamiento kinésico");
   lines.push(`Diagnóstico: ${diagnosis}`);
-  lines.push(`Numero de sesiones: ${sessionsCount}`);
+  lines.push(`Número de sesiones: ${sessionsCount}`);
   lines.push(`Frecuencia: ${frequency}`);
   lines.push(`Inicio tratamiento: ${startDate}`);
   lines.push("");
@@ -346,21 +341,8 @@ const buildDeterministicReport = (params: {
     return buildKinesiologyReport(params);
   }
 
-  const age = calculateAge(params.patient.birthDate);
-  const ageLabel = Number.isFinite(age) ? `${age}` : MISSING_RECORD;
-  const reportObjective = ensureValue(params.reportObjective);
-
   const lines: string[] = [];
-  lines.push("1. Identificación del paciente");
-  lines.push(`Nombre: ${formatPersonName(params.patient.fullName)}`);
-  lines.push(`RUT: ${params.patient.rut}`);
-  lines.push(`Fecha nacimiento: ${params.patient.birthDate} (Edad: ${ageLabel})`);
-  lines.push(`Sexo: ${params.patient.gender}`);
-  lines.push(`Centro médico: ${params.centerName}`);
-  lines.push("");
-  lines.push("Objetivo del informe:");
-  lines.push(reportObjective);
-  lines.push("");
+  // Identificación, período y objetivo viven en la cabecera institucional.
 
   // Determine if this is primarily a Kinesiology report (has kine sessions)
   const hasKineSessions = params.encounters.some((e) =>
@@ -368,7 +350,7 @@ const buildDeterministicReport = (params: {
   );
 
   if (hasKineSessions) {
-    lines.push("2. Diagnóstico y Antecedentes");
+    lines.push("1. Diagnóstico y antecedentes");
     // Use the diagnosis from the first kine session or program
     const mainDiagnosis =
       params.encounters.find((e) => e.diagnostico !== MISSING_RECORD)?.diagnostico ||
@@ -387,7 +369,7 @@ const buildDeterministicReport = (params: {
     }
     lines.push("");
 
-    lines.push("3. Evolución del Tratamiento (Narrativa)");
+    lines.push("2. Evolución del tratamiento");
     if (params.encounters.length === 0) {
       lines.push("No se registraron sesiones en el período seleccionado.");
     } else {
@@ -448,7 +430,7 @@ const buildDeterministicReport = (params: {
     }
   } else {
     // STANDARD MEDICAL REPORT STRUCTURE
-    lines.push("2. Antecedentes clínicos relevantes");
+    lines.push("1. Antecedentes clínicos relevantes");
 
     const antecedents: string[] = [];
     if (params.patient.medicalHistory?.length) {
@@ -468,7 +450,7 @@ const buildDeterministicReport = (params: {
     }
 
     lines.push("");
-    lines.push("3. Resumen cronológico de atenciones");
+    lines.push("2. Resumen cronológico de atenciones");
     if (params.encounters.length === 0) {
       lines.push(MISSING_RECORD);
     } else {
@@ -495,8 +477,8 @@ const buildDeterministicReport = (params: {
   lines.push("");
   lines.push(
     hasKineSessions
-      ? "4. Conclusión Kinesiológica y Sugerencias"
-      : "6. Conclusión clínica y recomendaciones"
+      ? "3. Conclusión kinesiológica y sugerencias"
+      : "3. Conclusión clínica y recomendaciones"
   );
   lines.push(MISSING_RECORD);
   lines.push("");
@@ -616,16 +598,16 @@ const ClinicalReportModal: React.FC<Props> = ({
   const dateRangeLabel =
     (from || minDate) && (to || maxDate) ? `${from || minDate} a ${to || maxDate}` : "";
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 z-[120] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block">
-      <div className="bg-white w-full max-w-[22cm] h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block clavesalud-clinical-report-print-view">
+      <div className="bg-white w-full max-w-[22cm] h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none clinical-report-print-box">
         {/* Toolbar (Hidden in Print) */}
-        <div className="bg-slate-900 p-4 flex justify-between items-center text-white print:hidden">
+        <div className="bg-slate-900 p-4 flex flex-wrap justify-between items-center gap-3 text-white print:hidden">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
             <h3 className="font-bold text-lg">Informe Clínico</h3>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={async () => {
                 try {
@@ -645,7 +627,7 @@ const ClinicalReportModal: React.FC<Props> = ({
                   window.print();
                 } catch {
                   showToast(
-                    "El informe no se imprimió porque no pudo registrarse la auditoría.",
+                    "La impresión no se realizó porque no pudo registrarse la auditoría.",
                     "error"
                   );
                 }
@@ -654,6 +636,48 @@ const ClinicalReportModal: React.FC<Props> = ({
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
             >
               <Printer className="w-4 h-4" /> Imprimir / Exportar PDF
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await logAuditEventRequired({
+                    centerId: patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                    action: "CLINICAL_REPORT_WORD_EXPORT",
+                    entityType: "patient",
+                    entityId: patient.id,
+                    patientId: patient.id,
+                    details: "Descarga Word editable de informe clinico.",
+                    metadata: {
+                      professionalName,
+                      professionalRole,
+                      reportObjectiveLength: reportObjective.length,
+                    },
+                  });
+                  await downloadClinicalReportWord({
+                    patient,
+                    centerName,
+                    objective: reportObjective,
+                    dateRange: dateRangeLabel,
+                    content: draft,
+                    professional: {
+                      name: professionalName,
+                      role: professionalRole,
+                      rut: professionalRut,
+                      registry: professionalRegistry,
+                    },
+                  });
+                } catch {
+                  showToast(
+                    "La descarga Word no se realizó porque no pudo registrarse la auditoría.",
+                    "error"
+                  );
+                }
+              }}
+              disabled={!canPrint}
+              className="bg-white text-slate-900 hover:bg-slate-100 disabled:opacity-50 px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
+              title="Descarga una copia de trabajo editable; no reemplaza el registro clínico original"
+            >
+              <Download className="w-4 h-4" /> Descargar Word
             </button>
             <button
               onClick={onClose}
@@ -744,7 +768,7 @@ const ClinicalReportModal: React.FC<Props> = ({
         </div>
 
         {/* Printable A4 */}
-        <div className="flex-1 overflow-auto bg-slate-100 p-6 print:p-0 print:bg-white print:block print:overflow-visible">
+        <div className="flex-1 overflow-auto bg-slate-100 p-6 print:p-0 print:bg-white print:block print:overflow-visible clinical-report-print-content">
           <div className="bg-white w-full max-w-[21cm] min-h-[29.7cm] mx-auto p-10 shadow-lg print:shadow-none print-document">
             {/* Header with logos */}
             <header className="flex items-start justify-between gap-6 border-b-2 border-slate-900 pb-4">
@@ -755,6 +779,9 @@ const ClinicalReportModal: React.FC<Props> = ({
                 <h1 className="text-xl font-extrabold text-slate-900 uppercase tracking-wide">
                   Informe Clínico
                 </h1>
+                <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                  Documento clínico institucional
+                </p>
                 {dateRangeLabel ? (
                   <p className="text-xs text-slate-500 mt-1">Rango: {dateRangeLabel}</p>
                 ) : null}
@@ -795,6 +822,19 @@ const ClinicalReportModal: React.FC<Props> = ({
                   <span className="font-bold text-slate-500 uppercase text-xs">Centro</span>
                   <div className="text-slate-900">{centerName}</div>
                 </div>
+                <div>
+                  <span className="font-bold text-slate-500 uppercase text-xs">Profesional</span>
+                  <div className="text-slate-900">{professionalName}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-4 border-l-4 border-blue-600 bg-blue-50 px-4 py-3 print:break-inside-avoid">
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">
+                Objetivo del informe
+              </div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                {reportObjective || "No especificado"}
               </div>
             </section>
 
@@ -803,7 +843,7 @@ const ClinicalReportModal: React.FC<Props> = ({
               <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide mb-2">
                 Contenido
               </h2>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900 border-l-2 border-slate-200 pl-4">
+              <div className="whitespace-pre-wrap text-sm leading-[1.65] text-slate-900">
                 {draft ||
                   "— No hay borrador generado. Vuelve a la vista de edición y presiona 'Generar borrador'."}
               </div>
@@ -814,6 +854,10 @@ const ClinicalReportModal: React.FC<Props> = ({
               <div className="text-xs text-slate-500">
                 <p>Generado el: {new Date().toLocaleDateString("es-CL")}</p>
                 <p>Rol profesional: {professionalRole}</p>
+                <p className="mt-3 max-w-[280px] text-[9px] leading-snug text-slate-400">
+                  Documento generado desde los registros disponibles en ClaveSalud. Su contenido
+                  debe ser revisado por el profesional emisor antes de su entrega.
+                </p>
               </div>
 
               <div className="text-center min-w-[280px]">
@@ -845,24 +889,50 @@ const ClinicalReportModal: React.FC<Props> = ({
             size: A4;
             margin: 12mm;
           }
-          body {
+          html, body {
             background: white;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            height: auto !important;
+            overflow: visible !important;
           }
-          .print\\:block { display: block !important; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }
+
+          body > *:not(.clavesalud-clinical-report-print-view) {
+            display: none !important;
+          }
+
+          .clavesalud-clinical-report-print-view,
+          .clinical-report-print-box,
+          .clinical-report-print-content {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            height: auto !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: white !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+
           .print-document {
+            display: block !important;
+            position: static !important;
             width: 100% !important;
             max-width: none !important;
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            page-break-after: always;
-            break-after: page;
+            min-height: auto !important;
+            overflow: visible !important;
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 

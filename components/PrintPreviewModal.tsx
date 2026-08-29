@@ -27,10 +27,12 @@ interface PrintPreviewModalProps {
   docs: Prescription[];
   doctorName: string;
   doctorRut?: string;
+  doctorProfession?: string;
   doctorSpecialty?: string;
-  doctorInstitution?: string;
   centerName?: string;
   centerLogoUrl?: string;
+  centerAddress?: string;
+  centerPhone?: string;
   selectedPatient: Patient | null;
 }
 
@@ -47,20 +49,26 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   docs,
   doctorName,
   doctorRut: propRut,
+  doctorProfession,
   doctorSpecialty: propSpecialty,
-  doctorInstitution: propInstitution,
   centerName,
   centerLogoUrl,
+  centerAddress,
+  centerPhone,
   selectedPatient,
 }) => {
   const { showToast } = useToast();
   if (!isOpen || !selectedPatient || docs.length === 0) return null;
 
-  const today = new Date().toLocaleDateString("es-CL", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const formatIssueDate = (value?: string) => {
+    const parsed = value ? new Date(value) : new Date();
+    const safeDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    return safeDate.toLocaleDateString("es-CL", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
 
   const origin =
     window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
@@ -109,10 +117,10 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     pdf.save(filename);
   };
 
-  // Fallback values for missing info
-  const doctorRut = propRut || "No registrado";
-  const doctorSpecialty = propSpecialty || "MEDICINA GENERAL";
-  const doctorInstitution = propInstitution || "";
+  // Mostrar solo datos ya registrados; un documento clínico no debe inventar
+  // valores para completar antecedentes legales faltantes.
+  const doctorRut = propRut?.trim();
+  const doctorSpecialty = propSpecialty?.trim();
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block clavesalud-print-view">
@@ -178,88 +186,90 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
               className="bg-white w-full max-w-[148mm] min-h-[210mm] p-8 relative flex flex-col shadow-lg print-document"
               id="print-area"
             >
-              {/* 1. Header (Doctor Info) */}
-              <header className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start gap-4 print:break-inside-avoid">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src="/assets/logo.png"
-                      alt="ClaveSalud"
-                      width="120"
-                      height="30"
-                      className="h-8 w-auto object-contain max-w-[120px]"
-                      style={{ objectFit: "contain" }}
-                    />
-                    <div>
-                      <h1 className="text-base font-serif font-bold text-slate-900 tracking-wide uppercase leading-tight">
-                        {doctorName}
-                      </h1>
-                      {doctorRut && (
-                        <p className="text-[9px] font-mono font-bold text-slate-500 mt-0.5">
-                          RUT: {doctorRut}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-[11px] text-slate-700 font-serif mt-3">
-                    <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">
-                      Especialidad
+              {/* 1. Encabezado institucional: centro y profesional en columnas separadas */}
+              <header className="grid grid-cols-2 gap-8 border-b-2 border-slate-900 pb-5 mb-6 print:break-inside-avoid">
+                <section
+                  className="flex items-start gap-3 min-w-0"
+                  aria-label="Datos del centro médico"
+                >
+                  <img
+                    src={centerLogoUrl || "/assets/logo.png"}
+                    alt={centerName ? `Logo ${centerName}` : "ClaveSalud"}
+                    width="48"
+                    height="48"
+                    className="h-10 w-10 shrink-0 object-contain"
+                    style={{ objectFit: "contain" }}
+                    loading="lazy"
+                    onError={(event) => {
+                      if (!event.currentTarget.src.endsWith("/assets/logo.png")) {
+                        event.currentTarget.src = "/assets/logo.png";
+                      }
+                    }}
+                  />
+                  <div className="min-w-0 font-sans text-[10px] leading-relaxed text-slate-600">
+                    <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                      Centro médico
                     </p>
-                    <p className="text-base">{doctorSpecialty}</p>
-                    <p className="italic text-slate-500">{doctorInstitution}</p>
+                    <h1 className="text-[14px] font-bold leading-tight text-slate-900">
+                      {centerName || "ClaveSalud"}
+                    </h1>
+                    {centerAddress && <p className="mt-1">{centerAddress}</p>}
+                    {centerPhone && <p>{centerPhone}</p>}
                   </div>
-                </div>
+                </section>
 
-                <div className="text-right flex flex-col items-end gap-2">
-                  {centerLogoUrl ? (
-                    <img
-                      src={centerLogoUrl}
-                      alt={centerName ? `Logo ${centerName}` : "Logo centro"}
-                      width="120"
-                      height="30"
-                      className="h-8 w-auto object-contain max-w-[120px]"
-                      style={{ objectFit: "contain" }}
-                      loading="lazy"
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : null}
-                  <div className="border-2 border-slate-900 px-3 py-1 inline-block rounded">
-                    <h2 className="text-sm font-bold font-serif text-slate-900 uppercase">
+                <section
+                  className="min-w-0 text-right font-sans"
+                  aria-label="Datos del profesional"
+                >
+                  <div className="mb-3 inline-block rounded-md border-2 border-slate-900 px-3 py-1">
+                    <h2 className="text-[12px] font-bold uppercase tracking-wide text-slate-900">
                       {doc.type}
                     </h2>
                   </div>
-                </div>
+                  <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    Profesional tratante
+                  </p>
+                  <h3 className="text-[14px] font-bold leading-tight text-slate-900">
+                    {doctorName}
+                  </h3>
+                  <div className="mt-1 text-[10px] leading-relaxed text-slate-600">
+                    {doctorProfession && <p>{doctorProfession}</p>}
+                    {doctorSpecialty && <p>Especialidad: {doctorSpecialty}</p>}
+                    {doctorRut && <p className="font-mono">RUT: {doctorRut}</p>}
+                  </div>
+                </section>
               </header>
 
               {/* 2. Patient Info (Required by Law) */}
-              <div className="mb-6 py-3 px-4 bg-slate-50 border border-slate-200 rounded-lg print:border-slate-300 print:bg-transparent print:break-inside-avoid">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-[11px] font-serif text-slate-800">
-                  <div className="col-span-full border-b border-slate-200 pb-1 mb-1 print:border-slate-300">
-                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
-                      Paciente:
-                    </span>{" "}
-                    <span className="text-base font-bold">{selectedPatient.fullName}</span>
+              <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 font-sans print:break-inside-avoid print:border-slate-300 print:bg-transparent">
+                <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Paciente
+                </p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[10px] text-slate-700">
+                  <div className="col-span-2 mb-1 border-b border-slate-200 pb-2 print:border-slate-300">
+                    <span className="text-[15px] font-bold text-slate-900">
+                      {selectedPatient.fullName}
+                    </span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">RUT:</span>{" "}
-                    <span className="font-mono text-sm">{selectedPatient.rut}</span>
+                    <span className="font-bold">RUT:</span>{" "}
+                    <span className="font-mono">{selectedPatient.rut}</span>
                   </div>
                   <div>
-                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
-                      Edad:
-                    </span>{" "}
+                    <span className="font-bold">Edad:</span>{" "}
                     {calculateAge(selectedPatient.birthDate) ?? "-"} años
                   </div>
-                  <div className="col-span-full">
-                    <span className="font-bold uppercase text-[9px] text-slate-500 mr-2">
-                      Dirección:
-                    </span>{" "}
-                    {selectedPatient.address || "No registrada"}{" "}
-                    {selectedPatient.commune ? `, ${selectedPatient.commune}` : ""}
-                  </div>
+                  {selectedPatient.address && (
+                    <div>
+                      <span className="font-bold">Dirección:</span> {selectedPatient.address}
+                    </div>
+                  )}
+                  {selectedPatient.commune && (
+                    <div>
+                      <span className="font-bold">Comuna:</span> {selectedPatient.commune}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -288,7 +298,8 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     </div>
                     <div className="flex-1">
                       <p>
-                        <span className="font-bold">Fecha de Emisión:</span> {today}
+                        <span className="font-bold">Fecha de Emisión:</span>{" "}
+                        {formatIssueDate(doc.createdAt)}
                       </p>
                       <p className="mt-0.5 text-[10px] text-slate-400">
                         ID: <span className="font-mono">{doc.id}</span>
@@ -315,7 +326,7 @@ const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                     {doctorName}
                   </p>
                   <p className="text-[10px] text-slate-500 uppercase tracking-tighter">
-                    {doctorSpecialty || "Médico Cirujano"}
+                    {[doctorProfession, doctorSpecialty].filter(Boolean).join(" · ")}
                   </p>
                   {doctorRut && (
                     <p className="text-[9px] text-slate-400 font-mono mt-0.5">RUT: {doctorRut}</p>
