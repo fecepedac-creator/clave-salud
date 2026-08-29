@@ -468,6 +468,7 @@ describe("Firestore security rules - pilot RBAC", () => {
       ["patientPortalIdentities", "doctorA"],
       ["centers", CENTER_A, "patientPortalGrants", "grant"],
       ["centers", CENTER_A, "portalConsents", "consent"],
+      ["centers", CENTER_A, "reminderJobs", "reminder"],
       ["centers", CENTER_A, "patients", "patientA", "portalDocuments", "document"],
       ["centers", CENTER_A, "patients", "patientA", "consentAcceptances", "acceptance"],
     ];
