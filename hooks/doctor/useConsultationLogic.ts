@@ -379,8 +379,19 @@ export const useConsultationLogic = ({
 
       if (selectedPatient.dataScope !== "operational") {
         const patientRef = doc(db, "patients", selectedPatient.id);
-        const patientSnapshot = await getDoc(patientRef);
-        if (!patientSnapshot.exists()) {
+        let patientExists = false;
+        try {
+          const patientSnapshot = await getDoc(patientRef);
+          patientExists = patientSnapshot.exists();
+        } catch (error: any) {
+          if (
+            error?.code !== "permission-denied" &&
+            error?.code !== "firestore/permission-denied"
+          ) {
+            throw error;
+          }
+        }
+        if (!patientExists) {
           await onUpdatePatient(selectedPatient);
           const persistedPatientSnapshot = await getDoc(patientRef);
           if (!persistedPatientSnapshot.exists()) {
