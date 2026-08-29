@@ -1,25 +1,5 @@
 {
   "area": "patient-portal",
-<<<<<<< HEAD
-  "title": "Patient Portal",
-  "date": "2026-03-22",
-  "generatedAt": "2026-03-22T21:11:38.805Z",
-  "summary": {
-    "pass": 0,
-    "fail": 1,
-    "warning": 0,
-    "overall": "ALTO RIESGO"
-  },
-  "reportPath": "docs/audits/2026/2026-03-22_patient-portal_smoke.md",
-  "results": [
-    {
-      "command": "npx playwright test tests/pilot.spec.ts --reporter=line",
-      "status": "fail",
-      "startedAt": "2026-03-22T21:11:34.047Z",
-      "finishedAt": "2026-03-22T21:11:38.803Z",
-      "output": "[dotenv@17.3.1] injecting env (17) from .env.test -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com\nError: No tests found.\nMake sure that arguments are regular expressions matching test files.\nYou may need to escape symbols like \"$\" or \"*\" and quote the arguments.\n\n\u001b[1A\u001b[2K",
-      "error": "Command failed: npx playwright test tests/pilot.spec.ts --reporter=line"
-=======
   "title": "Portal paciente y booking público",
   "date": "2026-03-22",
   "generatedAt": "2026-03-22T21:37:59.461Z",
@@ -54,7 +34,6 @@
       "finishedAt": "2026-03-22T21:37:59.460Z",
       "output": "Playwright preflight falló y --require-playwright está activo.",
       "error": "browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝\nSugerencia: npx playwright install"
->>>>>>> pr-104
     }
   ]
 }
