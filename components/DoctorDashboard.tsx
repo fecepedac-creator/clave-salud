@@ -33,6 +33,7 @@ import { usePatientManagement } from "../hooks/doctor/usePatientManagement";
 import { useConsultationLogic } from "../hooks/doctor/useConsultationLogic";
 import { usePrescriptionLogic } from "../hooks/doctor/usePrescriptionLogic";
 import { useDashboardData } from "../hooks/doctor/useDashboardData";
+import { canSendPatientCommunication } from "../utils/patientCommunication";
 
 import { KinesiologyProgram, KinesiologySession } from "../types";
 import { DoctorPatientsListTab } from "../features/doctor/components/DoctorPatientsListTab";
@@ -369,17 +370,55 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       .replace(/{nextControlReason}/g, nextCtrlReason);
   };
 
-  const openWhatsApp = (p: Patient, templateBody: string) => {
+  const openWhatsAppMessage = (
+    p: Patient,
+    message: string,
+    context: "reminder" | "marketing" = "reminder"
+  ) => {
+    const permission = canSendPatientCommunication(
+      p,
+      "whatsapp",
+      context === "marketing" ? "marketing" : "transactional"
+    );
+    if (!permission.allowed) {
+      onLogActivity({
+        action: "PATIENT_UPDATE",
+        entityType: "patient",
+        entityId: p.id,
+        patientId: p.id,
+        details:
+          permission.reason === "opted_out"
+            ? `Envío ${context} bloqueado por opt-out en WhatsApp.`
+            : `Envío ${context} bloqueado por falta de consentimiento en WhatsApp.`,
+        metadata: { channel: "whatsapp", status: `blocked_${permission.reason}`, context },
+      });
+      showToast(
+        permission.reason === "opted_out"
+          ? "Paciente con opt-out en WhatsApp. Envío bloqueado."
+          : "Falta consentimiento para enviar marketing por WhatsApp.",
+        "warning"
+      );
+      return;
+    }
     const phone = normalizePhone(p.phone || "");
     if (!phone) {
       showToast("Paciente sin teléfono registrado.", "warning");
       return;
     }
-    const text = buildWhatsAppText(templateBody, p);
     const waPhone = phone.replaceAll("+", "");
-    const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
+    const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+    onLogActivity({
+      action: "PATIENT_UPDATE",
+      entityType: "patient",
+      entityId: p.id,
+      patientId: p.id,
+      metadata: { channel: "whatsapp", status: "ready_to_send", context },
+    });
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  const openWhatsApp = (p: Patient, templateBody: string) =>
+    openWhatsAppMessage(p, buildWhatsAppText(templateBody, p));
 
   const handleSaveExamOrderProfile = async (profile: { label: string; exams: string[] }) => {
     if (!currentUser || !currentUser.id) return;
@@ -418,6 +457,24 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const sendConsultationByEmail = (consultation: Consultation) => {
     if (!selectedPatient) {
       showToast("Paciente no seleccionado.", "warning");
+      return;
+    }
+
+    const emailPermission = canSendPatientCommunication(selectedPatient, "email", "clinical");
+    if (!emailPermission.allowed) {
+      onLogActivity({
+        action: "PATIENT_UPDATE",
+        entityType: "patient",
+        entityId: selectedPatient.id,
+        patientId: selectedPatient.id,
+        details: "Envío clínico por email bloqueado por opt-out.",
+        metadata: {
+          channel: "email",
+          status: `blocked_${emailPermission.reason}`,
+          context: "clinical_summary",
+        },
+      });
+      showToast("Paciente con opt-out en email. Envío bloqueado.", "warning");
       return;
     }
 
@@ -484,6 +541,17 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       subject,
       body: lines.join("\n"),
     });
+    onLogActivity({
+      action: "PATIENT_UPDATE",
+      entityType: "patient",
+      entityId: selectedPatient.id,
+      patientId: selectedPatient.id,
+      metadata: {
+        channel: "email",
+        status: ok ? "ready_to_send" : "failed_open_client",
+        context: "clinical_summary",
+      },
+    });
     if (!ok) showToast("No se pudo abrir el correo.", "error");
   };
   // --- módulos del centro (SuperAdmin) ---
@@ -542,12 +610,29 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
   const whatsappPhone = slotModal.appointment
     ? normalizePhone(slotModal.appointment.patientPhone || "")
     : "";
-  const cancelWhatsappUrl = slotModal.appointment
-    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(cancelWhatsappMessage)}`
-    : "#";
-  const confirmWhatsappUrl = slotModal.appointment
-    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(confirmWhatsappMessage)}`
-    : "#";
+  const slotModalPatient = slotModal.appointment
+    ? (patients.find((patient) => patient.id === slotModal.appointment?.patientId) ??
+      patients.find(
+        (patient) => normalizeRut(patient.rut) === normalizeRut(slotModal.appointment?.patientRut)
+      ) ??
+      null)
+    : null;
+
+  const openSlotWhatsApp = (message: string) => {
+    if (slotModalPatient) {
+      openWhatsAppMessage(slotModalPatient, message);
+      return;
+    }
+    if (!whatsappPhone) {
+      showToast("Paciente sin teléfono registrado.", "warning");
+      return;
+    }
+    window.open(
+      `https://wa.me/${whatsappPhone.replaceAll("+", "")}?text=${encodeURIComponent(message)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
 
   const enabledWhatsappTemplates = useMemo(
     () => whatsappTemplates.filter((template) => template.enabled),
@@ -1141,22 +1226,20 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                           >
                             Cerrar
                           </button>
-                          <a
-                            href={cancelWhatsappUrl}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openSlotWhatsApp(cancelWhatsappMessage)}
                             className="py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
                           >
                             <MessageCircle className="w-4 h-4" /> Cancelar hora por WhatsApp
-                          </a>
-                          <a
-                            href={confirmWhatsappUrl}
-                            target="_blank"
-                            rel="noreferrer"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openSlotWhatsApp(confirmWhatsappMessage)}
                             className="py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
                           >
                             <MessageCircle className="w-4 h-4" /> Confirmar hora por WhatsApp
-                          </a>
+                          </button>
                           <div className="pt-2 border-t border-slate-200">
                             <p className="text-xs font-bold text-slate-500 uppercase mb-2">
                               Plantillas del centro
@@ -1178,22 +1261,15 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
                                   nextControlDate: slotDateLabel,
                                   centerName,
                                 });
-                                const whatsappPhone = slotModal.appointment
-                                  ? normalizePhone(slotModal.appointment.patientPhone || "")
-                                  : "";
-                                const templateUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
-                                  templateMessage
-                                )}`;
                                 return (
-                                  <a
+                                  <button
                                     key={template.id}
-                                    href={templateUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                    type="button"
+                                    onClick={() => openSlotWhatsApp(templateMessage)}
                                     className="py-2 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
                                   >
                                     <MessageCircle className="w-4 h-4" /> {template.title}
-                                  </a>
+                                  </button>
                                 );
                               })}
                             </div>

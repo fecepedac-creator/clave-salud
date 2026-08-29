@@ -110,18 +110,21 @@ async function seedBaseData() {
       active: true,
       directoryVersion: 1,
     });
-    await setDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"), {
-      centerId: CENTER_A,
-      patientId: "patientA",
-      professionalId: "doctorA",
-      professionalName: "Doctor A",
-      professionalRole: "medico",
-      professionalRut: "1-9",
-      evolution: "Evolucion clinica privada",
-      prescriptions: [],
-      prescriptionTypes: [],
-      hasControlledPrescription: false,
-    });
+    await setDoc(
+      doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"),
+      {
+        centerId: CENTER_A,
+        patientId: "patientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        professionalRut: "1-9",
+        evolution: "Evolucion clinica privada",
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      }
+    );
     await setDoc(
       doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "signedConsultA"),
       {
@@ -313,23 +316,20 @@ describe("Firestore security rules - pilot RBAC", () => {
   it("blocks direct creation of a lifecycle document from the client", async () => {
     const db = authedDb("doctorA");
     await assertFails(
-      setDoc(
-        doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "clientDraft"),
-        {
-          centerId: CENTER_A,
-          patientId: "patientA",
-          professionalId: "doctorA",
-          professionalName: "Doctor A",
-          professionalRole: "medico",
-          professionalRut: "1-9",
-          authorUid: "doctorA",
-          recordStatus: "draft",
-          revision: 1,
-          prescriptions: [],
-          prescriptionTypes: [],
-          hasControlledPrescription: false,
-        }
-      )
+      setDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "clientDraft"), {
+        centerId: CENTER_A,
+        patientId: "patientA",
+        professionalId: "doctorA",
+        professionalName: "Doctor A",
+        professionalRole: "medico",
+        professionalRut: "1-9",
+        authorUid: "doctorA",
+        recordStatus: "draft",
+        revision: 1,
+        prescriptions: [],
+        prescriptionTypes: [],
+        hasControlledPrescription: false,
+      })
     );
   });
 
@@ -495,19 +495,51 @@ describe("Firestore security rules - pilot RBAC", () => {
     await assertFails(getDoc(doc(authedDb("secretaryA"), "patients", "rootPatientA")));
   });
 
+  it("validates communication preferences on root patient updates", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "patients", "communicationPatient"), {
+        centerId: CENTER_A,
+        fullName: "Paciente Comunicaciones",
+        accessControl: { centerIds: [CENTER_A], allowedUids: ["doctorA"] },
+        careTeamUids: ["doctorA"],
+      });
+    });
+
+    const patientRef = doc(authedDb("doctorA"), "patients", "communicationPatient");
+    await assertSucceeds(
+      updateDoc(patientRef, {
+        communication: {
+          email: { consent: true, optedOut: false },
+          whatsapp: { consent: false, optedOut: true },
+        },
+      })
+    );
+    await assertFails(
+      updateDoc(patientRef, {
+        communication: {
+          email: { consent: "yes", optedOut: false },
+          whatsapp: { consent: false, optedOut: false },
+        },
+      })
+    );
+  });
+
   it("keeps global super admin out of clinical records while preserving staff metadata", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), "patients", "rootPatientA", "consultations", "rootConsultA"), {
-        centerId: CENTER_A,
-        patientId: "rootPatientA",
-        professionalId: "doctorA",
-        professionalName: "Doctor A",
-        professionalRole: "medico",
-        evolution: "Contenido clínico privado",
-        prescriptions: [],
-        prescriptionTypes: [],
-        hasControlledPrescription: false,
-      });
+      await setDoc(
+        doc(context.firestore(), "patients", "rootPatientA", "consultations", "rootConsultA"),
+        {
+          centerId: CENTER_A,
+          patientId: "rootPatientA",
+          professionalId: "doctorA",
+          professionalName: "Doctor A",
+          professionalRole: "medico",
+          evolution: "Contenido clínico privado",
+          prescriptions: [],
+          prescriptionTypes: [],
+          hasControlledPrescription: false,
+        }
+      );
     });
 
     const superDb = authedDb("superAdmin", "super@example.test", { super_admin: true });
@@ -579,13 +611,7 @@ describe("Firestore security rules - pilot RBAC", () => {
     });
     await assertFails(
       updateDoc(
-        doc(
-          authedDb("doctorA"),
-          "patients",
-          "rootSignedPatient",
-          "consultations",
-          "signedRoot"
-        ),
+        doc(authedDb("doctorA"), "patients", "rootSignedPatient", "consultations", "signedRoot"),
         { diagnosis: "Intento de cambio" }
       )
     );

@@ -396,6 +396,7 @@ export interface Patient extends SoftDeletable {
   insuranceLevel?: "A" | "B" | "C" | "D" | string;
   email?: string;
   phone?: string;
+  communication?: PatientCommunication;
   address?: string;
   commune?: string;
   ethnicity?: string; // DEIS Pueblos Originarios
@@ -461,6 +462,17 @@ export interface Patient extends SoftDeletable {
   // --- Google Drive Integration ---
   driveFileId?: string;
   driveFileLink?: string;
+}
+
+export interface PatientCommunicationChannel {
+  consent: boolean;
+  optedOut: boolean;
+  updatedAt?: FirestoreDateLike;
+}
+
+export interface PatientCommunication {
+  email: PatientCommunicationChannel;
+  whatsapp: PatientCommunicationChannel;
 }
 
 export interface KinesiologyProgram {

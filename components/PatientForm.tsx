@@ -20,6 +20,7 @@ import {
   formatChileanPhone,
   extractChileanPhoneDigits,
 } from "../utils";
+import { createDefaultPatientCommunication } from "../utils/patientCommunication";
 import { CenterContext } from "../CenterContext";
 import {
   Check,
@@ -109,6 +110,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
   const [birthDate, setBirthDate] = useState("");
   const [phoneDigits, setPhoneDigits] = useState("");
   const [email, setEmail] = useState("");
+  const [communication, setCommunication] = useState(createDefaultPatientCommunication());
   const [address, setAddress] = useState(""); // NEW
   const [commune, setCommune] = useState(""); // NEW
   const [gender, setGender] = useState<any>("Masculino");
@@ -234,6 +236,7 @@ const PatientForm: React.FC<PatientFormProps> = ({
       gender,
       phone: formatChileanPhone(phoneDigits),
       email,
+      communication,
       address: finalAddress,
       commune,
       occupation: finalOccupation,
@@ -407,6 +410,56 @@ const PatientForm: React.FC<PatientFormProps> = ({
                   placeholder="correo@ejemplo.com"
                   error={errors.contact}
                 />
+
+                <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-base font-bold text-slate-700">Preferencias de comunicación</p>
+                  <p className="text-sm text-slate-500 mt-1 mb-3">
+                    El consentimiento habilita comunicaciones informativas o de marketing. El
+                    opt-out bloquea todos los envíos por ese canal.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {(["email", "whatsapp"] as const).map((channel) => (
+                      <div
+                        key={channel}
+                        className="rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <p className="font-bold uppercase text-sm text-slate-700">{channel}</p>
+                        <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={communication[channel].consent}
+                            onChange={() =>
+                              setCommunication((current) => ({
+                                ...current,
+                                [channel]: {
+                                  ...current[channel],
+                                  consent: !current[channel].consent,
+                                },
+                              }))
+                            }
+                          />
+                          Autoriza comunicaciones informativas
+                        </label>
+                        <label className="mt-2 flex items-center gap-2 text-sm text-red-600">
+                          <input
+                            type="checkbox"
+                            checked={communication[channel].optedOut}
+                            onChange={() =>
+                              setCommunication((current) => ({
+                                ...current,
+                                [channel]: {
+                                  ...current[channel],
+                                  optedOut: !current[channel].optedOut,
+                                },
+                              }))
+                            }
+                          />
+                          Solicita no recibir mensajes
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="md:col-span-2">
                   <BigInput
