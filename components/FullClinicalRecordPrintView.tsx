@@ -2,8 +2,9 @@ import React, { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Consultation, MedicalCenter, Patient, Prescription, SnomedConcept } from "../types";
 import { calculateAge, openEmailCompose } from "../utils";
-import { Printer, Mail, X } from "lucide-react";
+import { Download, Printer, Mail, X } from "lucide-react";
 import { logAuditEventRequired } from "../hooks/useAuditLog";
+import { downloadFullClinicalRecordWord } from "../utils/clinicalDocumentExport";
 import { useToast } from "./Toast";
 
 interface GeneratedByInfo {
@@ -142,12 +143,12 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm print:p-0 print:bg-white print:block print-modal-root clavesalud-print-view">
       <div className="bg-white w-full max-w-[21cm] h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden animate-fadeIn print:shadow-none print:h-auto print:w-full print:overflow-visible print:rounded-none print-modal-box clavesalud-print-box">
-        <div className="bg-slate-800 p-4 flex justify-between items-center text-white print:hidden">
+        <div className="bg-slate-800 p-4 flex flex-wrap justify-between items-center gap-3 text-white print:hidden">
           <h3 className="font-bold text-lg flex items-center gap-2">
             <Printer className="w-5 h-5 text-indigo-400" />
             Ficha Clínica Completa
           </h3>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={async () => {
                 try {
@@ -164,7 +165,7 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                   window.print();
                 } catch {
                   showToast(
-                    "La ficha no se imprimió porque no pudo registrarse la auditoría.",
+                    "La impresión no se realizó porque no pudo registrarse la auditoría.",
                     "error"
                   );
                 }
@@ -173,6 +174,39 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
             >
               <Printer className="w-4 h-4" />
               Imprimir / Guardar PDF
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await logAuditEventRequired({
+                    centerId:
+                      center?.id || patient.centerId || patient.accessControl?.centerIds?.[0] || "",
+                    action: "FULL_CLINICAL_RECORD_WORD_EXPORT",
+                    entityType: "patient",
+                    entityId: patient.id,
+                    patientId: patient.id,
+                    details: "Descarga Word editable de ficha clinica completa.",
+                    metadata: { consultationCount: sortedConsultations.length },
+                  });
+                  await downloadFullClinicalRecordWord({
+                    patient,
+                    center,
+                    consultations: sortedConsultations,
+                    generatedAt,
+                    generatedBy,
+                  });
+                } catch {
+                  showToast(
+                    "La descarga Word no se realizó porque no pudo registrarse la auditoría.",
+                    "error"
+                  );
+                }
+              }}
+              className="bg-white text-slate-800 hover:bg-slate-100 px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm shadow-md active:scale-95"
+              title="Descarga una copia de trabajo editable; no reemplaza el registro clínico original"
+            >
+              <Download className="w-4 h-4" />
+              Descargar Word
             </button>
             <button
               onClick={handleSendEmail}
@@ -245,6 +279,9 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                           <h1 className="text-xl font-bold text-slate-900">
                             Ficha Clínica Completa
                           </h1>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                            Documento clínico institucional
+                          </p>
                           <p className="text-xs text-slate-500">{centerName}</p>
                           {centerRut ? (
                             <p className="text-xs text-slate-500 font-mono">RUT: {centerRut}</p>
@@ -353,6 +390,22 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                             : "No registrado"}
                         </div>
                       </div>
+                      <div
+                        className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+                          patient.allergies?.length
+                            ? "border-red-200 bg-red-50 text-red-900"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        }`}
+                      >
+                        <span className="font-bold uppercase tracking-wide text-xs">
+                          Alergias:{" "}
+                        </span>
+                        {patient.allergies?.length
+                          ? patient.allergies
+                              .map((allergy) => `${allergy.substance} (${allergy.reaction})`)
+                              .join("; ")
+                          : "Sin alergias conocidas registradas"}
+                      </div>
                     </section>
                   </td>
                 </tr>
@@ -435,6 +488,14 @@ const FullClinicalRecordPrintView: React.FC<FullClinicalRecordPrintViewProps> = 
                                   .join(", ")}
                               </div>
                             ) : null}
+                            <div className="mt-2 rounded-md bg-slate-50 px-3 py-2">
+                              <span className="font-semibold">Plan y próximo control:</span>{" "}
+                              {c.nextControlDate || c.nextControlReason
+                                ? `${formatDate(c.nextControlDate)}${
+                                    c.nextControlReason ? ` - ${c.nextControlReason}` : ""
+                                  }`
+                                : "No registrado"}
+                            </div>
                           </div>
                           {c.prescriptions && c.prescriptions.length > 0 && (
                             <div className="mt-4 pt-3 border-t border-dashed border-slate-200 print:break-inside-avoid">
