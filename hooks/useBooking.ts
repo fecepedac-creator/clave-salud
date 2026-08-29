@@ -18,6 +18,7 @@ import {
   validateRUT,
   getPatientIdByRut,
 } from "../utils";
+import { createDefaultPatientCommunication } from "../utils/patientCommunication";
 
 export function useBooking(
   activeCenterId: string,
@@ -192,6 +193,7 @@ export function useBooking(
         gender: "Otro",
         phone,
         email: email || undefined,
+        communication: createDefaultPatientCommunication(),
         medicalHistory: [],
         surgicalHistory: [],
         smokingStatus: "No fumador",
@@ -253,6 +255,7 @@ export function useBooking(
         rut: formattedRut,
         phone,
         email: email || undefined,
+        communication: createDefaultPatientCommunication(),
       };
       setPrefillContact(storedContact);
       try {

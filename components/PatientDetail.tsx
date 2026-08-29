@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { MedicalCenter, Patient, Consultation, Doctor } from "../types";
+import { MedicalCenter, Patient, Consultation, Doctor, PatientCommunication } from "../types";
 import { auth, db } from "../firebase";
 import { logAccessSafe, logAuditEventSafe, useAuditLog } from "../hooks/useAuditLog";
 import { ChevronDown, FileText, Users } from "lucide-react";
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import FullClinicalRecordPrintView from "./FullClinicalRecordPrintView";
 import { ConfirmModal } from "./ConfirmModal";
+import { withDefaultPatientCommunication } from "../utils/patientCommunication";
 
 interface GeneratedByInfo {
   name: string;
@@ -39,6 +40,10 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [isCareTeamExpanded, setIsCareTeamExpanded] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [communication, setCommunication] = useState<PatientCommunication>(
+    withDefaultPatientCommunication(patient ?? {}).communication
+  );
+  const [savingCommunication, setSavingCommunication] = useState(false);
 
   useEffect(() => {
     if (!patient || !centerId) return;
@@ -54,6 +59,10 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
   useEffect(() => {
     setCareTeamUids(patient?.careTeamUids ?? []);
   }, [patient?.careTeamUids, patient?.id]);
+
+  useEffect(() => {
+    setCommunication(withDefaultPatientCommunication(patient ?? {}).communication);
+  }, [patient?.communication, patient?.id]);
 
   useEffect(() => {
     const loadStaff = async () => {
@@ -128,7 +137,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
     if (!centerId || !patient) return;
     setSavingCareTeam(true);
     try {
-      await updateDoc(doc(db, "centers", centerId, "patients", patient.id), {
+      await updateDoc(doc(db, "patients", patient.id), {
         careTeamUids,
         careTeamUpdatedAt: serverTimestamp(),
         careTeamUpdatedBy: auth.currentUser?.uid ?? "unknown",
@@ -147,6 +156,48 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
       console.error("save care team", error);
     } finally {
       setSavingCareTeam(false);
+    }
+  };
+
+  const toggleCommunication = (
+    channel: keyof PatientCommunication,
+    field: "consent" | "optedOut"
+  ) => {
+    setCommunication((current) => ({
+      ...current,
+      [channel]: {
+        ...current[channel],
+        [field]: !current[channel][field],
+      },
+    }));
+  };
+
+  const handleSaveCommunication = async () => {
+    if (!centerId || !patient) return;
+    setSavingCommunication(true);
+    try {
+      const persistedCommunication = {
+        email: { ...communication.email, updatedAt: serverTimestamp() },
+        whatsapp: { ...communication.whatsapp, updatedAt: serverTimestamp() },
+      };
+      await updateDoc(doc(db, "patients", patient.id), {
+        communication: persistedCommunication,
+        lastUpdated: new Date().toISOString(),
+      });
+      onUpdatePatient?.({ ...patient, communication });
+      await logAuditEventSafe({
+        centerId,
+        action: "PATIENT_UPDATE",
+        entityType: "patient",
+        entityId: patient.id,
+        patientId: patient.id,
+        details: "Actualización de consentimiento y opt-out por canal.",
+        metadata: { communication },
+      });
+    } catch (error) {
+      console.error("save patient communication preferences", error);
+    } finally {
+      setSavingCommunication(false);
     }
   };
 
@@ -196,95 +247,144 @@ const PatientDetail: React.FC<PatientDetailProps> = ({
         generatedBy={generatedBy}
       />
 
-      {isAdminUser && (
-        <div className="relative">
-          <button
-            onClick={() => setIsCareTeamExpanded(!isCareTeamExpanded)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all font-bold text-xs ${
-              isCareTeamExpanded
-                ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-inner"
-                : "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:text-indigo-600 shadow-sm"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span className="hidden lg:inline">
-              Modo: {accessMode === "CARE_TEAM" ? "Equipo" : "Centro"}
-            </span>
-            <ChevronDown
-              className={`w-3.5 h-3.5 transition-transform duration-300 ${isCareTeamExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
+      <div className="relative">
+        <button
+          onClick={() => setIsCareTeamExpanded(!isCareTeamExpanded)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all font-bold text-xs ${
+            isCareTeamExpanded
+              ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-inner"
+              : "bg-white border-slate-100 text-slate-600 hover:border-indigo-100 hover:text-indigo-600 shadow-sm"
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span className="hidden lg:inline">
+            {isAdminUser
+              ? `Modo: ${accessMode === "CARE_TEAM" ? "Equipo" : "Centro"}`
+              : "Comunicaciones"}
+          </span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-300 ${isCareTeamExpanded ? "rotate-180" : ""}`}
+          />
+        </button>
 
-          {isCareTeamExpanded && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 z-50 animate-scaleIn origin-top-right">
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-                <p className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                  Configurar Acceso
-                </p>
+        {isCareTeamExpanded && (
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 z-50 animate-scaleIn origin-top-right">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <p className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                Preferencias del paciente
+              </p>
+              {isAdminUser && (
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${accessMode === "CARE_TEAM" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
                 >
                   {accessMode === "CARE_TEAM" ? "Restringido" : "Abierto"}
                 </span>
-              </div>
+              )}
+            </div>
 
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">
-                  Equipo tratante asignado:
+            <div className="space-y-3">
+              <div className="border-b border-slate-100 pb-3">
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">
+                  Consentimiento de comunicación
                 </p>
-                <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                  {staffMembers.map((member) => (
-                    <label
-                      key={member.id}
-                      className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border transition-colors cursor-pointer ${
-                        careTeamUids.includes(member.id)
-                          ? "bg-indigo-50 border-indigo-100 text-indigo-700"
-                          : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-white"
-                      }`}
+                <p className="text-[10px] text-slate-500 mb-2">
+                  El marketing requiere consentimiento. El opt-out bloquea cualquier envío por el
+                  canal seleccionado.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["email", "whatsapp"] as const).map((channel) => (
+                    <div
+                      key={channel}
+                      className="rounded-lg border border-slate-200 p-2 bg-slate-50"
                     >
-                      <input
-                        type="checkbox"
-                        checked={careTeamUids.includes(member.id)}
-                        onChange={() => toggleCareTeam(member.id)}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-bold leading-tight">
-                          {member.fullName || member.email}
-                        </span>
-                        {member.role && (
-                          <span className="text-[9px] opacity-70 uppercase font-bold">
-                            {member.role}
-                          </span>
-                        )}
-                      </div>
-                    </label>
+                      <p className="text-[10px] font-black uppercase text-slate-700">{channel}</p>
+                      <label className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={communication[channel].consent}
+                          onChange={() => toggleCommunication(channel, "consent")}
+                        />
+                        Marketing autorizado
+                      </label>
+                      <label className="flex items-center gap-1.5 mt-1 text-[10px] text-red-600">
+                        <input
+                          type="checkbox"
+                          checked={communication[channel].optedOut}
+                          onChange={() => toggleCommunication(channel, "optedOut")}
+                        />
+                        Bloquear envíos
+                      </label>
+                    </div>
                   ))}
                 </div>
-
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await handleSaveCareTeam();
-                      setIsCareTeamExpanded(false);
-                    }}
-                    disabled={savingCareTeam}
-                    className="w-full bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-lg shadow-indigo-100"
-                  >
-                    {savingCareTeam ? "Guardando..." : "Guardar Cambios"}
-                  </button>
-                  {accessMode === "CARE_TEAM" && (
-                    <p className="text-[9px] text-amber-600 font-bold text-center mt-2 leading-tight">
-                      * Solo los seleccionados podrán ver esta ficha.
-                    </p>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveCommunication}
+                  disabled={savingCommunication}
+                  className="mt-2 w-full bg-slate-800 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-slate-900 disabled:opacity-50"
+                >
+                  {savingCommunication ? "Guardando..." : "Guardar consentimiento"}
+                </button>
               </div>
+              {isAdminUser && (
+                <>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">
+                    Equipo tratante asignado:
+                  </p>
+                  <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                    {staffMembers.map((member) => (
+                      <label
+                        key={member.id}
+                        className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border transition-colors cursor-pointer ${
+                          careTeamUids.includes(member.id)
+                            ? "bg-indigo-50 border-indigo-100 text-indigo-700"
+                            : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-white"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={careTeamUids.includes(member.id)}
+                          onChange={() => toggleCareTeam(member.id)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex flex-col">
+                          <span className="font-bold leading-tight">
+                            {member.fullName || member.email}
+                          </span>
+                          {member.role && (
+                            <span className="text-[9px] opacity-70 uppercase font-bold">
+                              {member.role}
+                            </span>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await handleSaveCareTeam();
+                        setIsCareTeamExpanded(false);
+                      }}
+                      disabled={savingCareTeam}
+                      className="w-full bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-lg shadow-indigo-100"
+                    >
+                      {savingCareTeam ? "Guardando..." : "Guardar Cambios"}
+                    </button>
+                    {accessMode === "CARE_TEAM" && (
+                      <p className="text-[9px] text-amber-600 font-bold text-center mt-2 leading-tight">
+                        * Solo los seleccionados podrán ver esta ficha.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       <ConfirmModal
         isOpen={isExportModalOpen}

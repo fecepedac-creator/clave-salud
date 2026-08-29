@@ -473,6 +473,24 @@ service cloud.firestore {
           && request.resource.data.careTeamUpdatedBy is string;
       }
 
+      function communicationKeysChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasAny(["communication"]);
+      }
+
+      function isCommunicationValid() {
+        return request.resource.data.communication is map
+          && request.resource.data.communication.email is map
+          && request.resource.data.communication.whatsapp is map
+          && request.resource.data.communication.email.consent is bool
+          && request.resource.data.communication.email.optedOut is bool
+          && (!request.resource.data.communication.email.keys().hasAny(["updatedAt"])
+            || request.resource.data.communication.email.updatedAt is timestamp)
+          && request.resource.data.communication.whatsapp.consent is bool
+          && request.resource.data.communication.whatsapp.optedOut is bool
+          && (!request.resource.data.communication.whatsapp.keys().hasAny(["updatedAt"])
+            || request.resource.data.communication.whatsapp.updatedAt is timestamp);
+      }
+
       function professionalFieldsUnchanged() {
         return request.resource.data.professionalId == resource.data.professionalId
           && request.resource.data.professionalName == resource.data.professionalName
@@ -566,6 +584,10 @@ service cloud.firestore {
               isCenterAdmin(centerId)
               && isCareTeamUpdateValid()
             )
+          )
+          && (
+            !communicationKeysChanged()
+            || isCommunicationValid()
           )
           && (
             !softDeleteKeysChanged()
@@ -884,6 +906,24 @@ service cloud.firestore {
         return signedIn() && isClinicalStaffForPatient(request.resource.data);
       }
 
+      function rootCommunicationKeysChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasAny(["communication"]);
+      }
+
+      function rootCommunicationValid() {
+        return request.resource.data.communication is map
+          && request.resource.data.communication.email is map
+          && request.resource.data.communication.whatsapp is map
+          && request.resource.data.communication.email.consent is bool
+          && request.resource.data.communication.email.optedOut is bool
+          && (!request.resource.data.communication.email.keys().hasAny(["updatedAt"])
+            || request.resource.data.communication.email.updatedAt is timestamp)
+          && request.resource.data.communication.whatsapp.consent is bool
+          && request.resource.data.communication.whatsapp.optedOut is bool
+          && (!request.resource.data.communication.whatsapp.keys().hasAny(["updatedAt"])
+            || request.resource.data.communication.whatsapp.updatedAt is timestamp);
+      }
+
       function rootHasPrescriptionDocuments() {
         return request.resource.data.prescriptions is list
           && request.resource.data.prescriptions.size() > 0;
@@ -955,7 +995,11 @@ service cloud.firestore {
     allow create: if canCreateRootPatient();
 
       // Update: owner, allowed professional, or superadmin
-      allow update: if canWriteRootPatient();
+      allow update: if canWriteRootPatient()
+        && (
+          !rootCommunicationKeysChanged()
+          || rootCommunicationValid()
+        );
 
       // Delete físico prohibido para cumplir conservación clínica.
       // El archivado debe realizarse por soft-delete (active=false + metadata).

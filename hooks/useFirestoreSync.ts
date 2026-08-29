@@ -28,6 +28,7 @@ import { MOCK_PATIENTS, INITIAL_DOCTORS } from "../constants";
 import { hasRole } from "../utils/roles";
 import { canSubscribeToClinicalPatients } from "../utils/clinicalSubscriptionPolicy";
 import { mapPatientDirectoryEntry } from "../utils/patientDirectoryProjection";
+import { withDefaultPatientCommunication } from "../utils/patientCommunication";
 
 const directoryEnsureRequests = new Set<string>();
 
@@ -206,7 +207,9 @@ export function useFirestoreSync(
       (snap: QuerySnapshot<DocumentData>) => {
         const pts = usesOperationalDirectory
           ? snap.docs.map((entry) => mapPatientDirectoryEntry(entry.id, entry.data()))
-          : (snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })) as Patient[]);
+          : (snap.docs.map((d) =>
+              withDefaultPatientCommunication({ ...(d.data() as any), id: d.id })
+            ) as Patient[]);
         setPatients(pts);
       },
       () => setPatients([])
