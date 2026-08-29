@@ -12,8 +12,8 @@ interface DoctorPatientHeaderProps {
   setSelectedPatient: React.Dispatch<React.SetStateAction<Patient | null>>;
   isEditingPatient: boolean;
   setIsEditingPatient: (state: boolean) => void;
-  handleSavePatient: () => void;
-  onUpdatePatient: (p: Patient) => void;
+  handleSavePatient: () => void | Promise<void>;
+  onUpdatePatient: (p: Patient) => void | Promise<void>;
   activeCenterId: string;
   activeCenter: any;
   doctorName: string;

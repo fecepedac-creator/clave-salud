@@ -54,7 +54,7 @@ interface ProfessionalDashboardProps {
   doctors?: Doctor[]; // All doctors in the center (needed for Administrativo role)
   portfolioMode?: "global" | "center";
   onSetPortfolioMode?: (mode: "global" | "center") => void;
-  onUpdatePatient: (updatedPatient: Patient) => void;
+  onUpdatePatient: (updatedPatient: Patient) => void | Promise<void>;
   onUpdateDoctor: (updatedDoctor: Doctor) => void;
   onLogout: () => void;
   onOpenLegal: (target: "terms" | "privacy") => void;

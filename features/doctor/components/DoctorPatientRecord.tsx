@@ -33,8 +33,8 @@ export interface DoctorPatientRecordProps {
   setSelectedPatient: React.Dispatch<React.SetStateAction<Patient | null>>;
   isEditingPatient: boolean;
   setIsEditingPatient: React.Dispatch<React.SetStateAction<boolean>>;
-  handleSavePatient: () => void;
-  onUpdatePatient: (p: Patient) => void;
+  handleSavePatient: () => void | Promise<void>;
+  onUpdatePatient: (p: Patient) => void | Promise<void>;
   onLogActivity: (event: any) => void;
 
   activeCenterId: string;

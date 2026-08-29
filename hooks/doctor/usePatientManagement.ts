@@ -10,7 +10,7 @@ import { db } from "../../firebase";
 interface UsePatientManagementProps {
   patients: Patient[];
   activeCenterId: string | null;
-  onUpdatePatient: (patient: Patient) => void;
+  onUpdatePatient: (patient: Patient) => void | Promise<void>;
   onLogActivity: (action: any, details: string, targetId?: string) => void;
   filterNextControl?: "all" | "week" | "month";
 }
@@ -86,10 +86,10 @@ export const usePatientManagement = ({
   };
 
   // Handle Saving Patient Changes
-  const handleSavePatient = () => {
+  const handleSavePatient = async () => {
     if (!selectedPatient) return;
     try {
-      onUpdatePatient(selectedPatient);
+      await onUpdatePatient(selectedPatient);
       onLogActivity(
         "update",
         `Actualizó datos ficha de ${selectedPatient.fullName}`,
@@ -98,7 +98,8 @@ export const usePatientManagement = ({
       showToast("Datos guardados correctamente.", "success");
     } catch (err) {
       console.error("Error saving patient:", err);
-      showToast("Error al guardar (revise consola)", "error");
+      showToast("No se pudo guardar la ficha del paciente.", "error");
+      return;
     }
     setIsEditingPatient(false);
   };

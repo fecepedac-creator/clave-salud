@@ -1876,8 +1876,9 @@ const App: React.FC = () => {
             onUpdatePatient={(p: Patient) => {
               if (isPreviewActive) {
                 setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
+                return Promise.resolve();
               } else {
-                updatePatient(p);
+                return updatePatient(p);
               }
             }}
             onUpdateDoctor={(d: Doctor) => {

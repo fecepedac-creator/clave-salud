@@ -88,18 +88,19 @@ export function useCrudOperations(
       const ref = doc(db, "patients", id);
       const existingSnap = await getDoc(ref);
 
-      await setDoc(
-        ref,
-        sanitizeForFirestore({
-          ...payload,
-          id,
-          ownerUid,
-          accessControl,
-          lastUpdated: new Date().toISOString(),
-          createdAt: payload.createdAt ?? serverTimestamp(),
-        }),
-        { merge: true }
-      );
+      const patientWritePayload = sanitizeForFirestore({
+        ...payload,
+        id,
+        ownerUid,
+        accessControl,
+        lastUpdated: new Date().toISOString(),
+        createdAt: payload.createdAt,
+      });
+      if (!payload.createdAt) {
+        patientWritePayload.createdAt = serverTimestamp();
+      }
+
+      await setDoc(ref, patientWritePayload, { merge: true });
 
       await updateAuditLog({
         id: generateId(),
