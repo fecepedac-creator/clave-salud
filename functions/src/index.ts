@@ -3915,3 +3915,4 @@ export const updateWhatsappConfig = (
 });
 
 export { appendClinicalCorrection, getClinicalCorrections } from "./clinicalCorrections";
+export * from "./patientPortalCallables";
