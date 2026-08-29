@@ -23,6 +23,10 @@ vi.mock("firebase/firestore", () => ({
   where: vi.fn(),
   getDocs: vi.fn(async () => ({ docs: [] })),
   getDoc: vi.fn(async () => ({ exists: () => false })),
+  onSnapshot: vi.fn((_reference, onNext) => {
+    onNext({ docs: [] });
+    return vi.fn();
+  }),
   Timestamp: { now: vi.fn() },
 }));
 
