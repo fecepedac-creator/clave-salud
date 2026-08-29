@@ -437,6 +437,31 @@ describe("Firestore security rules - pilot RBAC", () => {
     await assertFails(setDoc(doc(db, "_publicCallableRateLimits", "opaque"), { count: 1 }));
   });
 
+  it("allows clinical staff to create a new root patient even when the pre-read is denied", async () => {
+    const db = authedDb("doctorA");
+    const patientRef = doc(db, "patients", "newRootPatient");
+
+    await assertFails(getDoc(patientRef));
+    await assertSucceeds(
+      setDoc(patientRef, {
+        id: "newRootPatient",
+        centerId: CENTER_A,
+        ownerUid: "doctorA",
+        fullName: "Paciente Nuevo",
+        accessControl: { centerIds: [CENTER_A], allowedUids: ["doctorA"] },
+        careTeamUids: [],
+        medicalHistory: [],
+        surgicalHistory: [],
+        medications: [],
+        allergies: [],
+        consultations: [],
+        attachments: [],
+        active: true,
+      })
+    );
+    await assertSucceeds(getDoc(patientRef));
+  });
+
   it("keeps root patients clinical-only and blocks administrative reads", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
