@@ -29,7 +29,7 @@ describe("patient directory projection", () => {
       birthDate: "1990-01-01",
       gender: "Femenino",
       active: true,
-      directoryVersion: 1,
+      directoryVersion: 2,
     });
     expect(projection).not.toHaveProperty("medicalHistory");
     expect(projection).not.toHaveProperty("consultations");
