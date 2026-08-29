@@ -380,7 +380,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
       "whatsapp",
       context === "marketing" ? "marketing" : "transactional"
     );
-    if (!permission.allowed) {
+    if ("reason" in permission) {
       onLogActivity({
         action: "PATIENT_UPDATE",
         entityType: "patient",
@@ -461,7 +461,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
     }
 
     const emailPermission = canSendPatientCommunication(selectedPatient, "email", "clinical");
-    if (!emailPermission.allowed) {
+    if ("reason" in emailPermission) {
       onLogActivity({
         action: "PATIENT_UPDATE",
         entityType: "patient",
