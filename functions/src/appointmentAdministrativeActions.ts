@@ -184,12 +184,12 @@ export async function rebookAdministrativeAppointmentTransaction(
   const auditRef = refs.audit.doc(auditDocumentId("rebook", sourceAppointmentId, requestId));
 
   return db.runTransaction(async (transaction) => {
-    const [staffSnapshot, sourceSnapshot, targetSnapshot, auditSnapshot] = await Promise.all([
-      transaction.get(refs.staff.doc(actor.uid)),
-      transaction.get(sourceRef),
-      transaction.get(targetRef),
-      transaction.get(auditRef),
-    ]);
+    const [staffSnapshot, sourceSnapshot, targetSnapshot, auditSnapshot] = await transaction.getAll(
+      refs.staff.doc(actor.uid),
+      sourceRef,
+      targetRef,
+      auditRef
+    );
     if (!hasAdministrativeCapability(staffSnapshot.data(), "rebook")) {
       throw new functions.https.HttpsError(
         "permission-denied",
@@ -250,13 +250,15 @@ export async function rebookAdministrativeAppointmentTransaction(
           )
         )
       : null;
-    const [sourceSlotLock, targetSlotLock, sourceResourceLock, targetResourceLock] =
-      await Promise.all([
-        transaction.get(sourceSlotLockRef),
-        transaction.get(targetSlotLockRef),
-        sourceResourceLockRef ? transaction.get(sourceResourceLockRef) : Promise.resolve(null),
-        targetResourceLockRef ? transaction.get(targetResourceLockRef) : Promise.resolve(null),
-      ]);
+    const lockRefs: FirebaseFirestore.DocumentReference[] = [sourceSlotLockRef, targetSlotLockRef];
+    if (sourceResourceLockRef) lockRefs.push(sourceResourceLockRef);
+    if (targetResourceLockRef) lockRefs.push(targetResourceLockRef);
+    const lockSnapshots = await transaction.getAll(...lockRefs);
+    const sourceSlotLock = lockSnapshots[0];
+    const targetSlotLock = lockSnapshots[1];
+    let lockSnapshotIndex = 2;
+    const sourceResourceLock = sourceResourceLockRef ? lockSnapshots[lockSnapshotIndex++] : null;
+    const targetResourceLock = targetResourceLockRef ? lockSnapshots[lockSnapshotIndex] : null;
     if (
       (targetSlotLock.exists && targetSlotLock.get("appointmentId") !== targetAppointmentId) ||
       (targetResourceLock?.exists &&
