@@ -4,7 +4,6 @@ import {
   Doctor,
   Appointment,
   AuditLogEvent,
-  AuditLogEntry,
   Patient,
   Preadmission,
   MedicalService,
@@ -85,7 +84,6 @@ interface AdminDashboardProps {
   onUpdatePatients: (patients: Patient[]) => void;
   preadmissions: Preadmission[];
   onApprovePreadmission: (item: Preadmission) => void;
-  logs?: AuditLogEntry[]; // Prop used as fallback for Mock Mode (when db is null)
   onLogActivity: (event: AuditLogEvent) => void;
   currentUser?: any; // Role-based customization
   onClosePanel?: () => void;
@@ -109,7 +107,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdatePatients,
   preadmissions,
   onApprovePreadmission,
-  logs,
   onLogActivity,
   currentUser,
   onClosePanel,
@@ -144,11 +141,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [anthropometryEnabled, setAnthropometryEnabled] = useState(false);
   const [anthropometrySaving, setAnthropometrySaving] = useState(false);
+  const [examTimelineMatrixEnabled, setExamTimelineMatrixEnabled] = useState(false);
+  const [examTimelineMatrixSaving, setExamTimelineMatrixSaving] = useState(false);
   const [accessMode, setAccessMode] = useState<"CENTER_WIDE" | "CARE_TEAM">("CENTER_WIDE");
 
   useEffect(() => {
     setAnthropometryEnabled(Boolean(activeCenter?.features?.anthropometryEnabled));
   }, [activeCenter?.features?.anthropometryEnabled]);
+
+  useEffect(() => {
+    setExamTimelineMatrixEnabled(Boolean(activeCenter?.features?.examTimelineMatrixEnabled));
+  }, [activeCenter?.features?.examTimelineMatrixEnabled]);
 
   useEffect(() => {
     setAccessMode(activeCenter?.accessMode ?? "CENTER_WIDE");
@@ -192,6 +195,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleExamTimelineMatrixToggle = async (nextValue: boolean) => {
+    if (!db || !resolvedCenterId) return;
+    const previousValue = examTimelineMatrixEnabled;
+    setExamTimelineMatrixEnabled(nextValue);
+    setExamTimelineMatrixSaving(true);
+    try {
+      await setDoc(
+        doc(db, "centers", resolvedCenterId),
+        { features: { examTimelineMatrixEnabled: nextValue } },
+        { merge: true }
+      );
+      showToast(
+        nextValue
+          ? "Matriz de exámenes activada para el centro."
+          : "Matriz de exámenes desactivada para el centro.",
+        "success"
+      );
+    } catch (e) {
+      console.error("update exam timeline matrix flag", e);
+      setExamTimelineMatrixEnabled(previousValue);
+      showToast("No se pudo actualizar la matriz de exámenes.", "error");
+    } finally {
+      setExamTimelineMatrixSaving(false);
+    }
+  };
+
   const [medicalServices, setMedicalServices] = useState<MedicalService[]>([]);
 
   useEffect(() => {
@@ -207,41 +236,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [resolvedCenterId]);
 
   // Agenda State and Logic moved to AdminAgenda component
-
-  // --- STATE FOR AUDIT LOGS (LAZY LOADED) ---
-  const [displayLogs, setDisplayLogs] = useState<AuditLogEntry[]>(logs || []);
-  useEffect(() => {
-    if (db && activeCenterId && activeTab === "audit") {
-      const q = query(
-        collection(db, "centers", activeCenterId, "auditLogs"),
-        orderBy("timestamp", "desc"),
-        limit(100)
-      );
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedLogs: AuditLogEntry[] = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            centerId: resolvedCenterId, // Added required property
-            action: data.action,
-            actorUid: data.actorUid,
-            actorName: data.actorName,
-            actorRole: data.actorRole,
-            entityType: data.entityType,
-            entityId: data.entityId,
-            details: data.details,
-            timestamp: data.timestamp?.toDate().toISOString() || new Date().toISOString(),
-            patientId: data.patientId || null,
-            metadata: data.metadata || {},
-          };
-        });
-        setDisplayLogs(fetchedLogs);
-      });
-      return () => unsubscribe();
-    } else if (logs) {
-      setDisplayLogs(logs);
-    }
-  }, [db, activeCenterId, activeTab, logs, resolvedCenterId]);
 
   const resolvePreadmissionDate = (item: Preadmission) => {
     const raw = (item as any).createdAt;
@@ -745,6 +739,9 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           anthropometryEnabled={anthropometryEnabled}
           anthropometrySaving={anthropometrySaving}
           handleAnthropometryToggle={handleAnthropometryToggle}
+          examTimelineMatrixEnabled={examTimelineMatrixEnabled}
+          examTimelineMatrixSaving={examTimelineMatrixSaving}
+          handleExamTimelineMatrixToggle={handleExamTimelineMatrixToggle}
           setShowMarketingModal={setShowMarketingModal}
           setMarketingFlyerType={setMarketingFlyerType}
           persistDoctorToFirestore={persistDoctorToFirestore}
@@ -835,7 +832,11 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
       {/* AUDIT LOGS */}
       {activeTab === "audit" && (
         <div className="animate-fadeIn">
-          <AuditLogViewer logs={displayLogs} centerId={resolvedCenterId} />
+          <AuditLogViewer
+            centerId={resolvedCenterId}
+            staff={doctors ?? []}
+            patients={patients ?? []}
+          />
         </div>
       )}
 

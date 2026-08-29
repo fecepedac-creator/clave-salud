@@ -332,7 +332,6 @@ const App: React.FC = () => {
     setDoctors,
     appointments,
     setAppointments,
-    auditLogs,
     preadmissions,
     services,
   } = useFirestoreSync(
@@ -1877,8 +1876,9 @@ const App: React.FC = () => {
             onUpdatePatient={(p: Patient) => {
               if (isPreviewActive) {
                 setPatients((prev) => prev.map((pat) => (pat.id === p.id ? p : pat)));
+                return Promise.resolve();
               } else {
-                updatePatient(p);
+                return updatePatient(p);
               }
             }}
             onUpdateDoctor={(d: Doctor) => {
@@ -1968,7 +1968,6 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             onClosePanel={handleClosePanel}
             onOpenLegal={openLegal}
-            logs={auditLogs}
             onLogActivity={(event) => {
               if (isPreviewActive) return;
               const log: AuditLogEntry = {

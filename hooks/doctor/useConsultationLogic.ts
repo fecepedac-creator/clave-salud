@@ -9,8 +9,9 @@ import {
   sanitizeForFirestore,
 } from "../../utils";
 import { useToast } from "../../components/Toast";
-import { auth, functions } from "../../firebase";
+import { auth, db, functions } from "../../firebase";
 import { httpsCallable } from "firebase/functions";
+import { doc, getDoc } from "firebase/firestore";
 
 interface UseConsultationLogicProps {
   selectedPatient: Patient | null;
@@ -21,7 +22,7 @@ interface UseConsultationLogicProps {
   doctorId: string;
   doctorName: string;
   role: ProfessionalRole;
-  onUpdatePatient: (patient: Patient) => void;
+  onUpdatePatient: (patient: Patient) => void | Promise<void>;
   onLogActivity: (action: any, details: string, targetId?: string) => void;
   setActiveTab: (tab: any) => void;
 }
@@ -41,33 +42,28 @@ export const useConsultationLogic = ({
 }: UseConsultationLogicProps) => {
   const { showToast } = useToast();
 
-  const getEmptyConsultation = useCallback(
-    (): Partial<Consultation> => ({
-      weight: "",
-      height: "",
-      bmi: "",
-      bloodPressure: "",
-      hgt: "",
-      waist: "",
-      hip: "",
-      reason: "",
-      anamnesis: "",
-      physicalExam: "",
-      diagnosis: "",
-      diagnoses: [],
-      prescriptions: [],
-      dentalMap: [],
-      podogram: [],
-      exams: {},
-      examSheets: [],
-      nextControlDate: "",
-      nextControlReason: "",
-      reminderActive: false,
-      consultationType: "morbidity",
-      recordStatus: "draft",
-    }),
-    []
-  );
+  const getEmptyConsultation = (): Partial<Consultation> => ({
+    weight: "",
+    height: "",
+    bmi: "",
+    bloodPressure: "",
+    hgt: "",
+    waist: "",
+    hip: "",
+    reason: "",
+    anamnesis: "",
+    physicalExam: "",
+    diagnosis: "",
+    diagnoses: [],
+    prescriptions: [],
+    dentalMap: [],
+    exams: {},
+    examSheets: [],
+    nextControlDate: "",
+    nextControlReason: "",
+    reminderActive: false,
+    consultationType: "morbidity", // Default to morbidity
+  });
 
   const [newConsultation, setNewConsultation] =
     useState<Partial<Consultation>>(getEmptyConsultation());
@@ -380,6 +376,30 @@ export const useConsultationLogic = ({
     // 1) Guardar en Firestore (colección "consultations")
     try {
       if (!selectedPatient?.id) throw new Error("Paciente no seleccionado");
+
+      if (selectedPatient.dataScope !== "operational") {
+        const patientRef = doc(db, "patients", selectedPatient.id);
+        let patientExists = false;
+        try {
+          const patientSnapshot = await getDoc(patientRef);
+          patientExists = patientSnapshot.exists();
+        } catch (error: any) {
+          if (
+            error?.code !== "permission-denied" &&
+            error?.code !== "firestore/permission-denied"
+          ) {
+            throw error;
+          }
+        }
+        if (!patientExists) {
+          await onUpdatePatient(selectedPatient);
+          const persistedPatientSnapshot = await getDoc(patientRef);
+          if (!persistedPatientSnapshot.exists()) {
+            throw new Error("La ficha nueva no quedó persistida antes de guardar la atención.");
+          }
+        }
+      }
+
       const createPatientConsultation = httpsCallable<
         { centerId: string; patientId: string; consultation: Consultation },
         { ok: boolean; id: string }

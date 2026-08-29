@@ -86,20 +86,32 @@ export function useCrudOperations(
       }
 
       const ref = doc(db, "patients", id);
-      const existingSnap = await getDoc(ref);
+      let patientAlreadyExisted = false;
+      try {
+        const existingSnap = await getDoc(ref);
+        patientAlreadyExisted = existingSnap.exists();
+      } catch (error: any) {
+        // Firestore puede negar la lectura de un ID nuevo porque resource.data
+        // todavía no existe. La escritura posterior sigue protegida por la regla
+        // de create y es la que determina si el profesional puede crear la ficha.
+        if (error?.code !== "permission-denied" && error?.code !== "firestore/permission-denied") {
+          throw error;
+        }
+      }
 
-      await setDoc(
-        ref,
-        sanitizeForFirestore({
-          ...payload,
-          id,
-          ownerUid,
-          accessControl,
-          lastUpdated: new Date().toISOString(),
-          createdAt: payload.createdAt ?? serverTimestamp(),
-        }),
-        { merge: true }
-      );
+      const patientWritePayload = sanitizeForFirestore({
+        ...payload,
+        id,
+        ownerUid,
+        accessControl,
+        lastUpdated: new Date().toISOString(),
+        createdAt: payload.createdAt,
+      });
+      if (!payload.createdAt) {
+        patientWritePayload.createdAt = serverTimestamp();
+      }
+
+      await setDoc(ref, patientWritePayload, { merge: true });
 
       await updateAuditLog({
         id: generateId(),
@@ -107,11 +119,11 @@ export function useCrudOperations(
         actorUid: authUser?.uid ?? "unknown",
         actorName: authUser?.displayName ?? "Usuario",
         actorRole: "staff",
-        action: existingSnap.exists() ? "PATIENT_UPDATE" : "PATIENT_CREATE",
+        action: patientAlreadyExisted ? "PATIENT_UPDATE" : "PATIENT_CREATE",
         entityType: "patient",
         entityId: id,
         patientId: id,
-        details: existingSnap.exists()
+        details: patientAlreadyExisted
           ? "Actualización de ficha clínica."
           : "Creación de ficha clínica.",
       });
