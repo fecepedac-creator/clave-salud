@@ -11,30 +11,6 @@
 - ❌ Fail: **0**
 - ⚠️ Warning: **0**
 
-<<<<<<< HEAD
-## Alcance del área
-
-Webhook, agente IA, handoff e idempotencia.
-
-### Puntos de foco
-- Seguridad del Webhook (firmas)
-- MFA para Doctores
-- Consistencia en lógica de reserva
-- Idempotencia y TTL
-
-### Evidencia revisada
-- `functions/src/whatsapp.ts`
-- `functions/src/index.ts`
-
-## Ejecuciones
-
-| Estado | Comando | Inicio | Fin |
-|---|---|---|---|
-| ✅ PASS | `npm run build --prefix functions` | 2026-03-22T13:04:48.425Z | 2026-03-22T13:05:05.134Z |
-| ✅ PASS | `npm run test:agent --prefix functions` | 2026-03-22T13:05:05.134Z | 2026-03-22T13:05:28.588Z |
-
-## Detalle de salida
-=======
 ## Alcance recomendado del área
 
 Webhook, flujo conversacional, handoff, idempotencia y notificaciones transaccionales.
@@ -60,7 +36,6 @@ Webhook, flujo conversacional, handoff, idempotencia y notificaciones transaccio
 | ✅ PASS | `bash -lc "cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand"` | 2026-03-22T21:38:29.141Z | 2026-03-22T21:38:37.193Z |
 
 ## Evidencia de salida
->>>>>>> pr-104
 
 ### ✅ npm run build --prefix functions
 
@@ -69,22 +44,6 @@ Webhook, flujo conversacional, handoff, idempotencia y notificaciones transaccio
 > tsc
 ```
 
-<<<<<<< HEAD
-### ✅ npm run test:agent --prefix functions
-
-```text
-> test:agent
-> jest src/__tests__/whatsapp-agent.test.ts --runInBand
-```
-
-## Hallazgos manuales (Post-Auditoría)
-
-- [ ] H-001 (Pendiente)
-- [ ] H-002 (Pendiente)
-
-- **Reporte:** `docs\audits\2026\2026-03-22_whatsapp-chatbot.md`
-- **Timestamp:** `2026-03-22T13:05:28.589Z`
-=======
 ### ✅ bash -lc "cd functions && npx jest src/__tests__/whatsapp-agent.test.ts --runInBand"
 
 _Sin salida estándar._
@@ -105,5 +64,3 @@ _Sin salida estándar._
 
 - **Ruta del reporte:** `docs/audits/2026/2026-03-22_whatsapp-chatbot.md`
 - **Timestamp generado:** `2026-03-22T21:38:37.193Z`
-
->>>>>>> pr-104
