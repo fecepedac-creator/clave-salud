@@ -10,12 +10,6 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
-    function emailLower() {
-      return request.auth.token.email != null
-        ? request.auth.token.email.lower()
-        : null;
-    }
-
     // ✅ Acepta variantes de claim
     function isSuperAdmin() {
       return signedIn() && (
@@ -281,20 +275,6 @@ service cloud.firestore {
         && request.resource.data.lastUpdated is string
         && request.resource.data.active == true
         && isActiveCenter(centerId);
-    }
-
-    function inviteDoc(token) {
-      return get(/databases/$(database)/documents/invites/$(token));
-    }
-
-    function inviteValidForSelf(centerId, staffUid, token) {
-      return signedIn()
-        && staffUid == uid()
-        && token is string
-        && exists(/databases/$(database)/documents/invites/$(token))
-        && inviteDoc(token).data.centerId == centerId
-        && inviteDoc(token).data.status == "pending"
-        && inviteDoc(token).data.emailLower == emailLower();
     }
 
     match /centers/{centerId} {
@@ -826,7 +806,11 @@ service cloud.firestore {
       allow read: if signedIn() && (
         isSuperAdmin()
         || (resource.data.centerId is string && isCenterAdmin(resource.data.centerId))
-        || (resource.data.emailLower is string && resource.data.emailLower == emailLower())
+        || (
+          resource.data.emailLower is string
+          && request.auth.token.email is string
+          && resource.data.emailLower == request.auth.token.email.lower()
+        )
       );
 
       allow create: if false; // Solo Cloud Functions
@@ -871,24 +855,12 @@ service cloud.firestore {
           );
       }
 
-      // Helper: Is the current user the owner?
-      function isOwner() {
-        return signedIn() && resource.data.ownerUid == uid();
-      }
-
       // Helper: Is the current user in the allowedUids list?
       function isAllowedProfessional() {
         return signedIn() && (
           uid() in resource.data.accessControl.allowedUids ||
           (resource.data.careTeamUids is list && uid() in resource.data.careTeamUids)
         );
-      }
-
-      function isCenterStaffForPatient(data) {
-        let centerId = patientPrimaryCenterId(data);
-        return centerId is string
-          && centerId != ""
-          && isStaff(centerId);
       }
 
       function isClinicalStaffForPatient(data) {
