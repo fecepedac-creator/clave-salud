@@ -34,6 +34,11 @@ vi.mock("firebase/functions", () => ({
   httpsCallable: vi.fn(() => mockCreatePatientConsultation),
 }));
 
+vi.mock("firebase/firestore", () => ({
+  doc: vi.fn(() => ({ path: "patients/pat_1" })),
+  getDoc: vi.fn().mockResolvedValue({ exists: () => true }),
+}));
+
 describe("Vademecum Suggestions Search", () => {
   it("should return matches for paracetamol", () => {
     const results = getDrugSuggestions("paracetamol");

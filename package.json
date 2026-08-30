@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "lint:ci": "eslint App.tsx components/AdminDashboard.tsx components/InvitePage.tsx components/MigrationModal.tsx hooks/useAuth.ts hooks/useInvite.ts features/admin/components/ProfessionalManagement.tsx features/admin/components/WhatsappSettings.tsx features/admin/components/AdminAIUsageTab.tsx --ext .ts,.tsx --quiet",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",

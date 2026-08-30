@@ -7,5 +7,11 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    include: [
+      "components/**/*.test.{ts,tsx}",
+      "src/hooks/**/*.test.{ts,tsx}",
+      "src/test/**/*.test.{ts,tsx}",
+    ],
+    exclude: ["src/test/firestore-rules.test.ts"],
   },
 });
