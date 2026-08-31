@@ -5,6 +5,7 @@ import {
   updateAppointmentArrivalTransaction,
   updateAppointmentOperationalAttendanceTransaction,
 } from "../appointmentOperations";
+import { updateAppointmentReminderStatusTransaction } from "../appointmentAdministrativeActions";
 
 const integration = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip;
 const db = admin.firestore();
@@ -40,8 +41,8 @@ integration("operaciones administrativas de llegada y asistencia", () => {
     ]);
     await Promise.all([
       appointmentRef.delete(),
-      ...staff.docs.map(document => document.ref.delete()),
-      ...audit.docs.map(document => document.ref.delete()),
+      ...staff.docs.map((document) => document.ref.delete()),
+      ...audit.docs.map((document) => document.ref.delete()),
     ]);
   });
 
@@ -54,12 +55,12 @@ integration("operaciones administrativas de llegada y asistencia", () => {
       arrived: true,
     };
 
-    await expect(updateAppointmentArrivalTransaction(input, { uid: "secretary-1" })).resolves.toEqual(
-      { success: true, idempotent: false }
-    );
-    await expect(updateAppointmentArrivalTransaction(input, { uid: "secretary-1" })).resolves.toEqual(
-      { success: true, idempotent: true }
-    );
+    await expect(
+      updateAppointmentArrivalTransaction(input, { uid: "secretary-1" })
+    ).resolves.toEqual({ success: true, idempotent: false });
+    await expect(
+      updateAppointmentArrivalTransaction(input, { uid: "secretary-1" })
+    ).resolves.toEqual({ success: true, idempotent: true });
     expect((await appointmentRef.get()).data()).toMatchObject({
       arrivalStatus: "arrived",
       arrivedBy: "secretary-1",
@@ -92,6 +93,44 @@ integration("operaciones administrativas de llegada y asistencia", () => {
       billable: true,
       amount: 25000,
     });
+  });
+
+  it("registra recordatorio y confirmación sin enviar mensajes", async () => {
+    await staffRef.doc("secretary-reminder").set({
+      active: true,
+      accessRole: "administrative",
+      capabilities: ["agenda.contact"],
+    });
+
+    await updateAppointmentReminderStatusTransaction(
+      {
+        centerId,
+        appointmentId: appointmentRef.id,
+        requestId: "reminder-sent-request-01",
+        status: "sent",
+        channel: "whatsapp",
+      },
+      { uid: "secretary-reminder" }
+    );
+    await updateAppointmentReminderStatusTransaction(
+      {
+        centerId,
+        appointmentId: appointmentRef.id,
+        requestId: "reminder-confirm-request-01",
+        status: "confirmed",
+      },
+      { uid: "secretary-reminder" }
+    );
+
+    expect((await appointmentRef.get()).data()).toMatchObject({
+      reminderStatus: "sent",
+      reminderChannel: "whatsapp",
+      confirmationStatus: "confirmed",
+      confirmationUpdatedBy: "secretary-reminder",
+    });
+    expect((await db.collection("centers").doc(centerId).collection("auditLogs").get()).size).toBe(
+      2
+    );
   });
 
   it("deniega a un profesional clínico y a una membresía con capacidades vacías", async () => {

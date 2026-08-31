@@ -6,8 +6,10 @@ import { agendaResourceLockDocumentId, agendaSlotLockDocumentId } from "./admini
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-type AdministrativeAction = "contact" | "rebook";
+type AdministrativeAction = "contact" | "rebook" | "reminder";
 type ContactChannel = "call" | "whatsapp";
+type ReminderChannel = ContactChannel | "other";
+type ReminderStatus = "sent" | "confirmed" | "declined" | "no_response";
 
 interface ActionActor {
   uid: string;
@@ -25,6 +27,14 @@ export interface RebookAppointmentInput {
   sourceAppointmentId: string;
   targetAppointmentId: string;
   requestId: string;
+}
+
+export interface AppointmentReminderStatusInput {
+  centerId: string;
+  appointmentId: string;
+  requestId: string;
+  status: ReminderStatus;
+  channel?: ReminderChannel;
 }
 
 export type RebookAppointmentResult =
@@ -54,7 +64,7 @@ const hasAdministrativeCapability = (
   action: AdministrativeAction
 ) => {
   if (!staff || staff.active !== true) return false;
-  const capability = action === "contact" ? "agenda.contact" : "agenda.rebook";
+  const capability = action === "rebook" ? "agenda.rebook" : "agenda.contact";
   if (Array.isArray(staff.capabilities)) return staff.capabilities.includes(capability);
   return legacyAdministrativeRole(staff.accessRole || staff.role);
 };
@@ -139,6 +149,95 @@ export async function recordAppointmentContactAttemptTransaction(
       entityId: appointmentId,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       metadata: { channel: input.channel, date: appointment.date, time: appointment.time },
+    });
+    return { success: true, idempotent: false };
+  });
+}
+
+export async function updateAppointmentReminderStatusTransaction(
+  input: AppointmentReminderStatusInput,
+  actor: ActionActor
+) {
+  const centerId = validateId(input?.centerId, "Centro");
+  const appointmentId = validateId(input?.appointmentId, "Cita");
+  const requestId = validateRequestId(input?.requestId);
+  if (!(["sent", "confirmed", "declined", "no_response"] as string[]).includes(input?.status)) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "El estado de recordatorio no es válido."
+    );
+  }
+  if (
+    input.status === "sent" &&
+    !(["call", "whatsapp", "other"] as string[]).includes(input?.channel || "")
+  ) {
+    throw new functions.https.HttpsError("invalid-argument", "Indique el canal del recordatorio.");
+  }
+  const refs = centerReferences(centerId);
+  const appointmentRef = refs.appointments.doc(appointmentId);
+  const auditRef = refs.audit.doc(auditDocumentId("reminder", appointmentId, requestId));
+
+  return db.runTransaction(async (transaction) => {
+    const [staffSnapshot, appointmentSnapshot, auditSnapshot] = await Promise.all([
+      transaction.get(refs.staff.doc(actor.uid)),
+      transaction.get(appointmentRef),
+      transaction.get(auditRef),
+    ]);
+    if (!hasAdministrativeCapability(staffSnapshot.data(), "reminder")) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "No tiene permiso para actualizar recordatorios de citas."
+      );
+    }
+    if (!appointmentSnapshot.exists) {
+      throw new functions.https.HttpsError("not-found", "La cita no existe.");
+    }
+    const appointment = appointmentSnapshot.data() || {};
+    if (
+      appointment.status !== "booked" ||
+      appointment.active === false ||
+      ["completed", "no-show", "cancelled"].includes(appointment.attendanceStatus)
+    ) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "La cita no admite cambios de recordatorio."
+      );
+    }
+    if (auditSnapshot.exists) return { success: true, idempotent: true };
+
+    const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (input.status === "sent") {
+      update.reminderStatus = "sent";
+      update.reminderChannel = input.channel || null;
+      update.reminderSentAt = admin.firestore.FieldValue.serverTimestamp();
+      update.reminderSentBy = actor.uid;
+      update.confirmationStatus = "pending";
+      update.confirmationUpdatedAt = null;
+      update.confirmationUpdatedBy = null;
+    } else {
+      if (appointment.reminderStatus !== "sent") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Primero debe registrar que el recordatorio fue enviado."
+        );
+      }
+      update.confirmationStatus = input.status;
+      update.confirmationUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
+      update.confirmationUpdatedBy = actor.uid;
+    }
+    transaction.update(appointmentRef, update);
+    transaction.create(auditRef, {
+      centerId,
+      actorUid: actor.uid,
+      action: `APPOINTMENT_REMINDER_${input.status.toUpperCase()}`,
+      entityType: "appointment",
+      entityId: appointmentId,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      metadata: {
+        channel: input.status === "sent" ? input.channel : appointment.reminderChannel || null,
+      },
     });
     return { success: true, idempotent: false };
   });
@@ -352,6 +451,14 @@ export const recordAppointmentContactAttempt = functions.https.onCall(async (dat
   const uid = context.auth?.uid;
   if (!uid) throw new functions.https.HttpsError("unauthenticated", "Debe estar autenticado.");
   return recordAppointmentContactAttemptTransaction(data as ContactAttemptInput, { uid });
+});
+
+export const updateAppointmentReminderStatus = functions.https.onCall(async (data, context) => {
+  const uid = context.auth?.uid;
+  if (!uid) throw new functions.https.HttpsError("unauthenticated", "Debe estar autenticado.");
+  return updateAppointmentReminderStatusTransaction(data as AppointmentReminderStatusInput, {
+    uid,
+  });
 });
 
 export const rebookAdministrativeAppointment = functions.https.onCall(async (data, context) => {

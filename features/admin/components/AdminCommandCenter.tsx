@@ -5,6 +5,7 @@ import TodayActivity from "./TodayActivity";
 import PreadmissionList from "./PreadmissionList";
 import SecretaryTaskPanel from "./SecretaryTaskPanel";
 import { AdminTeamAgenda } from "./AdminTeamAgenda";
+import { AppointmentReminderPanel } from "./AppointmentReminderPanel";
 
 export interface AdminCommandCenterProps {
   stats: {
@@ -15,7 +16,9 @@ export interface AdminCommandCenterProps {
   };
   appointments: Appointment[];
   doctors: Doctor[];
+  centerId: string;
   preadmissions: Preadmission[];
+  onUpdateAppointments: (appointments: Appointment[]) => void;
   onOpenPatient: (appointment: Appointment) => void;
   onCancelAppointment: (appointment: Appointment) => void;
   onApprovePreadmission: (preadmission: Preadmission) => void;
@@ -25,7 +28,9 @@ const AdminCommandCenter: React.FC<AdminCommandCenterProps> = ({
   stats,
   appointments,
   doctors,
+  centerId,
   preadmissions,
+  onUpdateAppointments,
   onOpenPatient,
   onCancelAppointment,
   onApprovePreadmission,
@@ -72,6 +77,13 @@ const AdminCommandCenter: React.FC<AdminCommandCenterProps> = ({
       />
 
       <AdminTeamAgenda appointments={appointments} doctors={doctors} />
+
+      <AppointmentReminderPanel
+        centerId={centerId}
+        appointments={appointments}
+        doctors={doctors}
+        onUpdateAppointments={onUpdateAppointments}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Today's Activity */}

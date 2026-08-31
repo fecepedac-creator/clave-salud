@@ -21,6 +21,7 @@ export { getAgendaPolicy, previewAgendaPolicyImpact, updateAgendaPolicy } from "
 export {
   recordAppointmentContactAttempt,
   rebookAdministrativeAppointment,
+  updateAppointmentReminderStatus,
 } from "./appointmentAdministrativeActions";
 export {
   listSecretaryConversations,

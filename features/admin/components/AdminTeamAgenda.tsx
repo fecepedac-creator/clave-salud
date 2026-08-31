@@ -45,13 +45,11 @@ export const AdminTeamAgenda: React.FC<{ appointments: Appointment[]; doctors: D
 
   const activeDoctors = useMemo(
     () =>
-      doctors.filter((doctor) =>
-        appointments.some(
-          (appointment) =>
-            isVisibleAppointment(appointment) && appointmentDoctorId(appointment) === doctor.id
-        )
+      doctors.filter(
+        (doctor) =>
+          doctor.active !== false && (doctor as Doctor & { activo?: boolean }).activo !== false
       ),
-    [appointments, doctors]
+    [doctors]
   );
 
   const appointmentByDoctorAndDate = useMemo(() => {

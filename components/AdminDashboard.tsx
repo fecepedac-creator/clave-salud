@@ -727,7 +727,9 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
             }}
             appointments={appointments}
             doctors={doctors}
+            centerId={resolvedCenterId}
             preadmissions={sortedPreadmissions}
+            onUpdateAppointments={onUpdateAppointments}
             onOpenPatient={(appt) => {
               showToast(`Abriendo ficha de ${appt.patientName}`, "info");
             }}
