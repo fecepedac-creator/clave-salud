@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Patient, Appointment, Consultation } from "../../types";
+import { AuditLogEvent, Patient, Appointment, Consultation } from "../../types";
 import { normalizeRut, formatPersonName, getPatientIdByRut, normalizePhone } from "../../utils";
 import { useAuditLog } from "../useAuditLog";
 import { useToast } from "../../components/Toast";
@@ -12,7 +12,7 @@ interface UsePatientManagementProps {
   patients: Patient[];
   activeCenterId: string | null;
   onUpdatePatient: (patient: Patient) => void | Promise<void>;
-  onLogActivity: (action: any, details: string, targetId?: string) => void;
+  onLogActivity: (event: AuditLogEvent) => void;
   filterNextControl?: "all" | "week" | "month";
 }
 
@@ -91,11 +91,13 @@ export const usePatientManagement = ({
     if (!selectedPatient) return;
     try {
       await onUpdatePatient(selectedPatient);
-      onLogActivity(
-        "update",
-        `Actualizó datos ficha de ${selectedPatient.fullName}`,
-        selectedPatient.id
-      );
+      onLogActivity({
+        action: "PATIENT_UPDATE",
+        entityType: "patient",
+        entityId: selectedPatient.id,
+        patientId: selectedPatient.id,
+        details: `Actualizó datos ficha de ${selectedPatient.fullName}`,
+      });
       showToast("Datos guardados correctamente.", "success");
     } catch (err) {
       console.error("Error saving patient:", err);

@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, Dispatch, SetStateAction } from "react";
-import { Consultation, Patient, MedicalCenter, ProfessionalRole, SnomedConcept } from "../../types";
+import {
+  AuditLogEvent,
+  Consultation,
+  Patient,
+  MedicalCenter,
+  ProfessionalRole,
+  SnomedConcept,
+} from "../../types";
 import {
   canRoleIssueControlledPrescription,
   canRoleIssuePrescription,
@@ -23,7 +30,7 @@ interface UseConsultationLogicProps {
   doctorName: string;
   role: ProfessionalRole;
   onUpdatePatient: (patient: Patient) => void | Promise<void>;
-  onLogActivity: (action: any, details: string, targetId?: string) => void;
+  onLogActivity: (event: AuditLogEvent) => void;
   setActiveTab: (tab: any) => void;
 }
 
@@ -226,11 +233,13 @@ export const useConsultationLogic = ({
     setSelectedPatient(updatedPatient);
     onUpdatePatient(updatedPatient);
     showToast("Agregado a antecedentes morbidos", "success");
-    onLogActivity(
-      "update",
-      `Agregó ${diag.display} a antecedentes de ${selectedPatient.fullName}`,
-      selectedPatient.id
-    );
+    onLogActivity({
+      action: "PATIENT_UPDATE",
+      entityType: "patient",
+      entityId: selectedPatient.id,
+      patientId: selectedPatient.id,
+      details: `Agregó ${diag.display} a antecedentes de ${selectedPatient.fullName}`,
+    });
   };
 
   const handleCreateConsultation = async () => {
@@ -448,11 +457,13 @@ export const useConsultationLogic = ({
 
     // 3) Auditoría
     try {
-      onLogActivity(
-        "create",
-        `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
-        selectedPatient.id
-      );
+      onLogActivity({
+        action: "CONSULTATION_CREATE",
+        entityType: "consultation",
+        entityId: consultation.id,
+        patientId: selectedPatient.id,
+        details: `Creó atención para ${selectedPatient.fullName}. Motivo: ${(consultation as any).reason || ""}`,
+      });
     } catch {
       // no-op
     }
