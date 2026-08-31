@@ -6,6 +6,7 @@ import { useToast } from "../../components/Toast";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { doc, getDoc, collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
+import { consultationCollectionPath } from "../../features/doctor/utils/consultationPath";
 
 interface UsePatientManagementProps {
   patients: Patient[];
@@ -165,14 +166,22 @@ export const usePatientManagement = ({
       return;
     }
 
-    const consultationsRef = collection(
-      db,
-      "centers",
+    const consultationPath = consultationCollectionPath(
       activeCenterId,
-      "patients",
       selectedPatient.id,
-      "consultations"
+      selectedPatient.dataScope
     );
+    const consultationsRef =
+      consultationPath.length === 5
+        ? collection(
+            db,
+            consultationPath[0],
+            consultationPath[1],
+            consultationPath[2],
+            consultationPath[3],
+            consultationPath[4]
+          )
+        : collection(db, consultationPath[0], consultationPath[1], consultationPath[2]);
 
     const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
 
