@@ -4,6 +4,7 @@ import MetricCard from "../../../components/MetricCard";
 import TodayActivity from "./TodayActivity";
 import PreadmissionList from "./PreadmissionList";
 import SecretaryTaskPanel from "./SecretaryTaskPanel";
+import { AdminTeamAgenda } from "./AdminTeamAgenda";
 
 export interface AdminCommandCenterProps {
   stats: {
@@ -69,6 +70,8 @@ const AdminCommandCenter: React.FC<AdminCommandCenterProps> = ({
         onApprovePreadmission={onApprovePreadmission}
         onCancelAppointment={onCancelAppointment}
       />
+
+      <AdminTeamAgenda appointments={appointments} doctors={doctors} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Today's Activity */}

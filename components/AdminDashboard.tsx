@@ -66,6 +66,8 @@ import { WhatsappSettings } from "../features/admin/components/WhatsappSettings"
 import { ProfessionalManagement } from "../features/admin/components/ProfessionalManagement";
 import { AdminAgenda } from "../features/admin/components/AdminAgenda";
 import CampaignManager from "./CampaignManager";
+import SecretaryInbox from "./SecretaryInbox";
+import HandoffRequestsManager from "./HandoffRequestsManager";
 import { PILOT_FEATURES } from "../config/pilot";
 import { isAdministrativeRole } from "../utils/roles";
 
@@ -122,7 +124,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     | "services"
     | "performance"
     | "ai_usage"
-    | "campaigns";
+    | "campaigns"
+    | "messages";
 
   const userRoles = currentUser?.roles || [];
   const isSecretary = userRoles.some((r) => {
@@ -612,6 +615,16 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
               <Calendar className="w-4 h-4" /> Configurar Agenda
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setActiveTab("messages")}
+            disabled={!hasActiveCenter}
+            className={`px-3 md:px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "messages" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-400 hover:text-white"} disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={hasActiveCenter ? "Bandeja de mensajes" : "Selecciona un centro activo"}
+            data-testid="admin-tab-messages"
+          >
+            <MessageCircle className="w-4 h-4" /> Mensajes
+          </button>
           {PILOT_FEATURES.advancedWhatsapp && !isSecretary && (
             <button
               onClick={() => setActiveTab("whatsapp")}
@@ -767,6 +780,13 @@ En Clave Salud, los respaldos y registros de auditoría aseguran que se cumpla c
           activeCenter={activeCenter}
           onUpdatePatients={onUpdatePatients}
         />
+      )}
+
+      {activeTab === "messages" && hasActiveCenter && (
+        <div className="space-y-6">
+          <SecretaryInbox centerId={resolvedCenterId} />
+          <HandoffRequestsManager centerId={resolvedCenterId} />
+        </div>
       )}
 
       {/* WHATSAPP TEMPLATES */}
