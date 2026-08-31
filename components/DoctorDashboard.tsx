@@ -43,6 +43,8 @@ import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatient
 import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
 import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
 import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
+import SecretaryInbox from "./SecretaryInbox";
+import HandoffRequestsManager from "./HandoffRequestsManager";
 
 interface ProfessionalDashboardProps {
   patients: Patient[];
@@ -146,7 +148,7 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
   const [activeTab, setActiveTab] = useState<
-    "patients" | "agenda" | "reminders" | "settings" | "performance"
+    "patients" | "agenda" | "reminders" | "settings" | "performance" | "messages"
   >("patients");
   const [isPiiMasked, setIsPiiMasked] = useState<boolean>(true);
 
@@ -1049,7 +1051,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
             {/* CONTENT AREA */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {selectedPatient ? (
+              {activeTab === "messages" && isAdministrativo && activeCenterId ? (
+                <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-8 md:px-8">
+                  <SecretaryInbox centerId={activeCenterId} />
+                  <HandoffRequestsManager centerId={activeCenterId} />
+                </div>
+              ) : selectedPatient ? (
                 <DoctorPatientRecord
                   selectedPatient={selectedPatient}
                   isPiiMasked={isPiiMasked}
