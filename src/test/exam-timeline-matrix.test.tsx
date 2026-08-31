@@ -16,24 +16,24 @@ const renderSection = () => {
       ]}
       onChange={onChange}
       examOptions={[
-        { id: "hba1c", label: "Hemoglobina glicosilada", unit: "%", category: "metabÃ³lico" },
+        { id: "hba1c", label: "Hemoglobina glicosilada", unit: "%", category: "metabólico" },
         { id: "creatinine", label: "Creatinina", unit: "mg/dL", category: "renal" },
       ]}
       availableProfiles={[]}
       consultationHistory={[]}
     />
   );
-  fireEvent.click(screen.getByText(/ExÃ¡menes de Seguimiento/i));
+  fireEvent.click(screen.getByText(/Exámenes de Seguimiento/i));
   const sheetHeader = screen.getByDisplayValue("2026-08-25").parentElement?.parentElement;
-  if (!sheetHeader) throw new Error("No se encontrÃ³ el encabezado de la planilla.");
+  if (!sheetHeader) throw new Error("No se encontró el encabezado de la planilla.");
   fireEvent.click(sheetHeader);
   return onChange;
 };
 
-describe("ingreso de exÃ¡menes de seguimiento", () => {
-  it("permite buscar y agregar un examen de catÃ¡logo sin recorrer una lista larga", () => {
+describe("ingreso de exámenes de seguimiento", () => {
+  it("permite buscar y agregar un examen de catálogo sin recorrer una lista larga", () => {
     const onChange = renderSection();
-    fireEvent.change(screen.getByPlaceholderText(/Buscar examen para aÃ±adir fila/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Buscar examen para añadir fila/i), {
       target: { value: "creat" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Creatinina/ }));
@@ -57,7 +57,7 @@ describe("ingreso de exÃ¡menes de seguimiento", () => {
     ]);
   });
 
-  it("muestra como mÃ¡ximo cuatro fechas y permite avanzar a las siguientes", () => {
+  it("muestra como máximo cuatro fechas y permite avanzar a las siguientes", () => {
     render(
       <ExamTimelineMatrix
         examSheets={Array.from({ length: 5 }, (_, index) => ({
@@ -71,10 +71,10 @@ describe("ingreso de exÃ¡menes de seguimiento", () => {
         consultationHistory={[]}
       />
     );
-    fireEvent.click(screen.getByText(/ExÃ¡menes de seguimiento/i));
-    expect(screen.getAllByLabelText(/Fecha de exÃ¡menes/)).toHaveLength(4);
-    expect(screen.getByText(/Mostrando fechas 1â€“4 de 5/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Exámenes de seguimiento/i));
+    expect(screen.getAllByLabelText(/Fecha de exámenes/)).toHaveLength(4);
+    expect(screen.getByText(/Mostrando fechas 1–4 de 5/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Siguientes/ }));
-    expect(screen.getByText(/Mostrando fechas 2â€“5 de 5/)).toBeInTheDocument();
+    expect(screen.getByText(/Mostrando fechas 2–5 de 5/)).toBeInTheDocument();
   });
 });
