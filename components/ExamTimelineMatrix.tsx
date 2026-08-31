@@ -187,7 +187,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
   };
 
   const removeDateColumn = (sheetId: string) => {
-    if (window.confirm("Â¿Eliminar esta fecha y todos sus valores registrados?")) {
+    if (window.confirm("¿Eliminar esta fecha y todos sus valores registrados?")) {
       onChange(examSheets.filter((sheet) => sheet.id !== sheetId));
     }
   };
@@ -251,7 +251,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
         <span className="flex items-center gap-3">
           <FileSpreadsheet className="h-6 w-6 text-indigo-600" />
           <span>
-            <span className="block text-lg font-bold text-slate-800">ExÃ¡menes de seguimiento</span>
+            <span className="block text-lg font-bold text-slate-800">Exámenes de seguimiento</span>
             <span className="block text-sm text-slate-500">
               Matriz longitudinal: una columna por fecha, una fila por examen.
             </span>
@@ -268,12 +268,12 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
         <div className="space-y-5 border-t border-slate-100 p-5">
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
             <p className="text-sm font-semibold text-indigo-950">
-              Agregue una fecha cuando tenga un nuevo control. Los exÃ¡menes permanecen como filas y
-              podrÃ¡ comparar sus valores a lo largo del tiempo.
+              Agregue una fecha cuando tenga un nuevo control. Los exámenes permanecen como filas y
+              podrá comparar sus valores a lo largo del tiempo.
             </p>
             <div className="mt-3 flex flex-col gap-3 lg:flex-row">
               <select
-                aria-label="Agregar perfil de exÃ¡menes"
+                aria-label="Agregar perfil de exámenes"
                 defaultValue=""
                 className="min-w-0 flex-1 rounded-xl border border-indigo-200 bg-white p-2.5 text-sm font-medium text-slate-700"
                 onChange={(event) => {
@@ -283,10 +283,10 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                   }
                 }}
               >
-                <option value="">Agregar perfil de exÃ¡menesâ€¦</option>
+                <option value="">Agregar perfil de exámenes…</option>
                 {availableProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
-                    {profile.label} ({profile.summary || `${profile.exams.length} exÃ¡menes`})
+                    {profile.label} ({profile.summary || `${profile.exams.length} exámenes`})
                   </option>
                 ))}
               </select>
@@ -294,7 +294,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                 <input
                   list="tracked-exams"
                   value={examSearch}
-                  placeholder="Buscar examen para aÃ±adir filaâ€¦"
+                  placeholder="Buscar examen para añadir fila…"
                   className="w-full rounded-xl border border-indigo-200 bg-white p-2.5 text-sm font-medium text-slate-700"
                   onChange={(event) => {
                     const value = event.target.value;
@@ -325,7 +325,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
             {examSheets.length > DATE_COLUMNS_PER_PAGE && (
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-indigo-100 pt-3">
                 <p className="text-xs font-semibold text-indigo-900">
-                  Mostrando fechas {safeVisibleColumnStart + 1}â€“
+                  Mostrando fechas {safeVisibleColumnStart + 1}–
                   {Math.min(
                     safeVisibleColumnStart + DATE_COLUMNS_PER_PAGE,
                     examSheets.length
@@ -340,7 +340,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                     }
                     className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    â† Anteriores
+                    ← Anteriores
                   </button>
                   <button
                     type="button"
@@ -355,13 +355,13 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                     }
                     className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Siguientes â†’
+                    Siguientes →
                   </button>
                 </div>
               </div>
             )}
             {(examSearch || "").trim().length >= 2 && (
-              <div className="mt-2 flex flex-wrap gap-1" aria-label="Resultados de exÃ¡menes">
+              <div className="mt-2 flex flex-wrap gap-1" aria-label="Resultados de exámenes">
                 {sortedExamOptions
                   .filter((exam) =>
                     exam.label.toLocaleLowerCase("es").includes(examSearch.toLocaleLowerCase("es"))
@@ -424,7 +424,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                       >
                         <div className="flex items-center gap-1">
                           <input
-                            aria-label={`Fecha de exÃ¡menes ${sheet.id}`}
+                            aria-label={`Fecha de exámenes ${sheet.id}`}
                             type="date"
                             value={sheet.date}
                             onChange={(event) =>
@@ -490,7 +490,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                         colSpan={visibleSheets.length + 1}
                         className="p-8 text-center text-slate-500"
                       >
-                        AÃ±ada exÃ¡menes usando el buscador, un perfil o un nombre libre.
+                        Añada exámenes usando el buscador, un perfil o un nombre libre.
                       </td>
                     </tr>
                   ) : (
@@ -519,7 +519,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                                       onClick={() => setTrendExamId(trendOpen ? null : examId)}
                                       className="rounded px-1.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
                                     >
-                                      EvoluciÃ³n
+                                      Evolución
                                     </button>
                                   )}
                                   <button
@@ -541,7 +541,7 @@ export const ExamTimelineMatrix: React.FC<ExamSheetsSectionProps> = ({
                                   onChange={(event) =>
                                     setExamValue(sheet.id, examId, event.target.value)
                                   }
-                                  placeholder="â€”"
+                                  placeholder="—"
                                   className="w-full min-w-28 rounded-lg border border-transparent bg-slate-50 px-3 py-2 text-center font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                                 />
                               </td>

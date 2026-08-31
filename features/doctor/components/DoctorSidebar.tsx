@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  ShieldCheck,
   UsersRound,
   CalendarCheck,
   TrendingUp,
@@ -54,7 +53,11 @@ const DoctorSidebar: React.FC<DoctorSidebarProps> = ({
         className={`p-8 border-b border-slate-100/50 ${isCollapsed ? "flex justify-center p-6" : ""}`}
       >
         <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <ShieldCheck className="w-8 h-8 text-health-600 shrink-0" />
+          <img
+            src="/assets/logo.png"
+            alt="Logo oficial de ClaveSalud"
+            className="h-10 w-10 shrink-0 object-contain"
+          />
           {!isCollapsed && <span>ClaveSalud</span>}
         </h2>
         {!isCollapsed && (
