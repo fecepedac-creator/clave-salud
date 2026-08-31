@@ -166,14 +166,22 @@ export const usePatientManagement = ({
       return;
     }
 
-    const consultationsRef = collection(
-      db,
-      ...consultationCollectionPath(
-        activeCenterId,
-        selectedPatient.id,
-        selectedPatient.dataScope
-      )
+    const consultationPath = consultationCollectionPath(
+      activeCenterId,
+      selectedPatient.id,
+      selectedPatient.dataScope
     );
+    const consultationsRef =
+      consultationPath.length === 5
+        ? collection(
+            db,
+            consultationPath[0],
+            consultationPath[1],
+            consultationPath[2],
+            consultationPath[3],
+            consultationPath[4]
+          )
+        : collection(db, consultationPath[0], consultationPath[1], consultationPath[2]);
 
     const q = query(consultationsRef, orderBy("date", "desc"), limit(200));
 
