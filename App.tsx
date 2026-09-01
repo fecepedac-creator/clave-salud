@@ -1709,6 +1709,7 @@ const App: React.FC = () => {
       activeCenterId && isValidCenter(resolvedActiveCenter)
         ? (resolvedActiveCenter as any).name
         : undefined;
+    const breadcrumbRole = effectiveLocalCurrentUser?.role || (isPreviewActive ? previewRole : "");
 
     const handleClosePanel = () => {
       const allowed = Array.isArray(localCurrentUser?.centros)
@@ -1738,6 +1739,7 @@ const App: React.FC = () => {
               <Breadcrumbs
                 view={view}
                 centerName={activeCenterName}
+                role={breadcrumbRole}
                 onNavigate={(v) => setView(v as ViewMode)}
               />
             </div>
