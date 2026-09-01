@@ -43,6 +43,7 @@ import { DoctorPatientRecord } from "../features/doctor/components/DoctorPatient
 import { DoctorPerformanceTab } from "../features/doctor/components/DoctorPerformanceTab";
 import DoctorSidebar from "../features/doctor/components/DoctorSidebar";
 import DoctorMainHeader from "../features/doctor/components/DoctorMainHeader";
+import { AdministrativeCommandCenter } from "../features/doctor/components/AdministrativeCommandCenter";
 import SecretaryInbox from "./SecretaryInbox";
 import HandoffRequestsManager from "./HandoffRequestsManager";
 
@@ -148,8 +149,8 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
   const [filterNextControl, setFilterNextControl] = useState<"all" | "week" | "month">("all");
   const [activeTab, setActiveTab] = useState<
-    "patients" | "agenda" | "reminders" | "settings" | "performance" | "messages"
-  >("patients");
+    "patients" | "agenda" | "reminders" | "settings" | "performance" | "messages" | "command_center"
+  >(() => (role === "ADMINISTRATIVO" ? "command_center" : "patients"));
   const [isPiiMasked, setIsPiiMasked] = useState<boolean>(true);
 
   // Custom Hooks
@@ -1051,7 +1052,12 @@ export const ProfessionalDashboard: React.FC<ProfessionalDashboardProps> = ({
 
             {/* CONTENT AREA */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {activeTab === "messages" && isAdministrativo && activeCenterId ? (
+              {activeTab === "command_center" && isAdministrativo && activeCenterId ? (
+                <AdministrativeCommandCenter
+                  appointments={appointments}
+                  doctors={clinicalDoctors}
+                />
+              ) : activeTab === "messages" && isAdministrativo && activeCenterId ? (
                 <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-8 md:px-8">
                   <SecretaryInbox centerId={activeCenterId} />
                   <HandoffRequestsManager centerId={activeCenterId} />
