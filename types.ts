@@ -546,6 +546,15 @@ export interface Appointment extends SoftDeletable {
   amount?: number | null;
   attendanceUpdatedAt?: FirestoreDateLike;
   attendanceUpdatedBy?: string;
+  /** Seguimiento operativo de recordatorio. No acredita un envío automático. */
+  reminderStatus?: "sent" | null;
+  reminderChannel?: "whatsapp" | "call" | "other" | null;
+  reminderSentAt?: FirestoreDateLike;
+  reminderSentBy?: string;
+  /** Respuesta registrada por secretaría tras verificar el canal de contacto. */
+  confirmationStatus?: "pending" | "confirmed" | "declined" | "no_response" | null;
+  confirmationUpdatedAt?: FirestoreDateLike;
+  confirmationUpdatedBy?: string;
   rescheduledFromAppointmentId?: string;
   rescheduledToAppointmentId?: string;
   rescheduledAt?: FirestoreDateLike;

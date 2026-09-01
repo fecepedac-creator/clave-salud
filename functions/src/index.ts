@@ -21,6 +21,7 @@ export { getAgendaPolicy, previewAgendaPolicyImpact, updateAgendaPolicy } from "
 export {
   recordAppointmentContactAttempt,
   rebookAdministrativeAppointment,
+  updateAppointmentReminderStatus,
 } from "./appointmentAdministrativeActions";
 
 export * from "./superAdminOperationalMetrics";
@@ -254,7 +255,9 @@ function isBookableServiceResource(staffUid: string, data: Record<string, any>):
   const role = normalizeString(data?.role ?? data?.accessRole ?? data?.clinicalRole ?? "")
     .trim()
     .toLowerCase();
-  const email = normalizeString(data?.email ?? "").trim().toLowerCase();
+  const email = normalizeString(data?.email ?? "")
+    .trim()
+    .toLowerCase();
   return staffUid.startsWith("svc_") || role === "servicio" || email.startsWith("svc_");
 }
 
@@ -2226,100 +2229,103 @@ export const logAuditEvent = (functions.https.onCall as any)(
 export const runMonthlyBackup = functions
   .runWith({ secrets: ["BACKUP_TOKEN", "BACKUP_BUCKET"] })
   .https.onRequest(async (req, res) => {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
-
-  const headerToken = String(req.get("X-Backup-Token") || "").trim();
-  const schedulerAuthorized = Boolean(BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN);
-  const superAdminAuthorized = await verifySuperAdminFromRequest(req);
-
-  if (!schedulerAuthorized && !superAdminAuthorized) {
-    res.status(403).json({ ok: false, error: "Unauthorized" });
-    return;
-  }
-
-  const projectId = getProjectId();
-  if (!projectId) {
-    res.status(500).json({ ok: false, error: "Missing projectId" });
-    return;
-  }
-  if (!BACKUP_BUCKET) {
-    res.status(500).json({ ok: false, error: "Missing BACKUP_BUCKET" });
-    return;
-  }
-
-  const payload = typeof req.body === "object" ? req.body : {};
-  const dryRun = Boolean(payload?.dryRun);
-  const prefix = getBackupPrefix();
-  const outputUriPrefix = `gs://${BACKUP_BUCKET}/${prefix}`;
-
-  const manifest = {
-    timestamp: new Date().toISOString(),
-    projectId,
-    function: "runMonthlyBackup",
-    type: "export/firestore-admin",
-    outputUriPrefix,
-    reason: payload?.reason || "MANUAL",
-    initiatedBy: payload?.initiatedBy || (schedulerAuthorized ? "cloud-scheduler" : "super_admin"),
-  };
-
-  if (dryRun) {
-    await storage
-      .bucket(BACKUP_BUCKET)
-      .file(`${prefix}/manifest.json`)
-      .save(JSON.stringify({ ...manifest, dryRun: true }, null, 2), {
-        contentType: "application/json",
-      });
-    res.status(200).json({ ok: true, dryRun: true, outputUriPrefix });
-    return;
-  }
-
-  try {
-    const accessToken = await getAccessToken();
-    const exportRes = await fetch(
-      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          outputUriPrefix,
-        }),
-      }
-    );
-
-    if (!exportRes.ok) {
-      const errorText = await exportRes.text();
-      functions.logger.error("runMonthlyBackup export failed", {
-        status: exportRes.status,
-        error: errorText,
-      });
-      res.status(500).json({ ok: false, error: "Export failed" });
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
       return;
     }
 
-    const exportBody = await exportRes.json();
-    await storage
-      .bucket(BACKUP_BUCKET)
-      .file(`${prefix}/manifest.json`)
-      .save(JSON.stringify({ ...manifest, export: exportBody }, null, 2), {
-        contentType: "application/json",
+    const headerToken = String(req.get("X-Backup-Token") || "").trim();
+    const schedulerAuthorized = Boolean(
+      BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN
+    );
+    const superAdminAuthorized = await verifySuperAdminFromRequest(req);
+
+    if (!schedulerAuthorized && !superAdminAuthorized) {
+      res.status(403).json({ ok: false, error: "Unauthorized" });
+      return;
+    }
+
+    const projectId = getProjectId();
+    if (!projectId) {
+      res.status(500).json({ ok: false, error: "Missing projectId" });
+      return;
+    }
+    if (!BACKUP_BUCKET) {
+      res.status(500).json({ ok: false, error: "Missing BACKUP_BUCKET" });
+      return;
+    }
+
+    const payload = typeof req.body === "object" ? req.body : {};
+    const dryRun = Boolean(payload?.dryRun);
+    const prefix = getBackupPrefix();
+    const outputUriPrefix = `gs://${BACKUP_BUCKET}/${prefix}`;
+
+    const manifest = {
+      timestamp: new Date().toISOString(),
+      projectId,
+      function: "runMonthlyBackup",
+      type: "export/firestore-admin",
+      outputUriPrefix,
+      reason: payload?.reason || "MANUAL",
+      initiatedBy:
+        payload?.initiatedBy || (schedulerAuthorized ? "cloud-scheduler" : "super_admin"),
+    };
+
+    if (dryRun) {
+      await storage
+        .bucket(BACKUP_BUCKET)
+        .file(`${prefix}/manifest.json`)
+        .save(JSON.stringify({ ...manifest, dryRun: true }, null, 2), {
+          contentType: "application/json",
+        });
+      res.status(200).json({ ok: true, dryRun: true, outputUriPrefix });
+      return;
+    }
+
+    try {
+      const accessToken = await getAccessToken();
+      const exportRes = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            outputUriPrefix,
+          }),
+        }
+      );
+
+      if (!exportRes.ok) {
+        const errorText = await exportRes.text();
+        functions.logger.error("runMonthlyBackup export failed", {
+          status: exportRes.status,
+          error: errorText,
+        });
+        res.status(500).json({ ok: false, error: "Export failed" });
+        return;
+      }
+
+      const exportBody = await exportRes.json();
+      await storage
+        .bucket(BACKUP_BUCKET)
+        .file(`${prefix}/manifest.json`)
+        .save(JSON.stringify({ ...manifest, export: exportBody }, null, 2), {
+          contentType: "application/json",
+        });
+
+      functions.logger.info("runMonthlyBackup export started", {
+        projectId,
+        outputUriPrefix,
       });
 
-    functions.logger.info("runMonthlyBackup export started", {
-      projectId,
-      outputUriPrefix,
-    });
-
-    res.status(200).json({ ok: true, outputUriPrefix, export: exportBody });
-  } catch (error) {
-    functions.logger.error("runMonthlyBackup error", { error: String(error) });
-    res.status(500).json({ ok: false, error: "Backup failed" });
-  }
+      res.status(200).json({ ok: true, outputUriPrefix, export: exportBody });
+    } catch (error) {
+      functions.logger.error("runMonthlyBackup error", { error: String(error) });
+      res.status(500).json({ ok: false, error: "Backup failed" });
+    }
   });
 
 /**
@@ -2335,7 +2341,9 @@ export const cleanupWeeklyBackups = functions
     }
 
     const headerToken = String(req.get("X-Backup-Token") || "").trim();
-    const schedulerAuthorized = Boolean(BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN);
+    const schedulerAuthorized = Boolean(
+      BACKUP_TOKEN && headerToken && headerToken === BACKUP_TOKEN
+    );
     const superAdminAuthorized = await verifySuperAdminFromRequest(req);
 
     if (!schedulerAuthorized && !superAdminAuthorized) {

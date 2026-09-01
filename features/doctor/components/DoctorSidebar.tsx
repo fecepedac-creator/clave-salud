@@ -3,6 +3,8 @@ import {
   UsersRound,
   CalendarCheck,
   TrendingUp,
+  LayoutDashboard,
+  MessageSquare,
   Settings,
   LogOut,
   X,
@@ -12,8 +14,24 @@ import {
 import { RoleId } from "../../../types";
 
 interface DoctorSidebarProps {
-  activeTab: "patients" | "agenda" | "reminders" | "settings" | "performance";
-  setActiveTab: (tab: "patients" | "agenda" | "reminders" | "settings" | "performance") => void;
+  activeTab:
+    | "patients"
+    | "agenda"
+    | "reminders"
+    | "settings"
+    | "performance"
+    | "messages"
+    | "command_center";
+  setActiveTab: (
+    tab:
+      | "patients"
+      | "agenda"
+      | "reminders"
+      | "settings"
+      | "performance"
+      | "messages"
+      | "command_center"
+  ) => void;
   doctorName: string;
   role: RoleId;
   onLogout: () => void;
@@ -32,6 +50,7 @@ const DoctorSidebar: React.FC<DoctorSidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
+  const isAdministrativo = String(role || "").toUpperCase() === "ADMINISTRATIVO";
   return (
     <aside
       className={`relative ${isCollapsed ? "lg:w-20" : "lg:w-72"} w-full bg-white/80 backdrop-blur-md border-r border-slate-200/60 sticky top-0 h-screen overflow-y-auto overflow-x-hidden z-20 shadow-sm transition-all duration-300 ease-in-out`}
@@ -62,12 +81,29 @@ const DoctorSidebar: React.FC<DoctorSidebarProps> = ({
         </h2>
         {!isCollapsed && (
           <p className="text-[10px] text-health-600 font-bold uppercase tracking-[0.2em] mt-1">
-            Professional Portal
+            {isAdministrativo ? "Portal Administrativo" : "Portal Profesional"}
           </p>
         )}
       </div>
       <div className={`${isCollapsed ? "p-4" : "p-8"}`}>
         <nav data-testid="doctor-tab-bar" className="space-y-2">
+          {isAdministrativo && (
+            <button
+              data-testid="doctor-tab-command-center"
+              onClick={() => setActiveTab("command_center")}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all w-full group ${
+                activeTab === "command_center"
+                  ? "bg-health-600 text-white shadow-lg shadow-health-200"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-health-600"
+              } ${isCollapsed ? "justify-center px-0" : ""}`}
+              title={isCollapsed ? "Mesa de Control" : ""}
+            >
+              <LayoutDashboard
+                className={`w-5 h-5 shrink-0 ${activeTab === "command_center" ? "text-white" : "text-slate-400 group-hover:text-health-500"}`}
+              />
+              {!isCollapsed && <span>Mesa de Control</span>}
+            </button>
+          )}
           <button
             data-testid="doctor-tab-patients"
             onClick={() => setActiveTab("patients")}
@@ -113,6 +149,23 @@ const DoctorSidebar: React.FC<DoctorSidebarProps> = ({
             />
             {!isCollapsed && <span>Rendimiento</span>}
           </button>
+          {isAdministrativo && (
+            <button
+              data-testid="doctor-tab-messages"
+              onClick={() => setActiveTab("messages")}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all w-full group ${
+                activeTab === "messages"
+                  ? "bg-health-600 text-white shadow-lg shadow-health-200"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-health-600"
+              } ${isCollapsed ? "justify-center px-0" : ""}`}
+              title={isCollapsed ? "Mensajes" : ""}
+            >
+              <MessageSquare
+                className={`w-5 h-5 shrink-0 ${activeTab === "messages" ? "text-white" : "text-slate-400 group-hover:text-health-500"}`}
+              />
+              {!isCollapsed && <span>Mensajes</span>}
+            </button>
+          )}
           <button
             data-testid="doctor-tab-settings"
             onClick={() => setActiveTab("settings")}

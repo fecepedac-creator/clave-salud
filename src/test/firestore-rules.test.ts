@@ -110,6 +110,17 @@ async function seedBaseData() {
       active: true,
       directoryVersion: 1,
     });
+    await setDoc(doc(db, "centers", CENTER_A, "handoff_requests", "handoffA"), {
+      patientName: "Solicitud de prueba",
+      patientPhone: "+56900000000",
+      reason: "Solicitud de secretaría",
+      status: "pending",
+    });
+    await setDoc(doc(db, "conversations", "conversationA"), {
+      centerId: CENTER_A,
+      patientName: "Conversación privada",
+      transcript: [{ role: "patient", text: "Mensaje privado" }],
+    });
     await setDoc(
       doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"),
       {
@@ -302,6 +313,26 @@ describe("Firestore security rules - pilot RBAC", () => {
     await assertFails(
       getDoc(doc(db, "centers", CENTER_A, "patients", "patientA", "consultations", "consultA"))
     );
+  });
+
+  it("allows administrative staff to operate only their center handoff queue", async () => {
+    const secretaryDb = authedDb("secretaryA");
+    await assertSucceeds(
+      getDoc(doc(secretaryDb, "centers", CENTER_A, "handoff_requests", "handoffA"))
+    );
+    await assertSucceeds(
+      updateDoc(doc(secretaryDb, "centers", CENTER_A, "handoff_requests", "handoffA"), {
+        status: "taken",
+      })
+    );
+    await assertFails(
+      getDoc(doc(secretaryDb, "centers", CENTER_B, "handoff_requests", "handoffA"))
+    );
+  });
+
+  it("keeps raw chatbot conversations unavailable to all Firestore clients", async () => {
+    await assertFails(getDoc(doc(authedDb("secretaryA"), "conversations", "conversationA")));
+    await assertFails(getDoc(doc(authedDb("doctorA"), "conversations", "conversationA")));
   });
 
   it("blocks a non-clinical center admin from editing clinical evolution", async () => {

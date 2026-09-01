@@ -5,10 +5,11 @@ import { ViewMode } from "../types";
 interface BreadcrumbsProps {
   view: ViewMode;
   centerName?: string;
+  role?: string;
   onNavigate: (view: ViewMode) => void;
 }
 
-const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ view, centerName, onNavigate }) => {
+const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ view, centerName, role, onNavigate }) => {
   const getBreadcrumbs = () => {
     const items = [{ label: "Inicio", view: "home" as ViewMode, icon: Home }];
 
@@ -25,7 +26,12 @@ const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ view, centerName, onNavigate 
 
     // Specific Views
     if (view === "doctor-dashboard") {
-      items.push({ label: "Profesional", view: "doctor-dashboard" as ViewMode, icon: Stethoscope });
+      const isAdministrative = String(role || "").toUpperCase() === "ADMINISTRATIVO";
+      items.push({
+        label: isAdministrative ? "Administrativo" : "Profesional",
+        view: "doctor-dashboard" as ViewMode,
+        icon: isAdministrative ? Lock : Stethoscope,
+      });
     } else if (view === "admin-dashboard") {
       items.push({ label: "Administración", view: "admin-dashboard" as ViewMode, icon: Lock });
     } else if (view === "patient-menu") {

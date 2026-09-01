@@ -35,6 +35,7 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
   const [centerLogoError, setCenterLogoError] = useState(false);
   const firstName = doctorName.trim().split(/\s+/)[0] || "Profesional";
   const professionalLabel = getProfessionalPanelLabel(professionalRole);
+  const isAdministrativePanel = String(professionalRole || "").toUpperCase() === "ADMINISTRATIVO";
 
   // Count today's booked appointments for this doctor
   const todayCount = appointments.filter(
@@ -49,7 +50,7 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
       <div className="w-full md:w-auto">
         <h1 className="text-xl font-bold text-slate-800">Buenos días, {firstName}</h1>
         <p className="mt-0.5 text-xs font-medium text-slate-500">
-          Panel clínico · {professionalLabel}
+          {isAdministrativePanel ? "Panel administrativo" : "Panel clínico"} · {professionalLabel}
         </p>
       </div>
 
@@ -109,8 +110,11 @@ const DoctorMainHeader: React.FC<DoctorMainHeaderProps> = ({
 };
 
 export const getProfessionalPanelLabel = (role?: string): string => {
-  const normalized = String(role || "").trim().toUpperCase();
+  const normalized = String(role || "")
+    .trim()
+    .toUpperCase();
   const labels: Record<string, string> = {
+    ADMINISTRATIVO: "Administrativo",
     MEDICO: "Médico",
     KINESIOLOGO: "Kinesiólogo",
     ENFERMERA: "Enfermería",
