@@ -23,11 +23,6 @@ export {
   rebookAdministrativeAppointment,
   updateAppointmentReminderStatus,
 } from "./appointmentAdministrativeActions";
-export {
-  listSecretaryConversations,
-  listSecretaryHandoffs,
-  updateSecretaryHandoffStatus,
-} from "./secretaryInbox";
 
 export * from "./superAdminOperationalMetrics";
 export * from "./patientDirectory";

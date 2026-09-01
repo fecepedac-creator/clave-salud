@@ -1,0 +1,10 @@
+{
+  "name": "clavesalud-operations-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "firebase-admin": "^13.6.0",
+    "firebase-functions": "^7.3.2"
+  }
+}

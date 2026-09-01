@@ -66,7 +66,7 @@ const DoctorSidebar: React.FC<DoctorSidebarProps> = ({
         </h2>
         {!isCollapsed && (
           <p className="text-[10px] text-health-600 font-bold uppercase tracking-[0.2em] mt-1">
-            Professional Portal
+            {isAdministrativo ? "Portal Administrativo" : "Portal Profesional"}
           </p>
         )}
       </div>
